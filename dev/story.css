@@ -1,0 +1,26 @@
+.green { color: #66bb6a; }
+.green-yellow { color: #c6d944; }
+.red-yellow { color: #ffb74d; }
+.red { color: #ef5350; }
+
+.macro-button.green {
+  color: #66bb6a;
+  border-color: rgba(102, 187, 106, 0.4);
+  background: rgba(102, 187, 106, 0.15);
+}
+
+.macro-button.green:hover {
+  border-color: #81c784;
+  background: rgba(102, 187, 106, 0.25);
+}
+
+.macro-button.red {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.4);
+  background: rgba(239, 83, 80, 0.15);
+}
+
+.macro-button.red:hover {
+  border-color: #e57373;
+  background: rgba(239, 83, 80, 0.25);
+}

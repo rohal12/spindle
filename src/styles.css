@@ -94,3 +94,135 @@ tw-storydata {
   padding: 2em;
   opacity: 0.6;
 }
+
+/* Menu bar */
+
+.story-menubar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 1.5em;
+  background: #16213e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: system-ui, sans-serif;
+  font-size: 0.9em;
+}
+
+.story-title {
+  flex: 1;
+  font-weight: 600;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menubar-button {
+  background: transparent;
+  color: #9e9e9e;
+  border: 1px solid transparent;
+  padding: 0.35em 0.7em;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  transition: color 0.2s, background 0.2s;
+}
+
+.menubar-button:hover {
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.menubar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menubar-button:disabled:hover {
+  color: #9e9e9e;
+  background: transparent;
+}
+
+/* Settings dialog */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.settings-panel {
+  background: #16213e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  color: #e0e0e0;
+  font-family: system-ui, sans-serif;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1em 1.25em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+.settings-close {
+  background: transparent;
+  border: none;
+  color: #9e9e9e;
+  font-size: 1.1em;
+  cursor: pointer;
+  padding: 0.25em;
+  line-height: 1;
+}
+
+.settings-close:hover {
+  color: #e0e0e0;
+}
+
+.settings-body {
+  padding: 1em 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.settings-row select,
+.settings-row input[type="range"] {
+  accent-color: #64b5f6;
+}
+
+.settings-row select {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 0.3em 0.5em;
+  font: inherit;
+}
+
+.settings-row input[type="checkbox"] {
+  accent-color: #64b5f6;
+  width: 1.1em;
+  height: 1.1em;
+}

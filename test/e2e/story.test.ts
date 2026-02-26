@@ -244,6 +244,29 @@ describe("compiled story e2e", () => {
       const btn = await page.$("button.macro-button.danger.large");
       expect(btn).not.toBeNull();
     });
+
+    it("renders green class on health status at full health", async () => {
+      await goToMacroDemo();
+      const span = await page.$("span.green");
+      expect(span).not.toBeNull();
+      expect((await span!.textContent())!.trim()).toBe("Full health!");
+    });
+
+    it("renders red Drink Poison button", async () => {
+      await goToMacroDemo();
+      const btn = await page.$("button.macro-button.red");
+      expect(btn).not.toBeNull();
+      expect(await btn!.textContent()).toBe("Drink Poison");
+    });
+
+    it("renders green Drink Health potion button after taking damage", async () => {
+      await goToMacroDemo();
+      // Take damage to make health < 100 so heal button appears
+      await page.click("button.macro-button.red");
+      const btn = await page.$("button.macro-button.green");
+      expect(btn).not.toBeNull();
+      expect(await btn!.textContent()).toBe("Drink Health potion");
+    });
   });
 
   describe("live reactivity", () => {

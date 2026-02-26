@@ -1,4 +1,5 @@
 import { useStoryStore } from "./store";
+import { settings } from "./settings";
 
 export interface StoryAPI {
   get(name: string): unknown;
@@ -7,6 +8,12 @@ export interface StoryAPI {
   goto(passageName: string): void;
   back(): void;
   forward(): void;
+  restart(): void;
+  save(slot?: string): void;
+  load(slot?: string): void;
+  hasSave(slot?: string): boolean;
+  readonly title: string;
+  readonly settings: typeof settings;
 }
 
 function createStoryAPI(): StoryAPI {
@@ -37,6 +44,28 @@ function createStoryAPI(): StoryAPI {
     forward(): void {
       useStoryStore.getState().goForward();
     },
+
+    restart(): void {
+      useStoryStore.getState().restart();
+    },
+
+    save(slot?: string): void {
+      useStoryStore.getState().save(slot);
+    },
+
+    load(slot?: string): void {
+      useStoryStore.getState().load(slot);
+    },
+
+    hasSave(slot?: string): boolean {
+      return useStoryStore.getState().hasSave(slot);
+    },
+
+    get title(): string {
+      return useStoryStore.getState().storyData?.name || "";
+    },
+
+    settings,
   };
 }
 

@@ -125,22 +125,22 @@ Variable display: {$name}
 Temporary variable: {_temp}
 Computed expression: {print $health * 2}
 
-Health: {$health} — 
-{if $health >= 100}
+Health: {$health} —
+{.green if $health >= 100}
   Full health!
-{elseif $health >= 50}
+{.green-yellow elseif $health >= 50}
   Doing okay.
-{elseif $health > 0}
+{.red-yellow elseif $health > 0}
   Need healing!
-{else}
+{.red else}
   You died!
 {/if}
 
 {if $health > 0}
-  {button  $health -= 10}Take 10 damage{/button}
+  {.red button $health -= 10}Drink Poison{/button}
 {/if}
 {if $health < 100}
-  {button  $health += 10}Heal 10 hitpoints{/button}
+  {.green button $health += 10}Drink Health potion{/button}
 {/if}
 
 Inventory ({print $inventory.length} items):

@@ -45,6 +45,7 @@ const tweego = await tweenode({
   build: {
     input: {
       storyDir: resolve(projectRoot, "dev/story.twee"),
+      styles: resolve(projectRoot, "dev/story.css"),
     },
     output: {
       mode: "file",

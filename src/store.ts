@@ -15,6 +15,7 @@ export interface StoryState {
   temporary: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
+  saveVersion: number;
 
   init: (storyData: StoryData) => void;
   navigate: (passageName: string) => void;
@@ -22,6 +23,10 @@ export interface StoryState {
   goForward: () => void;
   setVariable: (name: string, value: unknown) => void;
   setTemporary: (name: string, value: unknown) => void;
+  restart: () => void;
+  save: (slot?: string) => void;
+  load: (slot?: string) => void;
+  hasSave: (slot?: string) => boolean;
 }
 
 export const useStoryStore = create<StoryState>()(
@@ -32,6 +37,7 @@ export const useStoryStore = create<StoryState>()(
     temporary: {},
     history: [],
     historyIndex: -1,
+    saveVersion: 0,
 
     init: (storyData: StoryData) => {
       const startPassage = storyData.passagesById.get(storyData.startNode);
@@ -114,6 +120,76 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.temporary[name] = value;
       });
+    },
+
+    restart: () => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      const startPassage = storyData.passagesById.get(storyData.startNode);
+      if (!startPassage) return;
+
+      set((state) => {
+        state.currentPassage = startPassage.name;
+        state.variables = {};
+        state.temporary = {};
+        state.history = [
+          {
+            passage: startPassage.name,
+            variables: {},
+            timestamp: Date.now(),
+          },
+        ];
+        state.historyIndex = 0;
+      });
+    },
+
+    save: (slot = "auto") => {
+      const { storyData, currentPassage, variables, history, historyIndex } =
+        get();
+      if (!storyData) return;
+
+      const key = `react-twine.${storyData.ifid}.save.${slot}`;
+      const data = JSON.stringify({
+        passage: currentPassage,
+        variables,
+        history,
+        historyIndex,
+      });
+      localStorage.setItem(key, data);
+      set((state) => {
+        state.saveVersion++;
+      });
+    },
+
+    load: (slot = "auto") => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      const key = `react-twine.${storyData.ifid}.save.${slot}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+
+      try {
+        const data = JSON.parse(raw);
+        set((state) => {
+          state.currentPassage = data.passage;
+          state.variables = data.variables;
+          state.history = data.history;
+          state.historyIndex = data.historyIndex;
+          state.temporary = {};
+        });
+      } catch {
+        console.error("react-twine: Failed to parse save data.");
+      }
+    },
+
+    hasSave: (slot = "auto") => {
+      const { storyData } = get();
+      if (!storyData) return false;
+
+      const key = `react-twine.${storyData.ifid}.save.${slot}`;
+      return localStorage.getItem(key) !== null;
     },
   }))
 );
