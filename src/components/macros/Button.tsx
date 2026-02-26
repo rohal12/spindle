@@ -7,9 +7,10 @@ interface ButtonProps {
   rawArgs: string;
   children: ASTNode[];
   className?: string;
+  id?: string;
 }
 
-export function Button({ rawArgs, children, className }: ButtonProps) {
+export function Button({ rawArgs, children, className, id }: ButtonProps) {
   const handleClick = () => {
     const state = useStoryStore.getState();
     const vars = { ...state.variables };
@@ -37,7 +38,7 @@ export function Button({ rawArgs, children, className }: ButtonProps) {
   const cls = className ? `macro-button ${className}` : "macro-button";
 
   return (
-    <button class={cls} onClick={handleClick}>
+    <button id={id} class={cls} onClick={handleClick}>
       {renderNodes(children)}
     </button>
   );

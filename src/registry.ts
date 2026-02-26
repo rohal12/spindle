@@ -3,6 +3,7 @@ import type { ComponentType } from "preact";
 export interface MacroProps {
   rawArgs: string;
   className?: string;
+  id?: string;
   children: preact.ComponentChildren;
 }
 

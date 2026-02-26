@@ -6,9 +6,10 @@ interface VarDisplayProps {
   name: string;
   scope: "variable" | "temporary";
   className?: string;
+  id?: string;
 }
 
-export function VarDisplay({ name, scope, className }: VarDisplayProps) {
+export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   const locals = useContext(LocalsContext);
   const storeValue = useStoryStore((s) =>
     scope === "variable" ? s.variables[name] : s.temporary[name]
@@ -19,6 +20,6 @@ export function VarDisplay({ name, scope, className }: VarDisplayProps) {
   const value = key in locals ? locals[key] : storeValue;
 
   const display = value == null ? "" : String(value);
-  if (className) return <span class={className}>{display}</span>;
+  if (className || id) return <span id={id} class={className}>{display}</span>;
   return <>{display}</>;
 }

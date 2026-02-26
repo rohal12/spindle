@@ -228,6 +228,20 @@ describe("tokenize", () => {
       ]);
     });
 
+    it("parses {.class elseif $cond} as macro with className", () => {
+      const tokens = tokenize("{.red elseif $health < 50}");
+      expect(tokens).toEqual([
+        { type: "macro", name: "elseif", rawArgs: "$health < 50", isClose: false, className: "red", start: 0, end: 26 },
+      ]);
+    });
+
+    it("parses {.class else} as macro with className", () => {
+      const tokens = tokenize("{.red else}");
+      expect(tokens).toEqual([
+        { type: "macro", name: "else", rawArgs: "", isClose: false, className: "red", start: 0, end: 11 },
+      ]);
+    });
+
     it("closing tags do not take classes", () => {
       const tokens = tokenize("{/button}");
       expect(tokens).toEqual([
@@ -270,6 +284,107 @@ describe("tokenize", () => {
     it("macro tokens without classes have no className property", () => {
       const tokens = tokenize("{set $x = 5}");
       expect("className" in tokens[0]).toBe(false);
+    });
+
+    it("tokens without id have no id property", () => {
+      const tokens = tokenize("{$name}");
+      expect("id" in tokens[0]).toBe(false);
+    });
+
+    it("link tokens without id have no id property", () => {
+      const tokens = tokenize("[[Go|Start]]");
+      expect("id" in tokens[0]).toBe(false);
+    });
+
+    it("macro tokens without id have no id property", () => {
+      const tokens = tokenize("{set $x = 5}");
+      expect("id" in tokens[0]).toBe(false);
+    });
+  });
+
+  describe("#id syntax", () => {
+    it("parses {#id $var} as variable with id", () => {
+      const tokens = tokenize("{#health $hp}");
+      expect(tokens).toEqual([
+        { type: "variable", name: "hp", scope: "variable", id: "health", start: 0, end: 13 },
+      ]);
+    });
+
+    it("parses {#id _temp} as temporary variable with id", () => {
+      const tokens = tokenize("{#counter _count}");
+      expect(tokens).toEqual([
+        { type: "variable", name: "count", scope: "temporary", id: "counter", start: 0, end: 17 },
+      ]);
+    });
+
+    it("parses {#id macroName args} as macro with id", () => {
+      const tokens = tokenize("{#charselect button $choice = 1}");
+      expect(tokens).toEqual([
+        { type: "macro", name: "button", rawArgs: "$choice = 1", isClose: false, id: "charselect", start: 0, end: 32 },
+      ]);
+    });
+
+    it("parses [[#id link]] with id", () => {
+      const tokens = tokenize("[[#door-link Open the door|Hallway]]");
+      expect(tokens).toEqual([
+        { type: "link", display: "Open the door", target: "Hallway", id: "door-link", start: 0, end: 36 },
+      ]);
+    });
+
+    it("parses [[#id plain]] plain link with id", () => {
+      const tokens = tokenize("[[#main-link Garden]]");
+      expect(tokens).toEqual([
+        { type: "link", display: "Garden", target: "Garden", id: "main-link", start: 0, end: 21 },
+      ]);
+    });
+
+    it("parses {#id.class $var} — id then class", () => {
+      const tokens = tokenize("{#myid.myclass $name}");
+      expect(tokens).toEqual([
+        { type: "variable", name: "name", scope: "variable", className: "myclass", id: "myid", start: 0, end: 21 },
+      ]);
+    });
+
+    it("parses {.class#id $var} — class then id", () => {
+      const tokens = tokenize("{.myclass#myid $name}");
+      expect(tokens).toEqual([
+        { type: "variable", name: "name", scope: "variable", className: "myclass", id: "myid", start: 0, end: 21 },
+      ]);
+    });
+
+    it("parses {#id.class1.class2 button args} — id with multiple classes", () => {
+      const tokens = tokenize("{#btn.danger.large button $x}");
+      expect(tokens).toEqual([
+        { type: "macro", name: "button", rawArgs: "$x", isClose: false, className: "danger large", id: "btn", start: 0, end: 29 },
+      ]);
+    });
+
+    it("parses {.class1#id.class2 macroName} — mixed order", () => {
+      const tokens = tokenize("{.foo#bar.baz print $x}");
+      expect(tokens).toEqual([
+        { type: "macro", name: "print", rawArgs: "$x", isClose: false, className: "foo baz", id: "bar", start: 0, end: 23 },
+      ]);
+    });
+
+    it("parses [[#id.class link]] — id and class on link", () => {
+      const tokens = tokenize("[[#door.fancy Go|Hallway]]");
+      expect(tokens).toEqual([
+        { type: "link", display: "Go", target: "Hallway", className: "fancy", id: "door", start: 0, end: 26 },
+      ]);
+    });
+
+    it("parses [[.class#id link]] — class then id on link", () => {
+      const tokens = tokenize("[[.fancy#door Go|Hallway]]");
+      expect(tokens).toEqual([
+        { type: "link", display: "Go", target: "Hallway", className: "fancy", id: "door", start: 0, end: 26 },
+      ]);
+    });
+
+    it("last #id wins when multiple specified", () => {
+      const tokens = tokenize("{#first#second $name}");
+      expect(tokens).toEqual([
+        { type: "variable", name: "name", scope: "variable", id: "second", start: 0, end: 21 },
+      ]);
     });
   });
 

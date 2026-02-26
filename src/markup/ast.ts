@@ -10,6 +10,7 @@ export interface LinkNode {
   display: string;
   target: string;
   className?: string;
+  id?: string;
 }
 
 export interface VariableNode {
@@ -17,10 +18,13 @@ export interface VariableNode {
   name: string;
   scope: "variable" | "temporary";
   className?: string;
+  id?: string;
 }
 
 export interface Branch {
   rawArgs: string;
+  className?: string;
+  id?: string;
   children: ASTNode[];
 }
 
@@ -31,6 +35,7 @@ export interface MacroNode {
   children: ASTNode[];
   branches?: Branch[];
   className?: string;
+  id?: string;
 }
 
 export type ASTNode = TextNode | LinkNode | VariableNode | MacroNode;
@@ -74,6 +79,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
           target: token.target,
         };
         if (token.className) linkNode.className = token.className;
+        if (token.id) linkNode.id = token.id;
         current().push(linkNode);
         break;
       }
@@ -85,6 +91,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
           scope: token.scope,
         };
         if (token.className) varNode.className = token.className;
+        if (token.id) varNode.id = token.id;
         current().push(varNode);
         break;
       }
@@ -122,10 +129,13 @@ export function buildAST(tokens: Token[]): ASTNode[] {
           }
 
           const top = stack[stack.length - 1].node;
-          top.branches!.push({
+          const branch: Branch = {
             rawArgs: token.rawArgs,
             children: [],
-          });
+          };
+          if (token.className) branch.className = token.className;
+          if (token.id) branch.id = token.id;
+          top.branches!.push(branch);
           break;
         }
 
@@ -137,11 +147,16 @@ export function buildAST(tokens: Token[]): ASTNode[] {
             rawArgs: token.rawArgs,
             children: [],
           };
-          if (token.className) node.className = token.className;
 
-          // If-blocks use branches array
+          // If-blocks: className/id goes on the first branch, not the node
           if (token.name === "if") {
-            node.branches = [{ rawArgs: token.rawArgs, children: [] }];
+            const firstBranch: Branch = { rawArgs: token.rawArgs, children: [] };
+            if (token.className) firstBranch.className = token.className;
+            if (token.id) firstBranch.id = token.id;
+            node.branches = [firstBranch];
+          } else {
+            if (token.className) node.className = token.className;
+            if (token.id) node.id = token.id;
           }
 
           stack.push({ node, start: token.start });
@@ -157,6 +172,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
             children: [],
           };
           if (token.className) macroNode.className = token.className;
+          if (token.id) macroNode.id = token.id;
           current().push(macroNode);
         }
         break;

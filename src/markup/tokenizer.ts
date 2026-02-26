@@ -10,6 +10,7 @@ export interface LinkToken {
   display: string;
   target: string;
   className?: string;
+  id?: string;
   start: number;
   end: number;
 }
@@ -20,6 +21,7 @@ export interface MacroToken {
   rawArgs: string;
   isClose: boolean;
   className?: string;
+  id?: string;
   start: number;
   end: number;
 }
@@ -29,6 +31,7 @@ export interface VariableToken {
   name: string;
   scope: "variable" | "temporary";
   className?: string;
+  id?: string;
   start: number;
   end: number;
 }
@@ -100,27 +103,34 @@ function parseMacroContent(content: string): {
 }
 
 /**
- * Parse dot-prefixed CSS class names: .foo.bar → "foo bar"
- * Starts at a '.' char, scans .[a-zA-Z0-9_-]+ segments.
- * Returns space-joined class string and position after last class.
+ * Parse CSS selectors: .foo.bar#baz → { className: "foo bar", id: "baz" }
+ * Scans .[a-zA-Z0-9_-]+ and #[a-zA-Z0-9_-]+ segments in any order.
+ * Returns space-joined class string, last id wins, and position after last segment.
  */
-function parseClasses(
+function parseSelectors(
   input: string,
   startIdx: number
-): { className: string; endIdx: number } {
+): { className: string; id: string; endIdx: number } {
   const classes: string[] = [];
+  let id = "";
   let i = startIdx;
 
-  while (i < input.length && input[i] === ".") {
-    i++; // skip the dot
+  while (i < input.length && (input[i] === "." || input[i] === "#")) {
+    const prefix = input[i];
+    i++; // skip the . or #
     const nameStart = i;
     while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i])) i++;
     if (i > nameStart) {
-      classes.push(input.slice(nameStart, i));
+      const name = input.slice(nameStart, i);
+      if (prefix === ".") {
+        classes.push(name);
+      } else {
+        id = name;
+      }
     }
   }
 
-  return { className: classes.join(" "), endIdx: i };
+  return { className: classes.join(" "), id, endIdx: i };
 }
 
 /**
@@ -150,13 +160,15 @@ export function tokenize(input: string): Token[] {
       const start = i;
       i += 2;
 
-      // Check for .class syntax after [[
+      // Check for .class or #id syntax after [[
       let className: string | undefined;
-      if (input[i] === ".") {
-        const parsed = parseClasses(input, i);
+      let id: string | undefined;
+      if (input[i] === "." || input[i] === "#") {
+        const parsed = parseSelectors(input, i);
         className = parsed.className || undefined;
+        id = parsed.id || undefined;
         i = parsed.endIdx;
-        // Consume trailing space after classes
+        // Consume trailing space after selectors
         if (input[i] === " ") i++;
       }
 
@@ -189,6 +201,7 @@ export function tokenize(input: string): Token[] {
       const { display, target } = parseLink(inner);
       const linkToken: LinkToken = { type: "link", display, target, start, end: i };
       if (className) linkToken.className = className;
+      if (id) linkToken.id = id;
       tokens.push(linkToken);
       textStart = i;
       continue;
@@ -199,20 +212,22 @@ export function tokenize(input: string): Token[] {
       const start = i;
       let nextChar = input[i + 1];
 
-      // Check for .class prefix: {.foo.bar $var} or {.foo.bar macroName ...}
+      // Check for .class/#id prefix: {.foo#bar $var} or {#id.foo macroName ...}
       let className: string | undefined;
-      if (nextChar === ".") {
+      let id: string | undefined;
+      if (nextChar === "." || nextChar === "#") {
         flushText(i);
-        const parsed = parseClasses(input, i + 1);
+        const parsed = parseSelectors(input, i + 1);
         className = parsed.className || undefined;
-        // After classes, check what follows (space then $ or _ or letter)
-        let afterClasses = parsed.endIdx;
-        if (input[afterClasses] === " ") afterClasses++;
-        const charAfter = input[afterClasses];
+        id = parsed.id || undefined;
+        // After selectors, check what follows (space then $ or _ or letter)
+        let afterSelectors = parsed.endIdx;
+        if (input[afterSelectors] === " ") afterSelectors++;
+        const charAfter = input[afterSelectors];
 
         if (charAfter === "$") {
-          // {.class $variable}
-          i = afterClasses + 1;
+          // {.class#id $variable}
+          i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /\w/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
@@ -227,6 +242,7 @@ export function tokenize(input: string): Token[] {
               end: i,
             };
             if (className) token.className = className;
+            if (id) token.id = id;
             tokens.push(token);
             textStart = i;
             continue;
@@ -238,8 +254,8 @@ export function tokenize(input: string): Token[] {
         }
 
         if (charAfter === "_") {
-          // {.class _temporary}
-          i = afterClasses + 1;
+          // {.class#id _temporary}
+          i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /\w/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
@@ -254,6 +270,7 @@ export function tokenize(input: string): Token[] {
               end: i,
             };
             if (className) token.className = className;
+            if (id) token.id = id;
             tokens.push(token);
             textStart = i;
             continue;
@@ -265,8 +282,8 @@ export function tokenize(input: string): Token[] {
         }
 
         if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
-          // {.class macroName args}
-          i = afterClasses;
+          // {.class#id macroName args}
+          i = afterSelectors;
 
           // Scan to closing }, tracking brace nesting
           let depth = 1;
@@ -296,12 +313,13 @@ export function tokenize(input: string): Token[] {
             end: i,
           };
           if (className) token.className = className;
+          if (id) token.id = id;
           tokens.push(token);
           textStart = i;
           continue;
         }
 
-        // Dot after { but nothing valid follows — treat as text
+        // Selector prefix after { but nothing valid follows — treat as text
         i = start + 1;
         textStart = start;
         continue;

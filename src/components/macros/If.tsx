@@ -7,10 +7,9 @@ import type { Branch } from "../../markup/ast";
 
 interface IfProps {
   branches: Branch[];
-  className?: string;
 }
 
-export function If({ branches, className }: IfProps) {
+export function If({ branches }: IfProps) {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
   const locals = useContext(LocalsContext);
@@ -23,21 +22,22 @@ export function If({ branches, className }: IfProps) {
     else if (key.startsWith("_")) mergedTemps[key.slice(1)] = val;
   }
 
-  function wrap(children: preact.ComponentChildren) {
-    if (className) return <span class={className}>{children}</span>;
+  function renderBranch(branch: Branch) {
+    const children = renderNodes(branch.children);
+    if (branch.className || branch.id) return <span id={branch.id} class={branch.className}>{children}</span>;
     return <>{children}</>;
   }
 
   for (const branch of branches) {
     // {else} has empty rawArgs — always truthy
     if (branch.rawArgs === "") {
-      return wrap(renderNodes(branch.children));
+      return renderBranch(branch);
     }
 
     try {
       const result = evaluate(branch.rawArgs, mergedVars, mergedTemps);
       if (result) {
-        return wrap(renderNodes(branch.children));
+        return renderBranch(branch);
       }
     } catch (err) {
       return (

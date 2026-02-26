@@ -126,11 +126,33 @@ describe("buildAST", () => {
       expect(ast).toEqual([{ type: "variable", name: "name", scope: "variable", className: "hero-name" }]);
     });
 
-    it("passes className to block macro node", () => {
+    it("passes className to if first branch (not node)", () => {
       const ast = parse("{.highlight if $x}hello{/if}");
       const node = ast[0] as MacroNode;
-      expect(node.className).toBe("highlight");
+      expect("className" in node).toBe(false);
+      expect(node.branches![0].className).toBe("highlight");
       expect(node.branches![0].children).toEqual([{ type: "text", value: "hello" }]);
+    });
+
+    it("passes className to elseif and else branches", () => {
+      const ast = parse("{.green if $a}A{.yellow elseif $b}B{.red else}C{/if}");
+      const node = ast[0] as MacroNode;
+      expect(node.branches![0].className).toBe("green");
+      expect(node.branches![1].className).toBe("yellow");
+      expect(node.branches![2].className).toBe("red");
+    });
+
+    it("branches without className omit the field", () => {
+      const ast = parse("{if $a}A{else}B{/if}");
+      const node = ast[0] as MacroNode;
+      expect("className" in node.branches![0]).toBe(false);
+      expect("className" in node.branches![1]).toBe(false);
+    });
+
+    it("passes className to non-if block macro node", () => {
+      const ast = parse("{.danger button $x}click{/button}");
+      const node = ast[0] as MacroNode;
+      expect(node.className).toBe("danger");
     });
 
     it("passes className to self-closing macro node", () => {
@@ -143,6 +165,63 @@ describe("buildAST", () => {
     it("nodes without className omit the field", () => {
       const ast = parse("[[Go|Target]]");
       expect("className" in ast[0]).toBe(false);
+    });
+  });
+
+  describe("id passthrough", () => {
+    it("passes id from link token to link node", () => {
+      const ast = parse("[[#door Go|Target]]");
+      expect(ast).toEqual([{ type: "link", display: "Go", target: "Target", id: "door" }]);
+    });
+
+    it("passes id from variable token to variable node", () => {
+      const ast = parse("{#health $hp}");
+      expect(ast).toEqual([{ type: "variable", name: "hp", scope: "variable", id: "health" }]);
+    });
+
+    it("passes both id and className to link node", () => {
+      const ast = parse("[[#door.fancy Go|Target]]");
+      expect(ast).toEqual([{ type: "link", display: "Go", target: "Target", className: "fancy", id: "door" }]);
+    });
+
+    it("passes id to if first branch (not node)", () => {
+      const ast = parse("{#cond if $x}hello{/if}");
+      const node = ast[0] as MacroNode;
+      expect("id" in node).toBe(false);
+      expect(node.branches![0].id).toBe("cond");
+    });
+
+    it("passes id to elseif and else branches", () => {
+      const ast = parse("{#a if $a}A{#b elseif $b}B{#c else}C{/if}");
+      const node = ast[0] as MacroNode;
+      expect(node.branches![0].id).toBe("a");
+      expect(node.branches![1].id).toBe("b");
+      expect(node.branches![2].id).toBe("c");
+    });
+
+    it("branches without id omit the field", () => {
+      const ast = parse("{if $a}A{else}B{/if}");
+      const node = ast[0] as MacroNode;
+      expect("id" in node.branches![0]).toBe(false);
+      expect("id" in node.branches![1]).toBe(false);
+    });
+
+    it("passes id to non-if block macro node", () => {
+      const ast = parse("{#btn button $x}click{/button}");
+      const node = ast[0] as MacroNode;
+      expect(node.id).toBe("btn");
+    });
+
+    it("passes id to self-closing macro node", () => {
+      const ast = parse("{#output print $x + 1}");
+      expect(ast).toEqual([
+        { type: "macro", name: "print", rawArgs: "$x + 1", children: [], id: "output" },
+      ]);
+    });
+
+    it("nodes without id omit the field", () => {
+      const ast = parse("[[Go|Target]]");
+      expect("id" in ast[0]).toBe(false);
     });
   });
 

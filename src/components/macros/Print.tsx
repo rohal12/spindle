@@ -6,9 +6,10 @@ import { LocalsContext } from "../../markup/render";
 interface PrintProps {
   rawArgs: string;
   className?: string;
+  id?: string;
 }
 
-export function Print({ rawArgs, className }: PrintProps) {
+export function Print({ rawArgs, className, id }: PrintProps) {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
   const locals = useContext(LocalsContext);
@@ -24,7 +25,7 @@ export function Print({ rawArgs, className }: PrintProps) {
   try {
     const result = evaluate(rawArgs, mergedVars, mergedTemps);
     const display = result == null ? "" : String(result);
-    if (className) return <span class={className}>{display}</span>;
+    if (className || id) return <span id={id} class={className}>{display}</span>;
     return <>{display}</>;
   } catch (err) {
     return (

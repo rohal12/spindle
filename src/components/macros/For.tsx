@@ -9,6 +9,7 @@ interface ForProps {
   rawArgs: string;
   children: ASTNode[];
   className?: string;
+  id?: string;
 }
 
 /**
@@ -34,7 +35,7 @@ function parseForArgs(rawArgs: string): {
   return { itemVar, indexVar, listExpr };
 }
 
-export function For({ rawArgs, children, className }: ForProps) {
+export function For({ rawArgs, children, className, id }: ForProps) {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
   const parentLocals = useContext(LocalsContext);
@@ -90,7 +91,7 @@ export function For({ rawArgs, children, className }: ForProps) {
     );
   });
 
-  if (className) return <span class={className}>{content}</span>;
+  if (className || id) return <span id={id} class={className}>{content}</span>;
   return <>{content}</>;
 
 }
