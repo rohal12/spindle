@@ -1,0 +1,237 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { useStoryStore } from "../../src/store";
+import type { StoryData, Passage } from "../../src/parser";
+
+function makePassage(pid: number, name: string, content = ""): Passage {
+  return { pid, name, tags: [], content };
+}
+
+function makeStoryData(
+  passages: Passage[],
+  startNode = 1
+): StoryData {
+  const passageMap = new Map<string, Passage>();
+  const passagesById = new Map<number, Passage>();
+  for (const p of passages) {
+    passageMap.set(p.name, p);
+    passagesById.set(p.pid, p);
+  }
+  return {
+    name: "Test Story",
+    startNode,
+    ifid: "TEST-IFID",
+    format: "react-twine",
+    formatVersion: "0.1.0",
+    passages: passageMap,
+    passagesById,
+    userCSS: "",
+    userScript: "",
+  };
+}
+
+describe("useStoryStore", () => {
+  beforeEach(() => {
+    // Reset the store to initial state before each test
+    useStoryStore.setState({
+      storyData: null,
+      currentPassage: "",
+      variables: {},
+      temporary: {},
+      history: [],
+      historyIndex: -1,
+    });
+  });
+
+  describe("init()", () => {
+    it("sets currentPassage to start passage and creates first history moment", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "End"),
+      ]);
+
+      useStoryStore.getState().init(story);
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      expect(state.storyData).toBe(story);
+      expect(state.history).toHaveLength(1);
+      expect(state.history[0].passage).toBe("Start");
+      expect(state.historyIndex).toBe(0);
+    });
+
+    it("throws if start passage pid doesn't exist", () => {
+      const story = makeStoryData(
+        [makePassage(2, "NotStart")],
+        1 // pid 1 doesn't exist
+      );
+
+      expect(() => useStoryStore.getState().init(story)).toThrow(
+        /Start passage.*not found/
+      );
+    });
+  });
+
+  describe("navigate()", () => {
+    it("changes currentPassage, pushes history moment, clears temporaries", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().setTemporary("temp1", "value");
+
+      useStoryStore.getState().navigate("Room");
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Room");
+      expect(state.history).toHaveLength(2);
+      expect(state.history[1].passage).toBe("Room");
+      expect(state.historyIndex).toBe(1);
+      expect(state.temporary).toEqual({});
+    });
+
+    it("logs error for nonexistent passage, doesn't change state", () => {
+      const story = makeStoryData([makePassage(1, "Start")]);
+      useStoryStore.getState().init(story);
+
+      const prevState = useStoryStore.getState();
+      useStoryStore.getState().navigate("Nonexistent");
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe(prevState.currentPassage);
+      expect(state.history).toHaveLength(prevState.history.length);
+    });
+
+    it("truncates forward history when navigating after goBack", () => {
+      const story = makeStoryData([
+        makePassage(1, "A"),
+        makePassage(2, "B"),
+        makePassage(3, "C"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate("B");
+      useStoryStore.getState().navigate("C");
+
+      // Go back to B, then navigate to a new path
+      useStoryStore.getState().goBack();
+      expect(useStoryStore.getState().currentPassage).toBe("B");
+
+      useStoryStore.getState().navigate("A");
+
+      const state = useStoryStore.getState();
+      expect(state.history).toHaveLength(3); // A, B, A (C was truncated)
+      expect(state.history[2].passage).toBe("A");
+      expect(state.historyIndex).toBe(2);
+    });
+  });
+
+  describe("goBack()", () => {
+    it("restores previous passage and variables from history", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().setVariable("score", 10);
+      useStoryStore.getState().navigate("Room");
+      useStoryStore.getState().setVariable("score", 20);
+
+      useStoryStore.getState().goBack();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      // History moment at index 0 was captured with variables: {}
+      expect(state.variables).toEqual({});
+      expect(state.historyIndex).toBe(0);
+    });
+
+    it("is a no-op when at history start", () => {
+      const story = makeStoryData([makePassage(1, "Start")]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().goBack();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      expect(state.historyIndex).toBe(0);
+    });
+  });
+
+  describe("goForward()", () => {
+    it("restores next passage from history", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate("Room");
+      useStoryStore.getState().goBack();
+
+      useStoryStore.getState().goForward();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Room");
+      expect(state.historyIndex).toBe(1);
+    });
+
+    it("is a no-op when at history end", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate("Room");
+
+      useStoryStore.getState().goForward();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Room");
+      expect(state.historyIndex).toBe(1);
+    });
+  });
+
+  describe("setVariable() / setTemporary()", () => {
+    it("setVariable updates the variables map", () => {
+      const story = makeStoryData([makePassage(1, "Start")]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setVariable("name", "Alice");
+      useStoryStore.getState().setVariable("score", 42);
+
+      const state = useStoryStore.getState();
+      expect(state.variables).toEqual({ name: "Alice", score: 42 });
+    });
+
+    it("setTemporary updates the temporary map", () => {
+      const story = makeStoryData([makePassage(1, "Start")]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setTemporary("choice", "left");
+
+      expect(useStoryStore.getState().temporary).toEqual({ choice: "left" });
+    });
+  });
+
+  describe("history snapshots", () => {
+    it("are independent - mutating current variables doesn't affect history", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().setVariable("score", 10);
+      useStoryStore.getState().navigate("Room");
+
+      // History moment for "Room" should have captured score=10
+      const historyVars = useStoryStore.getState().history[1].variables;
+      expect(historyVars).toEqual({ score: 10 });
+
+      // Mutating current variables should not affect the history snapshot
+      useStoryStore.getState().setVariable("score", 999);
+
+      expect(useStoryStore.getState().history[1].variables).toEqual({
+        score: 10,
+      });
+    });
+  });
+});

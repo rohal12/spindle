@@ -1,0 +1,171 @@
+:: StoryTitle
+react-twine Test Story
+
+:: StoryData
+{
+  "ifid": "A1B2C3D4-E5F6-4890-ABCD-EF1234567890",
+  "format": "react-twine",
+  "format-version": "0.1.0",
+  "start": "Start"
+}
+
+:: StoryInit
+{set $name = "Adventurer"}
+{set $health = 100}
+{set $inventory = ["rusty key", "torch"]}
+{set $visited_rooms = 0}
+{set $has_key = false}
+{set $has_note = false}
+{set $count = 0}
+
+:: Start
+Welcome, {$name}! Your health is {$health}.
+
+A wooden door stands to the north. Through a crack beneath it, you see flickering light.
+
+{if $has_key}The rusty key weighs heavy in your pocket.{/if}
+
+[[Open the door|Hallway]]
+[[Look around the room|Room]]
+[[Test macros->Macro Demo]]
+
+:: Hallway
+{set $visited_rooms = $visited_rooms + 1}
+The hallway stretches in both directions, lit by torches mounted on the stone walls.
+
+Rooms visited: {print $visited_rooms}
+
+To the left, you hear faint music. To the right, silence.
+
+[[Go left toward the music|Music Room]]
+[[Go right into silence|Dark Corridor]]
+[[Go back to the room|Start]]
+
+:: Room
+{set $visited_rooms = $visited_rooms + 1}
+The room is small and bare. A straw mattress lies in one corner. On a wooden table, you find a rusty key and a folded note.
+
+{if $has_key}You already have the key.{else}[[Take the key|Take Key]]{/if}
+{if $has_note}You've already read the note.{else}[[Read the note|Note]]{/if}
+[[Go to the door|Hallway]]
+
+:: Take Key
+{set $has_key = true}
+You pick up the rusty key. It's cold and heavy.
+
+[[Go back|Room]]
+
+:: Note
+{set $has_note = true}
+The note reads:
+
+"The music holds the answer. The silence holds the key. Neither path is wrong, but only one is free."
+
+[[Put the note down|Room]]
+
+:: Music Room [music]
+{set $visited_rooms = $visited_rooms + 1}
+A grand piano sits in the center of a circular room. The music you heard was coming from... nowhere. The piano sits untouched, yet the melody continues.
+
+[[Sit at the piano|Piano]]
+[[Go back to the hallway|Hallway]]
+
+:: Dark Corridor [dark]
+{set $visited_rooms = $visited_rooms + 1}
+{set $health = $health - 10}
+The corridor grows darker with each step. Your footsteps echo off unseen walls. You stumble and hurt yourself.
+
+Health: {$health}
+{if $health < 50}You feel weak and dizzy.{elseif $health < 80}You wince in pain but press on.{else}You press on bravely.{/if}
+
+You reach a dead end. But wait — there's a small lever on the wall.
+
+{if $has_key}[[Use the key on the lock|Secret Room]]{/if}
+[[Pull the lever|Secret Room]]
+[[Go back|Hallway]]
+
+:: Piano [music]
+As your fingers touch the keys, the melody shifts. The walls seem to breathe. A doorway of light opens behind the piano.
+
+[[Step through the light|Ending]]
+[[Stop playing|Music Room]]
+
+:: Secret Room [dark secret]
+{set $visited_rooms = $visited_rooms + 1}
+The wall slides open to reveal a small chamber. In its center, a crystal orb pulses with soft blue light.
+
+[[Touch the orb|Ending]]
+[[Leave it alone|Dark Corridor]]
+
+:: Ending [ending]
+A warm light envelops you. When it fades, you find yourself standing in a sunlit meadow.
+
+You are free, {$name}.
+Final health: {$health}
+Rooms visited: {$visited_rooms}
+
+{if $health >= 100}You escaped unscathed!{elseif $health >= 50}You made it out, a little worse for wear.{else}You barely survived, but you're free.{/if}
+
+THE END
+
+[[Play again|Start]]
+
+:: Macro Demo
+{set _temp = "hello"}
+{do}
+$demo_ran = true
+{/do}
+This passage demonstrates all macros.
+
+Reactivity — press the button to increment the counter:
+Count: {$count} {if $count < 10}{button $count = $count + 1}+1{/button}{else}[[You reached 10! Continue->Start]]{/if}
+Unlike traditional Twine formats that re-render the entire passage, only the count and the button area above re-render. Everything else on the page stays untouched.
+
+Variable display: {$name}
+Temporary variable: {_temp}
+Computed expression: {print $health * 2}
+
+Health: {$health} — 
+{if $health >= 100}
+  Full health!
+{elseif $health >= 50}
+  Doing okay.
+{elseif $health > 0}
+  Need healing!
+{else}
+  You died!
+{/if}
+{if $health > 0}
+  {button  $health -= 10}Take 10 damage{/button}
+{/if}
+{if $health >= 100}
+  {button  $health += 10}Heal 10 hitpoints{/button}
+{/if}
+
+Inventory ({print $inventory.length} items):
+{for $item, $i of $inventory}
+  {print $i + 1}. {$item}
+{/for}
+
+{if $demo_ran}The do-block executed successfully.{/if}
+
+CSS class syntax:
+{.hero-name $name} — variable with class
+{.muted print $visited_rooms} — print with class
+{.highlight if $health < 50}You're hurt!{/if} — if with class
+{.danger button $health -= 10}Take 10 (styled){/button} — button with class
+[[.fancy Back to start|Start]] — link with class
+{.danger.large button $health -= 5}Multi-class button{/button} — multiple classes
+
+All link syntaxes:
+- Pipe: [[Back to start|Start]]
+- Arrow: [[Arrow to hallway->Hallway]]
+- Reverse arrow: [[Room<-Visit the room]]
+- Plain: [[Start]]
+
+:: Fourth [special]
+This passage has the "special" tag.
+
+Authors can target it with CSS using [data-tags~="special"].
+
+[[Back to start|Start]]

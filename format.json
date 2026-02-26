@@ -1,0 +1,9 @@
+{
+  "name": "react-twine",
+  "version": "0.1.0",
+  "author": "Clemens",
+  "description": "A Preact-based story format for Twine 2.",
+  "image": "",
+  "url": "",
+  "license": "MIT"
+}
