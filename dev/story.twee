@@ -9,6 +9,16 @@ react-twine Test Story
   "start": "Start"
 }
 
+:: StoryVariables
+$name = "Adventurer"
+$health = 100
+$inventory = ["rusty key", "torch"]
+$visited_rooms = 0
+$has_key = false
+$has_note = false
+$count = 0
+$demo_ran = false
+
 :: StoryInit
 {set $name = "Adventurer"}
 {set $health = 100}

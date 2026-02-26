@@ -13,12 +13,13 @@ export interface StoryState {
   storyData: StoryData | null;
   currentPassage: string;
   variables: Record<string, unknown>;
+  variableDefaults: Record<string, unknown>;
   temporary: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
   saveVersion: number;
 
-  init: (storyData: StoryData) => void;
+  init: (storyData: StoryData, variableDefaults?: Record<string, unknown>) => void;
   navigate: (passageName: string) => void;
   goBack: () => void;
   goForward: () => void;
@@ -35,12 +36,13 @@ export const useStoryStore = create<StoryState>()(
     storyData: null,
     currentPassage: "",
     variables: {},
+    variableDefaults: {},
     temporary: {},
     history: [],
     historyIndex: -1,
     saveVersion: 0,
 
-    init: (storyData: StoryData) => {
+    init: (storyData: StoryData, variableDefaults: Record<string, unknown> = {}) => {
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) {
         throw new Error(
@@ -48,15 +50,18 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
+      const initialVars = structuredClone(variableDefaults);
+
       set((state) => {
         state.storyData = storyData as StoryData;
         state.currentPassage = startPassage.name;
-        state.variables = {};
+        state.variables = initialVars;
+        state.variableDefaults = variableDefaults;
         state.temporary = {};
         state.history = [
           {
             passage: startPassage.name,
-            variables: {},
+            variables: structuredClone(initialVars),
             timestamp: Date.now(),
           },
         ];
@@ -124,20 +129,22 @@ export const useStoryStore = create<StoryState>()(
     },
 
     restart: () => {
-      const { storyData } = get();
+      const { storyData, variableDefaults } = get();
       if (!storyData) return;
 
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) return;
 
+      const initialVars = structuredClone(variableDefaults);
+
       set((state) => {
         state.currentPassage = startPassage.name;
-        state.variables = {};
+        state.variables = initialVars;
         state.temporary = {};
         state.history = [
           {
             passage: startPassage.name,
-            variables: {},
+            variables: structuredClone(initialVars),
             timestamp: Date.now(),
           },
         ];

@@ -37,6 +37,7 @@ describe("useStoryStore", () => {
       storyData: null,
       currentPassage: "",
       variables: {},
+      variableDefaults: {},
       temporary: {},
       history: [],
       historyIndex: -1,
@@ -58,6 +59,18 @@ describe("useStoryStore", () => {
       expect(state.history).toHaveLength(1);
       expect(state.history[0].passage).toBe("Start");
       expect(state.historyIndex).toBe(0);
+    });
+
+    it("applies variableDefaults when provided", () => {
+      const story = makeStoryData([makePassage(1, "Start")]);
+      const defaults = { health: 100, name: "Hero" };
+
+      useStoryStore.getState().init(story, defaults);
+
+      const state = useStoryStore.getState();
+      expect(state.variables).toEqual({ health: 100, name: "Hero" });
+      expect(state.variableDefaults).toBe(defaults);
+      expect(state.history[0].variables).toEqual({ health: 100, name: "Hero" });
     });
 
     it("throws if start passage pid doesn't exist", () => {
@@ -244,7 +257,27 @@ describe("useStoryStore", () => {
       expect(state.history).toHaveLength(1);
     });
 
-    it("works when no StoryInit passage exists", () => {
+    it("resets to variableDefaults on restart", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      const defaults = { health: 100, name: "Hero" };
+      useStoryStore.getState().init(story, defaults);
+
+      // Mutate variables
+      useStoryStore.getState().setVariable("health", 30);
+      useStoryStore.getState().setVariable("extra", "value");
+      useStoryStore.getState().navigate("Room");
+
+      useStoryStore.getState().restart();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      expect(state.variables).toEqual({ health: 100, name: "Hero" });
+    });
+
+    it("works when no StoryInit passage exists and no defaults", () => {
       const story = makeStoryData([
         makePassage(1, "Start"),
         makePassage(2, "Room"),
