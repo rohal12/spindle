@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { StoryData } from "./parser";
+import { executeStoryInit } from "./story-init";
 
 export interface HistoryMoment {
   passage: string;
@@ -142,6 +143,8 @@ export const useStoryStore = create<StoryState>()(
         ];
         state.historyIndex = 0;
       });
+
+      executeStoryInit();
     },
 
     save: (slot = "auto") => {

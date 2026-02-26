@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useStoryStore } from "../../src/store";
+import { executeStoryInit } from "../../src/story-init";
 import type { StoryData, Passage } from "../../src/parser";
 
 function makePassage(pid: number, name: string, content = ""): Passage {
@@ -209,6 +210,54 @@ describe("useStoryStore", () => {
       useStoryStore.getState().setTemporary("choice", "left");
 
       expect(useStoryStore.getState().temporary).toEqual({ choice: "left" });
+    });
+  });
+
+  describe("restart()", () => {
+    it("re-executes StoryInit to restore initial variables", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start", "Welcome!"),
+        makePassage(2, "Room", "A room."),
+        makePassage(3, "StoryInit", "{set $health = 100}{set $gold = 50}"),
+      ]);
+      useStoryStore.getState().init(story);
+
+      // Simulate what boot does: run StoryInit
+      executeStoryInit();
+
+      expect(useStoryStore.getState().variables).toEqual({
+        health: 100,
+        gold: 50,
+      });
+
+      // Mutate variables as gameplay would
+      useStoryStore.getState().setVariable("health", 30);
+      useStoryStore.getState().navigate("Room");
+
+      // Restart should re-run StoryInit and restore initial values
+      useStoryStore.getState().restart();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      expect(state.variables).toEqual({ health: 100, gold: 50 });
+      expect(state.historyIndex).toBe(0);
+      expect(state.history).toHaveLength(1);
+    });
+
+    it("works when no StoryInit passage exists", () => {
+      const story = makeStoryData([
+        makePassage(1, "Start"),
+        makePassage(2, "Room"),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().setVariable("foo", "bar");
+      useStoryStore.getState().navigate("Room");
+
+      useStoryStore.getState().restart();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe("Start");
+      expect(state.variables).toEqual({});
     });
   });
 
