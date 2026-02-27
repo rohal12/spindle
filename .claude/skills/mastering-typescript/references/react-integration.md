@@ -166,8 +166,8 @@ const [count, setCount] = useState(0);
 const [user, setUser] = useState<User | null>(null);
 
 // With union types
-type Status = "idle" | "loading" | "success" | "error";
-const [status, setStatus] = useState<Status>("idle");
+type Status = 'idle' | 'loading' | 'success' | 'error';
+const [status, setStatus] = useState<Status>('idle');
 
 // Lazy initialization
 const [state, setState] = useState<ExpensiveState>(() => {
@@ -219,23 +219,23 @@ interface CounterState {
 }
 
 type CounterAction =
-  | { type: "increment" }
-  | { type: "decrement" }
-  | { type: "setStep"; payload: number }
-  | { type: "reset" };
+  | { type: 'increment' }
+  | { type: 'decrement' }
+  | { type: 'setStep'; payload: number }
+  | { type: 'reset' };
 
 function counterReducer(
   state: CounterState,
-  action: CounterAction
+  action: CounterAction,
 ): CounterState {
   switch (action.type) {
-    case "increment":
+    case 'increment':
       return { ...state, count: state.count + state.step };
-    case "decrement":
+    case 'decrement':
       return { ...state, count: state.count - state.step };
-    case "setStep":
+    case 'setStep':
       return { ...state, step: action.payload };
-    case "reset":
+    case 'reset':
       return { count: 0, step: 1 };
   }
 }
@@ -243,8 +243,8 @@ function counterReducer(
 // Usage
 const [state, dispatch] = useReducer(counterReducer, { count: 0, step: 1 });
 
-dispatch({ type: "increment" });
-dispatch({ type: "setStep", payload: 5 });
+dispatch({ type: 'increment' });
+dispatch({ type: 'setStep', payload: 5 });
 ```
 
 ### Custom Hooks
@@ -260,7 +260,7 @@ interface UseAsyncResult<T> {
 
 function useAsync<T>(
   asyncFn: () => Promise<T>,
-  deps: React.DependencyList = []
+  deps: React.DependencyList = [],
 ): UseAsyncResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -287,15 +287,16 @@ function useAsync<T>(
 }
 
 // Usage
-const { data: users, loading, error } = useAsync(
-  () => fetch("/api/users").then((r) => r.json()),
-  []
-);
+const {
+  data: users,
+  loading,
+  error,
+} = useAsync(() => fetch('/api/users').then((r) => r.json()), []);
 
 // Local storage hook
 function useLocalStorage<T>(
   key: string,
-  initialValue: T
+  initialValue: T,
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const [storedValue, setStoredValue] = useState<T>(() => {
     try {
@@ -350,7 +351,7 @@ const useAuthStore = create<AuthState>()(
           set({
             user: response.user,
             token: response.token,
-            isAuthenticated: true
+            isAuthenticated: true,
           });
         },
 
@@ -358,11 +359,11 @@ const useAuthStore = create<AuthState>()(
           set({ user: null, token: null, isAuthenticated: false });
         },
 
-        setUser: (user) => set({ user })
+        setUser: (user) => set({ user }),
       }),
-      { name: 'auth-storage' }
-    )
-  )
+      { name: 'auth-storage' },
+    ),
+  ),
 );
 
 // Usage with selectors
@@ -375,8 +376,8 @@ import { useShallow } from 'zustand/react/shallow';
 const { user, isAuthenticated } = useAuthStore(
   useShallow((state) => ({
     user: state.user,
-    isAuthenticated: state.isAuthenticated
-  }))
+    isAuthenticated: state.isAuthenticated,
+  })),
 );
 ```
 
@@ -388,26 +389,26 @@ import { createSlice, PayloadAction, configureStore } from '@reduxjs/toolkit';
 // Define slice state
 interface TodosState {
   items: Todo[];
-  filter: "all" | "active" | "completed";
+  filter: 'all' | 'active' | 'completed';
   loading: boolean;
 }
 
 const initialState: TodosState = {
   items: [],
-  filter: "all",
-  loading: false
+  filter: 'all',
+  loading: false,
 };
 
 // Create typed slice
 const todosSlice = createSlice({
-  name: "todos",
+  name: 'todos',
   initialState,
   reducers: {
     addTodo: (state, action: PayloadAction<string>) => {
       state.items.push({
         id: crypto.randomUUID(),
         text: action.payload,
-        completed: false
+        completed: false,
       });
     },
     toggleTodo: (state, action: PayloadAction<string>) => {
@@ -416,17 +417,17 @@ const todosSlice = createSlice({
         todo.completed = !todo.completed;
       }
     },
-    setFilter: (state, action: PayloadAction<TodosState["filter"]>) => {
+    setFilter: (state, action: PayloadAction<TodosState['filter']>) => {
       state.filter = action.payload;
-    }
-  }
+    },
+  },
 });
 
 // Configure store with type inference
 const store = configureStore({
   reducer: {
-    todos: todosSlice.reducer
-  }
+    todos: todosSlice.reducer,
+  },
 });
 
 // Infer types from store
@@ -442,7 +443,7 @@ const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 // Usage
 const todos = useAppSelector((state) => state.todos.items);
 const dispatch = useAppDispatch();
-dispatch(todosSlice.actions.addTodo("New todo"));
+dispatch(todosSlice.actions.addTodo('New todo'));
 ```
 
 ---
@@ -466,12 +467,12 @@ function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 // Input change
 function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
   const { name, value, checked, type } = event.target;
-  const inputValue = type === "checkbox" ? checked : value;
+  const inputValue = type === 'checkbox' ? checked : value;
 }
 
 // Keyboard events
 function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-  if (event.key === "Enter") {
+  if (event.key === 'Enter') {
     event.preventDefault();
     // submit form
   }
@@ -484,7 +485,7 @@ function handleFocus(event: React.FocusEvent<HTMLInputElement>) {
 
 // Drag events
 function handleDrag(event: React.DragEvent<HTMLDivElement>) {
-  event.dataTransfer.setData("text/plain", "dragged data");
+  event.dataTransfer.setData('text/plain', 'dragged data');
 }
 ```
 
@@ -599,7 +600,9 @@ function createContext<T>(displayName: string) {
   function useContextHook(): T {
     const context = React.useContext(Context);
     if (context === undefined) {
-      throw new Error(`use${displayName} must be used within ${displayName}Provider`);
+      throw new Error(
+        `use${displayName} must be used within ${displayName}Provider`,
+      );
     }
     return context;
   }
@@ -614,5 +617,5 @@ interface AuthContextType {
   logout: () => void;
 }
 
-const [AuthProvider, useAuth] = createContext<AuthContextType>("Auth");
+const [AuthProvider, useAuth] = createContext<AuthContextType>('Auth');
 ```

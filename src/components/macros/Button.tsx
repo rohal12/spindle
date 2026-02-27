@@ -1,7 +1,7 @@
-import { useStoryStore } from "../../store";
-import { execute } from "../../expression";
-import { renderNodes } from "../../markup/render";
-import type { ASTNode } from "../../markup/ast";
+import { useStoryStore } from '../../store';
+import { execute } from '../../expression';
+import { renderNodes } from '../../markup/render';
+import type { ASTNode } from '../../markup/ast';
 
 interface ButtonProps {
   rawArgs: string;
@@ -35,10 +35,14 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
     }
   };
 
-  const cls = className ? `macro-button ${className}` : "macro-button";
+  const cls = className ? `macro-button ${className}` : 'macro-button';
 
   return (
-    <button id={id} class={cls} onClick={handleClick}>
+    <button
+      id={id}
+      class={cls}
+      onClick={handleClick}
+    >
       {renderNodes(children)}
     </button>
   );

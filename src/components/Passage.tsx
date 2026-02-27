@@ -1,8 +1,8 @@
-import { useMemo } from "preact/hooks";
-import { tokenize } from "../markup/tokenizer";
-import { buildAST } from "../markup/ast";
-import { renderNodes } from "../markup/render";
-import type { Passage as PassageData } from "../parser";
+import { useMemo } from 'preact/hooks';
+import { tokenize } from '../markup/tokenizer';
+import { buildAST } from '../markup/ast';
+import { renderNodes } from '../markup/render';
+import type { Passage as PassageData } from '../parser';
 
 interface PassageProps {
   passage: PassageData;
@@ -17,7 +17,7 @@ export function Passage({ passage }: PassageProps) {
     } catch (err) {
       return (
         <div class="error">
-          Error parsing passage &ldquo;{passage.name}&rdquo;:{" "}
+          Error parsing passage &ldquo;{passage.name}&rdquo;:{' '}
           {(err as Error).message}
         </div>
       );
@@ -28,7 +28,7 @@ export function Passage({ passage }: PassageProps) {
     <div
       class="passage"
       data-passage={passage.name}
-      data-tags={passage.tags.join(" ")}
+      data-tags={passage.tags.join(' ')}
     >
       {content}
     </div>

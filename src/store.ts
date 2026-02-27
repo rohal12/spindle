@@ -1,7 +1,7 @@
-import { create } from "zustand";
-import { immer } from "zustand/middleware/immer";
-import type { StoryData } from "./parser";
-import { executeStoryInit } from "./story-init";
+import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
+import type { StoryData } from './parser';
+import { executeStoryInit } from './story-init';
 
 export interface HistoryMoment {
   passage: string;
@@ -19,7 +19,10 @@ export interface StoryState {
   historyIndex: number;
   saveVersion: number;
 
-  init: (storyData: StoryData, variableDefaults?: Record<string, unknown>) => void;
+  init: (
+    storyData: StoryData,
+    variableDefaults?: Record<string, unknown>,
+  ) => void;
   navigate: (passageName: string) => void;
   goBack: () => void;
   goForward: () => void;
@@ -34,7 +37,7 @@ export interface StoryState {
 export const useStoryStore = create<StoryState>()(
   immer((set, get) => ({
     storyData: null,
-    currentPassage: "",
+    currentPassage: '',
     variables: {},
     variableDefaults: {},
     temporary: {},
@@ -42,11 +45,14 @@ export const useStoryStore = create<StoryState>()(
     historyIndex: -1,
     saveVersion: 0,
 
-    init: (storyData: StoryData, variableDefaults: Record<string, unknown> = {}) => {
+    init: (
+      storyData: StoryData,
+      variableDefaults: Record<string, unknown> = {},
+    ) => {
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) {
         throw new Error(
-          `react-twine: Start passage (pid=${storyData.startNode}) not found.`
+          `react-twine: Start passage (pid=${storyData.startNode}) not found.`,
         );
       }
 
@@ -154,7 +160,7 @@ export const useStoryStore = create<StoryState>()(
       executeStoryInit();
     },
 
-    save: (slot = "auto") => {
+    save: (slot = 'auto') => {
       const { storyData, currentPassage, variables, history, historyIndex } =
         get();
       if (!storyData) return;
@@ -172,7 +178,7 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
-    load: (slot = "auto") => {
+    load: (slot = 'auto') => {
       const { storyData } = get();
       if (!storyData) return;
 
@@ -190,16 +196,16 @@ export const useStoryStore = create<StoryState>()(
           state.temporary = {};
         });
       } catch {
-        console.error("react-twine: Failed to parse save data.");
+        console.error('react-twine: Failed to parse save data.');
       }
     },
 
-    hasSave: (slot = "auto") => {
+    hasSave: (slot = 'auto') => {
       const { storyData } = get();
       if (!storyData) return false;
 
       const key = `react-twine.${storyData.ifid}.save.${slot}`;
       return localStorage.getItem(key) !== null;
     },
-  }))
+  })),
 );

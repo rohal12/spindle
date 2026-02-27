@@ -1,5 +1,5 @@
-import { useState } from "preact/hooks";
-import { settings, type SettingDef } from "../settings";
+import { useState } from 'preact/hooks';
+import { settings, type SettingDef } from '../settings';
 
 interface SettingsDialogProps {
   onClose: () => void;
@@ -14,7 +14,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   };
 
   switch (def.type) {
-    case "toggle":
+    case 'toggle':
       return (
         <label class="settings-row">
           <span>{def.config.label}</span>
@@ -26,7 +26,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
         </label>
       );
 
-    case "list":
+    case 'list':
       return (
         <label class="settings-row">
           <span>{def.config.label}</span>
@@ -35,7 +35,10 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
             onChange={(e) => update((e.target as HTMLSelectElement).value)}
           >
             {def.config.options.map((opt) => (
-              <option key={opt} value={opt}>
+              <option
+                key={opt}
+                value={opt}
+              >
                 {opt}
               </option>
             ))}
@@ -43,7 +46,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
         </label>
       );
 
-    case "range":
+    case 'range':
       return (
         <label class="settings-row">
           <span>
@@ -68,23 +71,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const defs = settings.getDefinitions();
 
   const handleBackdrop = (e: MouseEvent) => {
-    if ((e.target as HTMLElement).classList.contains("settings-overlay")) {
+    if ((e.target as HTMLElement).classList.contains('settings-overlay')) {
       onClose();
     }
   };
 
   return (
-    <div class="settings-overlay" onClick={handleBackdrop}>
+    <div
+      class="settings-overlay"
+      onClick={handleBackdrop}
+    >
       <div class="settings-panel">
         <div class="settings-header">
           <span>Settings</span>
-          <button class="settings-close" onClick={onClose}>
+          <button
+            class="settings-close"
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
         <div class="settings-body">
           {Array.from(defs.entries()).map(([name, def]) => (
-            <SettingControl key={name} name={name} def={def} />
+            <SettingControl
+              key={name}
+              name={name}
+              def={def}
+            />
           ))}
         </div>
       </div>

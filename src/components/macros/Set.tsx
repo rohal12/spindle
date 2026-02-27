@@ -1,6 +1,6 @@
-import { useLayoutEffect } from "preact/hooks";
-import { useStoryStore } from "../../store";
-import { execute } from "../../expression";
+import { useLayoutEffect } from 'preact/hooks';
+import { useStoryStore } from '../../store';
+import { execute } from '../../expression';
 
 interface SetProps {
   rawArgs: string;

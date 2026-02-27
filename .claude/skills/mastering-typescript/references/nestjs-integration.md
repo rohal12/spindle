@@ -60,7 +60,7 @@ import { UsersRepository } from './users.repository';
 @Module({
   controllers: [UsersController],
   providers: [UsersService, UsersRepository],
-  exports: [UsersService] // Export for use in other modules
+  exports: [UsersService], // Export for use in other modules
 })
 export class UsersModule {}
 ```
@@ -82,7 +82,7 @@ import {
   Body,
   Query,
   HttpCode,
-  HttpStatus
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -121,7 +121,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Update user' })
   async update(
     @Param('id') id: string,
-    @Body() dto: UpdateUserDto
+    @Body() dto: UpdateUserDto,
   ): Promise<UserResponseDto> {
     return this.usersService.update(id, dto);
   }
@@ -151,7 +151,7 @@ import {
   IsOptional,
   IsEnum,
   ValidateNested,
-  IsArray
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -159,7 +159,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export enum UserRole {
   User = 'user',
   Admin = 'admin',
-  Moderator = 'moderator'
+  Moderator = 'moderator',
 }
 
 export class AddressDto {
@@ -230,7 +230,7 @@ export const UserRoleSchema = z.enum(['user', 'admin', 'moderator']);
 export const AddressSchema = z.object({
   street: z.string(),
   city: z.string(),
-  country: z.string()
+  country: z.string(),
 });
 
 export const CreateUserSchema = z.object({
@@ -239,7 +239,7 @@ export const CreateUserSchema = z.object({
   password: z.string().min(8),
   role: UserRoleSchema.default('user').optional(),
   address: AddressSchema.optional(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
 });
 
 export const UpdateUserSchema = CreateUserSchema.partial();
@@ -266,13 +266,13 @@ async function bootstrap() {
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,           // Strip unknown properties
+      whitelist: true, // Strip unknown properties
       forbidNonWhitelisted: true, // Throw on unknown properties
-      transform: true,           // Transform payloads to DTO classes
+      transform: true, // Transform payloads to DTO classes
       transformOptions: {
-        enableImplicitConversion: true
-      }
-    })
+        enableImplicitConversion: true,
+      },
+    }),
   );
 
   await app.listen(3000);
@@ -336,7 +336,7 @@ export class UsersService {
       email: user.email,
       name: user.name,
       role: user.role,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
     };
   }
 }
@@ -359,7 +359,7 @@ export class UsersRepository {
     return this.prisma.user.findMany({
       skip: query.skip,
       take: query.take,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -420,12 +420,12 @@ interface JwtPayload {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     configService: ConfigService,
-    private readonly usersService: UsersService
+    private readonly usersService: UsersService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.getOrThrow<string>('JWT_SECRET')
+      secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
     });
   }
 
@@ -460,7 +460,7 @@ export class RolesGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(
       ROLES_KEY,
-      [context.getHandler(), context.getClass()]
+      [context.getHandler(), context.getClass()],
     );
 
     if (!requiredRoles) {
@@ -503,7 +503,7 @@ import {
   Catch,
   ArgumentsHost,
   HttpException,
-  HttpStatus
+  HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
 
@@ -544,7 +544,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       error,
       timestamp: new Date().toISOString(),
-      path: request.url
+      path: request.url,
     };
 
     response.status(status).json(errorResponse);
@@ -565,7 +565,7 @@ export class BusinessException extends HttpException {
   constructor(
     message: string,
     public readonly code: string,
-    status: HttpStatus = HttpStatus.BAD_REQUEST
+    status: HttpStatus = HttpStatus.BAD_REQUEST,
   ) {
     super({ message, code }, status);
   }
@@ -575,7 +575,7 @@ export class InsufficientFundsException extends BusinessException {
   constructor(required: number, available: number) {
     super(
       `Insufficient funds: required ${required}, available ${available}`,
-      'INSUFFICIENT_FUNDS'
+      'INSUFFICIENT_FUNDS',
     );
   }
 }

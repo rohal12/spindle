@@ -1,16 +1,17 @@
-import { useMemo } from "preact/hooks";
-import { useStoryStore } from "../store";
-import { tokenize } from "../markup/tokenizer";
-import { buildAST } from "../markup/ast";
-import { renderNodes } from "../markup/render";
+import { useMemo } from 'preact/hooks';
+import { useStoryStore } from '../store';
+import { tokenize } from '../markup/tokenizer';
+import { buildAST } from '../markup/ast';
+import { renderNodes } from '../markup/render';
 
-const DEFAULT_MARKUP = "{story-title}{restart}{save}{load}{settings}";
+const DEFAULT_MARKUP = '{story-title}{restart}{save}{load}{settings}';
 
 export function StoryInterface() {
   const storyData = useStoryStore((s) => s.storyData);
 
-  const overridePassage = storyData?.passages.get("StoryInterface");
-  const markup = overridePassage !== undefined ? overridePassage.content : DEFAULT_MARKUP;
+  const overridePassage = storyData?.passages.get('StoryInterface');
+  const markup =
+    overridePassage !== undefined ? overridePassage.content : DEFAULT_MARKUP;
 
   const content = useMemo(() => {
     try {

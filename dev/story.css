@@ -1,7 +1,15 @@
-.green { color: #66bb6a; }
-.green-yellow { color: #c6d944; }
-.red-yellow { color: #ffb74d; }
-.red { color: #ef5350; }
+.green {
+  color: #66bb6a;
+}
+.green-yellow {
+  color: #c6d944;
+}
+.red-yellow {
+  color: #ffb74d;
+}
+.red {
+  color: #ef5350;
+}
 
 .macro-button.green {
   color: #66bb6a;

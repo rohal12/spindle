@@ -1,4 +1,4 @@
-import type { StoryState } from "./store";
+import type { StoryState } from './store';
 
 const fnCache = new Map<string, Function>();
 
@@ -16,7 +16,7 @@ function transform(expr: string): string {
 function getOrCompile(key: string, body: string): Function {
   let fn = fnCache.get(key);
   if (!fn) {
-    fn = new Function("variables", "temporary", body);
+    fn = new Function('variables', 'temporary', body);
     fnCache.set(key, fn);
   }
   return fn;
@@ -29,7 +29,7 @@ function getOrCompile(key: string, body: string): Function {
 export function evaluate(
   expr: string,
   variables: Record<string, unknown>,
-  temporary: Record<string, unknown>
+  temporary: Record<string, unknown>,
 ): unknown {
   const transformed = transform(expr);
   const body = `return (${transformed});`;
@@ -44,10 +44,10 @@ export function evaluate(
 export function execute(
   code: string,
   variables: Record<string, unknown>,
-  temporary: Record<string, unknown>
+  temporary: Record<string, unknown>,
 ): void {
   const transformed = transform(code);
-  const fn = getOrCompile("exec:" + transformed, transformed);
+  const fn = getOrCompile('exec:' + transformed, transformed);
   fn(variables, temporary);
 }
 

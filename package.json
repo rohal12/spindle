@@ -9,7 +9,9 @@
     "preview": "bun run build && bun run compile",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "preact": "^10.25.0",
@@ -21,6 +23,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "happy-dom": "^20.7.0",
     "playwright": "^1.58.2",
+    "prettier": "^3.8.1",
     "tweenode": "^0.3.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",

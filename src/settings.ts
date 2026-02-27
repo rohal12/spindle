@@ -1,4 +1,4 @@
-import { useStoryStore } from "./store";
+import { useStoryStore } from './store';
 
 export interface ToggleConfig {
   label: string;
@@ -20,16 +20,16 @@ export interface RangeConfig {
 }
 
 export type SettingDef =
-  | { type: "toggle"; config: ToggleConfig }
-  | { type: "list"; config: ListConfig }
-  | { type: "range"; config: RangeConfig };
+  | { type: 'toggle'; config: ToggleConfig }
+  | { type: 'list'; config: ListConfig }
+  | { type: 'range'; config: RangeConfig };
 
 const definitions = new Map<string, SettingDef>();
 let values: Record<string, unknown> = {};
 
 function storageKey(): string {
   const storyData = useStoryStore.getState().storyData;
-  const ifid = storyData?.ifid || "unknown";
+  const ifid = storyData?.ifid || 'unknown';
   return `react-twine.${ifid}.settings`;
 }
 
@@ -50,7 +50,7 @@ function loadFromStorage(): void {
 
 export const settings = {
   addToggle(name: string, config: ToggleConfig): void {
-    definitions.set(name, { type: "toggle", config });
+    definitions.set(name, { type: 'toggle', config });
     if (!(name in values)) {
       values[name] = config.default;
     }
@@ -58,7 +58,7 @@ export const settings = {
   },
 
   addList(name: string, config: ListConfig): void {
-    definitions.set(name, { type: "list", config });
+    definitions.set(name, { type: 'list', config });
     if (!(name in values)) {
       values[name] = config.default;
     }
@@ -66,7 +66,7 @@ export const settings = {
   },
 
   addRange(name: string, config: RangeConfig): void {
-    definitions.set(name, { type: "range", config });
+    definitions.set(name, { type: 'range', config });
     if (!(name in values)) {
       values[name] = config.default;
     }

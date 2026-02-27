@@ -1,6 +1,6 @@
-import type { Passage } from "./parser";
+import type { Passage } from './parser';
 
-export type VarType = "number" | "string" | "boolean" | "array" | "object";
+export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
 export interface FieldSchema {
   type: VarType;
@@ -18,14 +18,14 @@ const FOR_LOCAL_RE = /\{for\s+(\$\w+)(?:\s*,\s*(\$\w+))?\s+of\b/g;
 
 function inferSchema(value: unknown): FieldSchema {
   if (Array.isArray(value)) {
-    return { type: "array" };
+    return { type: 'array' };
   }
-  if (value !== null && typeof value === "object") {
+  if (value !== null && typeof value === 'object') {
     const fields = new Map<string, FieldSchema>();
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       fields.set(key, inferSchema(val));
     }
-    return { type: "object", fields };
+    return { type: 'object', fields };
   }
   return { type: typeof value as VarType };
 }
@@ -35,28 +35,28 @@ function inferSchema(value: unknown): FieldSchema {
  * Each line: `$varName = expression`
  */
 export function parseStoryVariables(
-  content: string
+  content: string,
 ): Map<string, VariableSchema> {
   const schema = new Map<string, VariableSchema>();
 
-  for (const rawLine of content.split("\n")) {
+  for (const rawLine of content.split('\n')) {
     const line = rawLine.trim();
     if (!line) continue;
 
     const match = line.match(DECLARATION_RE);
     if (!match) {
       throw new Error(
-        `StoryVariables: Invalid declaration: "${line}". Expected: $name = value`
+        `StoryVariables: Invalid declaration: "${line}". Expected: $name = value`,
       );
     }
 
     const [, name, expr] = match;
     let value: unknown;
     try {
-      value = new Function("return (" + expr + ")")();
+      value = new Function('return (' + expr + ')')();
     } catch (err) {
       throw new Error(
-        `StoryVariables: Failed to evaluate "$${name} = ${expr}": ${err instanceof Error ? err.message : err}`
+        `StoryVariables: Failed to evaluate "$${name} = ${expr}": ${err instanceof Error ? err.message : err}`,
       );
     }
 
@@ -90,9 +90,9 @@ function extractForLocals(content: string): Set<string> {
 function validateRef(
   ref: string,
   schema: Map<string, VariableSchema>,
-  forLocals: Set<string>
+  forLocals: Set<string>,
 ): string | null {
-  const parts = ref.split(".");
+  const parts = ref.split('.');
   const rootName = parts[0];
 
   // Skip for-loop locals
@@ -106,12 +106,12 @@ function validateRef(
   // Walk through field access path
   let current: FieldSchema = rootSchema;
   for (let i = 1; i < parts.length; i++) {
-    if (current.type !== "object" || !current.fields) {
-      return `Cannot access field "${parts[i]}" on $${parts.slice(0, i).join(".")} (type: ${current.type})`;
+    if (current.type !== 'object' || !current.fields) {
+      return `Cannot access field "${parts[i]}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;
     }
     const fieldSchema = current.fields.get(parts[i]);
     if (!fieldSchema) {
-      return `Undeclared field: $${parts.slice(0, i + 1).join(".")}`;
+      return `Undeclared field: $${parts.slice(0, i + 1).join('.')}`;
     }
     current = fieldSchema;
   }
@@ -125,13 +125,13 @@ function validateRef(
  */
 export function validatePassages(
   passages: Map<string, Passage>,
-  schema: Map<string, VariableSchema>
+  schema: Map<string, VariableSchema>,
 ): string[] {
   const errors: string[] = [];
 
   for (const [name, passage] of passages) {
     // Don't validate the StoryVariables passage itself
-    if (name === "StoryVariables") continue;
+    if (name === 'StoryVariables') continue;
 
     const forLocals = extractForLocals(passage.content);
 
@@ -149,12 +149,11 @@ export function validatePassages(
   return errors;
 }
 
-
 /**
  * Extract default values from the schema as a plain object.
  */
 export function extractDefaults(
-  schema: Map<string, VariableSchema>
+  schema: Map<string, VariableSchema>,
 ): Record<string, unknown> {
   const defaults: Record<string, unknown> = {};
   for (const [name, varSchema] of schema) {

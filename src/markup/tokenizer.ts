@@ -1,12 +1,12 @@
 export interface TextToken {
-  type: "text";
+  type: 'text';
   value: string;
   start: number;
   end: number;
 }
 
 export interface LinkToken {
-  type: "link";
+  type: 'link';
   display: string;
   target: string;
   className?: string;
@@ -16,7 +16,7 @@ export interface LinkToken {
 }
 
 export interface MacroToken {
-  type: "macro";
+  type: 'macro';
   name: string;
   rawArgs: string;
   isClose: boolean;
@@ -27,9 +27,9 @@ export interface MacroToken {
 }
 
 export interface VariableToken {
-  type: "variable";
+  type: 'variable';
   name: string;
-  scope: "variable" | "temporary";
+  scope: 'variable' | 'temporary';
   className?: string;
   id?: string;
   start: number;
@@ -44,7 +44,7 @@ export type Token = TextToken | LinkToken | MacroToken | VariableToken;
  */
 function parseLink(inner: string): { display: string; target: string } {
   // Pipe syntax: display|target
-  const pipeIdx = inner.indexOf("|");
+  const pipeIdx = inner.indexOf('|');
   if (pipeIdx !== -1) {
     return {
       display: inner.slice(0, pipeIdx).trim(),
@@ -53,7 +53,7 @@ function parseLink(inner: string): { display: string; target: string } {
   }
 
   // Arrow syntax: display->target
-  const arrowIdx = inner.indexOf("->");
+  const arrowIdx = inner.indexOf('->');
   if (arrowIdx !== -1) {
     return {
       display: inner.slice(0, arrowIdx).trim(),
@@ -62,7 +62,7 @@ function parseLink(inner: string): { display: string; target: string } {
   }
 
   // Reverse arrow: target<-display
-  const revIdx = inner.indexOf("<-");
+  const revIdx = inner.indexOf('<-');
   if (revIdx !== -1) {
     return {
       target: inner.slice(0, revIdx).trim(),
@@ -87,12 +87,12 @@ function parseMacroContent(content: string): {
   isClose: boolean;
 } {
   const trimmed = content.trim();
-  const isClose = trimmed.startsWith("/");
+  const isClose = trimmed.startsWith('/');
   const rest = isClose ? trimmed.slice(1) : trimmed;
 
   const spaceIdx = rest.search(/\s/);
   if (spaceIdx === -1) {
-    return { name: rest, rawArgs: "", isClose };
+    return { name: rest, rawArgs: '', isClose };
   }
 
   return {
@@ -109,20 +109,20 @@ function parseMacroContent(content: string): {
  */
 function parseSelectors(
   input: string,
-  startIdx: number
+  startIdx: number,
 ): { className: string; id: string; endIdx: number } {
   const classes: string[] = [];
-  let id = "";
+  let id = '';
   let i = startIdx;
 
-  while (i < input.length && (input[i] === "." || input[i] === "#")) {
+  while (i < input.length && (input[i] === '.' || input[i] === '#')) {
     const prefix = input[i];
     i++; // skip the . or #
     const nameStart = i;
     while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i])) i++;
     if (i > nameStart) {
       const name = input.slice(nameStart, i);
-      if (prefix === ".") {
+      if (prefix === '.') {
         classes.push(name);
       } else {
         id = name;
@@ -130,7 +130,7 @@ function parseSelectors(
     }
   }
 
-  return { className: classes.join(" "), id, endIdx: i };
+  return { className: classes.join(' '), id, endIdx: i };
 }
 
 /**
@@ -145,7 +145,7 @@ export function tokenize(input: string): Token[] {
   function flushText(end: number) {
     if (end > textStart) {
       tokens.push({
-        type: "text",
+        type: 'text',
         value: input.slice(textStart, end),
         start: textStart,
         end,
@@ -155,7 +155,7 @@ export function tokenize(input: string): Token[] {
 
   while (i < input.length) {
     // Check for [[ link
-    if (input[i] === "[" && input[i + 1] === "[") {
+    if (input[i] === '[' && input[i + 1] === '[') {
       flushText(i);
       const start = i;
       i += 2;
@@ -163,23 +163,23 @@ export function tokenize(input: string): Token[] {
       // Check for .class or #id syntax after [[
       let className: string | undefined;
       let id: string | undefined;
-      if (input[i] === "." || input[i] === "#") {
+      if (input[i] === '.' || input[i] === '#') {
         const parsed = parseSelectors(input, i);
         className = parsed.className || undefined;
         id = parsed.id || undefined;
         i = parsed.endIdx;
         // Consume trailing space after selectors
-        if (input[i] === " ") i++;
+        if (input[i] === ' ') i++;
       }
 
       // Find closing ]]
       let depth = 1;
       const innerStart = i;
       while (i < input.length && depth > 0) {
-        if (input[i] === "[" && input[i + 1] === "[") {
+        if (input[i] === '[' && input[i + 1] === '[') {
           depth++;
           i += 2;
-        } else if (input[i] === "]" && input[i + 1] === "]") {
+        } else if (input[i] === ']' && input[i + 1] === ']') {
           depth--;
           if (depth === 0) break;
           i += 2;
@@ -199,7 +199,13 @@ export function tokenize(input: string): Token[] {
       i += 2; // skip ]]
 
       const { display, target } = parseLink(inner);
-      const linkToken: LinkToken = { type: "link", display, target, start, end: i };
+      const linkToken: LinkToken = {
+        type: 'link',
+        display,
+        target,
+        start,
+        end: i,
+      };
       if (className) linkToken.className = className;
       if (id) linkToken.id = id;
       tokens.push(linkToken);
@@ -208,36 +214,36 @@ export function tokenize(input: string): Token[] {
     }
 
     // Check for { — macro or variable (with optional .class prefix)
-    if (input[i] === "{") {
+    if (input[i] === '{') {
       const start = i;
       let nextChar = input[i + 1];
 
       // Check for .class/#id prefix: {.foo#bar $var} or {#id.foo macroName ...}
       let className: string | undefined;
       let id: string | undefined;
-      if (nextChar === "." || nextChar === "#") {
+      if (nextChar === '.' || nextChar === '#') {
         flushText(i);
         const parsed = parseSelectors(input, i + 1);
         className = parsed.className || undefined;
         id = parsed.id || undefined;
         // After selectors, check what follows (space then $ or _ or letter)
         let afterSelectors = parsed.endIdx;
-        if (input[afterSelectors] === " ") afterSelectors++;
+        if (input[afterSelectors] === ' ') afterSelectors++;
         const charAfter = input[afterSelectors];
 
-        if (charAfter === "$") {
+        if (charAfter === '$') {
           // {.class#id $variable}
           i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /\w/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
 
-          if (input[i] === "}") {
+          if (input[i] === '}') {
             i++; // skip }
             const token: VariableToken = {
-              type: "variable",
+              type: 'variable',
               name,
-              scope: "variable",
+              scope: 'variable',
               start,
               end: i,
             };
@@ -253,19 +259,19 @@ export function tokenize(input: string): Token[] {
           continue;
         }
 
-        if (charAfter === "_") {
+        if (charAfter === '_') {
           // {.class#id _temporary}
           i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /\w/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
 
-          if (input[i] === "}") {
+          if (input[i] === '}') {
             i++; // skip }
             const token: VariableToken = {
-              type: "variable",
+              type: 'variable',
               name,
-              scope: "temporary",
+              scope: 'temporary',
               start,
               end: i,
             };
@@ -289,8 +295,8 @@ export function tokenize(input: string): Token[] {
           let depth = 1;
           const contentStart = i;
           while (i < input.length && depth > 0) {
-            if (input[i] === "{") depth++;
-            else if (input[i] === "}") depth--;
+            if (input[i] === '{') depth++;
+            else if (input[i] === '}') depth--;
             if (depth > 0) i++;
           }
 
@@ -305,7 +311,7 @@ export function tokenize(input: string): Token[] {
 
           const { name, rawArgs, isClose } = parseMacroContent(content);
           const token: MacroToken = {
-            type: "macro",
+            type: 'macro',
             name,
             rawArgs,
             isClose,
@@ -326,19 +332,19 @@ export function tokenize(input: string): Token[] {
       }
 
       // {$variable}
-      if (nextChar === "$") {
+      if (nextChar === '$') {
         flushText(i);
         i += 2;
         const nameStart = i;
         while (i < input.length && /\w/.test(input[i])) i++;
         const name = input.slice(nameStart, i);
 
-        if (input[i] === "}") {
+        if (input[i] === '}') {
           i++; // skip }
           tokens.push({
-            type: "variable",
+            type: 'variable',
             name,
-            scope: "variable",
+            scope: 'variable',
             start,
             end: i,
           });
@@ -352,19 +358,19 @@ export function tokenize(input: string): Token[] {
       }
 
       // {_temporary}
-      if (nextChar === "_") {
+      if (nextChar === '_') {
         flushText(i);
         i += 2;
         const nameStart = i;
         while (i < input.length && /\w/.test(input[i])) i++;
         const name = input.slice(nameStart, i);
 
-        if (input[i] === "}") {
+        if (input[i] === '}') {
           i++; // skip }
           tokens.push({
-            type: "variable",
+            type: 'variable',
             name,
-            scope: "temporary",
+            scope: 'temporary',
             start,
             end: i,
           });
@@ -381,7 +387,7 @@ export function tokenize(input: string): Token[] {
       // Must start with a letter or /
       if (
         nextChar !== undefined &&
-        (nextChar === "/" || /[a-zA-Z]/.test(nextChar))
+        (nextChar === '/' || /[a-zA-Z]/.test(nextChar))
       ) {
         flushText(i);
         i++; // skip {
@@ -390,8 +396,8 @@ export function tokenize(input: string): Token[] {
         let depth = 1;
         const contentStart = i;
         while (i < input.length && depth > 0) {
-          if (input[i] === "{") depth++;
-          else if (input[i] === "}") depth--;
+          if (input[i] === '{') depth++;
+          else if (input[i] === '}') depth--;
           if (depth > 0) i++;
         }
 
@@ -407,7 +413,7 @@ export function tokenize(input: string): Token[] {
 
         const { name, rawArgs, isClose } = parseMacroContent(content);
         tokens.push({
-          type: "macro",
+          type: 'macro',
           name,
           rawArgs,
           isClose,

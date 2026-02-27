@@ -1,7 +1,7 @@
-import { useLayoutEffect } from "preact/hooks";
-import { useStoryStore } from "../../store";
-import { execute } from "../../expression";
-import type { ASTNode } from "../../markup/ast";
+import { useLayoutEffect } from 'preact/hooks';
+import { useStoryStore } from '../../store';
+import { execute } from '../../expression';
+import type { ASTNode } from '../../markup/ast';
 
 interface DoProps {
   children: ASTNode[];
@@ -11,9 +11,7 @@ interface DoProps {
  * Concatenate text children into a single JS string for execution.
  */
 function collectText(nodes: ASTNode[]): string {
-  return nodes
-    .map((n) => (n.type === "text" ? n.value : ""))
-    .join("");
+  return nodes.map((n) => (n.type === 'text' ? n.value : '')).join('');
 }
 
 export function Do({ children }: DoProps) {

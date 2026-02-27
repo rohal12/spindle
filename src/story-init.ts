@@ -1,8 +1,8 @@
-import { useStoryStore } from "./store";
-import { tokenize } from "./markup/tokenizer";
-import { buildAST } from "./markup/ast";
-import { execute } from "./expression";
-import type { ASTNode } from "./markup/ast";
+import { useStoryStore } from './store';
+import { tokenize } from './markup/tokenizer';
+import { buildAST } from './markup/ast';
+import { execute } from './expression';
+import type { ASTNode } from './markup/ast';
 
 /**
  * Walk AST nodes from StoryInit and execute {set} and {do} imperatively
@@ -11,17 +11,17 @@ import type { ASTNode } from "./markup/ast";
 function walkAndExecute(
   nodes: ASTNode[],
   vars: Record<string, unknown>,
-  temps: Record<string, unknown>
+  temps: Record<string, unknown>,
 ) {
   for (const node of nodes) {
-    if (node.type !== "macro") continue;
+    if (node.type !== 'macro') continue;
 
-    if (node.name === "set") {
+    if (node.name === 'set') {
       execute(node.rawArgs, vars, temps);
-    } else if (node.name === "do") {
+    } else if (node.name === 'do') {
       const code = node.children
-        .map((n) => (n.type === "text" ? n.value : ""))
-        .join("");
+        .map((n) => (n.type === 'text' ? n.value : ''))
+        .join('');
       execute(code, vars, temps);
     }
   }
@@ -35,7 +35,7 @@ export function executeStoryInit() {
   const state = useStoryStore.getState();
   if (!state.storyData) return;
 
-  const storyInit = state.storyData.passages.get("StoryInit");
+  const storyInit = state.storyData.passages.get('StoryInit');
   if (!storyInit) return;
 
   const tokens = tokenize(storyInit.content);

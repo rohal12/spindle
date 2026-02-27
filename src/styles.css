@@ -1,4 +1,6 @@
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -10,7 +12,7 @@ html {
 body {
   margin: 0;
   padding: 0;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
   line-height: 1.75;
   color: #e0e0e0;
   background-color: #1a1a2e;
@@ -46,7 +48,9 @@ tw-storydata {
   color: #64b5f6;
   text-decoration: none;
   border-bottom: 1px solid rgba(100, 181, 246, 0.3);
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
   cursor: pointer;
 }
 
@@ -68,7 +72,9 @@ tw-storydata {
   font: inherit;
   font-size: 0.95em;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 .macro-button:hover {
@@ -128,7 +134,9 @@ tw-storydata {
   border-radius: 4px;
   cursor: pointer;
   font: inherit;
-  transition: color 0.2s, background 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s;
 }
 
 .menubar-button:hover {
@@ -208,7 +216,7 @@ tw-storydata {
 }
 
 .settings-row select,
-.settings-row input[type="range"] {
+.settings-row input[type='range'] {
   accent-color: #64b5f6;
 }
 
@@ -221,7 +229,7 @@ tw-storydata {
   font: inherit;
 }
 
-.settings-row input[type="checkbox"] {
+.settings-row input[type='checkbox'] {
   accent-color: #64b5f6;
   width: 1.1em;
   height: 1.1em;

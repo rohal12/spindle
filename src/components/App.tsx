@@ -1,6 +1,6 @@
-import { useStoryStore } from "../store";
-import { Passage } from "./Passage";
-import { StoryInterface } from "./StoryInterface";
+import { useStoryStore } from '../store';
+import { Passage } from './Passage';
+import { StoryInterface } from './StoryInterface';
 
 export function App() {
   const currentPassage = useStoryStore((s) => s.currentPassage);
@@ -24,8 +24,14 @@ export function App() {
       <header class="story-menubar">
         <StoryInterface />
       </header>
-      <div id="story" class="story">
-        <Passage passage={passage} key={currentPassage} />
+      <div
+        id="story"
+        class="story"
+      >
+        <Passage
+          passage={passage}
+          key={currentPassage}
+        />
       </div>
     </>
   );

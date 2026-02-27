@@ -1,4 +1,4 @@
-import type { ComponentType } from "preact";
+import type { ComponentType } from 'preact';
 
 export interface MacroProps {
   rawArgs: string;
@@ -11,13 +11,11 @@ const registry = new Map<string, ComponentType<MacroProps>>();
 
 export function registerMacro(
   name: string,
-  component: ComponentType<MacroProps>
+  component: ComponentType<MacroProps>,
 ): void {
   registry.set(name.toLowerCase(), component);
 }
 
-export function getMacro(
-  name: string
-): ComponentType<MacroProps> | undefined {
+export function getMacro(name: string): ComponentType<MacroProps> | undefined {
   return registry.get(name.toLowerCase());
 }

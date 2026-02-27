@@ -1,4 +1,4 @@
-import { useStoryStore } from "../../store";
+import { useStoryStore } from '../../store';
 
 interface StoryTitleProps {
   className?: string;
@@ -6,8 +6,15 @@ interface StoryTitleProps {
 }
 
 export function StoryTitle({ className, id }: StoryTitleProps) {
-  const name = useStoryStore((s) => s.storyData?.name || "");
-  const cls = className ? `story-title ${className}` : "story-title";
+  const name = useStoryStore((s) => s.storyData?.name || '');
+  const cls = className ? `story-title ${className}` : 'story-title';
 
-  return <span id={id} class={cls}>{name}</span>;
+  return (
+    <span
+      id={id}
+      class={cls}
+    >
+      {name}
+    </span>
+  );
 }

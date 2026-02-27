@@ -20,15 +20,15 @@ A React-based format trades SugarCube's low barrier to entry for reactive UI, be
 
 ## Existing Landscape
 
-| Project | React? | Twine Format? | Notes |
-|---------|--------|---------------|-------|
-| **SugarCube** | No (jQuery) | Yes | Dominant, feature-rich, macro-based |
-| **Snowman** | No (jQuery/Underscore) | Yes | Minimal, JS-first, no macros |
-| **Harlowe** | No | Yes | Default format, non-programmer focused |
-| **Chapbook** | No | Yes | Inserts-based, newer |
-| **Boundless** | Yes (React + zustand) | Yes | Markdown-directive approach |
-| **Windrift** | Yes (Next.js + Redux) | No | Standalone IF framework |
-| **Twison** | No | Export only | JSON export for custom runtimes |
+| Project       | React?                 | Twine Format? | Notes                                  |
+| ------------- | ---------------------- | ------------- | -------------------------------------- |
+| **SugarCube** | No (jQuery)            | Yes           | Dominant, feature-rich, macro-based    |
+| **Snowman**   | No (jQuery/Underscore) | Yes           | Minimal, JS-first, no macros           |
+| **Harlowe**   | No                     | Yes           | Default format, non-programmer focused |
+| **Chapbook**  | No                     | Yes           | Inserts-based, newer                   |
+| **Boundless** | Yes (React + zustand)  | Yes           | Markdown-directive approach            |
+| **Windrift**  | Yes (Next.js + Redux)  | No            | Standalone IF framework                |
+| **Twison**    | No                     | Export only   | JSON export for custom runtimes        |
 
 **Boundless** is the only existing React-based Twine 2 format. It proves the concept works but uses Markdown directives rather than giving authors component access. There's a clear gap for a format that embraces React components more fully while keeping the floor low.
 
@@ -40,12 +40,12 @@ A story format is a single `format.js` file containing a JSONP call:
 
 ```js
 window.storyFormat({
-  name: "react-twine",
-  version: "1.0.0",
-  author: "...",
-  description: "...",
+  name: 'react-twine',
+  version: '1.0.0',
+  author: '...',
+  description: '...',
   proofing: false,
-  source: "<html>...{{STORY_NAME}}...{{STORY_DATA}}...</html>"
+  source: '<html>...{{STORY_NAME}}...{{STORY_DATA}}...</html>',
 });
 ```
 
@@ -59,17 +59,44 @@ The result is a self-contained HTML file. The format's JavaScript reads passage 
 ### Published HTML Structure
 
 ```html
-<tw-storydata name="My Story" startnode="1" ifid="..." format="react-twine" format-version="1.0.0" hidden>
-  <style role="stylesheet" id="twine-user-stylesheet" type="text/twine-css">
+<tw-storydata
+  name="My Story"
+  startnode="1"
+  ifid="..."
+  format="react-twine"
+  format-version="1.0.0"
+  hidden
+>
+  <style
+    role="stylesheet"
+    id="twine-user-stylesheet"
+    type="text/twine-css"
+  >
     /* Author CSS */
   </style>
-  <script role="script" id="twine-user-script" type="text/twine-javascript">
+  <script
+    role="script"
+    id="twine-user-script"
+    type="text/twine-javascript"
+  >
     // Author JavaScript (Macro.add calls, Story.on handlers, etc.)
   </script>
-  <tw-passagedata pid="1" name="Start" tags="" position="0,0" size="100,100">
+  <tw-passagedata
+    pid="1"
+    name="Start"
+    tags=""
+    position="0,0"
+    size="100,100"
+  >
     Passage content here, HTML-entity-escaped.
   </tw-passagedata>
-  <tw-passagedata pid="2" name="Forest" tags="dark" position="200,0" size="100,100">
+  <tw-passagedata
+    pid="2"
+    name="Forest"
+    tags="dark"
+    position="200,0"
+    size="100,100"
+  >
     More content...
   </tw-passagedata>
 </tw-storydata>
@@ -179,13 +206,13 @@ You step into the forest. You have {$health} HP.
 
 What the parser produces internally:
 
-| Markup | React Component |
-|--------|----------------|
-| `{$health}` | `<StoryVar name="health" />` |
+| Markup                               | React Component                                          |
+| ------------------------------------ | -------------------------------------------------------- |
+| `{$health}`                          | `<StoryVar name="health" />`                             |
 | `{if $health > 50}...{else}...{/if}` | `<If condition={s => s.health > 50}>...<Else />...</If>` |
-| `{textbox $name ""}` | `<TextBox variable="name" default="" />` |
-| `{cycle $weapon [...]}` | `<Cycle variable="weapon" options={[...]} />` |
-| `[[Link\|Target]]` | `<PassageLink target="Target">Link</PassageLink>` |
+| `{textbox $name ""}`                 | `<TextBox variable="name" default="" />`                 |
+| `{cycle $weapon [...]}`              | `<Cycle variable="weapon" options={[...]} />`            |
+| `[[Link\|Target]]`                   | `<PassageLink target="Target">Link</PassageLink>`        |
 
 Key behaviors:
 
@@ -245,7 +272,7 @@ Macro.add('greeting', ({ style }) => {
 });
 
 // Advanced: stateful component
-Macro.add('counter', ({ start = 0, label = "Count" }) => {
+Macro.add('counter', ({ start = 0, label = 'Count' }) => {
   const [count, setCount] = Macro.useState(start);
   return `
     <span>${label}: ${count}</span>
@@ -293,13 +320,13 @@ For developers using an external toolchain (Tweego + Vite, or a CLI), full React
 import { useStoryState, useStoryDispatch } from 'react-twine';
 
 export default function InventoryGrid() {
-  const items = useStoryState(s => s.inventory);
+  const items = useStoryState((s) => s.inventory);
   const [selected, setSelected] = useState<string | null>(null);
   const dispatch = useStoryDispatch();
 
   const useItem = (id: string) => {
-    dispatch(s => {
-      const item = s.inventory.find(i => i.id === id);
+    dispatch((s) => {
+      const item = s.inventory.find((i) => i.id === id);
       if (item && item.quantity > 0) {
         item.quantity--;
         s.health = Math.min(s.maxHealth, s.health + item.healAmount);
@@ -309,16 +336,17 @@ export default function InventoryGrid() {
 
   return (
     <div className="inventory-grid">
-      {items.map(item => (
-        <div key={item.id} className={`slot ${selected === item.id ? 'selected' : ''}`}
-             onClick={() => setSelected(item.id)}>
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={`slot ${selected === item.id ? 'selected' : ''}`}
+          onClick={() => setSelected(item.id)}
+        >
           <span className="name">{item.name}</span>
           <span className="count">x{item.quantity}</span>
         </div>
       ))}
-      {selected && (
-        <button onClick={() => useItem(selected)}>Use</button>
-      )}
+      {selected && <button onClick={() => useItem(selected)}>Use</button>}
     </div>
   );
 }
@@ -344,16 +372,16 @@ Passages tagged `[component]` are compiled as React components and auto-register
 
 ```ts
 interface StoryState {
-  variables: Record<string, any>;   // $variables (persist across passages)
-  temporary: Record<string, any>;   // _variables (cleared on navigation)
-  passage: string;                  // current passage name
-  history: HistoryMoment[];         // navigation history
-  historyIndex: number;             // current position in history
+  variables: Record<string, any>; // $variables (persist across passages)
+  temporary: Record<string, any>; // _variables (cleared on navigation)
+  passage: string; // current passage name
+  history: HistoryMoment[]; // navigation history
+  historyIndex: number; // current position in history
 }
 
 interface HistoryMoment {
   passage: string;
-  variables: Record<string, any>;   // snapshot (structurally shared)
+  variables: Record<string, any>; // snapshot (structurally shared)
   timestamp: number;
 }
 ```
@@ -365,7 +393,7 @@ Using Immer (or a similar library) for structural sharing:
 // react-twine: only copies references to unchanged branches (~O(changed keys))
 
 // Navigation creates a new moment:
-const newMoment = produce(currentMoment, draft => {
+const newMoment = produce(currentMoment, (draft) => {
   draft.passage = nextPassage;
   // draft.variables already shares unchanged data with previous moment
 });
@@ -378,38 +406,38 @@ For a game with 1000 variables where navigation changes 3 of them, SugarCube clo
 
 ```ts
 // Reading (reactive — triggers re-render when value changes)
-Story.get('health')           // in Macro.add context
-useStoryState(s => s.health)  // in React component context
+Story.get('health'); // in Macro.add context
+useStoryState((s) => s.health); // in React component context
 
 // Writing
-Story.set('health', 50)
-Story.set({ health: 50, gold: 100 })  // batch update
+Story.set('health', 50);
+Story.set({ health: 50, gold: 100 }); // batch update
 
 // Computed / derived
-Story.get('isAlive')  // where isAlive is defined as a computed: s => s.health > 0
+Story.get('isAlive'); // where isAlive is defined as a computed: s => s.health > 0
 
 // Navigation
-Story.goto('Forest')
-Story.back()
-Story.forward()
+Story.goto('Forest');
+Story.back();
+Story.forward();
 
 // History
-Story.history        // array of moment objects
-Story.visits()       // times current passage was visited
-Story.visits('name') // times a specific passage was visited
-Story.hasVisited('name')
+Story.history; // array of moment objects
+Story.visits(); // times current passage was visited
+Story.visits('name'); // times a specific passage was visited
+Story.hasVisited('name');
 ```
 
 ### Save System
 
 ```ts
-Story.save.auto()                    // autosave to localStorage
-Story.save.slot(n)                   // save to slot n
-Story.save.export()                  // download as file
-Story.save.load(n)                   // load from slot n
-Story.save.import(file)              // load from file
-Story.save.list()                    // list all saves with metadata
-Story.save.delete(n)                 // delete a save slot
+Story.save.auto(); // autosave to localStorage
+Story.save.slot(n); // save to slot n
+Story.save.export(); // download as file
+Story.save.load(n); // load from slot n
+Story.save.import(file); // load from file
+Story.save.list(); // list all saves with metadata
+Story.save.delete(n); // delete a save slot
 
 // Save data uses delta encoding (like SugarCube) to minimize storage
 // But with structural sharing, the base snapshots are already smaller
@@ -438,86 +466,98 @@ Story.on('story:ready', () => { ... })                // initial load complete
 ## Built-in Components (Shipping with the Format)
 
 ### Control Flow
-| Markup | Description |
-|--------|-------------|
-| `{if $x}...{elseif $y}...{else}...{/if}` | Conditional rendering |
-| `{for $item in $list}...{/for}` | Iteration |
-| `{switch $x}{case "a"}...{case "b"}...{default}...{/switch}` | Switch/case |
-| `{show $var}` | Reactive variable display |
-| `{set $var = value}` | Variable assignment |
-| `{do}...{/do}` | Execute JS block |
+
+| Markup                                                       | Description               |
+| ------------------------------------------------------------ | ------------------------- |
+| `{if $x}...{elseif $y}...{else}...{/if}`                     | Conditional rendering     |
+| `{for $item in $list}...{/for}`                              | Iteration                 |
+| `{switch $x}{case "a"}...{case "b"}...{default}...{/switch}` | Switch/case               |
+| `{show $var}`                                                | Reactive variable display |
+| `{set $var = value}`                                         | Variable assignment       |
+| `{do}...{/do}`                                               | Execute JS block          |
 
 ### Input
-| Markup | Description |
-|--------|-------------|
-| `{textbox $var "placeholder"}` | Text input bound to variable |
-| `{textarea $var "placeholder"}` | Multi-line text input |
-| `{checkbox $var}` | Checkbox bound to boolean variable |
-| `{cycle $var ["a", "b", "c"]}` | Click-to-cycle through options |
-| `{dropdown $var ["a", "b", "c"]}` | Dropdown select |
-| `{numberbox $var min max}` | Numeric input |
-| `{button "label"}{set $x = 5}{/button}` | Button with action |
+
+| Markup                                  | Description                        |
+| --------------------------------------- | ---------------------------------- |
+| `{textbox $var "placeholder"}`          | Text input bound to variable       |
+| `{textarea $var "placeholder"}`         | Multi-line text input              |
+| `{checkbox $var}`                       | Checkbox bound to boolean variable |
+| `{cycle $var ["a", "b", "c"]}`          | Click-to-cycle through options     |
+| `{dropdown $var ["a", "b", "c"]}`       | Dropdown select                    |
+| `{numberbox $var min max}`              | Numeric input                      |
+| `{button "label"}{set $x = 5}{/button}` | Button with action                 |
 
 ### Navigation
-| Markup | Description |
-|--------|-------------|
-| `[[text\|passage]]` | Passage link |
+
+| Markup              | Description                 |
+| ------------------- | --------------------------- |
+| `[[text\|passage]]` | Passage link                |
 | `[[text->passage]]` | Passage link (arrow syntax) |
-| `{back}` | Go back in history |
-| `{return}` | Return to previous passage |
+| `{back}`            | Go back in history          |
+| `{return}`          | Return to previous passage  |
 
 ### Layout
-| Markup | Description |
-|--------|-------------|
-| `{dialog title="..."}...{/dialog}` | Modal dialog |
-| `{tabs}{tab "Title"}...{/tab}{/tabs}` | Tabbed content |
-| `{sidebar}...{/sidebar}` | Persistent sidebar content |
-| `{append $target}...{/append}` | Append to a named container |
-| `{replace $target}...{/replace}` | Replace a named container |
+
+| Markup                                | Description                 |
+| ------------------------------------- | --------------------------- |
+| `{dialog title="..."}...{/dialog}`    | Modal dialog                |
+| `{tabs}{tab "Title"}...{/tab}{/tabs}` | Tabbed content              |
+| `{sidebar}...{/sidebar}`              | Persistent sidebar content  |
+| `{append $target}...{/append}`        | Append to a named container |
+| `{replace $target}...{/replace}`      | Replace a named container   |
 
 ### Media
-| Markup | Description |
-|--------|-------------|
-| `{audio src="..." autoplay loop}` | Audio playback |
-| `{img src="..." alt="..."}` | Image |
-| `{timed 2s}...{/timed}` | Delayed content |
-| `{type speed=50}...{/type}` | Typewriter effect |
+
+| Markup                            | Description       |
+| --------------------------------- | ----------------- |
+| `{audio src="..." autoplay loop}` | Audio playback    |
+| `{img src="..." alt="..."}`       | Image             |
+| `{timed 2s}...{/timed}`           | Delayed content   |
+| `{type speed=50}...{/type}`       | Typewriter effect |
 
 ---
 
 ## Advantages Over SugarCube
 
 ### Reactive UI
+
 Every `{$variable}` display updates automatically when the variable changes. A stat sidebar, an inventory count, a health bar — all stay in sync with zero author effort. SugarCube requires explicit `<<replace>>` macros for every dynamic update.
 
 ### Performance at Scale
+
 Structural sharing eliminates the deep-clone tax. Navigation cost is proportional to what changed, not total state size. Games with hundreds of complex variables don't slow down over time.
 
 ### Component Encapsulation
+
 Components have local state, props, and lifecycle hooks. A `{dialog}` component manages its own open/close state without polluting global `$variables`. In SugarCube, even a simple toggle requires a global variable.
 
 ### Selective Re-rendering
+
 React's reconciliation only patches changed DOM nodes. A passage with an interactive map, inventory grid, and dialog system doesn't rebuild everything when one element changes.
 
 ### Type Safety (Developer Layer)
+
 TypeScript catches errors at compile time. `Story.get('heatlh')` can be flagged before runtime. SugarCube's errors surface as runtime macro parse failures.
 
 ### Modern Tooling (Developer Layer)
+
 React DevTools, hot module replacement, tree shaking, code splitting, Jest/Testing Library. These are available at Layer 4 for developers who want them, invisible to Layer 1 authors.
 
 ### Better Error Messages
+
 "Unknown component 'texbox' — did you mean 'textbox'?" vs SugarCube's "cannot find matching close tag" from a regex parser.
 
 ## What SugarCube Still Does Better
 
-| Area | SugarCube Advantage | react-twine Mitigation |
-|------|--------------------|-----------------------|
-| **Barrier to entry** | `<<if $x>>` is more familiar to non-programmers | Layer 1 markup is similarly simple: `{if $x}` |
-| **Built-in save UI** | Full save/load dialog out of the box | Must be built as a component (but ships with the format) |
-| **Audio system** | Comprehensive `<<audio>>` macros | Must be implemented (HTML5 Audio API wrapper) |
-| **Ecosystem** | Years of community macros, guides, SO answers | Starts from zero — but npm ecosystem compensates |
-| **Proven at scale** | Thousands of published games | Unproven |
-| **No build tools** | Works entirely in Twine's editor | Layers 1-3 also work entirely in Twine's editor |
+| Area                 | SugarCube Advantage                             | react-twine Mitigation                                   |
+| -------------------- | ----------------------------------------------- | -------------------------------------------------------- |
+| **Barrier to entry** | `<<if $x>>` is more familiar to non-programmers | Layer 1 markup is similarly simple: `{if $x}`            |
+| **Built-in save UI** | Full save/load dialog out of the box            | Must be built as a component (but ships with the format) |
+| **Audio system**     | Comprehensive `<<audio>>` macros                | Must be implemented (HTML5 Audio API wrapper)            |
+| **Ecosystem**        | Years of community macros, guides, SO answers   | Starts from zero — but npm ecosystem compensates         |
+| **Proven at scale**  | Thousands of published games                    | Unproven                                                 |
+| **No build tools**   | Works entirely in Twine's editor                | Layers 1-3 also work entirely in Twine's editor          |
 
 ---
 
@@ -594,10 +634,11 @@ tweego -f react-twine -o story.html src/
 A `format.js` that installs in Twine 2 / Tweego and plays a basic story.
 
 **Delivered:**
+
 - Project scaffolding (package.json, tsconfig, vite.config.ts)
 - Build pipeline: Vite → single-file HTML → `window.storyFormat(...)` JSONP wrapper
 - Story data parser: reads `<tw-storydata>` and `<tw-passagedata>` from DOM
-- Zustand store with Immer: current passage, $variables, _temporary variables, navigation history with structural sharing
+- Zustand store with Immer: current passage, $variables, \_temporary variables, navigation history with structural sharing
 - Passage renderer with all 4 Twine link syntaxes: `[[text|target]]`, `[[text->target]]`, `[[target<-text]]`, `[[target]]`
 - Root app component with passage switching (`key=` for clean remounting)
 - Author CSS/JS support (from Twine's stylesheet/script panels)
@@ -614,6 +655,7 @@ A `format.js` that installs in Twine 2 / Tweego and plays a basic story.
 The `{macro}` syntax and `{$variable}` display. This is where react-twine becomes useful for actual stories, not just link-based navigation.
 
 **Scope:**
+
 - Tokenizer: splits passage text into tokens — plain text, `{macros}`, `{$variables}`, `[[links]]`
 - AST: token stream → tree of TextNode, MacroNode, ExpressionNode, LinkNode
 - Renderer: AST → Preact element tree via component registry
@@ -633,6 +675,7 @@ The `{macro}` syntax and `{$variable}` display. This is where react-twine become
 Interactive elements and persistence.
 
 **Scope:**
+
 - Input components:
   - `{textbox $var "placeholder"}`
   - `{textarea $var "placeholder"}`
@@ -653,6 +696,7 @@ Interactive elements and persistence.
 Authors can define custom macros/components in Twine's Story JavaScript panel.
 
 **Scope:**
+
 - `Macro.add(name, fn)` — registers a function as a Preact component
 - `Macro.useState(initial)` — wraps `React.useState`
 - `Story.get(name)` inside macros — wraps `useStoryState` for automatic reactivity
@@ -666,6 +710,7 @@ Authors can define custom macros/components in Twine's Story JavaScript panel.
 Full-featured story format.
 
 **Scope:**
+
 - Layout components: `{dialog}`, `{tabs}/{tab}`, `{sidebar}`, `{append}`, `{replace}`
 - Media: `{audio}`, `{img}`, `{timed}`, `{type}` (typewriter effect)
 - Layer 2 support: `<component-tags>` resolved from registry in passage markup

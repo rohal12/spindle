@@ -19,10 +19,13 @@ function Feed({ items }: { items: Item[] }) {
   return (
     <ScrollView>
       {items.map((item) => (
-        <ItemCard key={item.id} item={item} />
+        <ItemCard
+          key={item.id}
+          item={item}
+        />
       ))}
     </ScrollView>
-  )
+  );
 }
 // 50 items = 50 components mounted, even if only 10 visible
 ```
@@ -30,7 +33,7 @@ function Feed({ items }: { items: Item[] }) {
 **Correct (virtualizer renders only visible items):**
 
 ```tsx
-import { LegendList } from '@legendapp/list'
+import { LegendList } from '@legendapp/list';
 
 function Feed({ items }: { items: Item[] }) {
   return (
@@ -41,7 +44,7 @@ function Feed({ items }: { items: Item[] }) {
       keyExtractor={(item) => item.id}
       estimatedItemSize={80}
     />
-  )
+  );
 }
 // Only ~10-15 visible items mounted at a time
 ```
@@ -49,7 +52,7 @@ function Feed({ items }: { items: Item[] }) {
 **Alternative (FlashList):**
 
 ```tsx
-import { FlashList } from '@shopify/flash-list'
+import { FlashList } from '@shopify/flash-list';
 
 function Feed({ items }: { items: Item[] }) {
   return (
@@ -59,7 +62,7 @@ function Feed({ items }: { items: Item[] }) {
       renderItem={({ item }) => <ItemCard item={item} />}
       keyExtractor={(item) => item.id}
     />
-  )
+  );
 }
 ```
 

@@ -1,12 +1,12 @@
-import type { Token } from "./tokenizer";
+import type { Token } from './tokenizer';
 
 export interface TextNode {
-  type: "text";
+  type: 'text';
   value: string;
 }
 
 export interface LinkNode {
-  type: "link";
+  type: 'link';
   display: string;
   target: string;
   className?: string;
@@ -14,9 +14,9 @@ export interface LinkNode {
 }
 
 export interface VariableNode {
-  type: "variable";
+  type: 'variable';
   name: string;
-  scope: "variable" | "temporary";
+  scope: 'variable' | 'temporary';
   className?: string;
   id?: string;
 }
@@ -29,7 +29,7 @@ export interface Branch {
 }
 
 export interface MacroNode {
-  type: "macro";
+  type: 'macro';
   name: string;
   rawArgs: string;
   children: ASTNode[];
@@ -41,10 +41,10 @@ export interface MacroNode {
 export type ASTNode = TextNode | LinkNode | VariableNode | MacroNode;
 
 /** Macros that require a closing tag and can contain children */
-const BLOCK_MACROS = new Set(["if", "for", "do", "button"]);
+const BLOCK_MACROS = new Set(['if', 'for', 'do', 'button']);
 
 /** Macros that are internal to if-blocks (not standalone) */
-const IF_BRANCH_MACROS = new Set(["elseif", "else"]);
+const IF_BRANCH_MACROS = new Set(['elseif', 'else']);
 
 /**
  * Build an AST from a token array. Block macros are nested into trees
@@ -68,13 +68,13 @@ export function buildAST(tokens: Token[]): ASTNode[] {
 
   for (const token of tokens) {
     switch (token.type) {
-      case "text":
-        current().push({ type: "text", value: token.value });
+      case 'text':
+        current().push({ type: 'text', value: token.value });
         break;
 
-      case "link": {
+      case 'link': {
         const linkNode: LinkNode = {
-          type: "link",
+          type: 'link',
           display: token.display,
           target: token.target,
         };
@@ -84,9 +84,9 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         break;
       }
 
-      case "variable": {
+      case 'variable': {
         const varNode: VariableNode = {
-          type: "variable",
+          type: 'variable',
           name: token.name,
           scope: token.scope,
         };
@@ -96,19 +96,19 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         break;
       }
 
-      case "macro": {
+      case 'macro': {
         if (token.isClose) {
           // Closing tag — pop from stack
           if (stack.length === 0) {
             throw new Error(
-              `Unexpected closing {/${token.name}} (at character ${token.start})`
+              `Unexpected closing {/${token.name}} (at character ${token.start})`,
             );
           }
 
           const top = stack[stack.length - 1];
           if (top.node.name !== token.name) {
             throw new Error(
-              `Expected {/${top.node.name}} but found {/${token.name}} (at character ${token.start})`
+              `Expected {/${top.node.name}} but found {/${token.name}} (at character ${token.start})`,
             );
           }
 
@@ -121,10 +121,10 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         if (IF_BRANCH_MACROS.has(token.name)) {
           if (
             stack.length === 0 ||
-            stack[stack.length - 1].node.name !== "if"
+            stack[stack.length - 1].node.name !== 'if'
           ) {
             throw new Error(
-              `{${token.name}} without matching {if} (at character ${token.start})`
+              `{${token.name}} without matching {if} (at character ${token.start})`,
             );
           }
 
@@ -142,15 +142,18 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         // Block macro — push onto stack
         if (BLOCK_MACROS.has(token.name)) {
           const node: MacroNode = {
-            type: "macro",
+            type: 'macro',
             name: token.name,
             rawArgs: token.rawArgs,
             children: [],
           };
 
           // If-blocks: className/id goes on the first branch, not the node
-          if (token.name === "if") {
-            const firstBranch: Branch = { rawArgs: token.rawArgs, children: [] };
+          if (token.name === 'if') {
+            const firstBranch: Branch = {
+              rawArgs: token.rawArgs,
+              children: [],
+            };
             if (token.className) firstBranch.className = token.className;
             if (token.id) firstBranch.id = token.id;
             node.branches = [firstBranch];
@@ -166,7 +169,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         // Self-closing macro (set, print, etc.)
         {
           const macroNode: MacroNode = {
-            type: "macro",
+            type: 'macro',
             name: token.name,
             rawArgs: token.rawArgs,
             children: [],
@@ -183,7 +186,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
   if (stack.length > 0) {
     const unclosed = stack[stack.length - 1];
     throw new Error(
-      `Unclosed {${unclosed.node.name}} macro (opened at character ${unclosed.start})`
+      `Unclosed {${unclosed.node.name}} macro (opened at character ${unclosed.start})`,
     );
   }
 

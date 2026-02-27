@@ -23,35 +23,35 @@ export interface StoryData {
  * textContent gives us the original passage text.
  */
 export function parseStoryData(): StoryData {
-  const storyEl = document.querySelector("tw-storydata");
+  const storyEl = document.querySelector('tw-storydata');
   if (!storyEl) {
     throw new Error(
-      "react-twine: No <tw-storydata> element found in the document."
+      'react-twine: No <tw-storydata> element found in the document.',
     );
   }
 
-  const name = storyEl.getAttribute("name") || "Untitled";
-  const startNode = parseInt(storyEl.getAttribute("startnode") || "1", 10);
-  const ifid = storyEl.getAttribute("ifid") || "";
-  const format = storyEl.getAttribute("format") || "";
-  const formatVersion = storyEl.getAttribute("format-version") || "";
+  const name = storyEl.getAttribute('name') || 'Untitled';
+  const startNode = parseInt(storyEl.getAttribute('startnode') || '1', 10);
+  const ifid = storyEl.getAttribute('ifid') || '';
+  const format = storyEl.getAttribute('format') || '';
+  const formatVersion = storyEl.getAttribute('format-version') || '';
 
   const cssEl = storyEl.querySelector('[type="text/twine-css"]');
-  const userCSS = cssEl?.textContent || "";
+  const userCSS = cssEl?.textContent || '';
 
   const jsEl = storyEl.querySelector('[type="text/twine-javascript"]');
-  const userScript = jsEl?.textContent || "";
+  const userScript = jsEl?.textContent || '';
 
   const passages = new Map<string, Passage>();
   const passagesById = new Map<number, Passage>();
 
-  for (const el of storyEl.querySelectorAll("tw-passagedata")) {
-    const pid = parseInt(el.getAttribute("pid") || "0", 10);
-    const passageName = el.getAttribute("name") || "";
-    const tags = (el.getAttribute("tags") || "")
+  for (const el of storyEl.querySelectorAll('tw-passagedata')) {
+    const pid = parseInt(el.getAttribute('pid') || '0', 10);
+    const passageName = el.getAttribute('name') || '';
+    const tags = (el.getAttribute('tags') || '')
       .split(/\s+/)
       .filter((t) => t.length > 0);
-    const content = el.textContent || "";
+    const content = el.textContent || '';
 
     const passage: Passage = { pid, name: passageName, tags, content };
     passages.set(passageName, passage);

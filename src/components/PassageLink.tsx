@@ -1,4 +1,4 @@
-import { useStoryStore } from "../store";
+import { useStoryStore } from '../store';
 
 interface PassageLinkProps {
   target: string;
@@ -7,7 +7,12 @@ interface PassageLinkProps {
   children: preact.ComponentChildren;
 }
 
-export function PassageLink({ target, className, id, children }: PassageLinkProps) {
+export function PassageLink({
+  target,
+  className,
+  id,
+  children,
+}: PassageLinkProps) {
   const navigate = useStoryStore((s) => s.navigate);
 
   const handleClick = (e: MouseEvent) => {
@@ -15,10 +20,15 @@ export function PassageLink({ target, className, id, children }: PassageLinkProp
     navigate(target);
   };
 
-  const cls = className ? `passage-link ${className}` : "passage-link";
+  const cls = className ? `passage-link ${className}` : 'passage-link';
 
   return (
-    <a href="#" id={id} class={cls} onClick={handleClick}>
+    <a
+      href="#"
+      id={id}
+      class={cls}
+      onClick={handleClick}
+    >
       {children}
     </a>
   );

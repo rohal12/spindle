@@ -1,5 +1,5 @@
-import { useStoryStore } from "./store";
-import { settings } from "./settings";
+import { useStoryStore } from './store';
+import { settings } from './settings';
 
 export interface StoryAPI {
   get(name: string): unknown;
@@ -24,7 +24,7 @@ function createStoryAPI(): StoryAPI {
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
       const state = useStoryStore.getState();
-      if (typeof nameOrVars === "string") {
+      if (typeof nameOrVars === 'string') {
         state.setVariable(nameOrVars, value);
       } else {
         for (const [k, v] of Object.entries(nameOrVars)) {
@@ -62,7 +62,7 @@ function createStoryAPI(): StoryAPI {
     },
 
     get title(): string {
-      return useStoryStore.getState().storyData?.name || "";
+      return useStoryStore.getState().storyData?.name || '';
     },
 
     settings,

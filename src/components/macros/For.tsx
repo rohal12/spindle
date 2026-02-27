@@ -1,9 +1,9 @@
-import { useStoryStore } from "../../store";
-import { useContext } from "preact/hooks";
-import { evaluate } from "../../expression";
-import { LocalsContext } from "../../markup/render";
-import { renderNodes } from "../../markup/render";
-import type { ASTNode } from "../../markup/ast";
+import { useStoryStore } from '../../store';
+import { useContext } from 'preact/hooks';
+import { evaluate } from '../../expression';
+import { LocalsContext } from '../../markup/render';
+import { renderNodes } from '../../markup/render';
+import type { ASTNode } from '../../markup/ast';
 
 interface ForProps {
   rawArgs: string;
@@ -20,7 +20,7 @@ function parseForArgs(rawArgs: string): {
   indexVar: string | null;
   listExpr: string;
 } {
-  const ofIdx = rawArgs.indexOf(" of ");
+  const ofIdx = rawArgs.indexOf(' of ');
   if (ofIdx === -1) {
     throw new Error(`{for} requires "of" keyword: {for ${rawArgs}}`);
   }
@@ -28,7 +28,7 @@ function parseForArgs(rawArgs: string): {
   const varsPart = rawArgs.slice(0, ofIdx).trim();
   const listExpr = rawArgs.slice(ofIdx + 4).trim();
 
-  const vars = varsPart.split(",").map((v) => v.trim());
+  const vars = varsPart.split(',').map((v) => v.trim());
   const itemVar = vars[0];
   const indexVar = vars.length > 1 ? vars[1] : null;
 
@@ -44,8 +44,8 @@ export function For({ rawArgs, children, className, id }: ForProps) {
   const mergedVars = { ...variables };
   const mergedTemps = { ...temporary };
   for (const [key, val] of Object.entries(parentLocals)) {
-    if (key.startsWith("$")) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith("_")) mergedTemps[key.slice(1)] = val;
+    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
+    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
   }
 
   let parsed: ReturnType<typeof parseForArgs>;
@@ -53,7 +53,10 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     parsed = parseForArgs(rawArgs);
   } catch (err) {
     return (
-      <span class="error" title={String(err)}>
+      <span
+        class="error"
+        title={String(err)}
+      >
         {`{for error: ${(err as Error).message}}`}
       </span>
     );
@@ -74,7 +77,10 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     list = result;
   } catch (err) {
     return (
-      <span class="error" title={String(err)}>
+      <span
+        class="error"
+        title={String(err)}
+      >
         {`{for error: ${(err as Error).message}}`}
       </span>
     );
@@ -85,13 +91,23 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     if (indexVar) locals[indexVar] = i;
 
     return (
-      <LocalsContext.Provider key={i} value={locals}>
+      <LocalsContext.Provider
+        key={i}
+        value={locals}
+      >
         {renderNodes(children)}
       </LocalsContext.Provider>
     );
   });
 
-  if (className || id) return <span id={id} class={className}>{content}</span>;
+  if (className || id)
+    return (
+      <span
+        id={id}
+        class={className}
+      >
+        {content}
+      </span>
+    );
   return <>{content}</>;
-
 }

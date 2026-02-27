@@ -1,9 +1,9 @@
-import { useStoryStore } from "../../store";
-import { useContext } from "preact/hooks";
-import { evaluate } from "../../expression";
-import { LocalsContext } from "../../markup/render";
-import { renderNodes } from "../../markup/render";
-import type { Branch } from "../../markup/ast";
+import { useStoryStore } from '../../store';
+import { useContext } from 'preact/hooks';
+import { evaluate } from '../../expression';
+import { LocalsContext } from '../../markup/render';
+import { renderNodes } from '../../markup/render';
+import type { Branch } from '../../markup/ast';
 
 interface IfProps {
   branches: Branch[];
@@ -18,19 +18,27 @@ export function If({ branches }: IfProps) {
   const mergedVars = { ...variables };
   const mergedTemps = { ...temporary };
   for (const [key, val] of Object.entries(locals)) {
-    if (key.startsWith("$")) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith("_")) mergedTemps[key.slice(1)] = val;
+    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
+    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
   }
 
   function renderBranch(branch: Branch) {
     const children = renderNodes(branch.children);
-    if (branch.className || branch.id) return <span id={branch.id} class={branch.className}>{children}</span>;
+    if (branch.className || branch.id)
+      return (
+        <span
+          id={branch.id}
+          class={branch.className}
+        >
+          {children}
+        </span>
+      );
     return <>{children}</>;
   }
 
   for (const branch of branches) {
     // {else} has empty rawArgs — always truthy
-    if (branch.rawArgs === "") {
+    if (branch.rawArgs === '') {
       return renderBranch(branch);
     }
 
@@ -41,7 +49,10 @@ export function If({ branches }: IfProps) {
       }
     } catch (err) {
       return (
-        <span class="error" title={String(err)}>
+        <span
+          class="error"
+          title={String(err)}
+        >
           {`{if error: ${(err as Error).message}}`}
         </span>
       );

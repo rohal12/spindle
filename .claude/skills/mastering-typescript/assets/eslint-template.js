@@ -17,25 +17,31 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: import.meta.dirname
-      }
-    }
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
   },
 
   // Custom TypeScript rules
   {
     rules: {
       // Allow unused vars with underscore prefix
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_'
-      }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
 
       // Enforce type imports for better tree-shaking
-      '@typescript-eslint/consistent-type-imports': ['error', {
-        prefer: 'type-imports',
-        fixStyle: 'inline-type-imports'
-      }],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          fixStyle: 'inline-type-imports',
+        },
+      ],
 
       // Prevent unhandled promises
       '@typescript-eslint/no-floating-promises': 'error',
@@ -51,28 +57,31 @@ export default tseslint.config(
       '@typescript-eslint/prefer-optional-chain': 'error',
 
       // Consistent type assertions
-      '@typescript-eslint/consistent-type-assertions': ['error', {
-        assertionStyle: 'as',
-        objectLiteralTypeAssertions: 'never'
-      }],
+      '@typescript-eslint/consistent-type-assertions': [
+        'error',
+        {
+          assertionStyle: 'as',
+          objectLiteralTypeAssertions: 'never',
+        },
+      ],
 
       // Naming conventions
       '@typescript-eslint/naming-convention': [
         'error',
         {
           selector: 'interface',
-          format: ['PascalCase']
+          format: ['PascalCase'],
         },
         {
           selector: 'typeAlias',
-          format: ['PascalCase']
+          format: ['PascalCase'],
         },
         {
           selector: 'enum',
-          format: ['PascalCase']
-        }
-      ]
-    }
+          format: ['PascalCase'],
+        },
+      ],
+    },
   },
 
   // Ignore patterns
@@ -83,7 +92,7 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       '*.config.js',
-      '*.config.ts'
-    ]
-  }
+      '*.config.ts',
+    ],
+  },
 );
