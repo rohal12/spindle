@@ -1,11 +1,11 @@
 import { useStoryStore } from '../../store';
 
-interface SaveProps {
+interface QuickSaveProps {
   className?: string;
   id?: string;
 }
 
-export function Save({ className, id }: SaveProps) {
+export function QuickSave({ className, id }: QuickSaveProps) {
   const save = useStoryStore((s) => s.save);
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
 
@@ -13,9 +13,10 @@ export function Save({ className, id }: SaveProps) {
     <button
       id={id}
       class={cls}
+      title="Quick Save (F6)"
       onClick={() => save()}
     >
-      Save
+      QuickSave
     </button>
   );
 }

@@ -11,13 +11,24 @@ interface VarDisplayProps {
 
 export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   const locals = useContext(LocalsContext);
+  const parts = name.split('.');
+  const root = parts[0];
   const storeValue = useStoryStore((s) =>
-    scope === 'variable' ? s.variables[name] : s.temporary[name],
+    scope === 'variable' ? s.variables[root] : s.temporary[root],
   );
 
   // Locals (from for-loops) override store values
-  const key = scope === 'variable' ? `$${name}` : `_${name}`;
-  const value = key in locals ? locals[key] : storeValue;
+  const key = scope === 'variable' ? `$${root}` : `_${root}`;
+  let value = key in locals ? locals[key] : storeValue;
+
+  // Resolve dot path (e.g. "character.name" → character['name'])
+  for (let i = 1; i < parts.length; i++) {
+    if (value == null || typeof value !== 'object') {
+      value = undefined;
+      break;
+    }
+    value = (value as Record<string, unknown>)[parts[i]];
+  }
 
   const display = value == null ? '' : String(value);
   if (className || id)

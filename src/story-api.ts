@@ -1,5 +1,7 @@
 import { useStoryStore } from './store';
 import { settings } from './settings';
+import type { SavePayload } from './saves/types';
+import { setTitleGenerator } from './saves/save-manager';
 
 export interface StoryAPI {
   get(name: string): unknown;
@@ -14,6 +16,9 @@ export interface StoryAPI {
   hasSave(slot?: string): boolean;
   readonly title: string;
   readonly settings: typeof settings;
+  readonly saves: {
+    setTitleGenerator(fn: (payload: SavePayload) => string): void;
+  };
 }
 
 function createStoryAPI(): StoryAPI {
@@ -66,6 +71,12 @@ function createStoryAPI(): StoryAPI {
     },
 
     settings,
+
+    saves: {
+      setTitleGenerator(fn: (payload: SavePayload) => string): void {
+        setTitleGenerator(fn);
+      },
+    },
   };
 }
 

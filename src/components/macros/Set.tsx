@@ -9,8 +9,8 @@ interface SetProps {
 export function Set({ rawArgs }: SetProps) {
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
-    const vars = { ...state.variables };
-    const temps = { ...state.temporary };
+    const vars = structuredClone(state.variables);
+    const temps = structuredClone(state.temporary);
 
     try {
       execute(rawArgs, vars, temps);

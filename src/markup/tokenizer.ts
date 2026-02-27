@@ -36,7 +36,29 @@ export interface VariableToken {
   end: number;
 }
 
-export type Token = TextToken | LinkToken | MacroToken | VariableToken;
+export interface HtmlToken {
+  type: 'html';
+  tag: string;
+  attributes: Record<string, string>;
+  isClose: boolean;
+  isSelfClose: boolean;
+  start: number;
+  end: number;
+}
+
+export type Token = TextToken | LinkToken | MacroToken | VariableToken | HtmlToken;
+
+const HTML_TAGS = new Set([
+  'a', 'article', 'aside', 'b', 'blockquote', 'br', 'caption', 'code',
+  'col', 'colgroup', 'dd', 'del', 'details', 'dfn', 'div', 'dl', 'dt',
+  'em', 'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'header', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'main', 'mark',
+  'nav', 'ol', 'p', 'pre', 'q', 's', 'samp', 'section', 'small', 'span',
+  'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th',
+  'thead', 'tr', 'u', 'ul', 'wbr',
+]);
+
+const HTML_VOID_TAGS = new Set(['br', 'col', 'hr', 'img', 'wbr']);
 
 /**
  * Parse a Twine link interior into display and target.
@@ -131,6 +153,58 @@ function parseSelectors(
   }
 
   return { className: classes.join(' '), id, endIdx: i };
+}
+
+/**
+ * Parse HTML attributes from a string starting at position j.
+ * Returns the attributes and the position after the last attribute.
+ */
+function parseHtmlAttributes(
+  input: string,
+  j: number,
+): { attributes: Record<string, string>; endIdx: number } {
+  const attributes: Record<string, string> = {};
+
+  while (j < input.length) {
+    // Skip whitespace
+    while (j < input.length && /\s/.test(input[j])) j++;
+    // End of tag?
+    if (
+      j >= input.length ||
+      input[j] === '>' ||
+      (input[j] === '/' && input[j + 1] === '>')
+    )
+      break;
+
+    // Read attribute name
+    const attrStart = j;
+    while (j < input.length && /[a-zA-Z0-9_-]/.test(input[j])) j++;
+    const attrName = input.slice(attrStart, j);
+    if (!attrName) break;
+
+    // Check for = value
+    if (input[j] === '=') {
+      j++; // skip =
+      if (input[j] === '"' || input[j] === "'") {
+        const quote = input[j];
+        j++; // skip opening quote
+        const valStart = j;
+        while (j < input.length && input[j] !== quote) j++;
+        attributes[attrName] = input.slice(valStart, j);
+        if (j < input.length) j++; // skip closing quote
+      } else {
+        // Unquoted value
+        const valStart = j;
+        while (j < input.length && /[^\s>]/.test(input[j])) j++;
+        attributes[attrName] = input.slice(valStart, j);
+      }
+    } else {
+      // Boolean attribute
+      attributes[attrName] = '';
+    }
+  }
+
+  return { attributes, endIdx: j };
 }
 
 /**
@@ -232,10 +306,10 @@ export function tokenize(input: string): Token[] {
         const charAfter = input[afterSelectors];
 
         if (charAfter === '$') {
-          // {.class#id $variable}
+          // {.class#id $variable.field}
           i = afterSelectors + 1;
           const nameStart = i;
-          while (i < input.length && /\w/.test(input[i])) i++;
+          while (i < input.length && /[\w.]/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
 
           if (input[i] === '}') {
@@ -260,10 +334,10 @@ export function tokenize(input: string): Token[] {
         }
 
         if (charAfter === '_') {
-          // {.class#id _temporary}
+          // {.class#id _temporary.field}
           i = afterSelectors + 1;
           const nameStart = i;
-          while (i < input.length && /\w/.test(input[i])) i++;
+          while (i < input.length && /[\w.]/.test(input[i])) i++;
           const name = input.slice(nameStart, i);
 
           if (input[i] === '}') {
@@ -331,12 +405,12 @@ export function tokenize(input: string): Token[] {
         continue;
       }
 
-      // {$variable}
+      // {$variable} or {$variable.field.subfield}
       if (nextChar === '$') {
         flushText(i);
         i += 2;
         const nameStart = i;
-        while (i < input.length && /\w/.test(input[i])) i++;
+        while (i < input.length && /[\w.]/.test(input[i])) i++;
         const name = input.slice(nameStart, i);
 
         if (input[i] === '}') {
@@ -357,12 +431,12 @@ export function tokenize(input: string): Token[] {
         continue;
       }
 
-      // {_temporary}
+      // {_temporary.field}
       if (nextChar === '_') {
         flushText(i);
         i += 2;
         const nameStart = i;
-        while (i < input.length && /\w/.test(input[i])) i++;
+        while (i < input.length && /[\w.]/.test(input[i])) i++;
         const name = input.slice(nameStart, i);
 
         if (input[i] === '}') {
@@ -425,6 +499,76 @@ export function tokenize(input: string): Token[] {
       }
 
       // Just a bare { — treat as regular text
+      i++;
+      continue;
+    }
+
+    // Check for < — HTML tag
+    if (input[i] === '<') {
+      const start = i;
+      let j = i + 1;
+
+      // Closing tag?
+      const isClose = input[j] === '/';
+      if (isClose) j++;
+
+      // Read tag name
+      const tagStart = j;
+      while (j < input.length && /[a-zA-Z0-9]/.test(input[j])) j++;
+      const tag = input.slice(tagStart, j).toLowerCase();
+
+      // Only handle known HTML tags
+      if (tag && HTML_TAGS.has(tag)) {
+        if (isClose) {
+          // Closing tag: skip whitespace, expect >
+          while (j < input.length && /\s/.test(input[j])) j++;
+          if (input[j] === '>') {
+            j++;
+            flushText(start);
+            tokens.push({
+              type: 'html',
+              tag,
+              attributes: {},
+              isClose: true,
+              isSelfClose: false,
+              start,
+              end: j,
+            });
+            textStart = j;
+            i = j;
+            continue;
+          }
+        } else {
+          // Opening or self-closing tag: parse attributes
+          const parsed = parseHtmlAttributes(input, j);
+          j = parsed.endIdx;
+
+          let isSelfClose = HTML_VOID_TAGS.has(tag);
+          if (input[j] === '/') {
+            isSelfClose = true;
+            j++;
+          }
+
+          if (input[j] === '>') {
+            j++;
+            flushText(start);
+            tokens.push({
+              type: 'html',
+              tag,
+              attributes: parsed.attributes,
+              isClose: false,
+              isSelfClose,
+              start,
+              end: j,
+            });
+            textStart = j;
+            i = j;
+            continue;
+          }
+        }
+      }
+
+      // Not a valid HTML tag — treat as text
       i++;
       continue;
     }

@@ -32,3 +32,95 @@
   border-color: #e57373;
   background: rgba(239, 83, 80, 0.25);
 }
+
+/* Character generation / stat allocation */
+
+.stat-panel {
+  background: #16213e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 1.25em;
+  margin: 1em 0;
+  font-family: system-ui, sans-serif;
+}
+
+.stat-panel h3 {
+  margin: 0 0 0.75em;
+  font-size: 1.1em;
+  color: #e0e0e0;
+  font-weight: 600;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  padding: 0.6em 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  flex: 1;
+  font-size: 0.95em;
+  color: #c0c0c0;
+}
+
+.stat-base {
+  width: 2em;
+  text-align: center;
+  font-size: 0.95em;
+  color: #9e9e9e;
+}
+
+.stat-arrow {
+  color: #555;
+  font-size: 0.85em;
+}
+
+.stat-value {
+  width: 2em;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.1em;
+  color: #e0e0e0;
+}
+
+.stat-controls {
+  display: flex;
+  gap: 0.35em;
+  margin-left: 0.75em;
+}
+
+.stat-controls .macro-button {
+  width: 2em;
+  height: 2em;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1em;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.stat-points {
+  text-align: center;
+  margin-top: 1em;
+  padding: 0.6em;
+  border-radius: 6px;
+  font-size: 0.95em;
+  font-weight: 600;
+}
+
+.stat-points-remaining {
+  background: rgba(100, 181, 246, 0.1);
+  color: #64b5f6;
+}
+
+.stat-points-done {
+  background: rgba(129, 199, 132, 0.1);
+  color: #81c784;
+}

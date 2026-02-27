@@ -1,11 +1,11 @@
 import { useStoryStore } from '../../store';
 
-interface LoadProps {
+interface QuickLoadProps {
   className?: string;
   id?: string;
 }
 
-export function Load({ className, id }: LoadProps) {
+export function QuickLoad({ className, id }: QuickLoadProps) {
   const load = useStoryStore((s) => s.load);
   const hasSave = useStoryStore((s) => s.hasSave);
   // Subscribe to saveVersion so we re-render when a save is created
@@ -23,10 +23,11 @@ export function Load({ className, id }: LoadProps) {
     <button
       id={id}
       class={cls}
+      title="Quick Load (F9)"
       disabled={disabled}
       onClick={handleClick}
     >
-      Load
+      QuickLoad
     </button>
   );
 }

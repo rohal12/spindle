@@ -14,9 +14,12 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "immer": "^10.1.0",
+    "micromark": "^4.0.2",
+    "micromark-extension-gfm-strikethrough": "^2.1.0",
+    "micromark-extension-gfm-table": "^2.1.1",
     "preact": "^10.25.0",
-    "zustand": "^5.0.0",
-    "immer": "^10.1.0"
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.0",

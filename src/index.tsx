@@ -9,6 +9,10 @@ import {
   validatePassages,
   extractDefaults,
 } from './story-variables';
+import { tokenize } from './markup/tokenizer';
+import { buildAST } from './markup/ast';
+import { registerWidget } from './widgets/widget-registry';
+import type { ASTNode } from './markup/ast';
 import './styles.css';
 
 function renderErrors(root: HTMLElement, errors: string[]) {
@@ -82,6 +86,24 @@ function boot() {
 
   // Execute StoryInit passage if it exists
   executeStoryInit();
+
+  // Register widgets from passages tagged "widget"
+  for (const [, passage] of storyData.passages) {
+    if (passage.tags.includes('widget')) {
+      const widgetTokens = tokenize(passage.content);
+      const widgetAST = buildAST(widgetTokens);
+      for (const node of widgetAST) {
+        if (
+          node.type === 'macro' &&
+          node.name === 'widget' &&
+          node.rawArgs
+        ) {
+          const widgetName = node.rawArgs.trim().replace(/["']/g, '');
+          registerWidget(widgetName, node.children as ASTNode[]);
+        }
+      }
+    }
+  }
 
   const root = document.getElementById('root');
   if (!root) {

@@ -9,35 +9,86 @@ import { Do } from '../components/macros/Do';
 import { Button } from '../components/macros/Button';
 import { StoryTitle } from '../components/macros/StoryTitle';
 import { Restart } from '../components/macros/Restart';
-import { Save } from '../components/macros/Save';
-import { Load } from '../components/macros/Load';
+import { Back } from '../components/macros/Back';
+import { Forward } from '../components/macros/Forward';
+import { QuickSave } from '../components/macros/QuickSave';
+import { QuickLoad } from '../components/macros/QuickLoad';
 import { SettingsButton } from '../components/macros/SettingsButton';
+import { Saves } from '../components/macros/Saves';
+import { Include } from '../components/macros/Include';
+import { Goto } from '../components/macros/Goto';
+import { Unset } from '../components/macros/Unset';
+import { Textbox } from '../components/macros/Textbox';
+import { Numberbox } from '../components/macros/Numberbox';
+import { Textarea } from '../components/macros/Textarea';
+import { Checkbox } from '../components/macros/Checkbox';
+import { Radiobutton } from '../components/macros/Radiobutton';
+import { Listbox } from '../components/macros/Listbox';
+import { Cycle } from '../components/macros/Cycle';
+import { MacroLink } from '../components/macros/MacroLink';
+import { Switch } from '../components/macros/Switch';
+import { Timed } from '../components/macros/Timed';
+import { Repeat } from '../components/macros/Repeat';
+import { Stop } from '../components/macros/Stop';
+import { Type } from '../components/macros/Type';
+import { Widget } from '../components/macros/Widget';
+import { Computed } from '../components/macros/Computed';
+import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
+import { markdownToHtml } from './markdown';
+import { h } from 'preact';
 import type { ASTNode, MacroNode } from './ast';
 
 export const LocalsContext = createContext<Record<string, unknown>>({});
 
 /**
- * Render text with paragraph-style line breaks:
- * - Single newline → space (source formatting, not visual break)
- * - Double newline (blank line) → <br /> (intentional paragraph break)
+ * Convert an HTML string (from micromark) to Preact VNodes,
+ * replacing <span data-tw="N"> placeholder elements with pre-rendered components.
  */
-function renderText(text: string) {
-  const paragraphs = text.split(/\n{2,}/);
-  if (paragraphs.length === 1) {
-    return <>{text.replace(/\n/g, ' ')}</>;
-  }
-
-  return (
-    <>
-      {paragraphs.map((para, i) => (
-        <span key={i}>
-          {para.replace(/\n/g, ' ')}
-          {i < paragraphs.length - 1 && <br />}
-        </span>
-      ))}
-    </>
+function htmlToPreact(
+  html: string,
+  components: preact.ComponentChildren[],
+): preact.ComponentChildren {
+  const temp = document.createElement('div');
+  temp.innerHTML = html.trim();
+  const children = Array.from(temp.childNodes).map((child, i) =>
+    convertDomNode(child, i, components),
   );
+  return <>{children}</>;
+}
+
+function convertDomNode(
+  node: Node,
+  key: number,
+  components: preact.ComponentChildren[],
+): preact.ComponentChildren {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent;
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+
+    // Check if it's a placeholder for a Twine component
+    const twIdx = el.getAttribute('data-tw');
+    if (twIdx != null) {
+      return components[parseInt(twIdx, 10)];
+    }
+
+    // Convert attributes
+    const props: Record<string, any> = { key };
+    for (const attr of Array.from(el.attributes)) {
+      props[attr.name] = attr.value;
+    }
+
+    // Convert children recursively
+    const children = Array.from(el.childNodes).map((child, i) =>
+      convertDomNode(child, i, components),
+    );
+
+    return h(tag, props, ...children);
+  }
+  return null;
 }
 
 function renderMacro(node: MacroNode, key: number) {
@@ -45,6 +96,14 @@ function renderMacro(node: MacroNode, key: number) {
     case 'set':
       return (
         <Set
+          key={key}
+          rawArgs={node.rawArgs}
+        />
+      );
+
+    case 'computed':
+      return (
+        <Computed
           key={key}
           rawArgs={node.rawArgs}
         />
@@ -107,6 +166,24 @@ function renderMacro(node: MacroNode, key: number) {
         />
       );
 
+    case 'back':
+      return (
+        <Back
+          key={key}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'forward':
+      return (
+        <Forward
+          key={key}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
     case 'restart':
       return (
         <Restart
@@ -116,18 +193,18 @@ function renderMacro(node: MacroNode, key: number) {
         />
       );
 
-    case 'save':
+    case 'quicksave':
       return (
-        <Save
+        <QuickSave
           key={key}
           className={node.className}
           id={node.id}
         />
       );
 
-    case 'load':
+    case 'quickload':
       return (
-        <Load
+        <QuickLoad
           key={key}
           className={node.className}
           id={node.id}
@@ -143,7 +220,195 @@ function renderMacro(node: MacroNode, key: number) {
         />
       );
 
+    case 'saves':
+      return (
+        <Saves
+          key={key}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'include':
+      return (
+        <Include
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'goto':
+      return (
+        <Goto
+          key={key}
+          rawArgs={node.rawArgs}
+        />
+      );
+
+    case 'unset':
+      return (
+        <Unset
+          key={key}
+          rawArgs={node.rawArgs}
+        />
+      );
+
+    case 'textbox':
+      return (
+        <Textbox
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'numberbox':
+      return (
+        <Numberbox
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'textarea':
+      return (
+        <Textarea
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'checkbox':
+      return (
+        <Checkbox
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'radiobutton':
+      return (
+        <Radiobutton
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'listbox':
+      return (
+        <Listbox
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'cycle':
+      return (
+        <Cycle
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'link':
+      return (
+        <MacroLink
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'switch':
+      return (
+        <Switch
+          key={key}
+          rawArgs={node.rawArgs}
+          branches={node.branches!}
+        />
+      );
+
+    case 'timed':
+      return (
+        <Timed
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          branches={node.branches!}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'repeat':
+      return (
+        <Repeat
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'stop':
+      return (
+        <Stop key={key} />
+      );
+
+    case 'type':
+      return (
+        <Type
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'widget':
+      return (
+        <Widget
+          key={key}
+          rawArgs={node.rawArgs}
+          children={node.children}
+        />
+      );
+
+    // {option}, {case}, {default}, {next} are handled by parent components
+    case 'option':
+    case 'case':
+    case 'default':
+    case 'next':
+      return null;
+
     default: {
+      // Check widget registry for user-defined widgets
+      const widgetAST = getWidget(node.name);
+      if (widgetAST) {
+        return <>{renderNodes(widgetAST)}</>;
+      }
+
       // Check component registry for custom macros
       const Component = getMacro(node.name);
       if (Component) {
@@ -171,37 +436,102 @@ function renderMacro(node: MacroNode, key: number) {
   }
 }
 
+/**
+ * Render a non-text AST node to a Preact element.
+ */
+function renderSingleNode(
+  node: ASTNode,
+  key: number,
+): preact.ComponentChildren {
+  switch (node.type) {
+    case 'text':
+      return node.value;
+
+    case 'link':
+      return (
+        <PassageLink
+          key={key}
+          target={node.target}
+          className={node.className}
+          id={node.id}
+        >
+          {node.display}
+        </PassageLink>
+      );
+
+    case 'variable':
+      return (
+        <VarDisplay
+          key={key}
+          name={node.name}
+          scope={node.scope}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'macro':
+      return renderMacro(node, key);
+
+    case 'html':
+      return h(
+        node.tag,
+        { key, ...node.attributes },
+        node.children.length > 0 ? renderNodes(node.children) : undefined,
+      );
+  }
+}
+
+/**
+ * Render AST nodes without markdown processing.
+ * Used for inline containers (button labels, link text) where block-level
+ * markdown (lists, headers) would misinterpret content like "-" or "+".
+ */
+export function renderInlineNodes(
+  nodes: ASTNode[],
+): preact.ComponentChildren {
+  if (nodes.length === 0) return null;
+  return nodes.map((node, i) => renderSingleNode(node, i));
+}
+
+/**
+ * Render AST nodes with full CommonMark markdown support.
+ *
+ * Combines all nodes into a single markdown document, using <tw-N> placeholder
+ * elements for non-text nodes (variables, macros, links, HTML). This allows
+ * markdown syntax to span across Twine tokens — e.g., markdown tables can
+ * contain {$variables} and {macros} in their cells.
+ *
+ * After micromark processes the combined string, the HTML is parsed back into
+ * Preact VNodes with placeholders replaced by the real rendered components.
+ */
 export function renderNodes(nodes: ASTNode[]): preact.ComponentChildren {
-  return nodes.map((node, i) => {
-    switch (node.type) {
-      case 'text':
-        return <span key={i}>{renderText(node.value)}</span>;
+  if (nodes.length === 0) return null;
 
-      case 'link':
-        return (
-          <PassageLink
-            key={i}
-            target={node.target}
-            className={node.className}
-            id={node.id}
-          >
-            {node.display}
-          </PassageLink>
-        );
+  // If there's no text at all, render nodes directly without markdown
+  const hasText = nodes.some((n) => n.type === 'text');
+  if (!hasText) {
+    return nodes.map((node, i) => renderSingleNode(node, i));
+  }
 
-      case 'variable':
-        return (
-          <VarDisplay
-            key={i}
-            name={node.name}
-            scope={node.scope}
-            className={node.className}
-            id={node.id}
-          />
-        );
+  // Build combined markdown string with placeholders for non-text nodes
+  const components: preact.ComponentChildren[] = [];
+  let combined = '';
 
-      case 'macro':
-        return renderMacro(node, i);
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.type === 'text') {
+      combined += node.value;
+    } else {
+      const phIdx = components.length;
+      components.push(renderSingleNode(node, i));
+      combined += `<span data-tw="${phIdx}"></span>`;
     }
-  });
+  }
+
+  // Run combined text through markdown
+  const html = markdownToHtml(combined);
+
+  // Convert HTML to Preact VNodes, replacing placeholders with components
+  return htmlToPreact(html, components);
 }

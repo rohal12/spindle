@@ -223,6 +223,58 @@ describe('useStoryStore', () => {
     });
   });
 
+  describe('deleteVariable() / deleteTemporary()', () => {
+    it('deleteVariable removes a variable from the map', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setVariable('health', 100);
+      useStoryStore.getState().setVariable('gold', 50);
+      useStoryStore.getState().deleteVariable('health');
+
+      const state = useStoryStore.getState();
+      expect(state.variables).toEqual({ gold: 50 });
+      expect('health' in state.variables).toBe(false);
+    });
+
+    it('deleteTemporary removes a temporary variable from the map', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setTemporary('choice', 'left');
+      useStoryStore.getState().setTemporary('flag', true);
+      useStoryStore.getState().deleteTemporary('choice');
+
+      const state = useStoryStore.getState();
+      expect(state.temporary).toEqual({ flag: true });
+      expect('choice' in state.temporary).toBe(false);
+    });
+
+    it('deleteVariable is a no-op for nonexistent key', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setVariable('existing', 'value');
+      useStoryStore.getState().deleteVariable('nonexistent');
+
+      expect(useStoryStore.getState().variables).toEqual({
+        existing: 'value',
+      });
+    });
+
+    it('deleteTemporary is a no-op for nonexistent key', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore.getState().setTemporary('existing', 'value');
+      useStoryStore.getState().deleteTemporary('nonexistent');
+
+      expect(useStoryStore.getState().temporary).toEqual({
+        existing: 'value',
+      });
+    });
+  });
+
   describe('restart()', () => {
     it('re-executes StoryInit to restore initial variables', () => {
       const story = makeStoryData([

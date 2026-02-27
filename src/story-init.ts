@@ -3,6 +3,7 @@ import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
 import { execute } from './expression';
 import type { ASTNode } from './markup/ast';
+import { setSaveTitlePassage } from './saves/save-manager';
 
 /**
  * Walk AST nodes from StoryInit and execute {set} and {do} imperatively
@@ -56,5 +57,11 @@ export function executeStoryInit() {
     if (temps[key] !== state.temporary[key]) {
       state.setTemporary(key, temps[key]);
     }
+  }
+
+  // Register SaveTitle passage if it exists
+  const saveTitlePassage = state.storyData.passages.get('SaveTitle');
+  if (saveTitlePassage) {
+    setSaveTitlePassage(saveTitlePassage.content);
   }
 }

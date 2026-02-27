@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { StoryData } from './parser';
+import type { SavePayload } from './saves/types';
 import { executeStoryInit } from './story-init';
+import {
+  initSaveSystem,
+  startNewPlaythrough,
+  getCurrentPlaythroughId,
+  quickSave,
+  loadQuickSave,
+} from './saves/save-manager';
 
 export interface HistoryMoment {
   passage: string;
@@ -18,6 +26,7 @@ export interface StoryState {
   history: HistoryMoment[];
   historyIndex: number;
   saveVersion: number;
+  playthroughId: string;
 
   init: (
     storyData: StoryData,
@@ -28,10 +37,14 @@ export interface StoryState {
   goForward: () => void;
   setVariable: (name: string, value: unknown) => void;
   setTemporary: (name: string, value: unknown) => void;
+  deleteVariable: (name: string) => void;
+  deleteTemporary: (name: string) => void;
   restart: () => void;
   save: (slot?: string) => void;
   load: (slot?: string) => void;
   hasSave: (slot?: string) => boolean;
+  getSavePayload: () => SavePayload;
+  loadFromPayload: (payload: SavePayload) => void;
 }
 
 export const useStoryStore = create<StoryState>()(
@@ -44,6 +57,7 @@ export const useStoryStore = create<StoryState>()(
     history: [],
     historyIndex: -1,
     saveVersion: 0,
+    playthroughId: '',
 
     init: (
       storyData: StoryData,
@@ -72,6 +86,22 @@ export const useStoryStore = create<StoryState>()(
           },
         ];
         state.historyIndex = 0;
+      });
+
+      // Init save system (fire-and-forget — DB will be ready before user opens dialog)
+      const ifid = storyData.ifid;
+      initSaveSystem().then(async () => {
+        const existingId = await getCurrentPlaythroughId(ifid);
+        if (existingId) {
+          set((state) => {
+            state.playthroughId = existingId;
+          });
+        } else {
+          const newId = await startNewPlaythrough(ifid);
+          set((state) => {
+            state.playthroughId = newId;
+          });
+        }
       });
     },
 
@@ -134,6 +164,18 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
+    deleteVariable: (name: string) => {
+      set((state) => {
+        delete state.variables[name];
+      });
+    },
+
+    deleteTemporary: (name: string) => {
+      set((state) => {
+        delete state.temporary[name];
+      });
+    },
+
     restart: () => {
       const { storyData, variableDefaults } = get();
       if (!storyData) return;
@@ -158,54 +200,81 @@ export const useStoryStore = create<StoryState>()(
       });
 
       executeStoryInit();
+
+      // Start a new playthrough on restart
+      startNewPlaythrough(storyData.ifid).then((newId) => {
+        set((state) => {
+          state.playthroughId = newId;
+        });
+      });
     },
 
-    save: (slot = 'auto') => {
-      const { storyData, currentPassage, variables, history, historyIndex } =
-        get();
-      if (!storyData) return;
-
-      const key = `react-twine.${storyData.ifid}.save.${slot}`;
-      const data = JSON.stringify({
-        passage: currentPassage,
+    save: () => {
+      const {
+        storyData,
+        playthroughId,
+        currentPassage,
         variables,
         history,
         historyIndex,
-      });
-      localStorage.setItem(key, data);
-      set((state) => {
-        state.saveVersion++;
+      } = get();
+      if (!storyData) return;
+
+      const payload: SavePayload = {
+        passage: currentPassage,
+        variables: structuredClone(variables),
+        history: structuredClone(history),
+        historyIndex,
+      };
+
+      quickSave(storyData.ifid, playthroughId, payload).then(() => {
+        set((state) => {
+          state.saveVersion++;
+        });
       });
     },
 
-    load: (slot = 'auto') => {
+    load: () => {
       const { storyData } = get();
       if (!storyData) return;
 
-      const key = `react-twine.${storyData.ifid}.save.${slot}`;
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-
-      try {
-        const data = JSON.parse(raw);
+      loadQuickSave(storyData.ifid).then((payload) => {
+        if (!payload) return;
         set((state) => {
-          state.currentPassage = data.passage;
-          state.variables = data.variables;
-          state.history = data.history;
-          state.historyIndex = data.historyIndex;
+          state.currentPassage = payload.passage;
+          state.variables = payload.variables;
+          state.history = payload.history;
+          state.historyIndex = payload.historyIndex;
           state.temporary = {};
         });
-      } catch {
-        console.error('react-twine: Failed to parse save data.');
-      }
+      });
     },
 
-    hasSave: (slot = 'auto') => {
-      const { storyData } = get();
+    hasSave: () => {
+      // Synchronous: return true if a save has been made this session
+      const { storyData, saveVersion } = get();
       if (!storyData) return false;
+      return saveVersion > 0;
+    },
 
-      const key = `react-twine.${storyData.ifid}.save.${slot}`;
-      return localStorage.getItem(key) !== null;
+    getSavePayload: (): SavePayload => {
+      const { currentPassage, variables, history, historyIndex } = get();
+      return {
+        passage: currentPassage,
+        variables: structuredClone(variables),
+        history: structuredClone(history),
+        historyIndex,
+      };
+    },
+
+    loadFromPayload: (payload: SavePayload) => {
+      set((state) => {
+        state.currentPassage = payload.passage;
+        state.variables = payload.variables;
+        state.history = payload.history;
+        state.historyIndex = payload.historyIndex;
+        state.temporary = {};
+      });
     },
   })),
 );

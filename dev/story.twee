@@ -10,7 +10,6 @@ react-twine Test Story
 }
 
 :: StoryVariables
-$name = "Adventurer"
 $health = 100
 $inventory = ["rusty key", "torch"]
 $visited_rooms = 0
@@ -18,9 +17,10 @@ $has_key = false
 $has_note = false
 $count = 0
 $demo_ran = false
+$character = { strength: 5, dexterity: 5, intelligence: 5, name: "Adventurer", alive: true, level: 1 }
+
 
 :: StoryInit
-{set $name = "Adventurer"}
 {set $health = 100}
 {set $inventory = ["rusty key", "torch"]}
 {set $visited_rooms = 0}
@@ -28,16 +28,24 @@ $demo_ran = false
 {set $has_note = false}
 {set $count = 0}
 
+
 :: Start
-Welcome, {$name}! Your health is {$health}.
+Welcome, {$character.name}! Your health is {$health}. Your Strength is {$character.strength}.
 
 A wooden door stands to the north. Through a crack beneath it, you see flickering light.
 
-{if $has_key}The rusty key weighs heavy in your pocket.{/if}
+{if $has_key}
+  The rusty key weighs heavy in your pocket.
+
+{/if}
 
 [[Open the door|Hallway]]
+
 [[Look around the room|Room]]
-[[Test macros->Macro Demo]]
+
+[[Test macros->Macro Demo]] | [[Markdown demo->Markdown Demo]]
+
+- Character Generation: [[Character Generation]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -47,21 +55,36 @@ Rooms visited: {print $visited_rooms}
 
 To the left, you hear faint music. To the right, silence.
 
+
 [[Go left toward the music|Music Room]]
+
 [[Go right into silence|Dark Corridor]]
+
 [[Go back to the room|Start]]
 
 :: Room
 {set $visited_rooms = $visited_rooms + 1}
 The room is small and bare. A straw mattress lies in one corner. On a wooden table, you find a rusty key and a folded note.
 
-{if $has_key}You already have the key.{else}[[Take the key|Take Key]]{/if}
-{if $has_note}You've already read the note.{else}[[Read the note|Note]]{/if}
+
+{if $has_key}
+  You already have the key.
+{else}
+  [[Take the key|Take Key]]
+{/if}
+
+{if $has_note}
+  You've already read the note.
+{else}
+  [[Read the note|Note]]
+{/if}
+
 [[Go to the door|Hallway]]
 
 :: Take Key
 {set $has_key = true}
 You pick up the rusty key. It's cold and heavy.
+
 
 [[Go back|Room]]
 
@@ -71,13 +94,16 @@ The note reads:
 
 "The music holds the answer. The silence holds the key. Neither path is wrong, but only one is free."
 
+
 [[Put the note down|Room]]
 
 :: Music Room [music]
 {set $visited_rooms = $visited_rooms + 1}
 A grand piano sits in the center of a circular room. The music you heard was coming from... nowhere. The piano sits untouched, yet the melody continues.
 
+
 [[Sit at the piano|Piano]]
+
 [[Go back to the hallway|Hallway]]
 
 :: Dark Corridor [dark]
@@ -86,35 +112,61 @@ A grand piano sits in the center of a circular room. The music you heard was com
 The corridor grows darker with each step. Your footsteps echo off unseen walls. You stumble and hurt yourself.
 
 Health: {$health}
-{if $health < 50}You feel weak and dizzy.{elseif $health < 80}You wince in pain but press on.{else}You press on bravely.{/if}
+
+{if $health < 50}
+  You feel weak and dizzy.
+{elseif $health < 80}
+  You wince in pain but press on.
+{else}
+  You press on bravely.
+{/if}
 
 You reach a dead end. But wait — there's a small lever on the wall.
 
-{if $has_key}[[Use the key on the lock|Secret Room]]{/if}
+
+{if $has_key}
+  [[Use the key on the lock|Secret Room]]
+
+{/if}
 [[Pull the lever|Secret Room]]
+
 [[Go back|Hallway]]
+
 
 :: Piano [music]
 As your fingers touch the keys, the melody shifts. The walls seem to breathe. A doorway of light opens behind the piano.
 
+
 [[Step through the light|Ending]]
+
 [[Stop playing|Music Room]]
 
 :: Secret Room [dark secret]
 {set $visited_rooms = $visited_rooms + 1}
 The wall slides open to reveal a small chamber. In its center, a crystal orb pulses with soft blue light.
 
+
 [[Touch the orb|Ending]]
+
 [[Leave it alone|Dark Corridor]]
 
 :: Ending [ending]
 A warm light envelops you. When it fades, you find yourself standing in a sunlit meadow.
 
-You are free, {$name}.
+You are free, {$character.name}.
+
 Final health: {$health}
+
 Rooms visited: {$visited_rooms}
 
-{if $health >= 100}You escaped unscathed!{elseif $health >= 50}You made it out, a little worse for wear.{else}You barely survived, but you're free.{/if}
+{if $health >= 100}
+  You escaped unscathed!
+{elseif $health >= 50}
+  You made it out, a little worse for wear.
+{else}
+  You barely survived, but you're free.
+{/if}
+
 
 THE END
 
@@ -127,13 +179,20 @@ $demo_ran = true
 {/do}
 This passage demonstrates all macros.
 
+
 Reactivity — press the button to increment the counter:
+
 Count: {$count} {if $count < 10}{button $count = $count + 1}+1{/button}{else}[[You reached 10! Continue->Start]]{/if}
+
 Unlike traditional Twine formats that re-render the entire passage, only the count and the button area above re-render. Everything else on the page stays untouched.
 
-Variable display: {$name}
+
+Variable display: {$character.name}
+
 Temporary variable: {_temp}
+
 Computed expression: {print $health * 2}
+
 
 Health: {$health} —
 {.green if $health >= 100}
@@ -146,6 +205,7 @@ Health: {$health} —
   You died!
 {/if}
 
+
 {if $health > 0}
   {.red button $health -= 10}Drink Poison{/button}
 {/if}
@@ -153,26 +213,96 @@ Health: {$health} —
   {.green button $health += 10}Drink Health potion{/button}
 {/if}
 
+
 Inventory ({print $inventory.length} items):
+
 {for $item, $i of $inventory}
   {print $i + 1}. {$item}
 {/for}
 
+
 {if $demo_ran}The do-block executed successfully.{/if}
 
+
+
 CSS class syntax:
-{.hero-name $name} — variable with class
+
+{.hero-name $character.name} — variable with class
+
 {.muted print $visited_rooms} — print with class
+
 {.highlight if $health < 50}You're hurt!{/if} — if with class
+
 {.danger button $health -= 10}Take 10 (styled){/button} — button with class
+
 [[.fancy Back to start|Start]] — link with class
+
 {.danger.large button $health -= 5}Multi-class button{/button} — multiple classes
 
+
 All link syntaxes:
+
 - Pipe: [[Back to start|Start]]
+
 - Arrow: [[Arrow to hallway->Hallway]]
+
 - Reverse arrow: [[Room<-Visit the room]]
+
 - Plain: [[Start]]
+
+
+
+
+:: Markdown Demo
+# Markdown Support
+
+This passage demonstrates **CommonMark markdown** rendering in react-twine.
+
+## Text Formatting
+
+You can use **bold**, *italic*, ~~strikethrough~~, and `inline code`.
+
+## Lists
+
+Unordered:
+- Sword of Truth
+- Shield of Valor
+- Potion of Healing
+
+Ordered:
+1. Enter the dungeon
+2. Find the treasure
+3. Escape alive
+
+## Blockquote
+
+> "Not all those who wander are lost."
+> — J.R.R. Tolkien
+
+## Code Block
+
+```
+{set $health = 100}
+{if $health > 50}
+  You feel strong.
+{/if}
+```
+
+## Table
+
+| Stat | Value |
+| --- | --- |
+| Health | {$health} |
+| Strength | {$character.strength} |
+| Dexterity | {$character.dexterity} |
+
+## Horizontal Rule
+
+---
+
+Mixed with Twine syntax: your name is **{$character.name}** and you have {$health} HP.
+
+[[Back to start|Start]] | [[Test macros->Macro Demo]]
 
 :: Fourth [special]
 This passage has the "special" tag.
@@ -180,3 +310,26 @@ This passage has the "special" tag.
 Authors can target it with CSS using [data-tags~="special"].
 
 [[Back to start|Start]]
+
+:: Character Generation
+
+{set _temp = $character}
+{computed _points = 15 + (5 * $character.level) - _temp.strength - _temp.dexterity - _temp.intelligence}
+
+### Debug
+{button $character.level++}Level Up!{/button}
+
+### Character Generation
+
+| Stat | Base | | New | |
+| --- | --- | --- | --- | --- |
+| Strength | {$character.strength} | → | {_temp.strength} | {if _temp.strength > $character.strength}{button _temp.strength--}-{/button}{/if} {if _points > 0}{button _temp.strength++}+{/button}{/if} |
+| Dexterity | {$character.dexterity} | → | {_temp.dexterity} | {if _temp.dexterity > $character.dexterity}{button _temp.dexterity--}-{/button}{/if} {if _points > 0}{button _temp.dexterity++}+{/button}{/if} |
+| Intelligence | {$character.intelligence} | → | {_temp.intelligence} | {if _temp.intelligence > $character.intelligence}{button _temp.intelligence--}-{/button}{/if} {if _points > 0}{button _temp.intelligence++}+{/button}{/if} |
+
+{if _points > 0}**Points remaining:** {_points}{/if}
+{if _points == 0}**All points allocated**{/if}
+
+{if _points == 0}
+{button $character = _temp}Confirm{/button} [[Go Back -> Start]]
+{/if}
