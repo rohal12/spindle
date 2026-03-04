@@ -67,10 +67,11 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Build and compile story
         run: bun run preview
 
       - name: Run e2e tests
         run: bun run test:e2e
+        timeout-minutes: 3
