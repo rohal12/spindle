@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface TextboxProps {
   rawArgs: string;
@@ -22,6 +23,16 @@ export function Textbox({ rawArgs, className, id }: TextboxProps) {
 
   const value = useStoryStore((s) => s.variables[name]);
   const setVariable = useStoryStore((s) => s.setVariable);
+
+  useAction({
+    type: 'textbox',
+    key: `$${name}`,
+    authorId: id,
+    label: placeholder || name,
+    variable: name,
+    value,
+    perform: (v) => setVariable(name, v !== undefined ? String(v) : ''),
+  });
 
   const cls = className ? `macro-textbox ${className}` : 'macro-textbox';
 

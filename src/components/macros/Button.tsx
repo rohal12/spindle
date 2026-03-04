@@ -2,6 +2,8 @@ import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import { renderInlineNodes } from '../../markup/render';
 import { deepClone } from '../../class-registry';
+import { collectText } from '../../utils/extract-text';
+import { useAction } from '../../hooks/use-action';
 import type { ASTNode } from '../../markup/ast';
 
 interface ButtonProps {
@@ -35,6 +37,14 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
       }
     }
   };
+
+  useAction({
+    type: 'button',
+    key: rawArgs,
+    authorId: id,
+    label: collectText(children) || rawArgs,
+    perform: handleClick,
+  });
 
   const cls = className ? `macro-button ${className}` : 'macro-button';
 

@@ -44,7 +44,10 @@ export default defineConfig({
       },
       {
         text: 'Developer',
-        items: [{ text: 'npm Package', link: '/story-format-packages' }],
+        items: [
+          { text: 'Automation', link: '/automation' },
+          { text: 'npm Package', link: '/story-format-packages' },
+        ],
       },
     ],
 

@@ -3,6 +3,20 @@ import { settings } from './settings';
 import type { SavePayload } from './saves/types';
 import { setTitleGenerator } from './saves/save-manager';
 import { registerClass } from './class-registry';
+import {
+  getActions,
+  getAction,
+  onActionsChanged,
+  type StoryAction,
+} from './action-registry';
+
+export type { StoryAction };
+
+type NavigateCallback = (to: string, from: string) => void;
+type ActionsChangedCallback = () => void;
+type VariableChangedCallback = (
+  changed: Record<string, { from: unknown; to: unknown }>,
+) => void;
 
 export interface StoryAPI {
   get(name: string): unknown;
@@ -24,11 +38,18 @@ export interface StoryAPI {
   hasRenderedAny(...names: string[]): boolean;
   hasRenderedAll(...names: string[]): boolean;
   readonly title: string;
+  readonly passage: string;
   readonly settings: typeof settings;
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
   readonly saves: {
     setTitleGenerator(fn: (payload: SavePayload) => string): void;
   };
+  getActions(): StoryAction[];
+  performAction(id: string, value?: unknown): void;
+  on(event: 'navigate', callback: NavigateCallback): () => void;
+  on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
+  on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
+  waitForActions(): Promise<StoryAction[]>;
 }
 
 function createStoryAPI(): StoryAPI {
@@ -116,6 +137,10 @@ function createStoryAPI(): StoryAPI {
       return useStoryStore.getState().storyData?.name || '';
     },
 
+    get passage(): string {
+      return useStoryStore.getState().currentPassage;
+    },
+
     settings,
 
     registerClass(name: string, ctor: new (...args: any[]) => any): void {
@@ -126,6 +151,72 @@ function createStoryAPI(): StoryAPI {
       setTitleGenerator(fn: (payload: SavePayload) => string): void {
         setTitleGenerator(fn);
       },
+    },
+
+    getActions(): StoryAction[] {
+      return getActions();
+    },
+
+    performAction(id: string, value?: unknown): void {
+      const action = getAction(id);
+      if (!action) {
+        throw new Error(`spindle: Action "${id}" not found.`);
+      }
+      if (action.disabled) {
+        throw new Error(`spindle: Action "${id}" is disabled.`);
+      }
+      action.perform(value);
+    },
+
+    on(event: string, callback: (...args: any[]) => void): () => void {
+      if (event === 'navigate') {
+        let prev = useStoryStore.getState().currentPassage;
+        return useStoryStore.subscribe((state) => {
+          if (state.currentPassage !== prev) {
+            const from = prev;
+            prev = state.currentPassage;
+            (callback as NavigateCallback)(state.currentPassage, from);
+          }
+        });
+      }
+
+      if (event === 'actionsChanged') {
+        return onActionsChanged(callback as ActionsChangedCallback);
+      }
+
+      if (event === 'variableChanged') {
+        let prevVars = { ...useStoryStore.getState().variables };
+        return useStoryStore.subscribe((state) => {
+          const changed: Record<string, { from: unknown; to: unknown }> = {};
+          let hasChanges = false;
+          const allKeys = new Set([
+            ...Object.keys(prevVars),
+            ...Object.keys(state.variables),
+          ]);
+          for (const key of allKeys) {
+            if (state.variables[key] !== prevVars[key]) {
+              changed[key] = { from: prevVars[key], to: state.variables[key] };
+              hasChanges = true;
+            }
+          }
+          prevVars = { ...state.variables };
+          if (hasChanges) {
+            (callback as VariableChangedCallback)(changed);
+          }
+        });
+      }
+
+      throw new Error(`spindle: Unknown event "${event}".`);
+    },
+
+    waitForActions(): Promise<StoryAction[]> {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve(getActions());
+          });
+        });
+      });
     },
   };
 }

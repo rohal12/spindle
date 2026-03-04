@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface TextareaProps {
   rawArgs: string;
@@ -22,6 +23,16 @@ export function Textarea({ rawArgs, className, id }: TextareaProps) {
 
   const value = useStoryStore((s) => s.variables[name]);
   const setVariable = useStoryStore((s) => s.setVariable);
+
+  useAction({
+    type: 'textarea',
+    key: `$${name}`,
+    authorId: id,
+    label: placeholder || name,
+    variable: name,
+    value,
+    perform: (v) => setVariable(name, v !== undefined ? String(v) : ''),
+  });
 
   const cls = className ? `macro-textarea ${className}` : 'macro-textarea';
 

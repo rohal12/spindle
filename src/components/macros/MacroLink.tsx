@@ -31,12 +31,8 @@ function parseArgs(rawArgs: string): {
   return { display: rawArgs.trim(), passage: null };
 }
 
-/**
- * Collect text from AST nodes for imperative execution (like Do.tsx).
- */
-function collectText(nodes: ASTNode[]): string {
-  return nodes.map((n) => (n.type === 'text' ? n.value : '')).join('');
-}
+import { collectText } from '../../utils/extract-text';
+import { useAction } from '../../hooks/use-action';
 
 /**
  * Execute the children imperatively: walk AST for {set} and {do} macros.
@@ -92,6 +88,20 @@ export function MacroLink({
       useStoryStore.getState().navigate(passage);
     }
   };
+
+  useAction({
+    type: 'link',
+    key: passage || display,
+    authorId: id,
+    label: display,
+    target: passage ?? undefined,
+    perform: () => {
+      executeChildren(children);
+      if (passage) {
+        useStoryStore.getState().navigate(passage);
+      }
+    },
+  });
 
   const cls = className ? `macro-link ${className}` : 'macro-link';
 

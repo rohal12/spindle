@@ -133,7 +133,7 @@ describe('validatePassages', () => {
     expect(errors[0]).toMatch(/Passage "Start"/);
   });
 
-  it('catches undeclared object field references', () => {
+  it('allows unknown object field references (classes may add them)', () => {
     const schema = parseStoryVariables(
       '$player = { health: 100, name: "Hero" }',
     );
@@ -142,8 +142,7 @@ describe('validatePassages', () => {
       ['Start', 'Mana: $player.mana'],
     );
     const errors = validatePassages(passages, schema);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/Undeclared field.*\$player\.mana/);
+    expect(errors).toEqual([]);
   });
 
   it('catches field access on non-object types', () => {
@@ -191,7 +190,7 @@ describe('validatePassages', () => {
     expect(errors).toEqual([]);
   });
 
-  it('catches invalid deep field access', () => {
+  it('allows unknown deep field access (classes may add them)', () => {
     const schema = parseStoryVariables(
       '$game = { player: { stats: { hp: 50 } } }',
     );
@@ -200,8 +199,7 @@ describe('validatePassages', () => {
       ['Start', 'MP: $game.player.stats.mp'],
     );
     const errors = validatePassages(passages, schema);
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/Undeclared field.*\$game\.player\.stats\.mp/);
+    expect(errors).toEqual([]);
   });
 
   it('reports multiple errors across passages', () => {

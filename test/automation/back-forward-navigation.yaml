@@ -1,0 +1,40 @@
+name: 'Back/forward history navigation'
+steps:
+  - assert:
+      passage: Start
+
+  # Verify back is disabled at start
+  - assert:
+      actions:
+        - type: back
+          disabled: true
+
+  # Navigate forward
+  - action: 'link:Hallway'
+  - assert:
+      passage: Hallway
+
+  # Navigate further
+  - action: 'link:Music Room'
+  - assert:
+      passage: Music Room
+
+  # Go back should now be enabled
+  - assert:
+      actions:
+        - type: back
+
+  # Use back action
+  - action: 'back:back'
+  - assert:
+      passage: Hallway
+
+  # Forward should be available now
+  - assert:
+      actions:
+        - type: forward
+
+  # Use forward action
+  - action: 'forward:forward'
+  - assert:
+      passage: Music Room

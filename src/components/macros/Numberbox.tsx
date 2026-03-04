@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface NumberboxProps {
   rawArgs: string;
@@ -22,6 +23,16 @@ export function Numberbox({ rawArgs, className, id }: NumberboxProps) {
 
   const value = useStoryStore((s) => s.variables[name]);
   const setVariable = useStoryStore((s) => s.setVariable);
+
+  useAction({
+    type: 'numberbox',
+    key: `$${name}`,
+    authorId: id,
+    label: placeholder || name,
+    variable: name,
+    value,
+    perform: (v) => setVariable(name, v !== undefined ? Number(v) : 0),
+  });
 
   const cls = className ? `macro-numberbox ${className}` : 'macro-numberbox';
 

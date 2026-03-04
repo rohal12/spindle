@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface RadiobuttonProps {
   rawArgs: string;
@@ -37,6 +38,16 @@ export function Radiobutton({ rawArgs, className, id }: RadiobuttonProps) {
 
   const currentValue = useStoryStore((s) => s.variables[name]);
   const setVariable = useStoryStore((s) => s.setVariable);
+
+  useAction({
+    type: 'radiobutton',
+    key: `$${name}:${radioValue}`,
+    authorId: id,
+    label: label || radioValue,
+    variable: name,
+    value: currentValue,
+    perform: () => setVariable(name, radioValue),
+  });
 
   const cls = className
     ? `macro-radiobutton ${className}`
