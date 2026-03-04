@@ -1,4 +1,4 @@
-name: "Back/forward history navigation"
+name: 'Back/forward history navigation'
 steps:
   - assert:
       passage: Start
@@ -10,12 +10,12 @@ steps:
           disabled: true
 
   # Navigate forward
-  - action: "link:Hallway"
+  - action: 'link:Hallway'
   - assert:
       passage: Hallway
 
   # Navigate further
-  - action: "link:Music Room"
+  - action: 'link:Music Room'
   - assert:
       passage: Music Room
 
@@ -25,7 +25,7 @@ steps:
         - type: back
 
   # Use back action
-  - action: "back:back"
+  - action: 'back:back'
   - assert:
       passage: Hallway
 
@@ -35,6 +35,6 @@ steps:
         - type: forward
 
   # Use forward action
-  - action: "forward:forward"
+  - action: 'forward:forward'
   - assert:
       passage: Music Room

@@ -15,9 +15,7 @@ function mockAction(overrides: Partial<StoryAction> = {}): StoryAction {
   };
 }
 
-function mockStoryAPI(
-  overrides: Partial<StoryAPI> = {},
-): StoryAPI {
+function mockStoryAPI(overrides: Partial<StoryAPI> = {}): StoryAPI {
   const variables: Record<string, unknown> = {};
   let actions: StoryAction[] = [];
   let passage = 'Start';
@@ -216,7 +214,9 @@ describe('automation runner', () => {
 
     const result = await runAutomation(api, script);
     expect(result.success).toBe(false);
-    expect(result.errors[0].message).toContain('Action "link:Missing" not found');
+    expect(result.errors[0].message).toContain(
+      'Action "link:Missing" not found',
+    );
   });
 
   it('asserts action count', async () => {
@@ -276,10 +276,7 @@ describe('automation runner', () => {
 
     const script: AutomationScript = {
       name: 'test',
-      steps: [
-        { assert: { passage: 'Start' } },
-        { set: { x: 1 } },
-      ],
+      steps: [{ assert: { passage: 'Start' } }, { set: { x: 1 } }],
     };
 
     await runAutomation(api, script, {

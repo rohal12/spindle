@@ -5,16 +5,16 @@ Spindle includes a YAML-based automation runner for writing story walkthroughs, 
 ## Quick Example
 
 ```yaml
-name: "Music path walkthrough"
+name: 'Music path walkthrough'
 steps:
   - assert:
       passage: Start
-  - action: "link:Hallway"
+  - action: 'link:Hallway'
   - assert:
       passage: Hallway
-  - action: "link:Music Room"
-  - action: "link:Piano"
-  - action: "link:Ending"
+  - action: 'link:Music Room'
+  - action: 'link:Piano'
+  - action: 'link:Ending'
   - assert:
       passage: Ending
 ```
@@ -31,11 +31,11 @@ bun add -D js-yaml @types/js-yaml
 
 An automation script is a YAML file with two required fields:
 
-| Field   | Type     | Description                                                |
-| ------- | -------- | ---------------------------------------------------------- |
-| `name`  | `string` | Human-readable name for the script                         |
-| `start` | `string?`| Optional passage to navigate to before running steps       |
-| `steps` | `array`  | Sequence of steps to execute                               |
+| Field   | Type      | Description                                          |
+| ------- | --------- | ---------------------------------------------------- |
+| `name`  | `string`  | Human-readable name for the script                   |
+| `start` | `string?` | Optional passage to navigate to before running steps |
+| `steps` | `array`   | Sequence of steps to execute                         |
 
 ## Step Types
 
@@ -47,19 +47,19 @@ Perform a registered action by ID. Can be a simple string or an object with a va
 
 ```yaml
 # Click a link
-- action: "link:Forest"
+- action: 'link:Forest'
 
 # Fill a textbox
 - action:
-    id: "textbox:$name"
-    value: "Alice"
+    id: 'textbox:$name'
+    value: 'Alice'
 
 # Cycle to next option
-- action: "cycle:$weapon"
+- action: 'cycle:$weapon'
 
 # Use back/forward
-- action: "back:back"
-- action: "forward:forward"
+- action: 'back:back'
+- action: 'forward:forward'
 ```
 
 See [Action IDs](story-api.md#action-ids) for the ID format.
@@ -86,20 +86,20 @@ Check that the story is in an expected state. Multiple assertions can be combine
       - type: link
         target: Hallway
       - type: button
-        label: "Drink Potion"
-      - id: "cycle:$weapon"
+        label: 'Drink Potion'
+      - id: 'cycle:$weapon'
         variable: weapon
 ```
 
 Action matchers support these fields:
 
-| Field      | Description                  |
-| ---------- | ---------------------------- |
-| `id`       | Exact action ID              |
-| `type`     | Action type                  |
-| `target`   | Destination passage          |
-| `variable` | Bound variable name          |
-| `label`    | Display text                 |
+| Field      | Description         |
+| ---------- | ------------------- |
+| `id`       | Exact action ID     |
+| `type`     | Action type         |
+| `target`   | Destination passage |
+| `variable` | Bound variable name |
+| `label`    | Display text        |
 
 ### `set`
 
@@ -109,7 +109,7 @@ Set story variables directly (bypassing UI).
 - set:
     health: 100
     has_key: true
-    name: "Warrior"
+    name: 'Warrior'
 ```
 
 ### `wait`
@@ -134,9 +134,9 @@ const yaml = readFileSync('test/automation/walkthrough.yaml', 'utf-8');
 const script = parseAutomationYaml(yaml);
 const result = await runAutomation(Story, script);
 
-console.log(result.success);   // true/false
-console.log(result.stepsRun);  // number of steps executed
-console.log(result.errors);    // array of { step, message }
+console.log(result.success); // true/false
+console.log(result.stepsRun); // number of steps executed
+console.log(result.errors); // array of { step, message }
 ```
 
 ### In the Browser Console
@@ -146,16 +146,16 @@ Load your story, then:
 ```js
 // Assuming the automation module is available (dev builds only)
 var script = {
-  name: "quick test",
+  name: 'quick test',
   steps: [
-    { assert: { passage: "Start" } },
-    { action: "link:Forest" },
-    { assert: { passage: "Forest" } }
-  ]
+    { assert: { passage: 'Start' } },
+    { action: 'link:Forest' },
+    { assert: { passage: 'Forest' } },
+  ],
 };
 
 // Run using the Story API directly
-Story.performAction("link:Forest");
+Story.performAction('link:Forest');
 console.log(Story.passage); // "Forest"
 ```
 
@@ -167,7 +167,7 @@ console.log(Story.passage); // "Forest"
 const result = await runAutomation(Story, script, {
   onStep(index, step) {
     console.log(`Step ${index}:`, step);
-  }
+  },
 });
 ```
 
@@ -175,11 +175,11 @@ const result = await runAutomation(Story, script, {
 
 ```typescript
 interface RunResult {
-  success: boolean;    // true if no errors
-  stepsRun: number;    // total steps executed
+  success: boolean; // true if no errors
+  stepsRun: number; // total steps executed
   errors: Array<{
-    step: number;      // 0-based step index
-    message: string;   // description of the failure
+    step: number; // 0-based step index
+    message: string; // description of the failure
   }>;
 }
 ```
@@ -189,22 +189,22 @@ interface RunResult {
 ### Full walkthrough with combat
 
 ```yaml
-name: "Dark corridor with key"
+name: 'Dark corridor with key'
 steps:
   - assert:
       passage: Start
 
   # Pick up the key
-  - action: "link:Room"
-  - action: "link:Take Key"
+  - action: 'link:Room'
+  - action: 'link:Take Key'
   - assert:
       variables:
         has_key: true
 
   # Navigate to Dark Corridor (takes damage)
-  - action: "link:Room"
-  - action: "link:Hallway"
-  - action: "link:Dark Corridor"
+  - action: 'link:Room'
+  - action: 'link:Hallway'
+  - action: 'link:Dark Corridor'
   - assert:
       passage: Dark Corridor
       actions:
@@ -212,8 +212,8 @@ steps:
           target: Secret Room
 
   # Reach the ending
-  - action: "link:Secret Room"
-  - action: "link:Ending"
+  - action: 'link:Secret Room'
+  - action: 'link:Ending'
   - assert:
       passage: Ending
 ```
@@ -221,12 +221,12 @@ steps:
 ### Testing conditional content
 
 ```yaml
-name: "Variables hide/show links"
+name: 'Variables hide/show links'
 steps:
   - set:
       has_key: true
       has_note: true
-  - action: "link:Room"
+  - action: 'link:Room'
   - assert:
       passage: Room
       # With both items, only the Hallway link remains
@@ -238,21 +238,21 @@ steps:
 ### Testing back/forward navigation
 
 ```yaml
-name: "History navigation"
+name: 'History navigation'
 steps:
   - assert:
       actions:
         - type: back
           disabled: true
 
-  - action: "link:Hallway"
-  - action: "link:Music Room"
+  - action: 'link:Hallway'
+  - action: 'link:Music Room'
 
-  - action: "back:back"
+  - action: 'back:back'
   - assert:
       passage: Hallway
 
-  - action: "forward:forward"
+  - action: 'forward:forward'
   - assert:
       passage: Music Room
 ```

@@ -61,8 +61,7 @@ async function executeStep(
   }
 
   if (step.action !== undefined) {
-    const id =
-      typeof step.action === 'string' ? step.action : step.action.id;
+    const id = typeof step.action === 'string' ? step.action : step.action.id;
     const value =
       typeof step.action === 'string' ? undefined : step.action.value;
     story.performAction(id, value);

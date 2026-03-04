@@ -148,23 +148,23 @@ Returns an array of all currently registered actions.
 
 ```js
 var actions = Story.getActions();
-actions.forEach(function(a) {
+actions.forEach(function (a) {
   console.log(a.id, a.type, a.label);
 });
 ```
 
 Each action object has these properties:
 
-| Property   | Type       | Description                                  |
-| ---------- | ---------- | -------------------------------------------- |
-| `id`       | `string`   | Unique identifier (e.g. `link:Forest`)       |
-| `type`     | `string`   | Action type (see below)                      |
-| `label`    | `string`   | Display text                                 |
-| `target`   | `string?`  | Destination passage (links only)             |
-| `variable` | `string?`  | Bound variable name (inputs only)            |
-| `options`  | `string[]?`| Available options (cycle/listbox)             |
-| `value`    | `unknown?` | Current value (inputs)                        |
-| `disabled` | `boolean?` | Whether the action is currently disabled      |
+| Property   | Type        | Description                              |
+| ---------- | ----------- | ---------------------------------------- |
+| `id`       | `string`    | Unique identifier (e.g. `link:Forest`)   |
+| `type`     | `string`    | Action type (see below)                  |
+| `label`    | `string`    | Display text                             |
+| `target`   | `string?`   | Destination passage (links only)         |
+| `variable` | `string?`   | Bound variable name (inputs only)        |
+| `options`  | `string[]?` | Available options (cycle/listbox)        |
+| `value`    | `unknown?`  | Current value (inputs)                   |
+| `disabled` | `boolean?`  | Whether the action is currently disabled |
 
 Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`.
 
@@ -186,9 +186,9 @@ Authors can override the generated ID using the `#id` syntax: `[[#my-link Go|For
 Execute an action by its ID. Throws if the action is not found or is disabled.
 
 ```js
-Story.performAction("link:Forest");           // click a link
-Story.performAction("textbox:$name", "Alice"); // fill a textbox
-Story.performAction("cycle:$weapon");          // cycle to next option
+Story.performAction('link:Forest'); // click a link
+Story.performAction('textbox:$name', 'Alice'); // fill a textbox
+Story.performAction('cycle:$weapon'); // cycle to next option
 ```
 
 When called via `performAction`, `{restart}` and `{quickload}` skip their confirmation dialogs.
@@ -199,20 +199,20 @@ Subscribe to story events. Returns an unsubscribe function.
 
 ```js
 // Navigation events
-var unsub = Story.on("navigate", function(to, from) {
-  console.log("Navigated from " + from + " to " + to);
+var unsub = Story.on('navigate', function (to, from) {
+  console.log('Navigated from ' + from + ' to ' + to);
 });
 
 // Action registry changes (components mount/unmount)
-Story.on("actionsChanged", function() {
-  console.log("Actions:", Story.getActions().length);
+Story.on('actionsChanged', function () {
+  console.log('Actions:', Story.getActions().length);
 });
 
 // Variable changes
-Story.on("variableChanged", function(changed) {
+Story.on('variableChanged', function (changed) {
   // changed = { health: { from: 100, to: 90 }, ... }
   for (var key in changed) {
-    console.log(key + ": " + changed[key].from + " → " + changed[key].to);
+    console.log(key + ': ' + changed[key].from + ' → ' + changed[key].to);
   }
 });
 
@@ -225,9 +225,9 @@ unsub();
 Returns a `Promise` that resolves with the current actions after the UI has settled (2 animation frames). Useful in scripts that navigate and then need to inspect the new passage's actions.
 
 ```js
-Story.goto("Forest");
-Story.waitForActions().then(function(actions) {
-  console.log("Forest has " + actions.length + " actions");
+Story.goto('Forest');
+Story.waitForActions().then(function (actions) {
+  console.log('Forest has ' + actions.length + ' actions');
 });
 ```
 

@@ -1,11 +1,11 @@
-name: "Dark corridor: damage and key path"
+name: 'Dark corridor: damage and key path'
 steps:
   # Start
   - assert:
       passage: Start
 
   # Go to the Room to pick up the key
-  - action: "link:Room"
+  - action: 'link:Room'
   - assert:
       passage: Room
       variables:
@@ -19,14 +19,14 @@ steps:
           target: Hallway
 
   # Take the key
-  - action: "link:Take Key"
+  - action: 'link:Take Key'
   - assert:
       passage: Take Key
       variables:
         has_key: true
 
   # Go back to Room
-  - action: "link:Room"
+  - action: 'link:Room'
   - assert:
       passage: Room
       # Key link should no longer appear (conditional)
@@ -37,20 +37,20 @@ steps:
           target: Hallway
 
   # Read the note
-  - action: "link:Note"
+  - action: 'link:Note'
   - assert:
       passage: Note
       variables:
         has_note: true
 
   # Back to Room, then to Hallway
-  - action: "link:Room"
-  - action: "link:Hallway"
+  - action: 'link:Room'
+  - action: 'link:Hallway'
   - assert:
       passage: Hallway
 
   # Enter the Dark Corridor (takes 10 damage via $player.damage(10))
-  - action: "link:Dark Corridor"
+  - action: 'link:Dark Corridor'
   - assert:
       passage: Dark Corridor
       actions:
@@ -59,7 +59,7 @@ steps:
           target: Secret Room
 
   # Enter Secret Room
-  - action: "link:Secret Room"
+  - action: 'link:Secret Room'
   - assert:
       passage: Secret Room
       actions:
@@ -69,6 +69,6 @@ steps:
           target: Dark Corridor
 
   # Touch the orb -> Ending
-  - action: "link:Ending"
+  - action: 'link:Ending'
   - assert:
       passage: Ending

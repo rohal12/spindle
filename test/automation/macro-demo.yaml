@@ -1,11 +1,11 @@
-name: "Macro demo: buttons and counter"
+name: 'Macro demo: buttons and counter'
 steps:
   # Start
   - assert:
       passage: Start
 
   # Navigate to Macro Demo
-  - action: "link:Macro Demo"
+  - action: 'link:Macro Demo'
   - assert:
       passage: Macro Demo
       variables:
@@ -20,14 +20,14 @@ steps:
           target: Start
 
   # Increment the counter using the +1 button
-  - action: "button:$count = $count + 1"
+  - action: 'button:$count = $count + 1'
   - assert:
       passage: Macro Demo
       variables:
         count: 1
 
   # Increment again
-  - action: "button:$count = $count + 1"
+  - action: 'button:$count = $count + 1'
   - assert:
       variables:
         count: 2

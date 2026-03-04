@@ -1,4 +1,4 @@
-name: "Basic walkthrough: music path to ending"
+name: 'Basic walkthrough: music path to ending'
 steps:
   # Verify starting state
   - assert:
@@ -23,7 +23,7 @@ steps:
           target: Character Generation
 
   # Navigate Start -> Hallway
-  - action: "link:Hallway"
+  - action: 'link:Hallway'
   - assert:
       passage: Hallway
       variables:
@@ -37,7 +37,7 @@ steps:
           target: Start
 
   # Hallway -> Music Room
-  - action: "link:Music Room"
+  - action: 'link:Music Room'
   - assert:
       passage: Music Room
       variables:
@@ -49,7 +49,7 @@ steps:
           target: Hallway
 
   # Music Room -> Piano
-  - action: "link:Piano"
+  - action: 'link:Piano'
   - assert:
       passage: Piano
       actions:
@@ -59,7 +59,7 @@ steps:
           target: Music Room
 
   # Piano -> Ending
-  - action: "link:Ending"
+  - action: 'link:Ending'
   - assert:
       passage: Ending
       actions:

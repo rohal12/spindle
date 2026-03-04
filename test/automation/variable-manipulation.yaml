@@ -1,4 +1,4 @@
-name: "Variable manipulation via Story API"
+name: 'Variable manipulation via Story API'
 steps:
   - assert:
       passage: Start
@@ -16,7 +16,7 @@ steps:
         visited_rooms: 5
 
   # Navigate to Room — conditional links should reflect state
-  - action: "link:Room"
+  - action: 'link:Room'
   - assert:
       passage: Room
       # With has_key=true and has_note=true, the "Take the key" and
