@@ -1,8 +1,5 @@
 import { micromark } from 'micromark';
-import {
-  gfmTable,
-  gfmTableHtml,
-} from 'micromark-extension-gfm-table';
+import { gfmTable, gfmTableHtml } from 'micromark-extension-gfm-table';
 import {
   gfmStrikethrough,
   gfmStrikethroughHtml,

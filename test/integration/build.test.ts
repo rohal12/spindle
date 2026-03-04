@@ -52,7 +52,7 @@ describe('build output: dist/format.js', () => {
   it('source is valid HTML (has DOCTYPE, head, body)', () => {
     parsed ??= JSON.parse(jsonStr);
     const source = parsed.source as string;
-    expect(source).toContain('<!DOCTYPE html>');
+    expect(source.toLowerCase()).toContain('<!doctype html>');
     expect(source).toContain('<head>');
     expect(source).toContain('<body>');
   });

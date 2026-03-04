@@ -89,11 +89,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
     if (stack.length === 0) return root;
     const top = stack[stack.length - 1].node;
     // For if-blocks, append to the last branch's children
-    if (
-      top.type === 'macro' &&
-      top.branches &&
-      top.branches.length > 0
-    ) {
+    if (top.type === 'macro' && top.branches && top.branches.length > 0) {
       return top.branches[top.branches.length - 1].children;
     }
     return top.children;
@@ -204,7 +200,8 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         // Handle branch macros (elseif/else, case/default, next)
         if (BRANCH_PARENT[token.name]) {
           const expectedParent = BRANCH_PARENT[token.name];
-          const topNode = stack.length > 0 ? stack[stack.length - 1].node : null;
+          const topNode =
+            stack.length > 0 ? stack[stack.length - 1].node : null;
           if (
             !topNode ||
             topNode.type !== 'macro' ||

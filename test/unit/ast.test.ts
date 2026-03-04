@@ -275,7 +275,9 @@ describe('buildAST', () => {
     });
 
     it('nests option children inside listbox block', () => {
-      const ast = parse('{listbox "$color"}{option Red}{option Green}{/listbox}');
+      const ast = parse(
+        '{listbox "$color"}{option Red}{option Green}{/listbox}',
+      );
       const node = ast[0] as MacroNode;
       expect(node.name).toBe('listbox');
       expect(node.rawArgs).toBe('"$color"');
@@ -365,7 +367,9 @@ describe('buildAST', () => {
     });
 
     it('passes className to case branches', () => {
-      const ast = parse('{switch $x}{.red case 1}one{.blue default}other{/switch}');
+      const ast = parse(
+        '{switch $x}{.red case 1}one{.blue default}other{/switch}',
+      );
       const node = ast[0] as MacroNode;
       expect(node.branches![1].className).toBe('red');
       expect(node.branches![2].className).toBe('blue');
@@ -553,15 +557,11 @@ describe('buildAST', () => {
       expect(() => parse('{switch $x}{case 1}one')).toThrow(
         'Unclosed {switch} macro',
       );
-      expect(() => parse('{timed 1s}hello')).toThrow(
-        'Unclosed {timed} macro',
-      );
+      expect(() => parse('{timed 1s}hello')).toThrow('Unclosed {timed} macro');
       expect(() => parse('{repeat 1s}hello')).toThrow(
         'Unclosed {repeat} macro',
       );
-      expect(() => parse('{type 50ms}hello')).toThrow(
-        'Unclosed {type} macro',
-      );
+      expect(() => parse('{type 50ms}hello')).toThrow('Unclosed {type} macro');
       expect(() => parse('{widget "foo"}hello')).toThrow(
         'Unclosed {widget} macro',
       );

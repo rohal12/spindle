@@ -93,11 +93,7 @@ function boot() {
       const widgetTokens = tokenize(passage.content);
       const widgetAST = buildAST(widgetTokens);
       for (const node of widgetAST) {
-        if (
-          node.type === 'macro' &&
-          node.name === 'widget' &&
-          node.rawArgs
-        ) {
+        if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
           const widgetName = node.rawArgs.trim().replace(/["']/g, '');
           registerWidget(widgetName, node.children as ASTNode[]);
         }

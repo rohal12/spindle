@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
+import { deepClone } from '../../class-registry';
 
 interface SetProps {
   rawArgs: string;
@@ -9,8 +10,8 @@ interface SetProps {
 export function Set({ rawArgs }: SetProps) {
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
-    const vars = structuredClone(state.variables);
-    const temps = structuredClone(state.temporary);
+    const vars = deepClone(state.variables);
+    const temps = deepClone(state.temporary);
 
     try {
       execute(rawArgs, vars, temps);

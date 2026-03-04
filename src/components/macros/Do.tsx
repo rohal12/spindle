@@ -2,6 +2,7 @@ import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
+import { deepClone } from '../../class-registry';
 
 interface DoProps {
   children: ASTNode[];
@@ -19,8 +20,8 @@ export function Do({ children }: DoProps) {
 
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
-    const vars = { ...state.variables };
-    const temps = { ...state.temporary };
+    const vars = deepClone(state.variables);
+    const temps = deepClone(state.temporary);
 
     try {
       execute(code, vars, temps);

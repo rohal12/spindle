@@ -62,9 +62,7 @@ describe('renderNodes', () => {
   });
 
   it('double newline between links creates separate paragraphs', () => {
-    const el = renderMarkup(
-      '[[Go|Start]]\n\n[[Look|Room]]\n\n[[Test|Start]]',
-    );
+    const el = renderMarkup('[[Go|Start]]\n\n[[Look|Room]]\n\n[[Test|Start]]');
     // Each link should be in its own <p> due to blank lines
     const paragraphs = el.querySelectorAll('p');
     expect(paragraphs.length).toBeGreaterThanOrEqual(3);
@@ -332,9 +330,7 @@ describe('renderNodes', () => {
     });
 
     it('renders GFM tables', () => {
-      const el = renderMarkup(
-        '| Name | Value |\n| --- | --- |\n| HP | 100 |',
-      );
+      const el = renderMarkup('| Name | Value |\n| --- | --- |\n| HP | 100 |');
       const table = el.querySelector('table');
       expect(table).not.toBeNull();
       const th = table!.querySelectorAll('th');

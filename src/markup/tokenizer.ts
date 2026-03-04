@@ -46,16 +46,74 @@ export interface HtmlToken {
   end: number;
 }
 
-export type Token = TextToken | LinkToken | MacroToken | VariableToken | HtmlToken;
+export type Token =
+  | TextToken
+  | LinkToken
+  | MacroToken
+  | VariableToken
+  | HtmlToken;
 
 const HTML_TAGS = new Set([
-  'a', 'article', 'aside', 'b', 'blockquote', 'br', 'caption', 'code',
-  'col', 'colgroup', 'dd', 'del', 'details', 'dfn', 'div', 'dl', 'dt',
-  'em', 'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5',
-  'h6', 'header', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'main', 'mark',
-  'nav', 'ol', 'p', 'pre', 'q', 's', 'samp', 'section', 'small', 'span',
-  'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th',
-  'thead', 'tr', 'u', 'ul', 'wbr',
+  'a',
+  'article',
+  'aside',
+  'b',
+  'blockquote',
+  'br',
+  'caption',
+  'code',
+  'col',
+  'colgroup',
+  'dd',
+  'del',
+  'details',
+  'dfn',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'figcaption',
+  'figure',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hr',
+  'i',
+  'img',
+  'ins',
+  'kbd',
+  'li',
+  'main',
+  'mark',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'q',
+  's',
+  'samp',
+  'section',
+  'small',
+  'span',
+  'strong',
+  'sub',
+  'summary',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'u',
+  'ul',
+  'wbr',
 ]);
 
 const HTML_VOID_TAGS = new Set(['br', 'col', 'hr', 'img', 'wbr']);

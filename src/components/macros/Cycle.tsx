@@ -33,7 +33,7 @@ export function Cycle({ rawArgs, children, className, id }: CycleProps) {
       class={cls}
       onClick={handleClick}
     >
-      {value == null ? (options[0] || '') : String(value)}
+      {value == null ? options[0] || '' : String(value)}
     </button>
   );
 }

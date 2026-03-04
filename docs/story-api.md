@@ -59,6 +59,29 @@ Load the quick save.
 
 Returns `true` if a quick save exists for the current session.
 
+### `Story.registerClass(name, constructor)`
+
+Register a class so its instances can be cloned, saved, and restored with their prototype intact.
+
+| Parameter     | Type       | Description                                   |
+| ------------- | ---------- | --------------------------------------------- |
+| `name`        | `string`   | Unique name for the class (used in save data) |
+| `constructor` | `Function` | The class constructor                         |
+
+```
+{do
+  class Player {
+    constructor(data) { Object.assign(this, data); }
+    damage(amount) { this.hp = Math.max(0, this.hp - amount); }
+    get isDead() { return this.hp <= 0; }
+  }
+  Story.registerClass('Player', Player);
+  $player = new Player($player);
+}
+```
+
+See [Using Classes](variables.md#using-classes) for full details.
+
 ## Passage Tracking
 
 Spindle tracks how many times each passage has been **visited** (navigated to) and **rendered** (visited or included). Back/forward navigation does not increment counts — only new visits and `{include}` calls do.

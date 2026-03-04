@@ -4,6 +4,7 @@ import { buildAST } from './markup/ast';
 import { execute } from './expression';
 import type { ASTNode } from './markup/ast';
 import { setSaveTitlePassage } from './saves/save-manager';
+import { deepClone } from './class-registry';
 
 /**
  * Walk AST nodes from StoryInit and execute {set} and {do} imperatively
@@ -42,8 +43,8 @@ export function executeStoryInit() {
   const tokens = tokenize(storyInit.content);
   const ast = buildAST(tokens);
 
-  const vars = { ...state.variables };
-  const temps = { ...state.temporary };
+  const vars = deepClone(state.variables);
+  const temps = deepClone(state.temporary);
 
   walkAndExecute(ast, vars, temps);
 

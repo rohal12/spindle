@@ -25,9 +25,7 @@ export function Listbox({ rawArgs, children, className, id }: ListboxProps) {
       id={id}
       class={cls}
       value={value == null ? '' : String(value)}
-      onChange={(e) =>
-        setVariable(name, (e.target as HTMLSelectElement).value)
-      }
+      onChange={(e) => setVariable(name, (e.target as HTMLSelectElement).value)}
     >
       {options.map((opt) => (
         <option

@@ -23,9 +23,7 @@ describe('extractOptions', () => {
   });
 
   it('returns empty array when no options', () => {
-    const children: ASTNode[] = [
-      { type: 'text', value: 'no options here' },
-    ];
+    const children: ASTNode[] = [{ type: 'text', value: 'no options here' }];
     expect(extractOptions(children)).toEqual([]);
   });
 

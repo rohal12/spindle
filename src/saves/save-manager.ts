@@ -15,6 +15,7 @@ import {
   getMeta,
   setMeta,
 } from './idb';
+import { deepClone, serialize, deserialize } from '../class-registry';
 
 type TitleGenerator = (payload: SavePayload) => string;
 
@@ -118,7 +119,13 @@ export async function createSave(
     custom,
   };
 
-  const record: SaveRecord = { meta, payload: structuredClone(payload) };
+  const serializedPayload = deepClone(payload);
+  serializedPayload.variables = serialize(serializedPayload.variables);
+  serializedPayload.history = serializedPayload.history.map((m) => ({
+    ...m,
+    variables: serialize(m.variables),
+  }));
+  const record: SaveRecord = { meta, payload: serializedPayload };
   await putSave(record);
   return record;
 }
@@ -132,7 +139,13 @@ export async function overwriteSave(
 
   existing.meta.updatedAt = new Date().toISOString();
   existing.meta.passage = payload.passage;
-  existing.payload = structuredClone(payload);
+  const serializedPayload = deepClone(payload);
+  serializedPayload.variables = serialize(serializedPayload.variables);
+  serializedPayload.history = serializedPayload.history.map((m) => ({
+    ...m,
+    variables: serialize(m.variables),
+  }));
+  existing.payload = serializedPayload;
   await putSave(existing);
   return existing;
 }
@@ -141,7 +154,14 @@ export async function loadSave(
   saveId: string,
 ): Promise<SavePayload | undefined> {
   const record = await getSave(saveId);
-  return record?.payload;
+  if (!record) return undefined;
+  const payload = record.payload;
+  payload.variables = deserialize(payload.variables);
+  payload.history = payload.history.map((m) => ({
+    ...m,
+    variables: deserialize(m.variables),
+  }));
+  return payload;
 }
 
 export async function deleteSaveById(saveId: string): Promise<void> {
@@ -294,7 +314,7 @@ export async function importSave(
   }
 
   // Re-assign a new ID to avoid collisions
-  const record = structuredClone(data.save);
+  const record = deepClone(data.save);
   record.meta.id = crypto.randomUUID();
   record.meta.updatedAt = new Date().toISOString();
 
