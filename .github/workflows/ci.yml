@@ -52,3 +52,25 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build and compile story
+        run: bun run preview
+
+      - name: Run e2e tests
+        run: bun run test:e2e
