@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -34,3 +34,30 @@ mkdirSync(outputDir, { recursive: true });
 writeFileSync(resolve(outputDir, 'format.js'), output, 'utf-8');
 
 console.log(`Built dist/format.js (${(output.length / 1024).toFixed(1)} KB)`);
+
+// Build the npm package structure in dist/pkg/
+const pkgDir = resolve(outputDir, 'pkg');
+mkdirSync(pkgDir, { recursive: true });
+
+// Copy format.js into pkg/
+copyFileSync(resolve(outputDir, 'format.js'), resolve(pkgDir, 'format.js'));
+
+// Copy the ESM wrapper
+copyFileSync(
+  resolve(projectRoot, 'pkg/index.js'),
+  resolve(pkgDir, 'index.js'),
+);
+
+// Copy type declarations
+const pkgTypesDir = resolve(pkgDir, 'types');
+mkdirSync(pkgTypesDir, { recursive: true });
+copyFileSync(
+  resolve(projectRoot, 'pkg/types/index.d.ts'),
+  resolve(pkgTypesDir, 'index.d.ts'),
+);
+copyFileSync(
+  resolve(projectRoot, 'pkg/types/globals.d.ts'),
+  resolve(pkgTypesDir, 'globals.d.ts'),
+);
+
+console.log('Built dist/pkg/ (npm package)');

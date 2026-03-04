@@ -1,9 +1,9 @@
 {
-  "name": "react-twine",
+  "name": "spindle",
   "version": "0.1.0",
-  "author": "Clemens",
+  "author": "Rohal12",
   "description": "A Preact-based story format for Twine 2.",
   "image": "",
   "url": "",
-  "license": "MIT"
+  "license": "Unlicense"
 }

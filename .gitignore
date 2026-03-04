@@ -3,3 +3,5 @@ dist/
 bun.lockb
 *.log
 .tweenode/
+docs/.vitepress/dist/
+docs/.vitepress/cache/

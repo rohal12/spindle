@@ -1,0 +1,71 @@
+# Widgets
+
+Widgets are reusable content blocks defined in your story and invoked by name.
+
+## Defining a Widget
+
+Use the `{widget}` macro to define a widget. The first argument is the widget's name (quoted string):
+
+```
+:: StoryInit
+{widget "StatusBar"}
+  Health: {$health} | Mana: {$mana}
+{/widget}
+
+{widget "Separator"}
+  <hr>
+{/widget}
+```
+
+Widgets are typically defined in `StoryInit` so they are available from the start. They can also be defined in any passage, but they must be defined before they are used.
+
+## Using a Widget
+
+Invoke a widget by using its name as a macro:
+
+```
+{StatusBar}
+
+Some passage content...
+
+{Separator}
+
+More content.
+```
+
+Widget names are case-insensitive: `{statusbar}`, `{StatusBar}`, and `{STATUSBAR}` all work.
+
+## How Widgets Work
+
+When you define a widget, its body is stored as an AST (parsed content). When you invoke it, that AST is rendered in place. This means:
+
+- Widgets see the current values of all variables at the time they are rendered
+- Widgets re-render when variables they reference change
+- Widgets can contain any markup: links, macros, HTML, other widgets
+
+## Example
+
+```
+:: StoryInit
+{widget "HealthBar"}
+  {if $health > 50}
+    {.green print $health}
+  {elseif $health > 0}
+    {.yellow print $health}
+  {else}
+    {.red print "DEAD"}
+  {/if}
+{/widget}
+
+:: Start
+HP: {HealthBar}
+
+You stand at the entrance to the dungeon.
+[[Enter the dungeon|Dungeon]]
+
+:: Dungeon
+HP: {HealthBar}
+
+{set $health = $health - 20}
+A trap! You take damage.
+```
