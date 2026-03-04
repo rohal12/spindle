@@ -2,6 +2,12 @@ node_modules/
 dist/
 bun.lockb
 *.log
-.tweenode/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+.agents/
+.claude/
+.vscode/
+PLAN.md
+TODO
+skills-lock.json
+menubar-default.png

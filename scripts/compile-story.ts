@@ -1,5 +1,5 @@
 /**
- * Full production pipeline: use tweenode to compile dev/story.twee
+ * Full production pipeline: use twee-ts to compile dev/story.twee
  * with the built format.js into dist/story.html.
  *
  * Requires dist/format.js to exist (run `bun run build` first).
@@ -7,7 +7,7 @@
 import { resolve, dirname } from 'path';
 import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { fileURLToPath } from 'url';
-import { setupTweego, tweenode } from 'tweenode';
+import { compileToFile } from '@rohal12/twee-ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -18,41 +18,21 @@ if (!existsSync(formatJsPath)) {
   process.exit(1);
 }
 
-// 1. Ensure tweego binary is available
-console.log('Setting up tweego via tweenode...');
-await setupTweego({
-  storyFormats: {
-    cleanTweegoBuiltins: true,
-    formats: [],
-  },
-});
-console.log('Tweego ready.');
+// Install format.js where twee-ts can discover it
+const formatsDir = resolve(projectRoot, 'dist/storyformats/spindle');
+mkdirSync(formatsDir, { recursive: true });
+copyFileSync(formatJsPath, resolve(formatsDir, 'format.js'));
 
-// 2. Copy our format.js into tweenode's storyformats directory
-const tweenodeFormatsDir = resolve(
-  process.cwd(),
-  '.tweenode/storyformats/spindle',
-);
-mkdirSync(tweenodeFormatsDir, { recursive: true });
-copyFileSync(formatJsPath, resolve(tweenodeFormatsDir, 'format.js'));
-console.log(`Installed format.js to ${tweenodeFormatsDir}`);
-
-// 3. Compile the story
 const outputPath = resolve(projectRoot, 'dist/story.html');
-console.log('Compiling dev/story.twee...');
+console.log('Compiling dev/story.twee with twee-ts...');
 
-const tweego = await tweenode({
-  build: {
-    input: {
-      storyDir: resolve(projectRoot, 'dev/story.twee'),
-      styles: resolve(projectRoot, 'dev/story.css'),
-    },
-    output: {
-      mode: 'file',
-      fileName: outputPath,
-    },
-  },
+await compileToFile({
+  sources: [
+    resolve(projectRoot, 'dev/story.twee'),
+    resolve(projectRoot, 'dev/story.css'),
+  ],
+  outFile: outputPath,
+  formatPaths: [resolve(projectRoot, 'dist/storyformats')],
 });
 
-await tweego.process();
 console.log(`Compiled: ${outputPath}`);

@@ -1,25 +1,45 @@
 ---
 layout: home
+
 hero:
   name: Spindle
-  text: A Preact-based story format for Twine 2
+  text: A Preact-based Story Format for Twine 2
   tagline: Variables, macros, saves, settings, widgets, and full CommonMark markdown.
   actions:
     - theme: brand
       text: Get Started
       link: /markup
     - theme: alt
-      text: npm Package
-      link: /story-format-packages
+      text: Macro Reference
+      link: /macros
+    - theme: alt
+      text: GitHub
+      link: https://github.com/rohal12/spindle
+
+features:
+  - title: Full CommonMark Markdown
+    details: Write passages with standard markdown — headings, bold, italic, lists, code blocks, and more.
+  - title: Rich Macro System
+    details: Control flow, UI inputs, timed content, cycling links, meters, and passage navigation out of the box.
+  - title: Save & Load
+    details: Quick save/load, named save slots, playthroughs, and import/export — all built in.
+  - title: Customizable Settings
+    details: Define toggle, list, and range settings that persist across sessions automatically.
+  - title: Story API
+    details: Access the window.Story JavaScript API for render tracking, passage navigation, and variable management.
+  - title: Widgets
+    details: Define reusable content blocks with parameters and use them across passages like custom macros.
 ---
 
-## Documentation
+## Quick Example
 
-- [Markup](markup.md) — Links, variables, macros, CSS selectors, HTML, and markdown
-- [Macros](macros.md) — Complete macro reference grouped by category
-- [Variables](variables.md) — Story and temporary variables, expressions, dot notation
-- [Special Passages](special-passages.md) — StoryInit, StoryVariables, StoryInterface, SaveTitle
-- [Saves](saves.md) — Quick save/load, save dialog, playthroughs, export/import
-- [Settings](settings.md) — Toggle, list, and range settings defined in StoryInit
-- [Story API](story-api.md) — The `window.Story` JavaScript API
-- [Widgets](widgets.md) — Defining and using reusable content blocks
+A simple passage with a variable and a link:
+
+```
+:: Start
+$name = "World"
+
+Hello, {$name}! This is a **Spindle** story.
+
+[[Continue|Next Passage]]
+```
