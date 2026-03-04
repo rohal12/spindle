@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface ForwardProps {
   className?: string;
@@ -11,6 +12,15 @@ export function Forward({ className, id }: ForwardProps) {
     (s) => s.historyIndex < s.history.length - 1,
   );
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
+
+  useAction({
+    type: 'forward',
+    key: 'forward',
+    authorId: id,
+    label: 'Forward',
+    disabled: !canGoForward,
+    perform: () => goForward(),
+  });
 
   return (
     <button

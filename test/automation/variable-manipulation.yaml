@@ -1,0 +1,26 @@
+name: "Variable manipulation via Story API"
+steps:
+  - assert:
+      passage: Start
+
+  # Set variables directly and verify
+  - set:
+      has_key: true
+      has_note: true
+      visited_rooms: 5
+
+  - assert:
+      variables:
+        has_key: true
+        has_note: true
+        visited_rooms: 5
+
+  # Navigate to Room — conditional links should reflect state
+  - action: "link:Room"
+  - assert:
+      passage: Room
+      # With has_key=true and has_note=true, the "Take the key" and
+      # "Read the note" links should NOT appear (hidden by {if})
+      actions:
+        - type: link
+          target: Hallway

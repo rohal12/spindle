@@ -3,6 +3,7 @@ import { App } from './components/App';
 import { parseStoryData } from './parser';
 import { useStoryStore } from './store';
 import { installStoryAPI } from './story-api';
+import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
 import {
   parseStoryVariables,
@@ -100,6 +101,15 @@ function boot() {
       }
     }
   }
+
+  // Reset action ID counters on passage change
+  let prevPassage = '';
+  useStoryStore.subscribe((state) => {
+    if (state.currentPassage !== prevPassage) {
+      prevPassage = state.currentPassage;
+      resetIdCounters();
+    }
+  });
 
   const root = document.getElementById('root');
   if (!root) {

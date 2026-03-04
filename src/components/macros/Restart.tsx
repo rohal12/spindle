@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface RestartProps {
   className?: string;
@@ -14,6 +15,14 @@ export function Restart({ className, id }: RestartProps) {
       restart();
     }
   };
+
+  useAction({
+    type: 'restart',
+    key: 'restart',
+    authorId: id,
+    label: 'Restart',
+    perform: () => restart(),
+  });
 
   return (
     <button

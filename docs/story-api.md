@@ -130,6 +130,107 @@ Returns `true` if **any** of the named passages have been rendered at least once
 
 Returns `true` if **all** of the named passages have been rendered at least once.
 
+## Actions
+
+Interactive components (links, buttons, inputs, menubar buttons) automatically register themselves as **actions** — discoverable, programmatically executable units. This enables automated testing, AI agent integration, and story coverage analysis without DOM interaction.
+
+### `Story.passage`
+
+The current passage name (read-only).
+
+```js
+console.log(Story.passage); // "Start"
+```
+
+### `Story.getActions()`
+
+Returns an array of all currently registered actions.
+
+```js
+var actions = Story.getActions();
+actions.forEach(function(a) {
+  console.log(a.id, a.type, a.label);
+});
+```
+
+Each action object has these properties:
+
+| Property   | Type       | Description                                  |
+| ---------- | ---------- | -------------------------------------------- |
+| `id`       | `string`   | Unique identifier (e.g. `link:Forest`)       |
+| `type`     | `string`   | Action type (see below)                      |
+| `label`    | `string`   | Display text                                 |
+| `target`   | `string?`  | Destination passage (links only)             |
+| `variable` | `string?`  | Bound variable name (inputs only)            |
+| `options`  | `string[]?`| Available options (cycle/listbox)             |
+| `value`    | `unknown?` | Current value (inputs)                        |
+| `disabled` | `boolean?` | Whether the action is currently disabled      |
+
+Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`.
+
+#### Action IDs
+
+IDs are generated automatically from the action type and a content-based key:
+
+- Links: `link:PassageName`
+- Buttons: `button:$count = $count + 1`
+- Inputs: `textbox:$name`, `cycle:$weapon`
+- Menubar: `back:back`, `forward:forward`, `restart:restart`, `save:quicksave`, `load:quickload`
+
+When multiple actions share the same base ID (e.g. two links to the same passage), a suffix is added: `link:Forest`, `link:Forest:2`, `link:Forest:3`.
+
+Authors can override the generated ID using the `#id` syntax: `[[#my-link Go|Forest]]`.
+
+### `Story.performAction(id, value?)`
+
+Execute an action by its ID. Throws if the action is not found or is disabled.
+
+```js
+Story.performAction("link:Forest");           // click a link
+Story.performAction("textbox:$name", "Alice"); // fill a textbox
+Story.performAction("cycle:$weapon");          // cycle to next option
+```
+
+When called via `performAction`, `{restart}` and `{quickload}` skip their confirmation dialogs.
+
+### `Story.on(event, callback)`
+
+Subscribe to story events. Returns an unsubscribe function.
+
+```js
+// Navigation events
+var unsub = Story.on("navigate", function(to, from) {
+  console.log("Navigated from " + from + " to " + to);
+});
+
+// Action registry changes (components mount/unmount)
+Story.on("actionsChanged", function() {
+  console.log("Actions:", Story.getActions().length);
+});
+
+// Variable changes
+Story.on("variableChanged", function(changed) {
+  // changed = { health: { from: 100, to: 90 }, ... }
+  for (var key in changed) {
+    console.log(key + ": " + changed[key].from + " → " + changed[key].to);
+  }
+});
+
+// Later: stop listening
+unsub();
+```
+
+### `Story.waitForActions()`
+
+Returns a `Promise` that resolves with the current actions after the UI has settled (2 animation frames). Useful in scripts that navigate and then need to inspect the new passage's actions.
+
+```js
+Story.goto("Forest");
+Story.waitForActions().then(function(actions) {
+  console.log("Forest has " + actions.length + " actions");
+});
+```
+
 ## Properties
 
 ### `Story.title`

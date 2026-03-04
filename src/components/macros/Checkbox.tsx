@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface CheckboxProps {
   rawArgs: string;
@@ -22,6 +23,16 @@ export function Checkbox({ rawArgs, className, id }: CheckboxProps) {
 
   const value = useStoryStore((s) => s.variables[name]);
   const setVariable = useStoryStore((s) => s.setVariable);
+
+  useAction({
+    type: 'checkbox',
+    key: `$${name}`,
+    authorId: id,
+    label: label || name,
+    variable: name,
+    value: !!value,
+    perform: (v) => setVariable(name, v !== undefined ? !!v : !value),
+  });
 
   const cls = className ? `macro-checkbox ${className}` : 'macro-checkbox';
 

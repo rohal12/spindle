@@ -1,4 +1,5 @@
 import { useStoryStore } from '../store';
+import { useAction } from '../hooks/use-action';
 
 interface PassageLinkProps {
   target: string;
@@ -19,6 +20,15 @@ export function PassageLink({
     e.preventDefault();
     navigate(target);
   };
+
+  useAction({
+    type: 'link',
+    key: target,
+    authorId: id,
+    label: typeof children === 'string' ? children : target,
+    target,
+    perform: () => navigate(target),
+  });
 
   const cls = className ? `passage-link ${className}` : 'passage-link';
 

@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useAction } from '../../hooks/use-action';
 
 interface QuickLoadProps {
   className?: string;
@@ -18,6 +19,15 @@ export function QuickLoad({ className, id }: QuickLoadProps) {
       load();
     }
   };
+
+  useAction({
+    type: 'load',
+    key: 'quickload',
+    authorId: id,
+    label: 'QuickLoad',
+    disabled,
+    perform: () => load(),
+  });
 
   return (
     <button

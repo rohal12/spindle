@@ -1,5 +1,6 @@
 import { useStoryStore } from '../../store';
 import { extractOptions } from './option-utils';
+import { useAction } from '../../hooks/use-action';
 import type { ASTNode } from '../../markup/ast';
 
 interface CycleProps {
@@ -24,6 +25,23 @@ export function Cycle({ rawArgs, children, className, id }: CycleProps) {
     const nextIndex = (currentIndex + 1) % options.length;
     setVariable(name, options[nextIndex]);
   };
+
+  useAction({
+    type: 'cycle',
+    key: `$${name}`,
+    authorId: id,
+    label: value == null ? options[0] || '' : String(value),
+    variable: name,
+    options,
+    value,
+    perform: (v) => {
+      if (v !== undefined) {
+        setVariable(name, v);
+      } else {
+        handleClick();
+      }
+    },
+  });
 
   const cls = className ? `macro-cycle ${className}` : 'macro-cycle';
 

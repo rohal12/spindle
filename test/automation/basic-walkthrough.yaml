@@ -1,0 +1,67 @@
+name: "Basic walkthrough: music path to ending"
+steps:
+  # Verify starting state
+  - assert:
+      passage: Start
+      variables:
+        visited_rooms: 0
+        has_key: false
+        has_note: false
+
+  # Verify link actions are available on Start
+  - assert:
+      actions:
+        - type: link
+          target: Hallway
+        - type: link
+          target: Room
+        - type: link
+          target: Macro Demo
+        - type: link
+          target: Markdown Demo
+        - type: link
+          target: Character Generation
+
+  # Navigate Start -> Hallway
+  - action: "link:Hallway"
+  - assert:
+      passage: Hallway
+      variables:
+        visited_rooms: 1
+      actions:
+        - type: link
+          target: Music Room
+        - type: link
+          target: Dark Corridor
+        - type: link
+          target: Start
+
+  # Hallway -> Music Room
+  - action: "link:Music Room"
+  - assert:
+      passage: Music Room
+      variables:
+        visited_rooms: 2
+      actions:
+        - type: link
+          target: Piano
+        - type: link
+          target: Hallway
+
+  # Music Room -> Piano
+  - action: "link:Piano"
+  - assert:
+      passage: Piano
+      actions:
+        - type: link
+          target: Ending
+        - type: link
+          target: Music Room
+
+  # Piano -> Ending
+  - action: "link:Ending"
+  - assert:
+      passage: Ending
+      actions:
+        - type: link
+          target: Start

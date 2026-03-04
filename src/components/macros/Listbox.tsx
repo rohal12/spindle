@@ -1,5 +1,6 @@
 import { useStoryStore } from '../../store';
 import { extractOptions } from './option-utils';
+import { useAction } from '../../hooks/use-action';
 import type { ASTNode } from '../../markup/ast';
 
 interface ListboxProps {
@@ -17,6 +18,19 @@ export function Listbox({ rawArgs, children, className, id }: ListboxProps) {
   const setVariable = useStoryStore((s) => s.setVariable);
 
   const options = extractOptions(children);
+
+  useAction({
+    type: 'listbox',
+    key: `$${name}`,
+    authorId: id,
+    label: name,
+    variable: name,
+    options,
+    value,
+    perform: (v) => {
+      if (v !== undefined) setVariable(name, String(v));
+    },
+  });
 
   const cls = className ? `macro-listbox ${className}` : 'macro-listbox';
 
