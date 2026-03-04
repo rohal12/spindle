@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'Spindle',
   description: 'A Preact-based story format for Twine 2.',
   base: '/spindle/',
+  appearance: 'dark',
 
   head: [
     ['meta', { name: 'theme-color', content: '#6366f1' }],
