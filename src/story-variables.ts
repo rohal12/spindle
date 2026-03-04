@@ -114,7 +114,9 @@ function validateRef(
     }
     const fieldSchema = current.fields.get(parts[i]);
     if (!fieldSchema) {
-      return `Undeclared field: $${parts.slice(0, i + 1).join('.')}`;
+      // Unknown fields on objects are allowed — classes registered via
+      // Story.registerClass() can add methods/getters not in the defaults.
+      return null;
     }
     current = fieldSchema;
   }

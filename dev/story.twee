@@ -122,7 +122,7 @@ A grand piano sits in the center of a circular room. The music you heard was com
 
 :: Dark Corridor [dark]
 {set $visited_rooms = $visited_rooms + 1}
-{do $player.damage(10)}
+{do}$player.damage(10){/do}
 The corridor grows darker with each step. Your footsteps echo off unseen walls. You stumble and hurt yourself.
 
 Health: {$player.hp}/{$player.maxHp} — {$player.healthStatus}
