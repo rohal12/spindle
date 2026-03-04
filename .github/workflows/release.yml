@@ -24,11 +24,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Run tests
-        run: bun run test
-
       - name: Build
         run: bun run build
+
+      - name: Run tests
+        run: bun run test
 
       - name: Release to npm
         uses: tobua/release-npm-action@v3
