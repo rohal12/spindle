@@ -1,6 +1,7 @@
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import { renderInlineNodes } from '../../markup/render';
+import { deepClone } from '../../class-registry';
 import type { ASTNode } from '../../markup/ast';
 
 interface ButtonProps {
@@ -13,8 +14,8 @@ interface ButtonProps {
 export function Button({ rawArgs, children, className, id }: ButtonProps) {
   const handleClick = () => {
     const state = useStoryStore.getState();
-    const vars = structuredClone(state.variables);
-    const temps = structuredClone(state.temporary);
+    const vars = deepClone(state.variables);
+    const temps = deepClone(state.temporary);
 
     try {
       execute(rawArgs, vars, temps);

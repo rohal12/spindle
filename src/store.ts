@@ -10,6 +10,7 @@ import {
   quickSave,
   loadQuickSave,
 } from './saves/save-manager';
+import { deepClone, deserialize } from './class-registry';
 
 export interface HistoryMoment {
   passage: string;
@@ -75,7 +76,7 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
-      const initialVars = structuredClone(variableDefaults);
+      const initialVars = deepClone(variableDefaults);
 
       set((state) => {
         state.storyData = storyData as StoryData;
@@ -86,7 +87,7 @@ export const useStoryStore = create<StoryState>()(
         state.history = [
           {
             passage: startPassage.name,
-            variables: structuredClone(initialVars),
+            variables: deepClone(initialVars),
             timestamp: Date.now(),
           },
         ];
@@ -130,7 +131,7 @@ export const useStoryStore = create<StoryState>()(
 
         state.history.push({
           passage: passageName,
-          variables: { ...state.variables },
+          variables: deepClone(state.variables),
           timestamp: Date.now(),
         });
         state.historyIndex = state.history.length - 1;
@@ -147,7 +148,7 @@ export const useStoryStore = create<StoryState>()(
         state.historyIndex--;
         const moment = state.history[state.historyIndex];
         state.currentPassage = moment.passage;
-        state.variables = { ...moment.variables };
+        state.variables = deepClone(moment.variables);
         state.temporary = {};
       });
     },
@@ -158,7 +159,7 @@ export const useStoryStore = create<StoryState>()(
         state.historyIndex++;
         const moment = state.history[state.historyIndex];
         state.currentPassage = moment.passage;
-        state.variables = { ...moment.variables };
+        state.variables = deepClone(moment.variables);
         state.temporary = {};
       });
     },
@@ -201,7 +202,7 @@ export const useStoryStore = create<StoryState>()(
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) return;
 
-      const initialVars = structuredClone(variableDefaults);
+      const initialVars = deepClone(variableDefaults);
 
       set((state) => {
         state.currentPassage = startPassage.name;
@@ -210,7 +211,7 @@ export const useStoryStore = create<StoryState>()(
         state.history = [
           {
             passage: startPassage.name,
-            variables: structuredClone(initialVars),
+            variables: deepClone(initialVars),
             timestamp: Date.now(),
           },
         ];
@@ -244,8 +245,8 @@ export const useStoryStore = create<StoryState>()(
 
       const payload: SavePayload = {
         passage: currentPassage,
-        variables: structuredClone(variables),
-        history: structuredClone(history),
+        variables: deepClone(variables),
+        history: deepClone(history),
         historyIndex,
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
@@ -294,8 +295,8 @@ export const useStoryStore = create<StoryState>()(
       } = get();
       return {
         passage: currentPassage,
-        variables: structuredClone(variables),
-        history: structuredClone(history),
+        variables: deepClone(variables),
+        history: deepClone(history),
         historyIndex,
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
@@ -305,8 +306,11 @@ export const useStoryStore = create<StoryState>()(
     loadFromPayload: (payload: SavePayload) => {
       set((state) => {
         state.currentPassage = payload.passage;
-        state.variables = payload.variables;
-        state.history = payload.history;
+        state.variables = deserialize(payload.variables);
+        state.history = payload.history.map((m) => ({
+          ...m,
+          variables: deserialize(m.variables),
+        }));
         state.historyIndex = payload.historyIndex;
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};

@@ -7,9 +7,7 @@ interface NumberboxProps {
 }
 
 function parseArgs(rawArgs: string): { varName: string; placeholder: string } {
-  const match = rawArgs.match(
-    /^\s*(["']?\$\w+["']?)\s*(?:["'](.*)["'])?\s*$/,
-  );
+  const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s*(?:["'](.*)["'])?\s*$/);
   if (!match) {
     return { varName: rawArgs.trim(), placeholder: '' };
   }

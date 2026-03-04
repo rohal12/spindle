@@ -75,3 +75,11 @@ A save captures:
 - Passage visit and render counts
 
 Temporary variables (`_name`) are **not** saved — they reset on load.
+
+### Class Instances
+
+If you use [registered classes](variables.md#using-classes), their instances are automatically serialized when saving and restored when loading. Each instance is stored with a class name tag so Spindle knows which prototype to reattach.
+
+- On save, class instances are tagged as `{ __spindle_class__: "Name", __spindle_data__: { ... } }` in the stored data.
+- On load, tagged objects are restored with the correct prototype — methods and getters work immediately.
+- If a class is not registered when a save is loaded (e.g. the class was removed), Spindle logs a warning and falls back to a plain object with the saved data fields.

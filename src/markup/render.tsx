@@ -382,9 +382,7 @@ function renderMacro(node: MacroNode, key: number) {
       );
 
     case 'stop':
-      return (
-        <Stop key={key} />
-      );
+      return <Stop key={key} />;
 
     case 'type':
       return (
@@ -498,9 +496,7 @@ function renderSingleNode(
  * Used for inline containers (button labels, link text) where block-level
  * markdown (lists, headers) would misinterpret content like "-" or "+".
  */
-export function renderInlineNodes(
-  nodes: ASTNode[],
-): preact.ComponentChildren {
+export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   if (nodes.length === 0) return null;
   return nodes.map((node, i) => renderSingleNode(node, i));
 }

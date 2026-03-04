@@ -44,11 +44,7 @@ export function Type({ rawArgs, children, className, id }: TypeProps) {
 
   const done = visibleChars >= totalChars && totalChars > 0;
 
-  const cls = [
-    'macro-type',
-    done ? 'macro-type-done' : '',
-    className || '',
-  ]
+  const cls = ['macro-type', done ? 'macro-type-done' : '', className || '']
     .filter(Boolean)
     .join(' ');
 
@@ -58,10 +54,7 @@ export function Type({ rawArgs, children, className, id }: TypeProps) {
       class={cls}
       ref={containerRef}
       style={{
-        clipPath:
-          totalChars > 0 && !done
-            ? undefined
-            : undefined,
+        clipPath: totalChars > 0 && !done ? undefined : undefined,
       }}
     >
       <span

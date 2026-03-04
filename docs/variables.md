@@ -63,6 +63,47 @@ Set nested fields the same way:
 
 Validation checks nested field access against the schema declared in `StoryVariables`.
 
+## Using Classes
+
+For more complex game objects, you can use JavaScript classes with methods and getters. Define your class in `StoryInit`, register it with `Story.registerClass()`, and convert the plain-object default into an instance:
+
+```
+:: StoryVariables
+$player = { name: "Hero", hp: 100, maxHp: 100 }
+
+:: StoryInit
+{do
+  class Player {
+    constructor(data) { Object.assign(this, data); }
+    damage(amount) { this.hp = Math.max(0, this.hp - amount); }
+    heal(amount) { this.hp = Math.min(this.maxHp, this.hp + amount); }
+    get isDead() { return this.hp <= 0; }
+  }
+  Story.registerClass('Player', Player);
+  $player = new Player($player);
+}
+```
+
+Then use methods and getters in your passages:
+
+```
+:: Combat
+{do $player.damage(15)}
+
+{if $player.isDead}
+  You have fallen...
+{else}
+  HP: {$player.hp} / {$player.maxHp}
+{/if}
+```
+
+### Requirements
+
+- **Register every class** with `Story.registerClass(name, constructor)` before creating instances. The name must be unique.
+- **Constructor should accept a plain data object.** On restart, Spindle passes the `StoryVariables` default (a plain object) to your constructor.
+- **Only own enumerable properties are saved.** Methods, getters, and prototype properties are restored automatically from the class prototype.
+- Class instances are fully supported by the save system, history navigation (back/forward), and restart.
+
 ## Expressions
 
 Anywhere Spindle expects a value (conditions in `{if}`, values in `{set}`, arguments to `{print}`), you write JavaScript expressions with `$var` and `_var` placeholders:
@@ -86,16 +127,16 @@ Standard JavaScript operators and built-in functions (`Math`, `Array` methods, s
 
 The following functions are available in any expression to check passage visit and render history:
 
-| Function | Returns | Description |
-|---|---|---|
-| `visited("name")` | `number` | Times the passage was visited |
-| `hasVisited("name")` | `boolean` | Whether the passage was visited at least once |
-| `hasVisitedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were visited |
-| `hasVisitedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were visited |
-| `rendered("name")` | `number` | Times the passage was rendered (visits + includes) |
-| `hasRendered("name")` | `boolean` | Whether the passage was rendered at least once |
-| `hasRenderedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were rendered |
-| `hasRenderedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were rendered |
+| Function                        | Returns   | Description                                        |
+| ------------------------------- | --------- | -------------------------------------------------- |
+| `visited("name")`               | `number`  | Times the passage was visited                      |
+| `hasVisited("name")`            | `boolean` | Whether the passage was visited at least once      |
+| `hasVisitedAny("a", "b", ...)`  | `boolean` | Whether **any** of the passages were visited       |
+| `hasVisitedAll("a", "b", ...)`  | `boolean` | Whether **all** of the passages were visited       |
+| `rendered("name")`              | `number`  | Times the passage was rendered (visits + includes) |
+| `hasRendered("name")`           | `boolean` | Whether the passage was rendered at least once     |
+| `hasRenderedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were rendered      |
+| `hasRenderedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were rendered      |
 
 Use these directly in `{if}` conditions or any expression:
 

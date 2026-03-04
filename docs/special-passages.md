@@ -20,7 +20,7 @@ Runs once when the story first loads and again on every restart. Use it to set u
 
 Only `{set}` and `{do}` macros are executed in `StoryInit` — other content is ignored. This passage is never displayed to the player.
 
-If a `StoryVariables` passage exists, its defaults are applied *before* `StoryInit` runs, so `StoryInit` can override or build on those defaults.
+If a `StoryVariables` passage exists, its defaults are applied _before_ `StoryInit` runs, so `StoryInit` can override or build on those defaults.
 
 ## `StoryVariables`
 

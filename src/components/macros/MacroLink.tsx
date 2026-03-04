@@ -1,6 +1,7 @@
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
+import { deepClone } from '../../class-registry';
 
 interface MacroLinkProps {
   rawArgs: string;
@@ -42,8 +43,8 @@ function collectText(nodes: ASTNode[]): string {
  */
 function executeChildren(children: ASTNode[]) {
   const state = useStoryStore.getState();
-  const vars = structuredClone(state.variables);
-  const temps = structuredClone(state.temporary);
+  const vars = deepClone(state.variables);
+  const temps = deepClone(state.temporary);
 
   for (const node of children) {
     if (node.type !== 'macro') continue;

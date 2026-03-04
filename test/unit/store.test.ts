@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useStoryStore } from '../../src/store';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
+import { registerClass, clearRegistry } from '../../src/class-registry';
 
 function makePassage(pid: number, name: string, content = ''): Passage {
   return { pid, name, tags: [], content };
@@ -498,6 +499,157 @@ describe('useStoryStore', () => {
       expect(useStoryStore.getState().history[1].variables).toEqual({
         score: 10,
       });
+    });
+  });
+
+  describe('class instance support', () => {
+    class Player {
+      name: string;
+      hp: number;
+
+      constructor(data: { name?: string; hp?: number } = {}) {
+        this.name = data.name ?? 'Hero';
+        this.hp = data.hp ?? 100;
+      }
+
+      damage(amount: number) {
+        this.hp = Math.max(0, this.hp - amount);
+      }
+
+      get isDead(): boolean {
+        return this.hp <= 0;
+      }
+    }
+
+    beforeEach(() => {
+      clearRegistry();
+      registerClass('Player', Player);
+    });
+
+    it('class instances survive navigate (history snapshot is independent)', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const player = new Player({ name: 'Hero', hp: 80 });
+      useStoryStore.getState().setVariable('player', player);
+      useStoryStore.getState().navigate('Room');
+
+      // Current variable should be a deep clone
+      const current = useStoryStore.getState().variables.player as Player;
+      expect(current instanceof Player).toBe(true);
+      expect(current.hp).toBe(80);
+      current.damage(30);
+      expect(current.hp).toBe(50);
+
+      // History snapshot should be independent
+      const historyPlayer = useStoryStore.getState().history[1].variables
+        .player as Player;
+      expect(historyPlayer instanceof Player).toBe(true);
+      expect(historyPlayer.hp).toBe(80); // unaffected by current mutation
+    });
+
+    it('class instances survive goBack', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+        makePassage(3, 'Hall'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const player = new Player({ name: 'Hero', hp: 80 });
+      useStoryStore.getState().setVariable('player', player);
+      useStoryStore.getState().navigate('Room');
+      // Now history[1] has player with hp=80
+      useStoryStore
+        .getState()
+        .setVariable('player', new Player({ name: 'Hero', hp: 50 }));
+      useStoryStore.getState().navigate('Hall');
+      // Now history[2] has player with hp=50
+
+      useStoryStore.getState().goBack();
+      // Restores from history[1] which has player with hp=80
+
+      const restored = useStoryStore.getState().variables.player as Player;
+      expect(restored instanceof Player).toBe(true);
+      expect(restored.hp).toBe(80);
+      restored.damage(10);
+      expect(restored.hp).toBe(70);
+    });
+
+    it('class instances survive goForward', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const player = new Player({ name: 'Hero', hp: 80 });
+      useStoryStore.getState().setVariable('player', player);
+      useStoryStore.getState().navigate('Room');
+
+      useStoryStore.getState().goBack();
+      useStoryStore.getState().goForward();
+
+      const restored = useStoryStore.getState().variables.player as Player;
+      expect(restored instanceof Player).toBe(true);
+      expect(restored.hp).toBe(80);
+    });
+
+    it('class instances survive getSavePayload → loadFromPayload round-trip', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const player = new Player({ name: 'Hero', hp: 65 });
+      useStoryStore.getState().setVariable('player', player);
+      useStoryStore.getState().navigate('Room');
+
+      const payload = useStoryStore.getState().getSavePayload();
+
+      // Reset
+      useStoryStore.getState().restart();
+
+      // Load
+      useStoryStore.getState().loadFromPayload(payload);
+
+      const restored = useStoryStore.getState().variables.player as Player;
+      expect(restored instanceof Player).toBe(true);
+      expect(restored.name).toBe('Hero');
+      expect(restored.hp).toBe(65);
+      expect(restored.isDead).toBe(false);
+      restored.damage(65);
+      expect(restored.isDead).toBe(true);
+    });
+
+    it('methods work after all operations', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+        makePassage(3, 'Hall'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      useStoryStore
+        .getState()
+        .setVariable('player', new Player({ name: 'Hero', hp: 100 }));
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().navigate('Hall');
+      useStoryStore.getState().goBack();
+      useStoryStore.getState().goForward();
+
+      const payload = useStoryStore.getState().getSavePayload();
+      useStoryStore.getState().loadFromPayload(payload);
+
+      const p = useStoryStore.getState().variables.player as Player;
+      expect(p instanceof Player).toBe(true);
+      p.damage(40);
+      expect(p.hp).toBe(60);
+      expect(p.isDead).toBe(false);
     });
   });
 });

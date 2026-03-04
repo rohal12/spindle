@@ -43,10 +43,7 @@ mkdirSync(pkgDir, { recursive: true });
 copyFileSync(resolve(outputDir, 'format.js'), resolve(pkgDir, 'format.js'));
 
 // Copy the ESM wrapper
-copyFileSync(
-  resolve(projectRoot, 'pkg/index.js'),
-  resolve(pkgDir, 'index.js'),
-);
+copyFileSync(resolve(projectRoot, 'pkg/index.js'), resolve(pkgDir, 'index.js'));
 
 // Copy type declarations
 const pkgTypesDir = resolve(pkgDir, 'types');

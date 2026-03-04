@@ -6,9 +6,7 @@ export default defineConfig({
   base: '/spindle/',
   appearance: true,
 
-  head: [
-    ['meta', { name: 'theme-color', content: '#6366f1' }],
-  ],
+  head: [['meta', { name: 'theme-color', content: '#6366f1' }]],
 
   themeConfig: {
     nav: [
@@ -24,9 +22,7 @@ export default defineConfig({
     sidebar: [
       {
         text: 'Introduction',
-        items: [
-          { text: 'What is Spindle?', link: '/' },
-        ],
+        items: [{ text: 'What is Spindle?', link: '/' }],
       },
       {
         text: 'Authoring',
@@ -48,9 +44,7 @@ export default defineConfig({
       },
       {
         text: 'Developer',
-        items: [
-          { text: 'npm Package', link: '/story-format-packages' },
-        ],
+        items: [{ text: 'npm Package', link: '/story-format-packages' }],
       },
     ],
 
