@@ -53,7 +53,7 @@ function boot() {
     try {
       new Function(storyData.userScript)();
     } catch (err) {
-      console.error('react-twine: Error in story JavaScript:', err);
+      console.error('spindle: Error in story JavaScript:', err);
     }
   }
 
@@ -66,7 +66,7 @@ function boot() {
       'Missing StoryVariables passage. Add a :: StoryVariables passage to declare your variables.';
     const root = document.getElementById('root');
     if (root) renderErrors(root, [msg]);
-    throw new Error(`react-twine: ${msg}`);
+    throw new Error(`spindle: ${msg}`);
   }
 
   const schema = parseStoryVariables(storyVarsPassage.content);
@@ -76,7 +76,7 @@ function boot() {
     const root = document.getElementById('root');
     if (root) renderErrors(root, errors);
     throw new Error(
-      `react-twine: ${errors.length} validation error(s):\n${errors.join('\n')}`,
+      `spindle: ${errors.length} validation error(s):\n${errors.join('\n')}`,
     );
   }
 
@@ -107,7 +107,7 @@ function boot() {
 
   const root = document.getElementById('root');
   if (!root) {
-    throw new Error('react-twine: No <div id="root"> element found.');
+    throw new Error('spindle: No <div id="root"> element found.');
   }
 
   render(<App />, root);

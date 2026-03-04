@@ -56,32 +56,35 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 }
 
 export function Computed({ rawArgs }: ComputedProps) {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
+  // Subscribe to trigger re-renders when store changes
+  useStoryStore((s) => s.variables);
+  useStoryStore((s) => s.temporary);
   const locals = useContext(LocalsContext);
 
   const { target, expr } = parseComputedArgs(rawArgs);
   const isTemp = target.startsWith('_');
   const name = target.slice(1);
 
-  // Merge locals from for-loops
-  const mergedVars = { ...variables };
-  const mergedTemps = { ...temporary };
-  for (const [key, val] of Object.entries(locals)) {
-    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-  }
-
-  let newValue: unknown;
-  try {
-    newValue = evaluate(expr, mergedVars, mergedTemps);
-  } catch (err) {
-    console.error(`react-twine: Error in {computed ${rawArgs}}:`, err);
-    return null;
-  }
-
+  // Evaluate in useLayoutEffect so preceding {set} effects have already run
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
+
+    // Merge locals from for-loops
+    const mergedVars = { ...state.variables };
+    const mergedTemps = { ...state.temporary };
+    for (const [key, val] of Object.entries(locals)) {
+      if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
+      else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
+    }
+
+    let newValue: unknown;
+    try {
+      newValue = evaluate(expr, mergedVars, mergedTemps);
+    } catch (err) {
+      console.error(`spindle: Error in {computed ${rawArgs}}:`, err);
+      return;
+    }
+
     const current = isTemp ? state.temporary[name] : state.variables[name];
 
     if (!valuesEqual(current, newValue)) {

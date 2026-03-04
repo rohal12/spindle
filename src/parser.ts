@@ -26,7 +26,7 @@ export function parseStoryData(): StoryData {
   const storyEl = document.querySelector('tw-storydata');
   if (!storyEl) {
     throw new Error(
-      'react-twine: No <tw-storydata> element found in the document.',
+      'spindle: No <tw-storydata> element found in the document.',
     );
   }
 

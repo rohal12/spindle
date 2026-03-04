@@ -16,7 +16,7 @@ export function Unset({ rawArgs }: UnsetProps) {
       state.deleteTemporary(name.slice(1));
     } else {
       console.error(
-        `react-twine: {unset} expects a variable ($name or _name), got "${name}"`,
+        `spindle: {unset} expects a variable ($name or _name), got "${name}"`,
       );
     }
   }, []);

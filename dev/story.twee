@@ -1,10 +1,10 @@
 :: StoryTitle
-react-twine Test Story
+Spindle Test Story
 
 :: StoryData
 {
   "ifid": "A1B2C3D4-E5F6-4890-ABCD-EF1234567890",
-  "format": "react-twine",
+  "format": "spindle",
   "format-version": "0.1.0",
   "start": "Start"
 }
@@ -256,7 +256,7 @@ All link syntaxes:
 :: Markdown Demo
 # Markdown Support
 
-This passage demonstrates **CommonMark markdown** rendering in react-twine.
+This passage demonstrates **CommonMark markdown** rendering in Spindle.
 
 ## Text Formatting
 
@@ -317,6 +317,8 @@ Authors can target it with CSS using [data-tags~="special"].
 {computed _points = 15 + (5 * $character.level) - _temp.strength - _temp.dexterity - _temp.intelligence}
 
 ### Debug
+Current level: {$character.level}
+
 {button $character.level++}Level Up!{/button}
 
 ### Character Generation

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="50%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#5b21b6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Simplified orbits — 2 instead of 3 for clarity at small sizes -->
+  <ellipse cx="16" cy="16" rx="13" ry="5"
+    stroke="#7c3aed" stroke-width="1.8" fill="none" opacity="0.85"
+    transform="rotate(55,16,16)"/>
+  <ellipse cx="16" cy="16" rx="13" ry="5"
+    stroke="#8b5cf6" stroke-width="1.8" fill="none" opacity="0.85"
+    transform="rotate(-55,16,16)"/>
+
+  <!-- Central spindle -->
+  <path d="M16 3 Q19.5 9 20.5 16 Q19.5 23 16 29 Q12.5 23 11.5 16 Q12.5 9 16 3Z"
+    fill="url(#sg)"/>
+</svg>

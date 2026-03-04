@@ -18,7 +18,7 @@ function makeStoryData(passages: Passage[], startNode = 1): StoryData {
     name: 'Test Story',
     startNode,
     ifid: 'TEST-IFID',
-    format: 'react-twine',
+    format: 'spindle',
     formatVersion: '0.1.0',
     passages: passageMap,
     passagesById,
@@ -38,6 +38,8 @@ describe('useStoryStore', () => {
       temporary: {},
       history: [],
       historyIndex: -1,
+      visitCounts: {},
+      renderCounts: {},
     });
   });
 
@@ -340,6 +342,139 @@ describe('useStoryStore', () => {
       const state = useStoryStore.getState();
       expect(state.currentPassage).toBe('Start');
       expect(state.variables).toEqual({});
+    });
+  });
+
+  describe('visited/rendered tracking', () => {
+    it('init() records start passage as visited=1 and rendered=1', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({ Start: 1 });
+      expect(state.renderCounts).toEqual({ Start: 1 });
+    });
+
+    it('navigate() increments both visitCounts and renderCounts', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({ Start: 1, Room: 1 });
+      expect(state.renderCounts).toEqual({ Start: 1, Room: 1 });
+
+      // Navigate to Room again
+      useStoryStore.getState().navigate('Room');
+
+      const state2 = useStoryStore.getState();
+      expect(state2.visitCounts).toEqual({ Start: 1, Room: 2 });
+      expect(state2.renderCounts).toEqual({ Start: 1, Room: 2 });
+    });
+
+    it('trackRender() increments only renderCounts', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Sidebar'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().trackRender('Sidebar');
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({ Start: 1 });
+      expect(state.renderCounts).toEqual({ Start: 1, Sidebar: 1 });
+
+      useStoryStore.getState().trackRender('Sidebar');
+      const state2 = useStoryStore.getState();
+      expect(state2.renderCounts.Sidebar).toBe(2);
+    });
+
+    it('goBack()/goForward() do not change counts', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+
+      const countsAfterNav = {
+        visitCounts: { ...useStoryStore.getState().visitCounts },
+        renderCounts: { ...useStoryStore.getState().renderCounts },
+      };
+
+      useStoryStore.getState().goBack();
+      expect(useStoryStore.getState().visitCounts).toEqual(
+        countsAfterNav.visitCounts,
+      );
+      expect(useStoryStore.getState().renderCounts).toEqual(
+        countsAfterNav.renderCounts,
+      );
+
+      useStoryStore.getState().goForward();
+      expect(useStoryStore.getState().visitCounts).toEqual(
+        countsAfterNav.visitCounts,
+      );
+      expect(useStoryStore.getState().renderCounts).toEqual(
+        countsAfterNav.renderCounts,
+      );
+    });
+
+    it('restart() resets counts and records start passage', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().navigate('Room');
+
+      useStoryStore.getState().restart();
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({ Start: 1 });
+      expect(state.renderCounts).toEqual({ Start: 1 });
+    });
+
+    it('save/load round-trips the counts', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().trackRender('Start');
+
+      const payload = useStoryStore.getState().getSavePayload();
+      expect(payload.visitCounts).toEqual({ Start: 1, Room: 1 });
+      expect(payload.renderCounts).toEqual({ Start: 2, Room: 1 });
+
+      // Reset then load
+      useStoryStore.getState().restart();
+      useStoryStore.getState().loadFromPayload(payload);
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({ Start: 1, Room: 1 });
+      expect(state.renderCounts).toEqual({ Start: 2, Room: 1 });
+    });
+
+    it('loadFromPayload handles missing counts for backward compat', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const payload = {
+        passage: 'Start',
+        variables: {},
+        history: [{ passage: 'Start', variables: {}, timestamp: Date.now() }],
+        historyIndex: 0,
+      };
+      useStoryStore.getState().loadFromPayload(payload);
+
+      const state = useStoryStore.getState();
+      expect(state.visitCounts).toEqual({});
+      expect(state.renderCounts).toEqual({});
     });
   });
 

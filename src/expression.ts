@@ -1,4 +1,5 @@
 import type { StoryState } from './store';
+import { useStoryStore } from './store';
 
 const fnCache = new Map<string, Function>();
 
@@ -13,13 +14,46 @@ function transform(expr: string): string {
     .replace(/\b_(\w+)/g, 'temporary["$1"]');
 }
 
+const preamble =
+  'const {visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll}=__fns;';
+
 function getOrCompile(key: string, body: string): Function {
   let fn = fnCache.get(key);
   if (!fn) {
-    fn = new Function('variables', 'temporary', body);
+    fn = new Function('variables', 'temporary', '__fns', preamble + body);
     fnCache.set(key, fn);
   }
   return fn;
+}
+
+export function buildExpressionFns() {
+  const state = useStoryStore.getState();
+  const { visitCounts, renderCounts } = state;
+
+  const visited = (name: string): number => visitCounts[name] ?? 0;
+  const hasVisited = (name: string): boolean => visited(name) > 0;
+  const hasVisitedAny = (...names: string[]): boolean =>
+    names.some((n) => visited(n) > 0);
+  const hasVisitedAll = (...names: string[]): boolean =>
+    names.every((n) => visited(n) > 0);
+
+  const rendered = (name: string): number => renderCounts[name] ?? 0;
+  const hasRendered = (name: string): boolean => rendered(name) > 0;
+  const hasRenderedAny = (...names: string[]): boolean =>
+    names.some((n) => rendered(n) > 0);
+  const hasRenderedAll = (...names: string[]): boolean =>
+    names.every((n) => rendered(n) > 0);
+
+  return {
+    visited,
+    hasVisited,
+    hasVisitedAny,
+    hasVisitedAll,
+    rendered,
+    hasRendered,
+    hasRenderedAny,
+    hasRenderedAll,
+  };
 }
 
 /**
@@ -34,7 +68,7 @@ export function evaluate(
   const transformed = transform(expr);
   const body = `return (${transformed});`;
   const fn = getOrCompile(body, body);
-  return fn(variables, temporary);
+  return fn(variables, temporary, buildExpressionFns());
 }
 
 /**
@@ -48,7 +82,7 @@ export function execute(
 ): void {
   const transformed = transform(code);
   const fn = getOrCompile('exec:' + transformed, transformed);
-  fn(variables, temporary);
+  fn(variables, temporary, buildExpressionFns());
 }
 
 /**

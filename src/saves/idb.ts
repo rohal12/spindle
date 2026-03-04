@@ -1,6 +1,6 @@
 import type { SaveRecord, PlaythroughRecord } from './types';
 
-const DB_NAME = 'react-twine';
+const DB_NAME = 'spindle';
 const DB_VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;

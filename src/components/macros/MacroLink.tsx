@@ -51,14 +51,14 @@ function executeChildren(children: ASTNode[]) {
       try {
         execute(node.rawArgs, vars, temps);
       } catch (err) {
-        console.error(`react-twine: Error in {link} child {set}:`, err);
+        console.error(`spindle: Error in {link} child {set}:`, err);
       }
     } else if (node.name === 'do') {
       const code = collectText(node.children);
       try {
         execute(code, vars, temps);
       } catch (err) {
-        console.error(`react-twine: Error in {link} child {do}:`, err);
+        console.error(`spindle: Error in {link} child {do}:`, err);
       }
     }
   }

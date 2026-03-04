@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { evaluate, execute } from '../../src/expression';
+import { useStoryStore } from '../../src/store';
+import type { StoryData, Passage } from '../../src/parser';
 
 describe('evaluate', () => {
   it('evaluates a simple expression', () => {
@@ -99,5 +101,142 @@ describe('execute', () => {
 
   it('throws on syntax errors', () => {
     expect(() => execute('$x =', {}, {})).toThrow();
+  });
+});
+
+describe('expression tracking functions', () => {
+  function makePassage(pid: number, name: string, content = ''): Passage {
+    return { pid, name, tags: [], content };
+  }
+
+  function makeStoryData(passages: Passage[], startNode = 1): StoryData {
+    const passageMap = new Map<string, Passage>();
+    const passagesById = new Map<number, Passage>();
+    for (const p of passages) {
+      passageMap.set(p.name, p);
+      passagesById.set(p.pid, p);
+    }
+    return {
+      name: 'Test Story',
+      startNode,
+      ifid: 'TEST-IFID',
+      format: 'spindle',
+      formatVersion: '0.1.0',
+      passages: passageMap,
+      passagesById,
+      userCSS: '',
+      userScript: '',
+    };
+  }
+
+  beforeEach(() => {
+    useStoryStore.setState({
+      storyData: null,
+      currentPassage: '',
+      variables: {},
+      variableDefaults: {},
+      temporary: {},
+      history: [],
+      historyIndex: -1,
+      visitCounts: {},
+      renderCounts: {},
+    });
+  });
+
+  it('visited() returns correct count', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+    ]);
+    useStoryStore.getState().init(story);
+    useStoryStore.getState().navigate('Room');
+
+    expect(evaluate('visited("Start")', {}, {})).toBe(1);
+    expect(evaluate('visited("Room")', {}, {})).toBe(1);
+    expect(evaluate('visited("Unknown")', {}, {})).toBe(0);
+  });
+
+  it('hasVisited() returns boolean', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+    ]);
+    useStoryStore.getState().init(story);
+
+    expect(evaluate('hasVisited("Start")', {}, {})).toBe(true);
+    expect(evaluate('hasVisited("Room")', {}, {})).toBe(false);
+  });
+
+  it('hasVisitedAny() with multiple args', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+      makePassage(3, 'Hall'),
+    ]);
+    useStoryStore.getState().init(story);
+
+    expect(evaluate('hasVisitedAny("Start", "Room")', {}, {})).toBe(true);
+    expect(evaluate('hasVisitedAny("Room", "Hall")', {}, {})).toBe(false);
+  });
+
+  it('hasVisitedAll() with multiple args', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+    ]);
+    useStoryStore.getState().init(story);
+    useStoryStore.getState().navigate('Room');
+
+    expect(evaluate('hasVisitedAll("Start", "Room")', {}, {})).toBe(true);
+    expect(evaluate('hasVisitedAll("Start", "Unknown")', {}, {})).toBe(false);
+  });
+
+  it('rendered() returns correct count including trackRender', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Sidebar'),
+    ]);
+    useStoryStore.getState().init(story);
+    useStoryStore.getState().trackRender('Sidebar');
+    useStoryStore.getState().trackRender('Sidebar');
+
+    expect(evaluate('rendered("Start")', {}, {})).toBe(1);
+    expect(evaluate('rendered("Sidebar")', {}, {})).toBe(2);
+  });
+
+  it('hasRendered() returns boolean', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Sidebar'),
+    ]);
+    useStoryStore.getState().init(story);
+    useStoryStore.getState().trackRender('Sidebar');
+
+    expect(evaluate('hasRendered("Start")', {}, {})).toBe(true);
+    expect(evaluate('hasRendered("Sidebar")', {}, {})).toBe(true);
+    expect(evaluate('hasRendered("Unknown")', {}, {})).toBe(false);
+  });
+
+  it('hasRenderedAny() with multiple args', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+    ]);
+    useStoryStore.getState().init(story);
+
+    expect(evaluate('hasRenderedAny("Start", "Room")', {}, {})).toBe(true);
+    expect(evaluate('hasRenderedAny("Room", "Unknown")', {}, {})).toBe(false);
+  });
+
+  it('hasRenderedAll() with multiple args', () => {
+    const story = makeStoryData([
+      makePassage(1, 'Start'),
+      makePassage(2, 'Room'),
+    ]);
+    useStoryStore.getState().init(story);
+    useStoryStore.getState().trackRender('Room');
+
+    expect(evaluate('hasRenderedAll("Start", "Room")', {}, {})).toBe(true);
+    expect(evaluate('hasRenderedAll("Start", "Unknown")', {}, {})).toBe(false);
   });
 });

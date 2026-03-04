@@ -1,4 +1,4 @@
-# react-twine
+# Spindle
 
 A React-based story format for Twine 2.
 
@@ -40,7 +40,7 @@ A story format is a single `format.js` file containing a JSONP call:
 
 ```js
 window.storyFormat({
-  name: 'react-twine',
+  name: 'Spindle',
   version: '1.0.0',
   author: '...',
   description: '...',
@@ -63,7 +63,7 @@ The result is a self-contained HTML file. The format's JavaScript reads passage 
   name="My Story"
   startnode="1"
   ifid="..."
-  format="react-twine"
+  format="Spindle"
   format-version="1.0.0"
   hidden
 >
@@ -317,7 +317,7 @@ For developers using an external toolchain (Tweego + Vite, or a CLI), full React
 
 ```tsx
 // src/components/InventoryGrid.tsx
-import { useStoryState, useStoryDispatch } from 'react-twine';
+import { useStoryState, useStoryDispatch } from 'Spindle';
 
 export default function InventoryGrid() {
   const items = useStoryState((s) => s.inventory);
@@ -390,7 +390,7 @@ Using Immer (or a similar library) for structural sharing:
 
 ```ts
 // SugarCube: deep clones ALL variables every navigation (~O(n) where n = total state size)
-// react-twine: only copies references to unchanged branches (~O(changed keys))
+// Spindle: only copies references to unchanged branches (~O(changed keys))
 
 // Navigation creates a new moment:
 const newMoment = produce(currentMoment, (draft) => {
@@ -400,7 +400,7 @@ const newMoment = produce(currentMoment, (draft) => {
 history.push(newMoment);
 ```
 
-For a game with 1000 variables where navigation changes 3 of them, SugarCube clones all 1000. react-twine copies 3 values and shares references to the other 997.
+For a game with 1000 variables where navigation changes 3 of them, SugarCube clones all 1000. Spindle copies 3 values and shares references to the other 997.
 
 ### Story API
 
@@ -550,7 +550,7 @@ React DevTools, hot module replacement, tree shaking, code splitting, Jest/Testi
 
 ## What SugarCube Still Does Better
 
-| Area                 | SugarCube Advantage                             | react-twine Mitigation                                   |
+| Area                 | SugarCube Advantage                             | Spindle Mitigation                                   |
 | -------------------- | ----------------------------------------------- | -------------------------------------------------------- |
 | **Barrier to entry** | `<<if $x>>` is more familiar to non-programmers | Layer 1 markup is similarly simple: `{if $x}`            |
 | **Built-in save UI** | Full save/load dialog out of the box            | Must be built as a component (but ships with the format) |
@@ -566,7 +566,7 @@ React DevTools, hot module replacement, tree shaking, code splitting, Jest/Testi
 ### Development Setup
 
 ```
-react-twine/
+Spindle/
 ├── src/                    # Source code (TypeScript + React)
 ├── template/
 │   └── format.html         # HTML template
@@ -588,13 +588,13 @@ react-twine/
 ### Installation in Twine 2
 
 ```
-Formats → Add → file:///path/to/react-twine/dist/format.js
+Formats → Add → file:///path/to/Spindle/dist/format.js
 ```
 
 Or hosted:
 
 ```
-Formats → Add → https://example.com/react-twine/format.js
+Formats → Add → https://example.com/Spindle/format.js
 ```
 
 ### Tweego Compatibility
@@ -602,7 +602,7 @@ Formats → Add → https://example.com/react-twine/format.js
 The format works with Tweego for CLI-based compilation:
 
 ```bash
-tweego -f react-twine -o story.html src/
+tweego -f Spindle -o story.html src/
 ```
 
 ---
@@ -652,7 +652,7 @@ A `format.js` that installs in Twine 2 / Tweego and plays a basic story.
 
 ### Milestone 2: Passage Markup Parser + Core Macros
 
-The `{macro}` syntax and `{$variable}` display. This is where react-twine becomes useful for actual stories, not just link-based navigation.
+The `{macro}` syntax and `{$variable}` display. This is where Spindle becomes useful for actual stories, not just link-based navigation.
 
 **Scope:**
 

@@ -19,7 +19,7 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
     try {
       execute(rawArgs, vars, temps);
     } catch (err) {
-      console.error(`react-twine: Error in {button ${rawArgs}}:`, err);
+      console.error(`spindle: Error in {button ${rawArgs}}:`, err);
       return;
     }
 

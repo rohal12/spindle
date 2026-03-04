@@ -26,6 +26,9 @@ export function Include({ rawArgs, className, id }: IncludeProps) {
   }
 
   const passage = storyData.passages.get(passageName);
+  if (passage) {
+    useStoryStore.getState().trackRender(passageName);
+  }
   if (!passage) {
     return (
       <span class="error">{`{include: passage "${passageName}" not found}`}</span>

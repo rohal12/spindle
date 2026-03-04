@@ -25,7 +25,7 @@ export function Do({ children }: DoProps) {
     try {
       execute(code, vars, temps);
     } catch (err) {
-      console.error(`react-twine: Error in {do}:`, err);
+      console.error(`spindle: Error in {do}:`, err);
       return;
     }
 

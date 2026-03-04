@@ -7,7 +7,7 @@ function setDocumentHTML(html: string) {
 }
 
 const MINIMAL_STORY = `
-<tw-storydata name="My Story" startnode="1" ifid="ABCD-1234" format="react-twine" format-version="0.1.0">
+<tw-storydata name="My Story" startnode="1" ifid="ABCD-1234" format="spindle" format-version="0.1.0">
   <tw-passagedata pid="1" name="Start" tags="">Hello world</tw-passagedata>
 </tw-storydata>
 `;
@@ -24,7 +24,7 @@ describe('parseStoryData', () => {
     expect(data.name).toBe('My Story');
     expect(data.startNode).toBe(1);
     expect(data.ifid).toBe('ABCD-1234');
-    expect(data.format).toBe('react-twine');
+    expect(data.format).toBe('spindle');
     expect(data.formatVersion).toBe('0.1.0');
   });
 

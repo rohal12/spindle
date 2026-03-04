@@ -14,6 +14,14 @@ export interface StoryAPI {
   save(slot?: string): void;
   load(slot?: string): void;
   hasSave(slot?: string): boolean;
+  visited(name: string): number;
+  hasVisited(name: string): boolean;
+  hasVisitedAny(...names: string[]): boolean;
+  hasVisitedAll(...names: string[]): boolean;
+  rendered(name: string): number;
+  hasRendered(name: string): boolean;
+  hasRenderedAny(...names: string[]): boolean;
+  hasRenderedAll(...names: string[]): boolean;
   readonly title: string;
   readonly settings: typeof settings;
   readonly saves: {
@@ -64,6 +72,42 @@ function createStoryAPI(): StoryAPI {
 
     hasSave(slot?: string): boolean {
       return useStoryStore.getState().hasSave(slot);
+    },
+
+    visited(name: string): number {
+      return useStoryStore.getState().visitCounts[name] ?? 0;
+    },
+
+    hasVisited(name: string): boolean {
+      return (useStoryStore.getState().visitCounts[name] ?? 0) > 0;
+    },
+
+    hasVisitedAny(...names: string[]): boolean {
+      const { visitCounts } = useStoryStore.getState();
+      return names.some((n) => (visitCounts[n] ?? 0) > 0);
+    },
+
+    hasVisitedAll(...names: string[]): boolean {
+      const { visitCounts } = useStoryStore.getState();
+      return names.every((n) => (visitCounts[n] ?? 0) > 0);
+    },
+
+    rendered(name: string): number {
+      return useStoryStore.getState().renderCounts[name] ?? 0;
+    },
+
+    hasRendered(name: string): boolean {
+      return (useStoryStore.getState().renderCounts[name] ?? 0) > 0;
+    },
+
+    hasRenderedAny(...names: string[]): boolean {
+      const { renderCounts } = useStoryStore.getState();
+      return names.some((n) => (renderCounts[n] ?? 0) > 0);
+    },
+
+    hasRenderedAll(...names: string[]): boolean {
+      const { renderCounts } = useStoryStore.getState();
+      return names.every((n) => (renderCounts[n] ?? 0) > 0);
     },
 
     get title(): string {

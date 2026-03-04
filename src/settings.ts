@@ -30,7 +30,7 @@ let values: Record<string, unknown> = {};
 function storageKey(): string {
   const storyData = useStoryStore.getState().storyData;
   const ifid = storyData?.ifid || 'unknown';
-  return `react-twine.${ifid}.settings`;
+  return `spindle.${ifid}.settings`;
 }
 
 function persist(): void {

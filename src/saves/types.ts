@@ -5,6 +5,8 @@ export interface SavePayload {
   variables: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
+  visitCounts?: Record<string, number>;
+  renderCounts?: Record<string, number>;
 }
 
 export interface SaveMeta {

@@ -31,7 +31,7 @@ console.log('Tweego ready.');
 // 2. Copy our format.js into tweenode's storyformats directory
 const tweenodeFormatsDir = resolve(
   process.cwd(),
-  '.tweenode/storyformats/react-twine',
+  '.tweenode/storyformats/spindle',
 );
 mkdirSync(tweenodeFormatsDir, { recursive: true });
 copyFileSync(formatJsPath, resolve(tweenodeFormatsDir, 'format.js'));

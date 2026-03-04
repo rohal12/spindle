@@ -25,6 +25,8 @@ export interface StoryState {
   temporary: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
+  visitCounts: Record<string, number>;
+  renderCounts: Record<string, number>;
   saveVersion: number;
   playthroughId: string;
 
@@ -39,6 +41,7 @@ export interface StoryState {
   setTemporary: (name: string, value: unknown) => void;
   deleteVariable: (name: string) => void;
   deleteTemporary: (name: string) => void;
+  trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string) => void;
   load: (slot?: string) => void;
@@ -56,6 +59,8 @@ export const useStoryStore = create<StoryState>()(
     temporary: {},
     history: [],
     historyIndex: -1,
+    visitCounts: {},
+    renderCounts: {},
     saveVersion: 0,
     playthroughId: '',
 
@@ -66,7 +71,7 @@ export const useStoryStore = create<StoryState>()(
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) {
         throw new Error(
-          `react-twine: Start passage (pid=${storyData.startNode}) not found.`,
+          `spindle: Start passage (pid=${storyData.startNode}) not found.`,
         );
       }
 
@@ -86,6 +91,8 @@ export const useStoryStore = create<StoryState>()(
           },
         ];
         state.historyIndex = 0;
+        state.visitCounts = { [startPassage.name]: 1 };
+        state.renderCounts = { [startPassage.name]: 1 };
       });
 
       // Init save system (fire-and-forget — DB will be ready before user opens dialog)
@@ -110,7 +117,7 @@ export const useStoryStore = create<StoryState>()(
       if (!storyData) return;
 
       if (!storyData.passages.has(passageName)) {
-        console.error(`react-twine: Passage "${passageName}" not found.`);
+        console.error(`spindle: Passage "${passageName}" not found.`);
         return;
       }
 
@@ -127,6 +134,10 @@ export const useStoryStore = create<StoryState>()(
           timestamp: Date.now(),
         });
         state.historyIndex = state.history.length - 1;
+        state.visitCounts[passageName] =
+          (state.visitCounts[passageName] ?? 0) + 1;
+        state.renderCounts[passageName] =
+          (state.renderCounts[passageName] ?? 0) + 1;
       });
     },
 
@@ -176,6 +187,13 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
+    trackRender: (passageName: string) => {
+      set((state) => {
+        state.renderCounts[passageName] =
+          (state.renderCounts[passageName] ?? 0) + 1;
+      });
+    },
+
     restart: () => {
       const { storyData, variableDefaults } = get();
       if (!storyData) return;
@@ -197,6 +215,8 @@ export const useStoryStore = create<StoryState>()(
           },
         ];
         state.historyIndex = 0;
+        state.visitCounts = { [startPassage.name]: 1 };
+        state.renderCounts = { [startPassage.name]: 1 };
       });
 
       executeStoryInit();
@@ -217,6 +237,8 @@ export const useStoryStore = create<StoryState>()(
         variables,
         history,
         historyIndex,
+        visitCounts,
+        renderCounts,
       } = get();
       if (!storyData) return;
 
@@ -225,6 +247,8 @@ export const useStoryStore = create<StoryState>()(
         variables: structuredClone(variables),
         history: structuredClone(history),
         historyIndex,
+        visitCounts: { ...visitCounts },
+        renderCounts: { ...renderCounts },
       };
 
       quickSave(storyData.ifid, playthroughId, payload).then(() => {
@@ -245,6 +269,8 @@ export const useStoryStore = create<StoryState>()(
           state.variables = payload.variables;
           state.history = payload.history;
           state.historyIndex = payload.historyIndex;
+          state.visitCounts = payload.visitCounts ?? {};
+          state.renderCounts = payload.renderCounts ?? {};
           state.temporary = {};
         });
       });
@@ -258,12 +284,21 @@ export const useStoryStore = create<StoryState>()(
     },
 
     getSavePayload: (): SavePayload => {
-      const { currentPassage, variables, history, historyIndex } = get();
+      const {
+        currentPassage,
+        variables,
+        history,
+        historyIndex,
+        visitCounts,
+        renderCounts,
+      } = get();
       return {
         passage: currentPassage,
         variables: structuredClone(variables),
         history: structuredClone(history),
         historyIndex,
+        visitCounts: { ...visitCounts },
+        renderCounts: { ...renderCounts },
       };
     },
 
@@ -273,6 +308,8 @@ export const useStoryStore = create<StoryState>()(
         state.variables = payload.variables;
         state.history = payload.history;
         state.historyIndex = payload.historyIndex;
+        state.visitCounts = payload.visitCounts ?? {};
+        state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};
       });
     },

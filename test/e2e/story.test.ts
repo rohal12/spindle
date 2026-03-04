@@ -75,7 +75,7 @@ describe('compiled story e2e', () => {
   describe('StoryInit and start passage', () => {
     it('loads with correct title', async () => {
       await navigateFresh();
-      expect(await page.title()).toBe('react-twine Test Story');
+      expect(await page.title()).toBe('Spindle Test Story');
     });
 
     it('renders Start passage with StoryInit variables', async () => {

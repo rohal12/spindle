@@ -19,7 +19,7 @@ function makeStoryData(passages: Passage[], startNode = 1): StoryData {
     name: 'Test',
     startNode,
     ifid: 'test',
-    format: 'react-twine',
+    format: 'spindle',
     formatVersion: '0.1.0',
     passages: byName,
     passagesById: byId,

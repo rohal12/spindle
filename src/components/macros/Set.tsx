@@ -15,7 +15,7 @@ export function Set({ rawArgs }: SetProps) {
     try {
       execute(rawArgs, vars, temps);
     } catch (err) {
-      console.error(`react-twine: Error in {set ${rawArgs}}:`, err);
+      console.error(`spindle: Error in {set ${rawArgs}}:`, err);
       return;
     }
 

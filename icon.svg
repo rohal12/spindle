@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="spindle-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="45%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#5b21b6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Orbital thread paths — React-inspired, thread-like -->
+  <ellipse cx="128" cy="128" rx="105" ry="40"
+    stroke="#7c3aed" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"
+    transform="rotate(0,128,128)"/>
+  <ellipse cx="128" cy="128" rx="105" ry="40"
+    stroke="#8b5cf6" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"
+    transform="rotate(60,128,128)"/>
+  <ellipse cx="128" cy="128" rx="105" ry="40"
+    stroke="#6d28d9" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"
+    transform="rotate(-60,128,128)"/>
+
+  <!-- Central spindle — bobbin shape: wide middle, tapered ends -->
+  <path d="M128 30 Q146 75 150 128 Q146 181 128 226 Q110 181 106 128 Q110 75 128 30Z"
+    fill="url(#spindle-grad)"/>
+
+  <!-- Highlight on spindle -->
+  <path d="M128 42 Q136 80 138 128 Q136 176 128 214 Q126 176 125 128 Q126 80 128 42Z"
+    fill="white" opacity="0.15"/>
+</svg>
