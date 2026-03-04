@@ -5,16 +5,27 @@ export default defineConfig({
   description: 'A Preact-based story format for Twine 2.',
   base: '/spindle/',
 
+  head: [
+    ['meta', { name: 'theme-color', content: '#6366f1' }],
+  ],
+
   themeConfig: {
     nav: [
-      { text: 'Guide', link: '/' },
-      { text: 'npm', link: 'https://www.npmjs.com/package/@rohal12/spindle' },
+      { text: 'Guide', link: '/markup' },
+      { text: 'Macros', link: '/macros' },
+      { text: 'Story API', link: '/story-api' },
+      {
+        text: 'npm',
+        link: 'https://www.npmjs.com/package/@rohal12/spindle',
+      },
     ],
 
     sidebar: [
       {
-        text: 'Getting Started',
-        items: [{ text: 'Introduction', link: '/' }],
+        text: 'Introduction',
+        items: [
+          { text: 'What is Spindle?', link: '/' },
+        ],
       },
       {
         text: 'Authoring',
@@ -45,5 +56,19 @@ export default defineConfig({
     socialLinks: [
       { icon: 'github', link: 'https://github.com/rohal12/spindle' },
     ],
+
+    footer: {
+      message: 'Released under the Unlicense.',
+      copyright: 'Public domain.',
+    },
+
+    search: {
+      provider: 'local',
+    },
+
+    editLink: {
+      pattern: 'https://github.com/rohal12/spindle/edit/main/docs/:path',
+      text: 'Edit this page on GitHub',
+    },
   },
 });

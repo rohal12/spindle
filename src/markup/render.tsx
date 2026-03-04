@@ -33,6 +33,7 @@ import { Stop } from '../components/macros/Stop';
 import { Type } from '../components/macros/Type';
 import { Widget } from '../components/macros/Widget';
 import { Computed } from '../components/macros/Computed';
+import { Meter } from '../components/macros/Meter';
 import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
 import { markdownToHtml } from './markdown';
@@ -112,6 +113,16 @@ function renderMacro(node: MacroNode, key: number) {
     case 'print':
       return (
         <Print
+          key={key}
+          rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'meter':
+      return (
+        <Meter
           key={key}
           rawArgs={node.rawArgs}
           className={node.className}

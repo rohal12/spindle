@@ -128,6 +128,60 @@ Evaluate an expression and display the result.
 
 `{$var}` and `{_var}` display a variable's value directly (see [Markup](markup.md#variable-display)). This is equivalent to `{print $var}` for simple references.
 
+### `{meter}`
+
+Display a resource bar (health, mana, XP, etc.) that updates reactively when variables change.
+
+```
+{meter $health $maxHealth}
+```
+
+Both arguments are expressions, so `{meter $health $stats.maxHealth}` works.
+
+**Label modes:**
+
+```
+{meter $hp 100}            → "75 / 100"
+{meter $hp 100 "%"}        → "75%"
+{meter $hp 100 "none"}     → no label
+{meter $hp 100 "HP"}       → "75 HP / 100 HP"
+```
+
+The bar clamps between 0% and 100%.
+
+**Styling examples:**
+
+Health bar in green:
+
+```css
+.health-bar .macro-meter-fill {
+  background: #4caf50;
+}
+```
+
+XP bar with gradient:
+
+```css
+.xp-bar .macro-meter-fill {
+  background: linear-gradient(90deg, #7c4dff, #e040fb);
+}
+```
+
+Custom height:
+
+```css
+.thick-bar.macro-meter {
+  height: 2em;
+}
+```
+
+Usage with CSS selectors:
+
+```
+{.health-bar meter $health $maxHealth}
+{.xp-bar#xp-meter meter $xp $xpNeeded "%"}
+```
+
 ## Navigation
 
 ### `[[Link]]` syntax
