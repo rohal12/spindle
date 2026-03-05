@@ -11,11 +11,27 @@ import {
   loadQuickSave,
 } from './saves/save-manager';
 import { deepClone, deserialize } from './class-registry';
+import {
+  snapshotPRNG,
+  restorePRNG,
+  resetPRNG,
+  type PRNGSnapshot,
+} from './prng';
+
+/** Restore or reset PRNG from a history moment's snapshot. */
+function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
+  if (moment?.prng) {
+    restorePRNG(moment.prng.seed, moment.prng.pull);
+  } else if (moment) {
+    resetPRNG();
+  }
+}
 
 export interface HistoryMoment {
   passage: string;
   variables: Record<string, unknown>;
   timestamp: number;
+  prng?: PRNGSnapshot | null;
 }
 
 export interface StoryState {
@@ -141,6 +157,7 @@ export const useStoryStore = create<StoryState>()(
           passage: passageName,
           variables: deepClone(state.variables),
           timestamp: Date.now(),
+          prng: snapshotPRNG(),
         });
         state.historyIndex = state.history.length - 1;
         state.visitCounts[passageName] =
@@ -159,6 +176,7 @@ export const useStoryStore = create<StoryState>()(
         state.variables = deepClone(moment.variables);
         state.temporary = {};
       });
+      restorePRNGFromMoment(get().history[get().historyIndex]);
     },
 
     goForward: () => {
@@ -170,6 +188,7 @@ export const useStoryStore = create<StoryState>()(
         state.variables = deepClone(moment.variables);
         state.temporary = {};
       });
+      restorePRNGFromMoment(get().history[get().historyIndex]);
     },
 
     setVariable: (name: string, value: unknown) => {
@@ -210,6 +229,7 @@ export const useStoryStore = create<StoryState>()(
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) return;
 
+      resetPRNG();
       const initialVars = deepClone(variableDefaults);
 
       set((state) => {
@@ -262,6 +282,7 @@ export const useStoryStore = create<StoryState>()(
         historyIndex,
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
+        prng: snapshotPRNG(),
       };
 
       set((state) => {
@@ -301,6 +322,11 @@ export const useStoryStore = create<StoryState>()(
             state.renderCounts = payload.renderCounts ?? {};
             state.temporary = {};
           });
+          if (payload.prng) {
+            restorePRNG(payload.prng.seed, payload.prng.pull);
+          } else {
+            resetPRNG();
+          }
         })
         .catch((err) => {
           console.error('spindle: failed to load quick save', err);
@@ -334,6 +360,7 @@ export const useStoryStore = create<StoryState>()(
         historyIndex,
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
+        prng: snapshotPRNG(),
       };
     },
 
@@ -350,6 +377,11 @@ export const useStoryStore = create<StoryState>()(
         state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};
       });
+      if (payload.prng) {
+        restorePRNG(payload.prng.seed, payload.prng.pull);
+      } else {
+        resetPRNG();
+      }
     },
   })),
 );

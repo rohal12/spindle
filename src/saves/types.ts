@@ -1,4 +1,5 @@
 import type { HistoryMoment } from '../store';
+import type { PRNGSnapshot } from '../prng';
 
 export interface SavePayload {
   passage: string;
@@ -7,6 +8,7 @@ export interface SavePayload {
   historyIndex: number;
   visitCounts?: Record<string, number>;
   renderCounts?: Record<string, number>;
+  prng?: PRNGSnapshot | null;
 }
 
 export interface SaveMeta {

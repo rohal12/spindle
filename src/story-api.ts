@@ -9,6 +9,15 @@ import {
   onActionsChanged,
   type StoryAction,
 } from './action-registry';
+import {
+  initPRNG,
+  isPRNGEnabled,
+  getPRNGSeed,
+  getPRNGPull,
+  random,
+  randomInt,
+  snapshotPRNG,
+} from './prng';
 
 export type { StoryAction };
 
@@ -50,6 +59,14 @@ export interface StoryAPI {
   on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
   on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
   waitForActions(): Promise<StoryAction[]>;
+  random(): number;
+  randomInt(min: number, max: number): number;
+  readonly prng: {
+    init(seed?: string, useEntropy?: boolean): void;
+    isEnabled(): boolean;
+    readonly seed: string;
+    readonly pull: number;
+  };
 }
 
 function createStoryAPI(): StoryAPI {
@@ -217,6 +234,37 @@ function createStoryAPI(): StoryAPI {
           });
         });
       });
+    },
+
+    random(): number {
+      return random();
+    },
+
+    randomInt(min: number, max: number): number {
+      return randomInt(min, max);
+    },
+
+    prng: {
+      init(seed?: string, useEntropy?: boolean): void {
+        initPRNG(seed, useEntropy);
+        // Update current history moment's snapshot via immer
+        const { historyIndex } = useStoryStore.getState();
+        useStoryStore.setState((state) => {
+          const moment = state.history[historyIndex];
+          if (moment) {
+            moment.prng = snapshotPRNG();
+          }
+        });
+      },
+      isEnabled(): boolean {
+        return isPRNGEnabled();
+      },
+      get seed(): string {
+        return getPRNGSeed();
+      },
+      get pull(): number {
+        return getPRNGPull();
+      },
     },
   };
 }
