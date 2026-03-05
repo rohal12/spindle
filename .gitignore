@@ -6,6 +6,7 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 .agents/
 .claude/
+!.claude/skills/
 .vscode/
 PLAN.md
 TODO

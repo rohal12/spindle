@@ -1,5 +1,14 @@
 # Spindle
 
+[![npm version](https://img.shields.io/npm/v/@rohal12/spindle)](https://www.npmjs.com/package/@rohal12/spindle)
+[![npm downloads](https://img.shields.io/npm/dm/@rohal12/spindle)](https://www.npmjs.com/package/@rohal12/spindle)
+[![bundle size](https://img.shields.io/bundlephobia/minzip/@rohal12/spindle)](https://bundlephobia.com/package/@rohal12/spindle)
+[![CI](https://img.shields.io/github/actions/workflow/status/rohal12/spindle/ci.yml)](https://github.com/rohal12/spindle/actions/workflows/ci.yml)
+[![last commit](https://img.shields.io/github/last-commit/rohal12/spindle)](https://github.com/rohal12/spindle/commits)
+[![license](https://img.shields.io/github/license/rohal12/spindle)](UNLICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/)
+[![docs](https://img.shields.io/badge/docs-rohal12.github.io%2Fspindle-blue)](https://rohal12.github.io/spindle/)
+
 A modern [Twine 2](https://twinery.org/) story format built with [Preact](https://preactjs.com/). Variables, macros, saves, settings, widgets, and full CommonMark markdown — all using a concise curly-brace syntax.
 
 **[Documentation](https://rohal12.github.io/spindle/)**
