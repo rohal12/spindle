@@ -1,8 +1,6 @@
-import { useStoryStore } from '../../store';
-import { useContext } from 'preact/hooks';
 import { evaluate } from '../../expression';
-import { LocalsContext } from '../../markup/render';
 import { renderNodes } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 import type { Branch } from '../../markup/ast';
 
 interface IfProps {
@@ -10,17 +8,7 @@ interface IfProps {
 }
 
 export function If({ branches }: IfProps) {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
-  const locals = useContext(LocalsContext);
-
-  // Merge locals for expression evaluation
-  const mergedVars = { ...variables };
-  const mergedTemps = { ...temporary };
-  for (const [key, val] of Object.entries(locals)) {
-    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-  }
+  const [mergedVars, mergedTemps] = useMergedLocals();
 
   function renderBranch(branch: Branch) {
     const children = renderNodes(branch.children);
@@ -53,7 +41,7 @@ export function If({ branches }: IfProps) {
           class="error"
           title={String(err)}
         >
-          {`{if error: ${(err as Error).message}}`}
+          {`{if error: ${err instanceof Error ? err.message : String(err)}}`}
         </span>
       );
     }

@@ -38,9 +38,11 @@ import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, MacroNode } from './ast';
+import type { ASTNode, Branch, MacroNode } from './ast';
 
 export const LocalsContext = createContext<Record<string, unknown>>({});
+
+const EMPTY_BRANCHES: Branch[] = [];
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -77,7 +79,7 @@ function convertDomNode(
     }
 
     // Convert attributes
-    const props: Record<string, any> = { key };
+    const props: Record<string, string | number> = { key };
     for (const attr of Array.from(el.attributes)) {
       props[attr.name] = attr.value;
     }
@@ -134,7 +136,7 @@ function renderMacro(node: MacroNode, key: number) {
       return (
         <If
           key={key}
-          branches={node.branches!}
+          branches={node.branches ?? EMPTY_BRANCHES}
         />
       );
 
@@ -354,7 +356,7 @@ function renderMacro(node: MacroNode, key: number) {
         <Switch
           key={key}
           rawArgs={node.rawArgs}
-          branches={node.branches!}
+          branches={node.branches ?? EMPTY_BRANCHES}
         />
       );
 
@@ -364,7 +366,7 @@ function renderMacro(node: MacroNode, key: number) {
           key={key}
           rawArgs={node.rawArgs}
           children={node.children}
-          branches={node.branches!}
+          branches={node.branches ?? EMPTY_BRANCHES}
           className={node.className}
           id={node.id}
         />
@@ -488,6 +490,11 @@ function renderSingleNode(
         { key, ...node.attributes },
         node.children.length > 0 ? renderNodes(node.children) : undefined,
       );
+
+    default: {
+      const _exhaustive: never = node;
+      return _exhaustive;
+    }
   }
 }
 
@@ -526,7 +533,7 @@ export function renderNodes(nodes: ASTNode[]): preact.ComponentChildren {
   let combined = '';
 
   for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
+    const node = nodes[i]!;
     if (node.type === 'text') {
       combined += node.value;
     } else {

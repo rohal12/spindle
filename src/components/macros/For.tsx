@@ -1,8 +1,7 @@
-import { useStoryStore } from '../../store';
 import { useContext } from 'preact/hooks';
 import { evaluate } from '../../expression';
-import { LocalsContext } from '../../markup/render';
-import { renderNodes } from '../../markup/render';
+import { LocalsContext, renderNodes } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 import type { ASTNode } from '../../markup/ast';
 
 interface ForProps {
@@ -29,24 +28,15 @@ function parseForArgs(rawArgs: string): {
   const listExpr = rawArgs.slice(ofIdx + 4).trim();
 
   const vars = varsPart.split(',').map((v) => v.trim());
-  const itemVar = vars[0];
-  const indexVar = vars.length > 1 ? vars[1] : null;
+  const itemVar = vars[0]!;
+  const indexVar = vars.length > 1 ? vars[1]! : null;
 
   return { itemVar, indexVar, listExpr };
 }
 
 export function For({ rawArgs, children, className, id }: ForProps) {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
   const parentLocals = useContext(LocalsContext);
-
-  // Merge parent locals for expression evaluation
-  const mergedVars = { ...variables };
-  const mergedTemps = { ...temporary };
-  for (const [key, val] of Object.entries(parentLocals)) {
-    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-  }
+  const [mergedVars, mergedTemps] = useMergedLocals();
 
   let parsed: ReturnType<typeof parseForArgs>;
   try {
@@ -57,7 +47,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
         class="error"
         title={String(err)}
       >
-        {`{for error: ${(err as Error).message}}`}
+        {`{for error: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
@@ -81,14 +71,17 @@ export function For({ rawArgs, children, className, id }: ForProps) {
         class="error"
         title={String(err)}
       >
-        {`{for error: ${(err as Error).message}}`}
+        {`{for error: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
 
   const content = list.map((item, i) => {
-    const locals = { ...parentLocals, [itemVar]: item };
-    if (indexVar) locals[indexVar] = i;
+    const locals = {
+      ...parentLocals,
+      [itemVar]: item,
+      ...(indexVar ? { [indexVar]: i } : undefined),
+    };
 
     return (
       <LocalsContext.Provider

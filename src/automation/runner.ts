@@ -27,7 +27,7 @@ export async function runAutomation(
   }
 
   for (let i = 0; i < script.steps.length; i++) {
-    const step = script.steps[i];
+    const step = script.steps[i]!;
     options.onStep?.(i, step);
 
     try {

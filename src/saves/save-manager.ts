@@ -137,17 +137,22 @@ export async function overwriteSave(
   const existing = await getSave(saveId);
   if (!existing) return undefined;
 
-  existing.meta.updatedAt = new Date().toISOString();
-  existing.meta.passage = payload.passage;
   const serializedPayload = deepClone(payload);
   serializedPayload.variables = serialize(serializedPayload.variables);
   serializedPayload.history = serializedPayload.history.map((m) => ({
     ...m,
     variables: serialize(m.variables),
   }));
-  existing.payload = serializedPayload;
-  await putSave(existing);
-  return existing;
+  const updated: SaveRecord = {
+    meta: {
+      ...existing.meta,
+      updatedAt: new Date().toISOString(),
+      passage: payload.passage,
+    },
+    payload: serializedPayload,
+  };
+  await putSave(updated);
+  return updated;
 }
 
 export async function loadSave(
@@ -174,9 +179,15 @@ export async function renameSave(
 ): Promise<void> {
   const record = await getSave(saveId);
   if (!record) return;
-  record.meta.title = newTitle;
-  record.meta.updatedAt = new Date().toISOString();
-  await putSave(record);
+  const updated: SaveRecord = {
+    ...record,
+    meta: {
+      ...record.meta,
+      title: newTitle,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+  await putSave(updated);
 }
 
 // --- Grouped Retrieval ---
@@ -200,8 +211,12 @@ export async function getSavesGrouped(
   const groups = new Map<string, SaveRecord[]>();
   for (const save of allSaves) {
     const pid = save.meta.playthroughId;
-    if (!groups.has(pid)) groups.set(pid, []);
-    groups.get(pid)!.push(save);
+    const existing = groups.get(pid);
+    if (existing) {
+      existing.push(save);
+    } else {
+      groups.set(pid, [save]);
+    }
   }
 
   // Sort saves within each group newest-first

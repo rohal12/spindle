@@ -26,6 +26,7 @@ export type SettingDef =
 
 const definitions = new Map<string, SettingDef>();
 let values: Record<string, unknown> = {};
+let storageLoaded = false;
 
 function storageKey(): string {
   const storyData = useStoryStore.getState().storyData;
@@ -38,10 +39,15 @@ function persist(): void {
 }
 
 function loadFromStorage(): void {
+  if (storageLoaded) return;
+  storageLoaded = true;
   try {
     const raw = localStorage.getItem(storageKey());
     if (raw) {
-      values = { ...values, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        values = { ...values, ...parsed };
+      }
     }
   } catch {
     // ignore corrupted data
@@ -75,6 +81,21 @@ export const settings = {
 
   get(name: string): unknown {
     return values[name];
+  },
+
+  getToggle(name: string): boolean {
+    const v = values[name];
+    return typeof v === 'boolean' ? v : false;
+  },
+
+  getList(name: string): string {
+    const v = values[name];
+    return typeof v === 'string' ? v : '';
+  },
+
+  getRange(name: string): number {
+    const v = values[name];
+    return typeof v === 'number' ? v : 0;
   },
 
   set(name: string, value: unknown): void {

@@ -16,6 +16,8 @@ const DECLARATION_RE = /^\$(\w+)\s*=\s*(.+)$/;
 const VAR_REF_RE = /\$(\w+(?:\.\w+)*)/g;
 const FOR_LOCAL_RE = /\{for\s+(\$\w+)(?:\s*,\s*(\$\w+))?\s+of\b/g;
 
+const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
+
 function inferSchema(value: unknown): FieldSchema {
   if (Array.isArray(value)) {
     return { type: 'array' };
@@ -27,7 +29,13 @@ function inferSchema(value: unknown): FieldSchema {
     }
     return { type: 'object', fields };
   }
-  return { type: typeof value as VarType };
+  const jsType = typeof value;
+  if (!VALID_VAR_TYPES.has(jsType)) {
+    throw new Error(
+      `StoryVariables: Unsupported type "${jsType}" for value ${String(value)}. Expected number, string, boolean, array, or object.`,
+    );
+  }
+  return { type: jsType as VarType };
 }
 
 /**
@@ -50,7 +58,7 @@ export function parseStoryVariables(
       );
     }
 
-    const [, name, expr] = match;
+    const [, name, expr] = match as [string, string, string];
     let value: unknown;
     try {
       value = new Function('return (' + expr + ')')();
@@ -77,8 +85,8 @@ function extractForLocals(content: string): Set<string> {
   let match: RegExpExecArray | null;
   FOR_LOCAL_RE.lastIndex = 0;
   while ((match = FOR_LOCAL_RE.exec(content)) !== null) {
-    locals.add(match[1].slice(1)); // strip $
-    if (match[2]) locals.add(match[2].slice(1));
+    locals.add(match[1]!.slice(1)); // strip $
+    if (match[2]) locals.add(match[2]!.slice(1));
   }
   return locals;
 }
@@ -93,7 +101,7 @@ function validateRef(
   forLocals: Set<string>,
 ): string | null {
   const parts = ref.split('.');
-  const rootName = parts[0];
+  const rootName = parts[0]!;
 
   // Skip for-loop locals
   if (forLocals.has(rootName)) return null;
@@ -107,12 +115,13 @@ function validateRef(
   let current: FieldSchema = rootSchema;
   for (let i = 1; i < parts.length; i++) {
     // Arrays have a .length property
-    if (current.type === 'array' && parts[i] === 'length') return null;
+    const part = parts[i] as string;
+    if (current.type === 'array' && part === 'length') return null;
 
     if (current.type !== 'object' || !current.fields) {
-      return `Cannot access field "${parts[i]}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;
+      return `Cannot access field "${part}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;
     }
-    const fieldSchema = current.fields.get(parts[i]);
+    const fieldSchema = current.fields.get(part);
     if (!fieldSchema) {
       // Unknown fields on objects are allowed — classes registered via
       // Story.registerClass() can add methods/getters not in the defaults.
@@ -143,7 +152,7 @@ export function validatePassages(
     let match: RegExpExecArray | null;
     VAR_REF_RE.lastIndex = 0;
     while ((match = VAR_REF_RE.exec(passage.content)) !== null) {
-      const ref = match[1];
+      const ref = match[1]!;
       const error = validateRef(ref, schema, forLocals);
       if (error) {
         errors.push(`Passage "${name}": ${error}`);
