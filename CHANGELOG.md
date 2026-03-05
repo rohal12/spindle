@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-3-5
+
+### Added
+
+- `useMergedLocals` hook to deduplicate variable/locals merging across macros
+- Typed settings getters: `settings.getToggle()`, `settings.getList()`, `settings.getRange()`
+- `isSaveExport()` type guard for validating imported save files
+- Save/load error state (`saveError`, `loadError`) in the store
+- Exhaustive switch in AST builder and render pipeline for compile-time safety
+
+### Fixed
+
+- Hoist regex patterns in expression transformer to avoid recompilation per call
+- Hoist shared empty-array default for `If`, `Switch`, and `Timed` branch props
+- Use ref-tracked timer in `SaveLoadDialog` to prevent stale status clearing
+- LRU eviction for expression cache (previously unbounded)
+- Cache `buildExpressionFns()` result when visit/render counts haven't changed
+- Catch unhandled promise rejections in save system init, quick save, quick load, and restart
+- Division-by-zero guard in `Meter` percentage calculation
+- Consistent `instanceof Error` checks in all macro error messages
+- Deduplicate locals merging in `If`, `For`, `Meter`, `Computed`, and `Switch` via `useMergedLocals`
+- Validate localStorage data shape before merging in settings loader
+- Prevent repeated `loadFromStorage` calls with initialization guard
+- Add non-null assertions throughout tokenizer, AST builder, and macro parsers for strict TypeScript
+- Immutable save record updates in `overwriteSave` and `renameSave`
+- Safer JSON.stringify comparison with try/catch in `Computed` value equality check
+
 ## [0.3.1] - 2026-3-4
 
 ### Fixed

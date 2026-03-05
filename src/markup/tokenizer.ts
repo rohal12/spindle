@@ -196,10 +196,10 @@ function parseSelectors(
   let i = startIdx;
 
   while (i < input.length && (input[i] === '.' || input[i] === '#')) {
-    const prefix = input[i];
+    const prefix = input[i]!;
     i++; // skip the . or #
     const nameStart = i;
-    while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i])) i++;
+    while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i]!)) i++;
     if (i > nameStart) {
       const name = input.slice(nameStart, i);
       if (prefix === '.') {
@@ -225,7 +225,7 @@ function parseHtmlAttributes(
 
   while (j < input.length) {
     // Skip whitespace
-    while (j < input.length && /\s/.test(input[j])) j++;
+    while (j < input.length && /\s/.test(input[j]!)) j++;
     // End of tag?
     if (
       j >= input.length ||
@@ -236,7 +236,7 @@ function parseHtmlAttributes(
 
     // Read attribute name
     const attrStart = j;
-    while (j < input.length && /[a-zA-Z0-9_-]/.test(input[j])) j++;
+    while (j < input.length && /[a-zA-Z0-9_-]/.test(input[j]!)) j++;
     const attrName = input.slice(attrStart, j);
     if (!attrName) break;
 
@@ -244,7 +244,7 @@ function parseHtmlAttributes(
     if (input[j] === '=') {
       j++; // skip =
       if (input[j] === '"' || input[j] === "'") {
-        const quote = input[j];
+        const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
         while (j < input.length && input[j] !== quote) j++;
@@ -253,7 +253,7 @@ function parseHtmlAttributes(
       } else {
         // Unquoted value
         const valStart = j;
-        while (j < input.length && /[^\s>]/.test(input[j])) j++;
+        while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
         attributes[attrName] = input.slice(valStart, j);
       }
     } else {
@@ -367,7 +367,7 @@ export function tokenize(input: string): Token[] {
           // {.class#id $variable.field}
           i = afterSelectors + 1;
           const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i])) i++;
+          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
           const name = input.slice(nameStart, i);
 
           if (input[i] === '}') {
@@ -395,7 +395,7 @@ export function tokenize(input: string): Token[] {
           // {.class#id _temporary.field}
           i = afterSelectors + 1;
           const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i])) i++;
+          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
           const name = input.slice(nameStart, i);
 
           if (input[i] === '}') {
@@ -468,7 +468,7 @@ export function tokenize(input: string): Token[] {
         flushText(i);
         i += 2;
         const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i])) i++;
+        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
         const name = input.slice(nameStart, i);
 
         if (input[i] === '}') {
@@ -494,7 +494,7 @@ export function tokenize(input: string): Token[] {
         flushText(i);
         i += 2;
         const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i])) i++;
+        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
         const name = input.slice(nameStart, i);
 
         if (input[i] === '}') {
@@ -572,14 +572,14 @@ export function tokenize(input: string): Token[] {
 
       // Read tag name
       const tagStart = j;
-      while (j < input.length && /[a-zA-Z0-9]/.test(input[j])) j++;
+      while (j < input.length && /[a-zA-Z0-9]/.test(input[j]!)) j++;
       const tag = input.slice(tagStart, j).toLowerCase();
 
       // Only handle known HTML tags
       if (tag && HTML_TAGS.has(tag)) {
         if (isClose) {
           // Closing tag: skip whitespace, expect >
-          while (j < input.length && /\s/.test(input[j])) j++;
+          while (j < input.length && /\s/.test(input[j]!)) j++;
           if (input[j] === '>') {
             j++;
             flushText(start);

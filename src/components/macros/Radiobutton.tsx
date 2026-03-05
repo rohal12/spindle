@@ -20,15 +20,15 @@ function parseArgs(rawArgs: string): {
     // Try simpler: $var value label
     const parts = rawArgs.trim().split(/\s+/);
     return {
-      varName: (parts[0] || '').replace(/["']/g, ''),
-      value: parts[1] || '',
+      varName: (parts[0] ?? '').replace(/["']/g, ''),
+      value: parts[1] ?? '',
       label: parts.slice(2).join(' '),
     };
   }
   return {
-    varName: match[1].replace(/["']/g, ''),
-    value: match[2],
-    label: match[3],
+    varName: match[1]!.replace(/["']/g, ''),
+    value: match[2]!,
+    label: match[3]!,
   };
 }
 

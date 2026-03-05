@@ -87,10 +87,10 @@ export function buildAST(tokens: Token[]): ASTNode[] {
 
   function current(): ASTNode[] {
     if (stack.length === 0) return root;
-    const top = stack[stack.length - 1].node;
+    const top = stack[stack.length - 1]!.node;
     // For if-blocks, append to the last branch's children
     if (top.type === 'macro' && top.branches && top.branches.length > 0) {
-      return top.branches[top.branches.length - 1].children;
+      return top.branches[top.branches.length - 1]!.children;
     }
     return top.children;
   }
@@ -145,7 +145,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
             );
           }
 
-          const top = stack[stack.length - 1];
+          const top = stack[stack.length - 1]!;
           if (top.node.type !== 'html' || top.node.tag !== token.tag) {
             const expected =
               top.node.type === 'html'
@@ -181,7 +181,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
             );
           }
 
-          const top = stack[stack.length - 1];
+          const top = stack[stack.length - 1]!;
           if (top.node.type !== 'macro' || top.node.name !== token.name) {
             const expected =
               top.node.type === 'macro'
@@ -199,9 +199,9 @@ export function buildAST(tokens: Token[]): ASTNode[] {
 
         // Handle branch macros (elseif/else, case/default, next)
         if (BRANCH_PARENT[token.name]) {
-          const expectedParent = BRANCH_PARENT[token.name];
+          const expectedParent = BRANCH_PARENT[token.name]!;
           const topNode =
-            stack.length > 0 ? stack[stack.length - 1].node : null;
+            stack.length > 0 ? stack[stack.length - 1]!.node : null;
           if (
             !topNode ||
             topNode.type !== 'macro' ||
@@ -263,11 +263,16 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         }
         break;
       }
+
+      default: {
+        const _exhaustive: never = token;
+        throw new Error(`Unknown token type: ${(_exhaustive as Token).type}`);
+      }
     }
   }
 
   if (stack.length > 0) {
-    const unclosed = stack[stack.length - 1];
+    const unclosed = stack[stack.length - 1]!;
     const label =
       unclosed.node.type === 'html'
         ? `<${unclosed.node.tag}>`

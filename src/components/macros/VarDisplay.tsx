@@ -12,7 +12,7 @@ interface VarDisplayProps {
 export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   const locals = useContext(LocalsContext);
   const parts = name.split('.');
-  const root = parts[0];
+  const root = parts[0]!;
   const storeValue = useStoryStore((s) =>
     scope === 'variable' ? s.variables[root] : s.temporary[root],
   );
@@ -27,7 +27,8 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
       value = undefined;
       break;
     }
-    value = (value as Record<string, unknown>)[parts[i]];
+    const part = parts[i] as string;
+    value = (value as Record<string, unknown>)[part];
   }
 
   const display = value == null ? '' : String(value);

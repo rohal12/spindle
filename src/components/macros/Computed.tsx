@@ -1,8 +1,7 @@
 import { useLayoutEffect } from 'preact/hooks';
-import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
-import { LocalsContext } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface ComputedProps {
   rawArgs: string;
@@ -50,32 +49,38 @@ function valuesEqual(a: unknown, b: unknown): boolean {
     typeof b === 'object' &&
     b !== null
   ) {
-    return JSON.stringify(a) === JSON.stringify(b);
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
   }
   return false;
 }
 
 export function Computed({ rawArgs }: ComputedProps) {
-  // Subscribe to trigger re-renders when store changes
-  useStoryStore((s) => s.variables);
-  useStoryStore((s) => s.temporary);
-  const locals = useContext(LocalsContext);
+  const [mergedVars, mergedTemps] = useMergedLocals();
 
-  const { target, expr } = parseComputedArgs(rawArgs);
+  let target: string;
+  let expr: string;
+  try {
+    ({ target, expr } = parseComputedArgs(rawArgs));
+  } catch (err) {
+    return (
+      <span
+        class="error"
+        title={String(err)}
+      >
+        {`{computed error: ${err instanceof Error ? err.message : String(err)}}`}
+      </span>
+    );
+  }
   const isTemp = target.startsWith('_');
   const name = target.slice(1);
 
   // Evaluate in useLayoutEffect so preceding {set} effects have already run
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
-
-    // Merge locals from for-loops
-    const mergedVars = { ...state.variables };
-    const mergedTemps = { ...state.temporary };
-    for (const [key, val] of Object.entries(locals)) {
-      if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-      else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-    }
 
     let newValue: unknown;
     try {

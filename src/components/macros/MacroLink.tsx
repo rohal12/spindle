@@ -19,13 +19,13 @@ function parseArgs(rawArgs: string): {
   const re = /["']([^"']+)["']/g;
   let m;
   while ((m = re.exec(rawArgs)) !== null) {
-    parts.push(m[1]);
+    parts.push(m[1]!);
   }
   if (parts.length >= 2) {
-    return { display: parts[0], passage: parts[1] };
+    return { display: parts[0]!, passage: parts[1]! };
   }
   if (parts.length === 1) {
-    return { display: parts[0], passage: null };
+    return { display: parts[0]!, passage: null };
   }
   // Fallback: treat entire rawArgs as display text
   return { display: rawArgs.trim(), passage: null };

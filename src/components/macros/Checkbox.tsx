@@ -12,8 +12,8 @@ function parseArgs(rawArgs: string): { varName: string; label: string } {
   if (!match) {
     return { varName: rawArgs.trim(), label: '' };
   }
-  const varName = match[1].replace(/["']/g, '');
-  const label = match[2];
+  const varName = match[1]!.replace(/["']/g, '');
+  const label = match[2]!;
   return { varName, label };
 }
 
