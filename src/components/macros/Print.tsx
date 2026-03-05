@@ -1,7 +1,5 @@
-import { useStoryStore } from '../../store';
-import { useContext } from 'preact/hooks';
 import { evaluate } from '../../expression';
-import { LocalsContext } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface PrintProps {
   rawArgs: string;
@@ -10,17 +8,7 @@ interface PrintProps {
 }
 
 export function Print({ rawArgs, className, id }: PrintProps) {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
-  const locals = useContext(LocalsContext);
-
-  // Merge locals into variables for expression evaluation
-  const mergedVars = { ...variables };
-  const mergedTemps = { ...temporary };
-  for (const [key, val] of Object.entries(locals)) {
-    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-  }
+  const [mergedVars, mergedTemps] = useMergedLocals();
 
   try {
     const result = evaluate(rawArgs, mergedVars, mergedTemps);
@@ -41,7 +29,7 @@ export function Print({ rawArgs, className, id }: PrintProps) {
         class="error"
         title={String(err)}
       >
-        {`{print error: ${(err as Error).message}}`}
+        {`{print error: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }

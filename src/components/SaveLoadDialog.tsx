@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { useStoryStore } from '../store';
-import type { SaveRecord } from '../saves/types';
+import { isSaveExport, type SaveRecord } from '../saves/types';
 import {
   getSavesGrouped,
   createSave,
@@ -45,7 +45,7 @@ export function SaveLoadDialog({ onClose }: SaveLoadDialogProps) {
     text: string;
     type: 'success' | 'error';
   } | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -75,9 +75,11 @@ export function SaveLoadDialog({ onClose }: SaveLoadDialogProps) {
     }
   }, [renamingId]);
 
+  const statusTimer = useRef<number>();
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
+    clearTimeout(statusTimer.current);
     setStatus({ text, type });
-    setTimeout(() => setStatus(null), 3000);
+    statusTimer.current = window.setTimeout(() => setStatus(null), 3000);
   };
 
   const toggleCollapse = (id: string) => {
@@ -187,6 +189,9 @@ export function SaveLoadDialog({ onClose }: SaveLoadDialogProps) {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
+      if (!isSaveExport(data)) {
+        throw new Error('Invalid save file format');
+      }
       await importSave(data, ifid);
       showStatus('Save imported');
       await refresh();

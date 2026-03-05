@@ -1,7 +1,6 @@
-import { useStoryStore } from '../../store';
-import { useContext } from 'preact/hooks';
 import { evaluate } from '../../expression';
-import { LocalsContext, renderNodes } from '../../markup/render';
+import { renderNodes } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 import type { Branch } from '../../markup/ast';
 
 interface SwitchProps {
@@ -10,16 +9,7 @@ interface SwitchProps {
 }
 
 export function Switch({ rawArgs, branches }: SwitchProps) {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
-  const locals = useContext(LocalsContext);
-
-  const mergedVars = { ...variables };
-  const mergedTemps = { ...temporary };
-  for (const [key, val] of Object.entries(locals)) {
-    if (key.startsWith('$')) mergedVars[key.slice(1)] = val;
-    else if (key.startsWith('_')) mergedTemps[key.slice(1)] = val;
-  }
+  const [mergedVars, mergedTemps] = useMergedLocals();
 
   let switchValue: unknown;
   try {
@@ -30,7 +20,7 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
         class="error"
         title={String(err)}
       >
-        {`{switch error: ${(err as Error).message}}`}
+        {`{switch error: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
@@ -55,7 +45,7 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
           class="error"
           title={String(err)}
         >
-          {`{case error: ${(err as Error).message}}`}
+          {`{case error: ${err instanceof Error ? err.message : String(err)}}`}
         </span>
       );
     }

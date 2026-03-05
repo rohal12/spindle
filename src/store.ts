@@ -30,6 +30,8 @@ export interface StoryState {
   renderCounts: Record<string, number>;
   saveVersion: number;
   playthroughId: string;
+  saveError: string | null;
+  loadError: string | null;
 
   init: (
     storyData: StoryData,
@@ -64,6 +66,8 @@ export const useStoryStore = create<StoryState>()(
     renderCounts: {},
     saveVersion: 0,
     playthroughId: '',
+    saveError: null,
+    loadError: null,
 
     init: (
       storyData: StoryData,
@@ -98,19 +102,23 @@ export const useStoryStore = create<StoryState>()(
 
       // Init save system (fire-and-forget — DB will be ready before user opens dialog)
       const ifid = storyData.ifid;
-      initSaveSystem().then(async () => {
-        const existingId = await getCurrentPlaythroughId(ifid);
-        if (existingId) {
-          set((state) => {
-            state.playthroughId = existingId;
-          });
-        } else {
-          const newId = await startNewPlaythrough(ifid);
-          set((state) => {
-            state.playthroughId = newId;
-          });
-        }
-      });
+      initSaveSystem()
+        .then(async () => {
+          const existingId = await getCurrentPlaythroughId(ifid);
+          if (existingId) {
+            set((state) => {
+              state.playthroughId = existingId;
+            });
+          } else {
+            const newId = await startNewPlaythrough(ifid);
+            set((state) => {
+              state.playthroughId = newId;
+            });
+          }
+        })
+        .catch((err) =>
+          console.error('spindle: failed to init save system', err),
+        );
     },
 
     navigate: (passageName: string) => {
@@ -146,7 +154,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         if (state.historyIndex <= 0) return;
         state.historyIndex--;
-        const moment = state.history[state.historyIndex];
+        const moment = state.history[state.historyIndex]!;
         state.currentPassage = moment.passage;
         state.variables = deepClone(moment.variables);
         state.temporary = {};
@@ -157,7 +165,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         if (state.historyIndex >= state.history.length - 1) return;
         state.historyIndex++;
-        const moment = state.history[state.historyIndex];
+        const moment = state.history[state.historyIndex]!;
         state.currentPassage = moment.passage;
         state.variables = deepClone(moment.variables);
         state.temporary = {};
@@ -223,11 +231,15 @@ export const useStoryStore = create<StoryState>()(
       executeStoryInit();
 
       // Start a new playthrough on restart
-      startNewPlaythrough(storyData.ifid).then((newId) => {
-        set((state) => {
-          state.playthroughId = newId;
-        });
-      });
+      startNewPlaythrough(storyData.ifid)
+        .then((newId) => {
+          set((state) => {
+            state.playthroughId = newId;
+          });
+        })
+        .catch((err) =>
+          console.error('spindle: failed to start new playthrough', err),
+        );
     },
 
     save: () => {
@@ -252,29 +264,51 @@ export const useStoryStore = create<StoryState>()(
         renderCounts: { ...renderCounts },
       };
 
-      quickSave(storyData.ifid, playthroughId, payload).then(() => {
-        set((state) => {
-          state.saveVersion++;
-        });
+      set((state) => {
+        state.saveError = null;
       });
+      quickSave(storyData.ifid, playthroughId, payload)
+        .then(() => {
+          set((state) => {
+            state.saveVersion++;
+          });
+        })
+        .catch((err) => {
+          console.error('spindle: failed to quick save', err);
+          set((state) => {
+            state.saveError =
+              err instanceof Error ? err.message : 'Failed to save';
+          });
+        });
     },
 
     load: () => {
       const { storyData } = get();
       if (!storyData) return;
 
-      loadQuickSave(storyData.ifid).then((payload) => {
-        if (!payload) return;
-        set((state) => {
-          state.currentPassage = payload.passage;
-          state.variables = payload.variables;
-          state.history = payload.history;
-          state.historyIndex = payload.historyIndex;
-          state.visitCounts = payload.visitCounts ?? {};
-          state.renderCounts = payload.renderCounts ?? {};
-          state.temporary = {};
-        });
+      set((state) => {
+        state.loadError = null;
       });
+      loadQuickSave(storyData.ifid)
+        .then((payload) => {
+          if (!payload) return;
+          set((state) => {
+            state.currentPassage = payload.passage;
+            state.variables = payload.variables;
+            state.history = payload.history;
+            state.historyIndex = payload.historyIndex;
+            state.visitCounts = payload.visitCounts ?? {};
+            state.renderCounts = payload.renderCounts ?? {};
+            state.temporary = {};
+          });
+        })
+        .catch((err) => {
+          console.error('spindle: failed to load quick save', err);
+          set((state) => {
+            state.loadError =
+              err instanceof Error ? err.message : 'Failed to load';
+          });
+        });
     },
 
     hasSave: () => {
