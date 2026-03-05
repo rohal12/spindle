@@ -82,6 +82,50 @@ Register a class so its instances can be cloned, saved, and restored with their 
 
 See [Using Classes](variables.md#using-classes) for full details.
 
+## Passage Lookup
+
+### `Story.currentPassage()`
+
+Returns the full passage object for the current passage, or `undefined` if not found.
+
+```js
+var p = Story.currentPassage();
+console.log(p.name); // "Forest"
+console.log(p.tags); // ["dark", "outdoor"]
+console.log(p.metadata); // { position: "600,400" }
+```
+
+### `Story.previousPassage()`
+
+Returns the full passage object for the previous passage in history, or `undefined` if there is no previous passage (e.g. on the start passage).
+
+```js
+var prev = Story.previousPassage();
+if (prev) {
+  console.log('Came from: ' + prev.name);
+}
+```
+
+### Passage object
+
+Both methods return a passage object with these properties:
+
+| Property   | Type                     | Description                                                                       |
+| ---------- | ------------------------ | --------------------------------------------------------------------------------- |
+| `pid`      | `number`                 | Passage ID from the story data                                                    |
+| `name`     | `string`                 | Passage name                                                                      |
+| `tags`     | `string[]`               | Tags from the passage header                                                      |
+| `metadata` | `Record<string, string>` | Metadata from the Twee 3 passage header (e.g. `position`, `size`, or custom keys) |
+| `content`  | `string`                 | Raw passage content                                                               |
+
+The `metadata` field contains all attributes from the passage header's JSON metadata block. In Twee 3 format, this is the JSON object at the end of the header line:
+
+```
+:: Forest [dark outdoor] {"position":"600,400","size":"100,200","difficulty":"hard"}
+```
+
+Standard keys like `position` and `size` are included alongside any custom keys the author adds.
+
 ## Passage Tracking
 
 Spindle tracks how many times each passage has been **visited** (navigated to) and **rendered** (visited or included). Back/forward navigation does not increment counts — only new visits and `{include}` calls do.

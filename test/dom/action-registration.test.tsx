@@ -11,7 +11,7 @@ import {
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): PassageData {
-  return { pid, name, tags: [], content };
+  return { pid, name, tags: [], metadata: {}, content };
 }
 
 function makeStoryData(passages: PassageData[], startNode = 1): StoryData {

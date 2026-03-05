@@ -9,7 +9,7 @@ import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
-  return { pid, name, tags: [], content };
+  return { pid, name, tags: [], metadata: {}, content };
 }
 
 function makeStoryData(passages: Passage[], startNode = 1): StoryData {

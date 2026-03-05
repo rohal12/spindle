@@ -7,7 +7,7 @@ import {
 import type { Passage } from '../../src/parser';
 
 function makePassage(name: string, content: string): Passage {
-  return { pid: 0, name, tags: [], content };
+  return { pid: 0, name, tags: [], metadata: {}, content };
 }
 
 function makePassages(...entries: [string, string][]): Map<string, Passage> {

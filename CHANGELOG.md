@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-3-5
+
 ### Added
 
 - Seedable PRNG (Mulberry32) with `Story.prng.init()`, `Story.random()`, `Story.randomInt()`
 - `random()` and `randomInt(min, max)` available in expressions
 - PRNG state survives save/load and history navigation via pull-counter approach
+- `metadata` field on passages, parsed from Twee 3 passage header metadata (exposed as `Record<string, string>`)
+- `Story.currentPassage()` and `Story.previousPassage()` return the full `Passage` object
+- `currentPassage()` and `previousPassage()` available in expressions
+- Pre-commit hook with husky + lint-staged to run prettier on staged files
 
 ## [0.3.2] - 2026-3-5
 

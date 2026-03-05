@@ -1,4 +1,5 @@
 import { useStoryStore } from './store';
+import type { Passage } from './parser';
 import { settings } from './settings';
 import type { SavePayload } from './saves/types';
 import { setTitleGenerator } from './saves/save-manager';
@@ -46,6 +47,8 @@ export interface StoryAPI {
   hasRendered(name: string): boolean;
   hasRenderedAny(...names: string[]): boolean;
   hasRenderedAll(...names: string[]): boolean;
+  currentPassage(): Passage | undefined;
+  previousPassage(): Passage | undefined;
   readonly title: string;
   readonly passage: string;
   readonly settings: typeof settings;
@@ -148,6 +151,18 @@ function createStoryAPI(): StoryAPI {
     hasRenderedAll(...names: string[]): boolean {
       const { renderCounts } = useStoryStore.getState();
       return names.every((n) => (renderCounts[n] ?? 0) > 0);
+    },
+
+    currentPassage(): Passage | undefined {
+      const state = useStoryStore.getState();
+      return state.storyData?.passages.get(state.currentPassage);
+    },
+
+    previousPassage(): Passage | undefined {
+      const state = useStoryStore.getState();
+      if (state.historyIndex <= 0) return undefined;
+      const prevName = state.history[state.historyIndex - 1]?.passage;
+      return prevName ? state.storyData?.passages.get(prevName) : undefined;
     },
 
     get title(): string {

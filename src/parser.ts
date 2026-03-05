@@ -2,6 +2,7 @@ export interface Passage {
   pid: number;
   name: string;
   tags: string[];
+  metadata: Record<string, string>;
   content: string;
 }
 
@@ -53,7 +54,21 @@ export function parseStoryData(): StoryData {
       .filter((t) => t.length > 0);
     const content = el.textContent || '';
 
-    const passage: Passage = { pid, name: passageName, tags, content };
+    const metadata: Record<string, string> = {};
+    const skipAttrs = new Set(['pid', 'name', 'tags']);
+    for (const attr of el.attributes) {
+      if (!skipAttrs.has(attr.name)) {
+        metadata[attr.name] = attr.value;
+      }
+    }
+
+    const passage: Passage = {
+      pid,
+      name: passageName,
+      tags,
+      metadata,
+      content,
+    };
     passages.set(passageName, passage);
     passagesById.set(pid, passage);
   }

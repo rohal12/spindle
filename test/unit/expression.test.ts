@@ -106,7 +106,7 @@ describe('execute', () => {
 
 describe('expression tracking functions', () => {
   function makePassage(pid: number, name: string, content = ''): Passage {
-    return { pid, name, tags: [], content };
+    return { pid, name, tags: [], metadata: {}, content };
   }
 
   function makeStoryData(passages: Passage[], startNode = 1): StoryData {

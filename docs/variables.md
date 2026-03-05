@@ -129,6 +129,8 @@ The following functions are available in any expression to check passage visit a
 
 | Function                        | Returns   | Description                                                  |
 | ------------------------------- | --------- | ------------------------------------------------------------ |
+| `currentPassage()`              | `object`  | The current passage object (name, tags, metadata, content)   |
+| `previousPassage()`             | `object`  | The previous passage object, or `undefined` on start         |
 | `visited("name")`               | `number`  | Times the passage was visited                                |
 | `hasVisited("name")`            | `boolean` | Whether the passage was visited at least once                |
 | `hasVisitedAny("a", "b", ...)`  | `boolean` | Whether **any** of the passages were visited                 |
@@ -152,6 +154,18 @@ Use these directly in `{if}` conditions or any expression:
 {/if}
 
 {print visited("Start")} visits to the start passage.
+```
+
+Access passage metadata in expressions:
+
+```
+{if currentPassage().tags.includes("dark")}
+  It's too dark to see.
+{/if}
+
+{if previousPassage()}
+  You came from {print previousPassage().name}.
+{/if}
 ```
 
 **Visited** counts passages the player navigated to via links, `{goto}`, or as the start passage. Back/forward navigation does not increment the count.

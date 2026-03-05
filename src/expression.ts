@@ -1,8 +1,11 @@
 import type { StoryState } from './store';
 import { useStoryStore } from './store';
+import type { Passage } from './parser';
 import { random, randomInt } from './prng';
 
 interface ExpressionFns {
+  currentPassage: () => Passage | undefined;
+  previousPassage: () => Passage | undefined;
   visited: (name: string) => number;
   hasVisited: (name: string) => boolean;
   hasVisitedAny: (...names: string[]) => boolean;
@@ -39,7 +42,7 @@ function transform(expr: string): string {
 }
 
 const preamble =
-  'const {visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=__fns;';
+  'const {currentPassage,previousPassage,visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=__fns;';
 
 function getOrCompile(key: string, body: string): CompiledExpression {
   const cached = fnCache.get(key);
@@ -94,7 +97,20 @@ export function buildExpressionFns() {
   const hasRenderedAll = (...names: string[]): boolean =>
     names.every((n) => rendered(n) > 0);
 
+  const currentPassage = (): Passage | undefined => {
+    const s = useStoryStore.getState();
+    return s.storyData?.passages.get(s.currentPassage);
+  };
+  const previousPassage = (): Passage | undefined => {
+    const s = useStoryStore.getState();
+    if (s.historyIndex <= 0) return undefined;
+    const prevName = s.history[s.historyIndex - 1]?.passage;
+    return prevName ? s.storyData?.passages.get(prevName) : undefined;
+  };
+
   cachedFns = {
+    currentPassage,
+    previousPassage,
     visited,
     hasVisited,
     hasVisitedAny,
