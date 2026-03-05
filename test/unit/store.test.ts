@@ -3,6 +3,13 @@ import { useStoryStore } from '../../src/store';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
+import {
+  initPRNG,
+  resetPRNG,
+  random,
+  isPRNGEnabled,
+  getPRNGPull,
+} from '../../src/prng';
 
 function makePassage(pid: number, name: string, content = ''): Passage {
   return { pid, name, tags: [], content };
@@ -650,6 +657,179 @@ describe('useStoryStore', () => {
       p.damage(40);
       expect(p.hp).toBe(60);
       expect(p.isDead).toBe(false);
+    });
+  });
+
+  describe('PRNG integration', () => {
+    beforeEach(() => {
+      resetPRNG();
+    });
+
+    it('navigate() captures PRNG snapshot in history moment', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      initPRNG('nav-test', false);
+      random(); // pull = 1
+
+      useStoryStore.getState().navigate('Room');
+
+      const moment = useStoryStore.getState().history[1];
+      expect(moment.prng).toEqual({ seed: 'nav-test', pull: 1 });
+    });
+
+    it('goBack() restores PRNG state', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+        makePassage(3, 'Hall'),
+      ]);
+      useStoryStore.getState().init(story);
+      initPRNG('back-test', false);
+      random();
+      random(); // pull = 2
+
+      useStoryStore.getState().navigate('Room');
+      // moment[1] has prng with pull=2
+
+      random();
+      random();
+      random(); // pull = 5
+
+      useStoryStore.getState().navigate('Hall');
+      // moment[2] has prng with pull=5
+
+      random(); // pull = 6
+
+      // Go back to Room (moment[1], pull=2)
+      useStoryStore.getState().goBack();
+      expect(getPRNGPull()).toBe(2);
+
+      // Verify the sequence from pull=2 is reproducible
+      const seq1 = Array.from({ length: 3 }, () => random());
+
+      // Restore to pull=2 again via goForward then goBack
+      useStoryStore.getState().goForward();
+      useStoryStore.getState().goBack();
+      const seq2 = Array.from({ length: 3 }, () => random());
+
+      expect(seq1).toEqual(seq2);
+    });
+
+    it('goForward() restores PRNG state', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      initPRNG('fwd-test', false);
+      random(); // pull = 1
+
+      useStoryStore.getState().navigate('Room');
+      // moment[1] has pull=1
+
+      useStoryStore.getState().goBack();
+      useStoryStore.getState().goForward();
+
+      expect(getPRNGPull()).toBe(1);
+    });
+
+    it('restart() resets PRNG', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      initPRNG('restart-test', false);
+      random();
+
+      useStoryStore.getState().restart();
+
+      expect(isPRNGEnabled()).toBe(false);
+    });
+
+    it('getSavePayload() includes PRNG snapshot', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+      initPRNG('save-test', false);
+      random();
+      random();
+
+      const payload = useStoryStore.getState().getSavePayload();
+      expect(payload.prng).toEqual({ seed: 'save-test', pull: 2 });
+    });
+
+    it('loadFromPayload() restores PRNG state', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+      initPRNG('load-test', false);
+      random();
+      random();
+      random(); // pull = 3
+
+      const seqAfter = Array.from({ length: 5 }, () => random());
+
+      const payload = useStoryStore.getState().getSavePayload();
+      // payload.prng has pull=8 now, but we want to test with pull=3
+      payload.prng = { seed: 'load-test', pull: 3 };
+
+      resetPRNG();
+      useStoryStore.getState().loadFromPayload(payload);
+
+      expect(isPRNGEnabled()).toBe(true);
+      expect(getPRNGPull()).toBe(3);
+      const restored = Array.from({ length: 5 }, () => random());
+      expect(restored).toEqual(seqAfter);
+    });
+
+    it('loadFromPayload() handles missing prng field (backward compat)', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+      initPRNG('compat-test', false);
+
+      const payload = {
+        passage: 'Start',
+        variables: {},
+        history: [{ passage: 'Start', variables: {}, timestamp: Date.now() }],
+        historyIndex: 0,
+      };
+      useStoryStore.getState().loadFromPayload(payload);
+
+      expect(isPRNGEnabled()).toBe(false);
+    });
+
+    it('save then load resumes the same random sequence', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+      initPRNG('save-load-seq', false);
+
+      random(); // pull = 1
+      const payload = useStoryStore.getState().getSavePayload();
+
+      const valueBeforeLoad = random(); // pull = 2
+
+      // Load restores to pull = 1, so next random() should equal valueBeforeLoad
+      useStoryStore.getState().loadFromPayload(payload);
+      expect(random()).toBe(valueBeforeLoad);
+    });
+
+    it('history moments without prng field reset PRNG on goBack', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      // Navigate without PRNG enabled — moment has no prng field
+      useStoryStore.getState().navigate('Room');
+
+      // Enable PRNG after navigating
+      initPRNG('late-init', false);
+
+      useStoryStore.getState().goBack();
+      // Should reset since moment[0] has no prng
+      expect(isPRNGEnabled()).toBe(false);
     });
   });
 });

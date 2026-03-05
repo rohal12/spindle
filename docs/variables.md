@@ -127,16 +127,18 @@ Standard JavaScript operators and built-in functions (`Math`, `Array` methods, s
 
 The following functions are available in any expression to check passage visit and render history:
 
-| Function                        | Returns   | Description                                        |
-| ------------------------------- | --------- | -------------------------------------------------- |
-| `visited("name")`               | `number`  | Times the passage was visited                      |
-| `hasVisited("name")`            | `boolean` | Whether the passage was visited at least once      |
-| `hasVisitedAny("a", "b", ...)`  | `boolean` | Whether **any** of the passages were visited       |
-| `hasVisitedAll("a", "b", ...)`  | `boolean` | Whether **all** of the passages were visited       |
-| `rendered("name")`              | `number`  | Times the passage was rendered (visits + includes) |
-| `hasRendered("name")`           | `boolean` | Whether the passage was rendered at least once     |
-| `hasRenderedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were rendered      |
-| `hasRenderedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were rendered      |
+| Function                        | Returns   | Description                                                  |
+| ------------------------------- | --------- | ------------------------------------------------------------ |
+| `visited("name")`               | `number`  | Times the passage was visited                                |
+| `hasVisited("name")`            | `boolean` | Whether the passage was visited at least once                |
+| `hasVisitedAny("a", "b", ...)`  | `boolean` | Whether **any** of the passages were visited                 |
+| `hasVisitedAll("a", "b", ...)`  | `boolean` | Whether **all** of the passages were visited                 |
+| `rendered("name")`              | `number`  | Times the passage was rendered (visits + includes)           |
+| `hasRendered("name")`           | `boolean` | Whether the passage was rendered at least once               |
+| `hasRenderedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were rendered                |
+| `hasRenderedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were rendered                |
+| `random()`                      | `number`  | Seeded random number in [0, 1) (or `Math.random()` fallback) |
+| `randomInt(min, max)`           | `number`  | Seeded random integer between min and max (inclusive)        |
 
 Use these directly in `{if}` conditions or any expression:
 

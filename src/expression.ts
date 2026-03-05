@@ -1,5 +1,6 @@
 import type { StoryState } from './store';
 import { useStoryStore } from './store';
+import { random, randomInt } from './prng';
 
 interface ExpressionFns {
   visited: (name: string) => number;
@@ -10,6 +11,8 @@ interface ExpressionFns {
   hasRendered: (name: string) => boolean;
   hasRenderedAny: (...names: string[]) => boolean;
   hasRenderedAll: (...names: string[]) => boolean;
+  random: () => number;
+  randomInt: (min: number, max: number) => number;
 }
 
 type CompiledExpression = (
@@ -36,7 +39,7 @@ function transform(expr: string): string {
 }
 
 const preamble =
-  'const {visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll}=__fns;';
+  'const {visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=__fns;';
 
 function getOrCompile(key: string, body: string): CompiledExpression {
   const cached = fnCache.get(key);
@@ -100,6 +103,8 @@ export function buildExpressionFns() {
     hasRendered,
     hasRenderedAny,
     hasRenderedAll,
+    random,
+    randomInt,
   };
   cachedVisitCounts = visitCounts;
   cachedRenderCounts = renderCounts;

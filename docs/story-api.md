@@ -231,6 +231,74 @@ Story.waitForActions().then(function (actions) {
 });
 ```
 
+## Random Numbers
+
+Spindle includes a seedable pseudo-random number generator (PRNG) for reproducible randomness across save/load cycles. Initialize it in `StoryInit`, then use `random()` and `randomInt()` in expressions or via the Story API.
+
+### `Story.prng.init(seed?, useEntropy?)`
+
+Initialize the PRNG. Call this in `StoryInit` to enable seeded randomness.
+
+| Parameter    | Type      | Default | Description                                                                                                        |
+| ------------ | --------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `seed`       | `string?` | —       | Seed string. If omitted, a random seed is generated.                                                               |
+| `useEntropy` | `boolean` | `true`  | Mix in `Date.now()` and `Math.random()` for unique playthroughs. Set to `false` for fully deterministic sequences. |
+
+```
+:: StoryInit
+{do}
+  Story.prng.init("my-seed");
+{/do}
+```
+
+### `Story.prng.isEnabled()`
+
+Returns `true` if the PRNG has been initialized.
+
+### `Story.prng.seed`
+
+The current seed string (read-only).
+
+### `Story.prng.pull`
+
+The number of times `random()` has been called since initialization (read-only).
+
+### `Story.random()`
+
+Returns a seeded random number in `[0, 1)`. Falls back to `Math.random()` if the PRNG is not initialized.
+
+```
+{do}
+  var roll = Story.random();
+{/do}
+```
+
+### `Story.randomInt(min, max)`
+
+Returns a random integer between `min` and `max` (inclusive).
+
+```
+{do}
+  var damage = Story.randomInt(1, 6);
+{/do}
+```
+
+### Using in expressions
+
+`random()` and `randomInt(min, max)` are available directly in expressions:
+
+```
+{set $damage = randomInt(1, 6)}
+{if random() > 0.5}
+  Critical hit!
+{/if}
+{print randomInt(1, 20)} on your perception check.
+```
+
+### Save/load behavior
+
+PRNG state is automatically saved and restored. After loading a save, the random sequence continues from exactly where it was when the save was made. History navigation (back/forward) also restores the PRNG state from that point in the story.
+
 ## Properties
 
 ### `Story.title`
