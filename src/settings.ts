@@ -45,7 +45,11 @@ function loadFromStorage(): void {
     const raw = localStorage.getItem(storageKey());
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
         values = { ...values, ...parsed };
       }
     }

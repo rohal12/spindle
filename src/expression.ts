@@ -46,7 +46,12 @@ function getOrCompile(key: string, body: string): CompiledExpression {
     fnCache.set(key, cached);
     return cached;
   }
-  const fn = new Function('variables', 'temporary', '__fns', preamble + body) as CompiledExpression;
+  const fn = new Function(
+    'variables',
+    'temporary',
+    '__fns',
+    preamble + body,
+  ) as CompiledExpression;
   fnCache.set(key, fn);
   if (fnCache.size > FN_CACHE_MAX) {
     // Evict oldest entry

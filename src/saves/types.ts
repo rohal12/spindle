@@ -50,7 +50,8 @@ export function isSaveExport(value: unknown): value is SaveExport {
   if (typeof save.payload !== 'object' || save.payload === null) return false;
 
   const meta = save.meta as Record<string, unknown>;
-  if (typeof meta.id !== 'string' || typeof meta.passage !== 'string') return false;
+  if (typeof meta.id !== 'string' || typeof meta.passage !== 'string')
+    return false;
   if (typeof meta.ifid !== 'string') return false;
   if (typeof meta.playthroughId !== 'string') return false;
   if (typeof meta.createdAt !== 'string') return false;
@@ -61,7 +62,8 @@ export function isSaveExport(value: unknown): value is SaveExport {
   if (typeof payload.passage !== 'string') return false;
   if (!Array.isArray(payload.history)) return false;
   if (typeof payload.historyIndex !== 'number') return false;
-  if (typeof payload.variables !== 'object' || payload.variables === null) return false;
+  if (typeof payload.variables !== 'object' || payload.variables === null)
+    return false;
 
   return true;
 }

@@ -6,7 +6,10 @@ import { LocalsContext } from '../markup/render';
  * Merge store variables/temporary with LocalsContext values.
  * Locals prefixed with `$` go into variables, `_` into temporary.
  */
-export function useMergedLocals(): readonly [Record<string, unknown>, Record<string, unknown>] {
+export function useMergedLocals(): readonly [
+  Record<string, unknown>,
+  Record<string, unknown>,
+] {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
   const locals = useContext(LocalsContext);

@@ -76,7 +76,8 @@ function formatLabel(
   labelMode: string,
 ): string | null {
   if (labelMode === 'none') return null;
-  if (labelMode === '%') return `${max === 0 ? 0 : Math.round((current / max) * 100)}%`;
+  if (labelMode === '%')
+    return `${max === 0 ? 0 : Math.round((current / max) * 100)}%`;
   if (labelMode) return `${current} ${labelMode} / ${max} ${labelMode}`;
   return `${current} / ${max}`;
 }
@@ -88,7 +89,8 @@ export function Meter({ rawArgs, className, id }: MeterProps) {
     const { currentExpr, maxExpr, labelMode } = parseArgs(rawArgs);
     const current = Number(evaluate(currentExpr, mergedVars, mergedTemps));
     const max = Number(evaluate(maxExpr, mergedVars, mergedTemps));
-    const pct = max === 0 ? 0 : Math.max(0, Math.min(100, (current / max) * 100));
+    const pct =
+      max === 0 ? 0 : Math.max(0, Math.min(100, (current / max) * 100));
     const label = formatLabel(current, max, labelMode);
 
     const classes = ['macro-meter', className].filter(Boolean).join(' ');
