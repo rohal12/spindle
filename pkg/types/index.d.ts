@@ -86,6 +86,23 @@ export interface SettingsAPI {
 }
 
 /**
+ * A parsed passage from the story data.
+ * @see {@link ../../src/parser.ts} for the implementation.
+ */
+export interface Passage {
+  /** Passage ID from the story data. */
+  pid: number;
+  /** Passage name. */
+  name: string;
+  /** Tags from the passage header. */
+  tags: string[];
+  /** Metadata from the Twee 3 passage header (e.g. position, size, or custom keys). */
+  metadata: Record<string, string>;
+  /** Raw passage content. */
+  content: string;
+}
+
+/**
  * The main Story API available as `window.Story` at runtime.
  * Provides access to variables, navigation, save/load, and visit tracking.
  * @see {@link ../../src/story-api.ts} for the implementation.
@@ -144,8 +161,17 @@ export interface StoryAPI {
   /** Check if all of the given passages have been rendered. */
   hasRenderedAll(...names: string[]): boolean;
 
+  /** Return the full Passage object for the current passage. */
+  currentPassage(): Passage | undefined;
+
+  /** Return the full Passage object for the previous passage in history. */
+  previousPassage(): Passage | undefined;
+
   /** The story title. */
   readonly title: string;
+
+  /** The current passage name. */
+  readonly passage: string;
 
   /** The settings API. */
   readonly settings: SettingsAPI;
