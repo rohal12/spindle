@@ -95,8 +95,12 @@ function boot() {
       const widgetAST = buildAST(widgetTokens);
       for (const node of widgetAST) {
         if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
-          const widgetName = node.rawArgs.trim().replace(/["']/g, '');
-          registerWidget(widgetName, node.children as ASTNode[]);
+          const tokens2 = node.rawArgs.trim().split(/\s+/);
+          const widgetName = tokens2[0]!.replace(/["']/g, '');
+          const params = tokens2
+            .slice(1)
+            .filter((t) => t.startsWith('$') || t.startsWith('_'));
+          registerWidget(widgetName, node.children as ASTNode[], params);
         }
       }
     }
@@ -110,6 +114,18 @@ function boot() {
       resetIdCounters();
     }
   });
+
+  // Warn if StoryInterface passage exists but doesn't contain {passage}
+  const storyInterfacePassage = storyData.passages.get('StoryInterface');
+  if (
+    storyInterfacePassage &&
+    !storyInterfacePassage.content.includes('{passage}')
+  ) {
+    console.warn(
+      'spindle: StoryInterface passage does not contain {passage}. ' +
+        'The current passage will not be displayed.',
+    );
+  }
 
   const root = document.getElementById('root');
   if (!root) {

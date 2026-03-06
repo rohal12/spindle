@@ -1,12 +1,21 @@
 import type { ASTNode } from '../markup/ast';
 
-const widgets = new Map<string, ASTNode[]>();
-
-export function registerWidget(name: string, bodyAST: ASTNode[]): void {
-  widgets.set(name.toLowerCase(), bodyAST);
+interface WidgetEntry {
+  body: ASTNode[];
+  params: string[];
 }
 
-export function getWidget(name: string): ASTNode[] | undefined {
+const widgets = new Map<string, WidgetEntry>();
+
+export function registerWidget(
+  name: string,
+  bodyAST: ASTNode[],
+  params: string[],
+): void {
+  widgets.set(name.toLowerCase(), { body: bodyAST, params });
+}
+
+export function getWidget(name: string): WidgetEntry | undefined {
   return widgets.get(name.toLowerCase());
 }
 

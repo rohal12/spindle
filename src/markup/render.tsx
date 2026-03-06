@@ -32,8 +32,10 @@ import { Repeat } from '../components/macros/Repeat';
 import { Stop } from '../components/macros/Stop';
 import { Type } from '../components/macros/Type';
 import { Widget } from '../components/macros/Widget';
+import { WidgetInvocation } from '../components/macros/WidgetInvocation';
 import { Computed } from '../components/macros/Computed';
 import { Meter } from '../components/macros/Meter';
+import { PassageDisplay } from '../components/macros/PassageDisplay';
 import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
 import { markdownToHtml } from './markdown';
@@ -127,6 +129,15 @@ function renderMacro(node: MacroNode, key: number) {
         <Meter
           key={key}
           rawArgs={node.rawArgs}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'passage':
+      return (
+        <PassageDisplay
+          key={key}
           className={node.className}
           id={node.id}
         />
@@ -415,9 +426,16 @@ function renderMacro(node: MacroNode, key: number) {
 
     default: {
       // Check widget registry for user-defined widgets
-      const widgetAST = getWidget(node.name);
-      if (widgetAST) {
-        return <>{renderNodes(widgetAST)}</>;
+      const widget = getWidget(node.name);
+      if (widget) {
+        return (
+          <WidgetInvocation
+            key={key}
+            body={widget.body}
+            params={widget.params}
+            rawArgs={node.rawArgs}
+          />
+        );
       }
 
       // Check component registry for custom macros

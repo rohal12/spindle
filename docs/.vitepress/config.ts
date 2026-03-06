@@ -28,10 +28,52 @@ export default defineConfig({
         text: 'Authoring',
         items: [
           { text: 'Markup', link: '/markup' },
-          { text: 'Macros', link: '/macros' },
+          {
+            text: 'Macros',
+            link: '/macros',
+            collapsed: true,
+            items: [
+              { text: 'Control Flow', link: '/macros#control-flow' },
+              { text: 'Variables', link: '/macros#variables' },
+              { text: 'Output', link: '/macros#output' },
+              { text: 'Navigation', link: '/macros#navigation' },
+              { text: 'Form Inputs', link: '/macros#form-inputs' },
+              { text: 'Timing', link: '/macros#timing' },
+              { text: 'Composition', link: '/macros#composition' },
+              { text: 'Saves and UI', link: '/macros#saves-and-ui' },
+            ],
+          },
           { text: 'Variables', link: '/variables' },
-          { text: 'Special Passages', link: '/special-passages' },
-          { text: 'Widgets', link: '/widgets' },
+          {
+            text: 'Special Passages',
+            link: '/special-passages',
+            collapsed: true,
+            items: [
+              { text: 'StoryInit', link: '/special-passages#storyinit' },
+              {
+                text: 'StoryVariables',
+                link: '/special-passages#storyvariables',
+              },
+              {
+                text: 'StoryInterface',
+                link: '/special-passages#storyinterface',
+              },
+              { text: 'SaveTitle', link: '/special-passages#savetitle' },
+            ],
+          },
+          { text: 'StoryInterface', link: '/story-interface' },
+          {
+            text: 'Widgets',
+            link: '/widgets',
+            collapsed: true,
+            items: [
+              { text: 'Defining a Widget', link: '/widgets#defining-a-widget' },
+              { text: 'Using a Widget', link: '/widgets#using-a-widget' },
+              { text: 'Arguments', link: '/widgets#arguments' },
+              { text: 'How Widgets Work', link: '/widgets#how-widgets-work' },
+              { text: 'Example', link: '/widgets#example' },
+            ],
+          },
         ],
       },
       {

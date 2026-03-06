@@ -35,6 +35,47 @@ More content.
 
 Widget names are case-insensitive: `{statusbar}`, `{StatusBar}`, and `{STATUSBAR}` all work.
 
+## Arguments
+
+Widgets can accept arguments, making them more flexible. Declare parameter names after the widget name using `$` or `_` prefixed variables:
+
+```
+:: StoryInit
+{widget "StatLine" $label $value $max}
+  **{$label}:** {$value} / {$max}
+{/widget}
+```
+
+Pass arguments as comma-separated expressions when invoking the widget:
+
+```
+:: Start
+{StatLine "Health", $health, $max_health}
+{StatLine "Mana", $mana, $max_mana}
+{StatLine "XP", $xp, $xp_needed}
+```
+
+Arguments are evaluated as expressions, so you can pass variables, literals, or computed values:
+
+```
+{StatLine "Damage", $strength * 2, 100}
+```
+
+Parameters are scoped to the widget body — they don't affect story variables with the same name. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
+
+### Temporary Parameters
+
+Use `_` prefixed parameters for temporary variables that should not conflict with story variables:
+
+```
+{widget "Badge" _text _color}
+  <span class="badge" style="color: {_color}">{_text}</span>
+{/widget}
+
+{Badge "NEW", "green"}
+{Badge "SALE", "red"}
+```
+
 ## How Widgets Work
 
 When you define a widget, its body is stored as an AST (parsed content). When you invoke it, that AST is rendered in place. This means:
@@ -42,8 +83,11 @@ When you define a widget, its body is stored as an AST (parsed content). When yo
 - Widgets see the current values of all variables at the time they are rendered
 - Widgets re-render when variables they reference change
 - Widgets can contain any markup: links, macros, HTML, other widgets
+- Arguments are evaluated at invocation time and scoped to the widget body
 
 ## Example
+
+A simple widget without arguments:
 
 ```
 :: StoryInit
@@ -68,4 +112,21 @@ HP: {HealthBar}
 
 {set $health = $health - 20}
 A trap! You take damage.
+```
+
+A parameterized widget for reusable UI:
+
+```
+:: StoryInit
+{widget "ResourceBar" $label $current $maximum}
+  <div class="resource-bar">
+    <span class="resource-label">{$label}</span>
+    {meter $current $maximum}
+  </div>
+{/widget}
+
+:: Start
+{ResourceBar "HP", $health, $max_health}
+{ResourceBar "MP", $mana, $max_mana}
+{ResourceBar "Stamina", $stamina, $max_stamina}
 ```
