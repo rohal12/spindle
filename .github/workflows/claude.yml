@@ -14,6 +14,7 @@ on:
       - 'docs/**'
       - 'UNLICENSE'
       - '.vitepress/**'
+      - '.github/workflows/claude.yml'
 
 permissions:
   contents: write
