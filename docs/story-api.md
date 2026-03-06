@@ -343,6 +343,24 @@ Returns a random integer between `min` and `max` (inclusive).
 
 PRNG state is automatically saved and restored. After loading a save, the random sequence continues from exactly where it was when the save was made. History navigation (back/forward) also restores the PRNG state from that point in the story.
 
+## Events
+
+### `:storyready`
+
+A DOM event dispatched on `document` after Spindle has finished loading and rendering the first passage. Listen for it in your story JavaScript to run code once the story is fully ready.
+
+```
+{do}
+  document.addEventListener(':storyready', function() {
+    console.log('Story is ready!');
+  });
+{/do}
+```
+
+::: tip
+Register your listener in the story JavaScript (the `:: StoryScript` passage or a `<script>` tag) rather than in `StoryInit`, since `StoryInit` runs before the DOM is rendered.
+:::
+
 ## Properties
 
 ### `Story.title`

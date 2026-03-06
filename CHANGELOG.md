@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `:storyready` DOM event dispatched after Spindle finishes loading and rendering
+
+### Fixed
+
+- Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
+
 ## [0.4.0] - 2026-3-5
 
 ### Added

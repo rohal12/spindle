@@ -117,6 +117,8 @@ function boot() {
   }
 
   render(<App />, root);
+
+  document.dispatchEvent(new CustomEvent(':storyready'));
 }
 
 if (document.readyState === 'loading') {
