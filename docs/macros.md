@@ -423,13 +423,19 @@ The argument can be a literal passage name or an expression that evaluates to on
 
 ### `{widget}`
 
-Define a reusable content block. See [Widgets](widgets.md).
+Define a reusable content block. Optionally declare parameters after the name.
 
 ```
 {widget "StatusBar"}
   Health: {$health} | Mana: {$mana}
 {/widget}
+
+{widget "StatLine" $label $value $max}
+  **{$label}:** {$value} / {$max}
+{/widget}
 ```
+
+Invoke with arguments: `{StatLine "Health", $health, 100}`. See [Widgets](widgets.md).
 
 ## Saves and UI
 

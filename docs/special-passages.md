@@ -40,26 +40,17 @@ See [Variables](variables.md) for details.
 
 ## `StoryInterface`
 
-Override the default menubar. If this passage exists, its content replaces the built-in interface:
+Controls the entire page layout. When this passage exists, its content replaces the default UI — including the menubar and passage display area. Use the `{passage}` macro to place the current passage within your custom layout.
 
 ```
 :: StoryInterface
-<nav class="my-menubar">
-  {story-title}
-  {back}{forward}
-  {restart}
-  {saves}
-  {settings}
-</nav>
+<header class="story-menubar">
+  {story-title}{back}{forward}{restart}{saves}{settings}
+</header>
+{passage}
 ```
 
-The default menubar (when no `StoryInterface` passage exists) renders:
-
-```
-{story-title}{back}{forward}{restart}{quicksave}{quickload}{saves}{settings}
-```
-
-You can use any macros, HTML, and links in your custom interface. The interface is rendered once and does not change between passages.
+See [StoryInterface](story-interface.md) for full documentation, examples, and available macros.
 
 ## `SaveTitle`
 
