@@ -145,6 +145,16 @@ describe('validatePassages', () => {
     expect(errors).toEqual([]);
   });
 
+  it('allows method/property access on arrays', () => {
+    const schema = parseStoryVariables('$inventory = []\n$journal = []');
+    const passages = makePassages(
+      ['StoryVariables', '$inventory = []\n$journal = []'],
+      ['Start', '$inventory.find and $journal.push and $inventory.length'],
+    );
+    const errors = validatePassages(passages, schema);
+    expect(errors).toEqual([]);
+  });
+
   it('catches field access on non-object types', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(

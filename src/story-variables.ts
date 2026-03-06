@@ -114,9 +114,11 @@ function validateRef(
   // Walk through field access path
   let current: FieldSchema = rootSchema;
   for (let i = 1; i < parts.length; i++) {
-    // Arrays have a .length property
     const part = parts[i] as string;
-    if (current.type === 'array' && part === 'length') return null;
+
+    // Arrays have built-in methods/properties (push, find, length, etc.)
+    // so any field access on an array is allowed.
+    if (current.type === 'array') return null;
 
     if (current.type !== 'object' || !current.fields) {
       return `Cannot access field "${part}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;
