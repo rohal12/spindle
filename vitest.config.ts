@@ -18,6 +18,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.d.ts'],
+      reporter: ['text', 'json', 'json-summary'],
     },
     server: {
       deps: {
