@@ -475,6 +475,108 @@ describe('tokenize', () => {
       ]);
     });
 
+    it('parses .{$theme} selector with interpolation', () => {
+      const tokens = tokenize('{.{$theme} print "hello"}');
+      expect(tokens).toEqual([
+        {
+          type: 'macro',
+          name: 'print',
+          rawArgs: '"hello"',
+          isClose: false,
+          className: '{$theme}',
+          start: 0,
+          end: 25,
+        },
+      ]);
+    });
+
+    it('parses .{$theme}-dark selector — interpolation with suffix', () => {
+      const tokens = tokenize('{.{$theme}-dark print "hi"}');
+      expect(tokens).toEqual([
+        {
+          type: 'macro',
+          name: 'print',
+          rawArgs: '"hi"',
+          isClose: false,
+          className: '{$theme}-dark',
+          start: 0,
+          end: 27,
+        },
+      ]);
+    });
+
+    it('parses .static.{$dynamic} — mixed static and interpolated classes', () => {
+      const tokens = tokenize('{.static.{$dynamic} print "x"}');
+      expect(tokens).toEqual([
+        {
+          type: 'macro',
+          name: 'print',
+          rawArgs: '"x"',
+          isClose: false,
+          className: 'static {$dynamic}',
+          start: 0,
+          end: 30,
+        },
+      ]);
+    });
+
+    it('parses #{$pageId} selector with interpolation on id', () => {
+      const tokens = tokenize('{#{$pageId} print "x"}');
+      expect(tokens).toEqual([
+        {
+          type: 'macro',
+          name: 'print',
+          rawArgs: '"x"',
+          isClose: false,
+          id: '{$pageId}',
+          start: 0,
+          end: 22,
+        },
+      ]);
+    });
+
+    it('parses .{_temp} selector with temporary var interpolation', () => {
+      const tokens = tokenize('{.{_cls} $name}');
+      expect(tokens).toEqual([
+        {
+          type: 'variable',
+          name: 'name',
+          scope: 'variable',
+          className: '{_cls}',
+          start: 0,
+          end: 15,
+        },
+      ]);
+    });
+
+    it('parses .{@local} selector with local var interpolation', () => {
+      const tokens = tokenize('{.{@cls} $name}');
+      expect(tokens).toEqual([
+        {
+          type: 'variable',
+          name: 'name',
+          scope: 'variable',
+          className: '{@cls}',
+          start: 0,
+          end: 15,
+        },
+      ]);
+    });
+
+    it('parses [[.{$cls} link]] with interpolation in link selector', () => {
+      const tokens = tokenize('[[.{$cls} Go|Start]]');
+      expect(tokens).toEqual([
+        {
+          type: 'link',
+          display: 'Go',
+          target: 'Start',
+          className: '{$cls}',
+          start: 0,
+          end: 20,
+        },
+      ]);
+    });
+
     it('closing tags do not take classes', () => {
       const tokens = tokenize('{/button}');
       expect(tokens).toEqual([

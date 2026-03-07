@@ -40,7 +40,8 @@ import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, Branch, MacroNode } from './ast';
+import type { ASTNode, Branch, HtmlNode, MacroNode } from './ast';
+import { useInterpolate } from '../hooks/use-interpolate';
 
 export interface LocalsScope {
   values: Record<string, unknown>;
@@ -104,6 +105,19 @@ function convertDomNode(
     return h(tag, props, ...children);
   }
   return null;
+}
+
+function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
+  const resolve = useInterpolate();
+  const attrs: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node.attributes)) {
+    attrs[k] = resolve(v) ?? v;
+  }
+  return h(
+    node.tag,
+    attrs,
+    node.children.length > 0 ? renderNodes(node.children) : undefined,
+  );
 }
 
 function renderMacro(node: MacroNode, key: number) {
@@ -513,10 +527,11 @@ function renderSingleNode(
       return renderMacro(node, key);
 
     case 'html':
-      return h(
-        node.tag,
-        { key, ...node.attributes },
-        node.children.length > 0 ? renderNodes(node.children) : undefined,
+      return (
+        <HtmlNodeRenderer
+          key={key}
+          node={node}
+        />
       );
 
     default: {

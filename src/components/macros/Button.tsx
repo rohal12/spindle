@@ -6,6 +6,7 @@ import { deepClone } from '../../class-registry';
 import { collectText } from '../../utils/extract-text';
 import { useAction } from '../../hooks/use-action';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 import type { ASTNode } from '../../markup/ast';
 
@@ -17,6 +18,9 @@ interface ButtonProps {
 }
 
 export function Button({ rawArgs, children, className, id }: ButtonProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const scope = useContext(LocalsContext);
   const [, , mergedLocals] = useMergedLocals();
 

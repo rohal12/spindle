@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { renderInlineNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import type { ASTNode } from '../../markup/ast';
 
 interface TypeProps {
@@ -11,6 +12,9 @@ interface TypeProps {
 }
 
 export function Type({ rawArgs, children, className, id }: TypeProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const speed = parseDelay(rawArgs);
   const containerRef = useRef<HTMLSpanElement>(null);
   const [totalChars, setTotalChars] = useState(0);

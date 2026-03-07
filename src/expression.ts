@@ -37,11 +37,115 @@ const VAR_RE = /\$(\w+)/g;
 const TEMP_RE = /\b_(\w+)/g;
 const LOCAL_RE = /@(\w+)/g;
 
-function transform(expr: string): string {
-  return expr
+function transformSegment(segment: string): string {
+  return segment
     .replace(VAR_RE, 'variables["$1"]')
     .replace(TEMP_RE, 'temporary["$1"]')
     .replace(LOCAL_RE, 'locals["$1"]');
+}
+
+/**
+ * String-aware expression transformer. Walks the expression character by
+ * character so that variable sigils ($, _, @) inside string literals are
+ * left untouched while code — including expressions inside template-literal
+ * `${…}` interpolations — is transformed.
+ */
+function transform(expr: string): string {
+  let result = '';
+  let code = ''; // accumulates code characters to be transformed
+  let i = 0;
+
+  function flushCode() {
+    if (code) {
+      result += transformSegment(code);
+      code = '';
+    }
+  }
+
+  while (i < expr.length) {
+    const ch = expr.charAt(i);
+
+    // Single or double quoted string — skip entirely
+    if (ch === '"' || ch === "'") {
+      flushCode();
+      const quote = ch;
+      let str = quote;
+      i++;
+      while (i < expr.length) {
+        const c = expr.charAt(i);
+        if (c === '\\' && i + 1 < expr.length) {
+          str += c + expr.charAt(i + 1);
+          i += 2;
+        } else if (c === quote) {
+          str += quote;
+          i++;
+          break;
+        } else {
+          str += c;
+          i++;
+        }
+      }
+      result += str;
+      continue;
+    }
+
+    // Template literal — preserve literal parts, transform interpolations
+    if (ch === '`') {
+      flushCode();
+      result += '`';
+      i++;
+      while (i < expr.length) {
+        const c = expr.charAt(i);
+        if (c === '\\' && i + 1 < expr.length) {
+          result += c + expr.charAt(i + 1);
+          i += 2;
+        } else if (c === '$' && expr.charAt(i + 1) === '{') {
+          // Template interpolation — collect the inner expression and
+          // recursively transform it
+          result += '${';
+          i += 2;
+          let depth = 1;
+          let inner = '';
+          while (i < expr.length && depth > 0) {
+            const ic = expr.charAt(i);
+            if (ic === '{') {
+              depth++;
+              inner += ic;
+            } else if (ic === '}') {
+              depth--;
+              if (depth === 0) break;
+              inner += ic;
+            } else if (ic === '\\' && i + 1 < expr.length) {
+              inner += ic + expr.charAt(i + 1);
+              i++;
+            } else {
+              inner += ic;
+            }
+            i++;
+          }
+          result += transform(inner); // recursive transform
+          if (i < expr.length && expr.charAt(i) === '}') {
+            result += '}';
+            i++;
+          }
+        } else if (c === '`') {
+          result += '`';
+          i++;
+          break;
+        } else {
+          result += c;
+          i++;
+        }
+      }
+      continue;
+    }
+
+    // Regular code character
+    code += ch;
+    i++;
+  }
+  flushCode();
+  return result;
 }
 
 const preamble =

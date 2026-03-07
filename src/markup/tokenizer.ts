@@ -198,10 +198,32 @@ function parseSelectors(
   while (i < input.length && (input[i] === '.' || input[i] === '#')) {
     const prefix = input[i]!;
     i++; // skip the . or #
-    const nameStart = i;
-    while (i < input.length && /[a-zA-Z0-9_-]/.test(input[i]!)) i++;
-    if (i > nameStart) {
-      const name = input.slice(nameStart, i);
+    let name = '';
+    while (i < input.length) {
+      if (/[a-zA-Z0-9_-]/.test(input[i]!)) {
+        name += input[i];
+        i++;
+      } else if (
+        input[i] === '{' &&
+        (input[i + 1] === '$' || input[i + 1] === '_' || input[i + 1] === '@')
+      ) {
+        // Consume interpolation: {$var}, {_var}, {@var} (with optional dot paths)
+        const braceStart = i;
+        i += 2; // skip { and prefix
+        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
+        if (i < input.length && input[i] === '}') {
+          i++; // skip }
+          name += input.slice(braceStart, i);
+        } else {
+          // Not a valid interpolation — stop
+          i = braceStart;
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+    if (name) {
       if (prefix === '.') {
         classes.push(name);
       } else {

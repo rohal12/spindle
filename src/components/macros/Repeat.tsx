@@ -2,6 +2,7 @@ import { createContext } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import type { ASTNode } from '../../markup/ast';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
@@ -16,6 +17,9 @@ interface RepeatProps {
 }
 
 export function Repeat({ rawArgs, children, className, id }: RepeatProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const delay = parseDelay(rawArgs);
   const [count, setCount] = useState(0);
   const [stopped, setStopped] = useState(false);

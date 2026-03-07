@@ -37,4 +37,33 @@ describe('extractOptions', () => {
     ];
     expect(extractOptions(children)).toEqual(['Spaced']);
   });
+
+  it('strips surrounding double quotes from option rawArgs', () => {
+    const children: ASTNode[] = [
+      { type: 'macro', name: 'option', rawArgs: '"Long Sword"', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Short Bow"', children: [] },
+    ];
+    expect(extractOptions(children)).toEqual(['Long Sword', 'Short Bow']);
+  });
+
+  it('strips surrounding single quotes from option rawArgs', () => {
+    const children: ASTNode[] = [
+      { type: 'macro', name: 'option', rawArgs: "'Fire Staff'", children: [] },
+    ];
+    expect(extractOptions(children)).toEqual(['Fire Staff']);
+  });
+
+  it('does not strip mismatched quotes', () => {
+    const children: ASTNode[] = [
+      { type: 'macro', name: 'option', rawArgs: '"Mismatched\'', children: [] },
+    ];
+    expect(extractOptions(children)).toEqual(['"Mismatched\'']);
+  });
+
+  it('leaves unquoted values unchanged', () => {
+    const children: ASTNode[] = [
+      { type: 'macro', name: 'option', rawArgs: 'plain', children: [] },
+    ];
+    expect(extractOptions(children)).toEqual(['plain']);
+  });
 });

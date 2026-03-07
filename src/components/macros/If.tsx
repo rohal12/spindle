@@ -1,6 +1,7 @@
 import { evaluate } from '../../expression';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 import type { Branch } from '../../markup/ast';
 
@@ -9,15 +10,18 @@ interface IfProps {
 }
 
 export function If({ branches }: IfProps) {
+  const resolve = useInterpolate();
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   function renderBranch(branch: Branch) {
     const children = renderNodes(branch.children);
-    if (branch.className || branch.id)
+    const cls = resolve(branch.className);
+    const branchId = resolve(branch.id);
+    if (cls || branchId)
       return (
         <span
-          id={branch.id}
-          class={branch.className}
+          id={branchId}
+          class={cls}
         >
           {children}
         </span>

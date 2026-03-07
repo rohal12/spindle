@@ -1,5 +1,6 @@
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 
 interface PrintProps {
@@ -9,6 +10,9 @@ interface PrintProps {
 }
 
 export function Print({ rawArgs, className, id }: PrintProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   try {

@@ -3,6 +3,7 @@ import { evaluate } from '../../expression';
 import { LocalsContext, renderNodes } from '../../markup/render';
 import type { LocalsScope } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 import type { ASTNode } from '../../markup/ast';
 
@@ -76,6 +77,9 @@ function ForIteration({
 }
 
 export function For({ rawArgs, children, className, id }: ForProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const parentScope = useContext(LocalsContext);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 

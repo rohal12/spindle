@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'preact/hooks';
 import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import type { ASTNode, Branch } from '../../markup/ast';
 
 interface TimedProps {
@@ -18,6 +19,9 @@ export function Timed({
   className,
   id,
 }: TimedProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   // Section 0 = initial children, sections 1..N = {next} branches
   // Each section has its own delay
   const sections = useMemo(() => {

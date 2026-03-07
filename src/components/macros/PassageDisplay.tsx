@@ -1,5 +1,6 @@
 import { useStoryStore } from '../../store';
 import { Passage } from '../Passage';
+import { useInterpolate } from '../../hooks/use-interpolate';
 
 interface PassageDisplayProps {
   className?: string;
@@ -7,6 +8,9 @@ interface PassageDisplayProps {
 }
 
 export function PassageDisplay({ className, id }: PassageDisplayProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const currentPassage = useStoryStore((s) => s.currentPassage);
   const storyData = useStoryStore((s) => s.storyData);
 
