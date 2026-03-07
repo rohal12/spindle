@@ -10,10 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `:storyready` DOM event dispatched after Spindle finishes loading and rendering
+- Escaped braces (`\{`, `\}`) to display literal `{` and `}` characters in passage text
+- String-aware expression transformer that preserves `$var`/`_var`/`@var` sigils inside string literals and template literal text, while still transforming code and `${…}` interpolations
+- Variable interpolation in HTML attributes (e.g. `<div class="{$className}">`)
+- Variable interpolation in CSS selectors on macros and variable display (e.g. `{.{$color} print $msg}`)
+- Interpolation engine (`interpolate()` / `hasInterpolation()`) for resolving `{$var}`, `{_var}`, `{@var}` with dot-path support in string contexts
+- Comprehensive e2e test suite covering edge cases (nested macros, widget locals, computed reactivity, timed/repeat macros, form inputs, and more)
+- Unit tests for expression transformer, interpolation engine, option-utils, and tokenizer
 
 ### Fixed
 
 - Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
+- `{timed}` macro now inherits CSS class/id from its first branch when not set on the outer tag
+- Synchronous macro execution during render (Set, Unset, Computed update immediately rather than deferring)
+- Variables embedded in markdown code spans (backticks) are now passed through as text rather than rendered as reactive variable displays
 
 ## [0.4.0] - 2026-3-5
 
