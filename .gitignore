@@ -14,3 +14,5 @@ skills-lock.json
 menubar-default.png
 .vscode-diagnostics.json
 .playwright-mcp/
+coverage/
+package-lock.json

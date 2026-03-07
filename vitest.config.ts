@@ -14,6 +14,11 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.{ts,tsx}'],
     exclude: ['test/e2e/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.d.ts'],
+    },
     server: {
       deps: {
         inline: [/zustand/],
