@@ -128,7 +128,7 @@ export function WidgetInvocation({
         value = undefined;
       }
     }
-    ownKeys[param] = value;
+    ownKeys[param.startsWith('@') ? param.slice(1) : param] = value;
   }
 
   return (

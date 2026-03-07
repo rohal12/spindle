@@ -27,8 +27,7 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
 
   let value: unknown;
   if (scope === 'local') {
-    const key = `@${root}`;
-    value = key in localsValues ? localsValues[key] : undefined;
+    value = root in localsValues ? localsValues[root] : undefined;
   } else {
     value = storeValue;
   }

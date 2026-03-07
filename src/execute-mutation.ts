@@ -26,7 +26,7 @@ export function executeMutation(
   }
   for (const key of Object.keys(localsClone)) {
     if (localsClone[key] !== mergedLocals[key]) {
-      scopeUpdate(`@${key}`, localsClone[key]);
+      scopeUpdate(key, localsClone[key]);
     }
   }
 }
