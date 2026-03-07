@@ -6,6 +6,7 @@ import { deepClone } from '../../class-registry';
 import { collectText } from '../../utils/extract-text';
 import { useAction } from '../../hooks/use-action';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 import type { ASTNode } from '../../markup/ast';
 
 interface ButtonProps {
@@ -28,7 +29,10 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
     try {
       execute(rawArgs, vars, temps, localsClone);
     } catch (err) {
-      console.error(`spindle: Error in {button ${rawArgs}}:`, err);
+      console.error(
+        `spindle: Error in {button ${rawArgs}}${currentSourceLocation()}:`,
+        err,
+      );
       return;
     }
 

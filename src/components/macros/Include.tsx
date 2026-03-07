@@ -4,6 +4,7 @@ import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface IncludeProps {
   rawArgs: string;
@@ -31,7 +32,7 @@ export function Include({ rawArgs, className, id }: IncludeProps) {
   }
   if (!passage) {
     return (
-      <span class="error">{`{include: passage "${passageName}" not found}`}</span>
+      <span class="error">{`{include${currentSourceLocation()}: passage "${passageName}" not found}`}</span>
     );
   }
 

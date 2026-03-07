@@ -5,6 +5,7 @@ import type { ASTNode } from '../../markup/ast';
 import { deepClone } from '../../class-registry';
 import { LocalsContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface DoProps {
   children: ASTNode[];
@@ -31,7 +32,7 @@ export function Do({ children }: DoProps) {
     try {
       execute(code, vars, temps, localsClone);
     } catch (err) {
-      console.error(`spindle: Error in {do}:`, err);
+      console.error(`spindle: Error in {do}${currentSourceLocation()}:`, err);
       return;
     }
 

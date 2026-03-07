@@ -1,6 +1,7 @@
 import { evaluate } from '../../expression';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 import type { Branch } from '../../markup/ast';
 
 interface SwitchProps {
@@ -20,7 +21,7 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
         class="error"
         title={String(err)}
       >
-        {`{switch error: ${err instanceof Error ? err.message : String(err)}}`}
+        {`{switch error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
@@ -52,7 +53,7 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
           class="error"
           title={String(err)}
         >
-          {`{case error: ${err instanceof Error ? err.message : String(err)}}`}
+          {`{case error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
         </span>
       );
     }

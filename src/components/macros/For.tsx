@@ -3,6 +3,7 @@ import { evaluate } from '../../expression';
 import { LocalsContext, renderNodes } from '../../markup/render';
 import type { LocalsScope } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 import type { ASTNode } from '../../markup/ast';
 
 interface ForProps {
@@ -87,7 +88,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
         class="error"
         title={String(err)}
       >
-        {`{for error: ${err instanceof Error ? err.message : String(err)}}`}
+        {`{for error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
@@ -100,7 +101,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     if (!Array.isArray(result)) {
       return (
         <span class="error">
-          {`{for error: expression did not evaluate to an array}`}
+          {`{for error${currentSourceLocation()}: expression did not evaluate to an array}`}
         </span>
       );
     }
@@ -111,7 +112,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
         class="error"
         title={String(err)}
       >
-        {`{for error: ${err instanceof Error ? err.message : String(err)}}`}
+        {`{for error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }

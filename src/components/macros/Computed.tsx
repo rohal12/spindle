@@ -2,6 +2,7 @@ import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface ComputedProps {
   rawArgs: string;
@@ -71,7 +72,7 @@ export function Computed({ rawArgs }: ComputedProps) {
         class="error"
         title={String(err)}
       >
-        {`{computed error: ${err instanceof Error ? err.message : String(err)}}`}
+        {`{computed error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
@@ -86,7 +87,10 @@ export function Computed({ rawArgs }: ComputedProps) {
     try {
       newValue = evaluate(expr, mergedVars, mergedTemps, mergedLocals);
     } catch (err) {
-      console.error(`spindle: Error in {computed ${rawArgs}}:`, err);
+      console.error(
+        `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
+        err,
+      );
       return;
     }
 

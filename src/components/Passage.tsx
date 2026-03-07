@@ -3,6 +3,7 @@ import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderNodes } from '../markup/render';
 import type { Passage as PassageData } from '../parser';
+import { sourceLocationOf } from '../utils/source-location';
 
 interface PassageProps {
   passage: PassageData;
@@ -17,8 +18,8 @@ export function Passage({ passage }: PassageProps) {
     } catch (err) {
       return (
         <div class="error">
-          Error parsing passage &ldquo;{passage.name}&rdquo;:{' '}
-          {(err as Error).message}
+          Error parsing passage &ldquo;{passage.name}&rdquo;
+          {sourceLocationOf(passage)}: {(err as Error).message}
         </div>
       );
     }

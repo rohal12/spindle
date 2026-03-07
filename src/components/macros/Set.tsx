@@ -4,6 +4,7 @@ import { execute } from '../../expression';
 import { deepClone } from '../../class-registry';
 import { LocalsContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface SetProps {
   rawArgs: string;
@@ -22,7 +23,10 @@ export function Set({ rawArgs }: SetProps) {
     try {
       execute(rawArgs, vars, temps, localsClone);
     } catch (err) {
-      console.error(`spindle: Error in {set ${rawArgs}}:`, err);
+      console.error(
+        `spindle: Error in {set ${rawArgs}}${currentSourceLocation()}:`,
+        err,
+      );
       return;
     }
 

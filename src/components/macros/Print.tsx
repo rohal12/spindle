@@ -1,5 +1,6 @@
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface PrintProps {
   rawArgs: string;
@@ -29,7 +30,7 @@ export function Print({ rawArgs, className, id }: PrintProps) {
         class="error"
         title={String(err)}
       >
-        {`{print error: ${err instanceof Error ? err.message : String(err)}}`}
+        {`{print error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
       </span>
     );
   }
