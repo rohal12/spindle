@@ -66,6 +66,19 @@ function MyMacro({ rawArgs }) {
 
 Use `evaluate()` when your macro takes an expression argument and needs its value — this is how `{print}` and `{if}` work.
 
+### `stripLocalsPrefix()`
+
+For mutating macros that don't need reactive variable subscriptions, use `stripLocalsPrefix()` with `useContext(LocalsContext)` instead of `useMergedLocals()`. This avoids re-renders when unrelated variables change:
+
+```js
+import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
+
+const scope = useContext(LocalsContext);
+const locals = stripLocalsPrefix(scope.values);
+```
+
+Use this in combination with `executeMutation()`, which reads store variables via `getState()` internally.
+
 ### Direct store access
 
 For reading store state outside the expression engine (e.g. checking passage data or history), access the Zustand store directly:
@@ -88,14 +101,14 @@ If your macro needs to change variables (like `{set}` or `{button}`), use `execu
 
 ```js
 import { executeMutation } from '../../execute-mutation';
+import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 
 function MyButton({ rawArgs, children }) {
   const scope = useContext(LocalsContext);
-  const [, , mergedLocals] = useMergedLocals();
 
   const handleClick = () => {
     try {
-      executeMutation(rawArgs, mergedLocals, scope.update);
+      executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
     } catch (err) {
       console.error('MyButton error:', err);
     }
@@ -104,6 +117,8 @@ function MyButton({ rawArgs, children }) {
   return <button onClick={handleClick}>{children}</button>;
 }
 ```
+
+> **Why not `useMergedLocals()`?** Mutating macros don't need to subscribe to store variables reactively — `executeMutation()` reads the latest state via `getState()` internally. Using `stripLocalsPrefix()` with `useContext(LocalsContext)` avoids unnecessary re-renders.
 
 ### Why clone-diff-apply?
 
@@ -134,11 +149,10 @@ Macros like `{set}` and `{print}` execute during the Preact render pass. Their e
 function MySetup({ rawArgs }) {
   const ran = useRef(false);
   const scope = useContext(LocalsContext);
-  const [, , mergedLocals] = useMergedLocals();
 
   if (!ran.current) {
     ran.current = true;
-    executeMutation(rawArgs, mergedLocals, scope.update);
+    executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
   }
 
   return null;
@@ -152,10 +166,9 @@ Macros like `{do}` run in a `useLayoutEffect` — after the component mounts but
 ```js
 function MyEffect({ rawArgs }) {
   const scope = useContext(LocalsContext);
-  const [, , mergedLocals] = useMergedLocals();
 
   useLayoutEffect(() => {
-    executeMutation(rawArgs, mergedLocals, scope.update);
+    executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
   }, []);
 
   return null;
@@ -168,7 +181,7 @@ Macros like `{button}` and `{link}` run code in response to clicks. Wrap `execut
 
 ```js
 const handleClick = () => {
-  executeMutation(rawArgs, mergedLocals, scope.update);
+  executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
 };
 return <button onClick={handleClick}>{children}</button>;
 ```
@@ -215,12 +228,11 @@ A `{confirm}` macro that shows a confirmation dialog before executing code:
 {do}
   Story.registerMacro("confirm", (props) => {
     const scope = useContext(LocalsContext);
-    const [, , mergedLocals] = useMergedLocals();
 
     const handleClick = () => {
       if (window.confirm("Are you sure?")) {
         try {
-          executeMutation(props.rawArgs, mergedLocals, scope.update);
+          executeMutation(props.rawArgs, stripLocalsPrefix(scope.values), scope.update);
         } catch (err) {
           console.error("confirm error:", err);
         }
