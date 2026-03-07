@@ -52,7 +52,11 @@ function parseForArgs(rawArgs: string): {
     );
   }
 
-  return { itemVar, indexVar, listExpr };
+  return {
+    itemVar: itemVar.slice(1),
+    indexVar: indexVar ? indexVar.slice(1) : null,
+    listExpr,
+  };
 }
 
 function ForIteration({
