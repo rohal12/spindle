@@ -17,7 +17,23 @@ Use the `{widget}` macro to define a widget. The first argument is the widget's 
 {/widget}
 ```
 
-Widgets are typically defined in `StoryInit` so they are available from the start. They can also be defined in any passage, but they must be defined before they are used.
+Widgets can be defined in two places:
+
+- **`StoryInit`** — the most common location. Widgets defined here are available everywhere.
+- **Any passage tagged `widget`** — these passages are automatically processed at startup, so their widgets are also available from the start.
+
+```
+:: MyWidgets [widget]
+{widget "StatusBar"}
+  Health: {$health} | Mana: {$mana}
+{/widget}
+
+{widget "Separator"}
+  <hr>
+{/widget}
+```
+
+Using `[widget]`-tagged passages lets you organize widget definitions into dedicated passages and keep `StoryInit` focused on variable setup and initialization logic.
 
 ## Using a Widget
 

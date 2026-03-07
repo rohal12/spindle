@@ -1,12 +1,10 @@
 import { useContext } from 'preact/hooks';
-import { useStoryStore } from '../../store';
-import { execute } from '../../expression';
 import { renderInlineNodes, LocalsContext } from '../../markup/render';
-import { deepClone } from '../../class-registry';
 import { collectText } from '../../utils/extract-text';
 import { useAction } from '../../hooks/use-action';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
+import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
 import type { ASTNode } from '../../markup/ast';
 
@@ -25,35 +23,13 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
   const [, , mergedLocals] = useMergedLocals();
 
   const handleClick = () => {
-    const state = useStoryStore.getState();
-    const vars = deepClone(state.variables);
-    const temps = deepClone(state.temporary);
-    const localsClone = { ...mergedLocals };
-
     try {
-      execute(rawArgs, vars, temps, localsClone);
+      executeMutation(rawArgs, mergedLocals, scope.update);
     } catch (err) {
       console.error(
         `spindle: Error in {button ${rawArgs}}${currentSourceLocation()}:`,
         err,
       );
-      return;
-    }
-
-    for (const key of Object.keys(vars)) {
-      if (vars[key] !== state.variables[key]) {
-        state.setVariable(key, vars[key]);
-      }
-    }
-    for (const key of Object.keys(temps)) {
-      if (temps[key] !== state.temporary[key]) {
-        state.setTemporary(key, temps[key]);
-      }
-    }
-    for (const key of Object.keys(localsClone)) {
-      if (localsClone[key] !== mergedLocals[key]) {
-        scope.update(`@${key}`, localsClone[key]);
-      }
     }
   };
 
