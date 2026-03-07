@@ -1,11 +1,7 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
-
-interface CheckboxProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 function parseArgs(rawArgs: string): { varName: string; label: string } {
   const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s+["']?(.+?)["']?\s*$/);
@@ -17,7 +13,7 @@ function parseArgs(rawArgs: string): { varName: string; label: string } {
   return { varName, label };
 }
 
-export function Checkbox({ rawArgs, className, id }: CheckboxProps) {
+export function Checkbox({ rawArgs, className, id }: MacroProps) {
   const { varName, label } = parseArgs(rawArgs);
   const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
@@ -50,3 +46,5 @@ export function Checkbox({ rawArgs, className, id }: CheckboxProps) {
     </label>
   );
 }
+
+registerMacro('checkbox', Checkbox);

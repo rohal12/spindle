@@ -1,7 +1,9 @@
 import { useLayoutEffect, useContext } from 'preact/hooks';
 import { RepeatContext } from './Repeat';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-export function Stop() {
+export function Stop(_props: MacroProps) {
   const { stop } = useContext(RepeatContext);
 
   useLayoutEffect(() => {
@@ -10,3 +12,5 @@ export function Stop() {
 
   return null;
 }
+
+registerMacro('stop', Stop);

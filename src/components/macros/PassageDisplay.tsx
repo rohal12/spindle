@@ -1,13 +1,10 @@
 import { useStoryStore } from '../../store';
 import { Passage } from '../Passage';
 import { useInterpolate } from '../../hooks/use-interpolate';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface PassageDisplayProps {
-  className?: string;
-  id?: string;
-}
-
-export function PassageDisplay({ className, id }: PassageDisplayProps) {
+export function PassageDisplay({ className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -35,3 +32,5 @@ export function PassageDisplay({ className, id }: PassageDisplayProps) {
     </div>
   );
 }
+
+registerMacro('passage', PassageDisplay);

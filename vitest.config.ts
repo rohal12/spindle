@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    setupFiles: ['./src/macros/register-builtins.ts'],
     include: ['test/**/*.test.{ts,tsx}'],
     exclude: ['test/e2e/**'],
     coverage: {

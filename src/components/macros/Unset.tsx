@@ -1,11 +1,9 @@
 import { useRef } from 'preact/hooks';
 import { useStoryStore } from '../../store';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface UnsetProps {
-  rawArgs: string;
-}
-
-export function Unset({ rawArgs }: UnsetProps) {
+export function Unset({ rawArgs }: MacroProps) {
   const ran = useRef(false);
 
   if (!ran.current) {
@@ -26,3 +24,5 @@ export function Unset({ rawArgs }: UnsetProps) {
 
   return null;
 }
+
+registerMacro('unset', Unset);

@@ -1,12 +1,8 @@
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
-
-interface MeterProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 /**
  * Parse rawArgs into currentExpr, maxExpr, and optional labelMode.
@@ -83,7 +79,7 @@ function formatLabel(
   return `${current} / ${max}`;
 }
 
-export function Meter({ rawArgs, className, id }: MeterProps) {
+export function Meter({ rawArgs, className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -126,3 +122,5 @@ export function Meter({ rawArgs, className, id }: MeterProps) {
     );
   }
 }
+
+registerMacro('meter', Meter);

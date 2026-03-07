@@ -1,11 +1,7 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
-
-interface TextareaProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 function parseArgs(rawArgs: string): { varName: string; placeholder: string } {
   const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s*(?:["'](.*)["'])?\s*$/);
@@ -17,7 +13,7 @@ function parseArgs(rawArgs: string): { varName: string; placeholder: string } {
   return { varName, placeholder };
 }
 
-export function Textarea({ rawArgs, className, id }: TextareaProps) {
+export function Textarea({ rawArgs, className, id }: MacroProps) {
   const { varName, placeholder } = parseArgs(rawArgs);
   const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
@@ -48,3 +44,5 @@ export function Textarea({ rawArgs, className, id }: TextareaProps) {
     />
   );
 }
+
+registerMacro('textarea', Textarea);

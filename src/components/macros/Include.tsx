@@ -6,14 +6,10 @@ import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface IncludeProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
-
-export function Include({ rawArgs, className, id }: IncludeProps) {
+export function Include({ rawArgs, className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -55,3 +51,5 @@ export function Include({ rawArgs, className, id }: IncludeProps) {
     );
   return <>{content}</>;
 }
+
+registerMacro('include', Include);

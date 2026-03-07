@@ -5,13 +5,8 @@ import { LocalsUpdateContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
-
-interface MacroLinkProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 function parseArgs(rawArgs: string): {
   display: string;
@@ -72,10 +67,10 @@ function executeChildren(
 
 export function MacroLink({
   rawArgs,
-  children,
+  children = [],
   className,
   id,
-}: MacroLinkProps) {
+}: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -117,3 +112,5 @@ export function MacroLink({
     </a>
   );
 }
+
+registerMacro('link', MacroLink);

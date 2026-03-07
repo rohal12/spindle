@@ -5,16 +5,10 @@ import { useAction } from '../../hooks/use-action';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
-import type { ASTNode } from '../../markup/ast';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface ButtonProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
-
-export function Button({ rawArgs, children, className, id }: ButtonProps) {
+export function Button({ rawArgs, children = [], className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -51,3 +45,5 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
     </button>
   );
 }
+
+registerMacro('button', Button);

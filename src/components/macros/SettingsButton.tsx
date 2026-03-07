@@ -1,13 +1,10 @@
 import { useState } from 'preact/hooks';
 import { settings } from '../../settings';
 import { SettingsDialog } from '../SettingsDialog';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface SettingsButtonProps {
-  className?: string;
-  id?: string;
-}
-
-export function SettingsButton({ className, id }: SettingsButtonProps) {
+export function SettingsButton({ className, id }: MacroProps) {
   const [open, setOpen] = useState(false);
 
   if (!settings.hasAny()) return null;
@@ -27,3 +24,5 @@ export function SettingsButton({ className, id }: SettingsButtonProps) {
     </>
   );
 }
+
+registerMacro('settings', SettingsButton);

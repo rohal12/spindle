@@ -3,13 +3,11 @@ import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 import type { Branch } from '../../markup/ast';
 
-interface IfProps {
-  branches: Branch[];
-}
-
-export function If({ branches }: IfProps) {
+export function If({ branches = [] }: MacroProps) {
   const resolve = useInterpolate();
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
@@ -59,3 +57,5 @@ export function If({ branches }: IfProps) {
 
   return null;
 }
+
+registerMacro('if', If);

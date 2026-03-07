@@ -3,10 +3,8 @@ import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { currentSourceLocation } from '../../utils/source-location';
-
-interface ComputedProps {
-  rawArgs: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   const trimmed = rawArgs.trim();
@@ -87,7 +85,7 @@ function computeAndApply(
   }
 }
 
-export function Computed({ rawArgs }: ComputedProps) {
+export function Computed({ rawArgs }: MacroProps) {
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let target: string;
@@ -138,3 +136,5 @@ export function Computed({ rawArgs }: ComputedProps) {
 
   return null;
 }
+
+registerMacro('computed', Computed);

@@ -1,46 +1,12 @@
 import { createContext } from 'preact';
 import { PassageLink } from '../components/PassageLink';
 import { VarDisplay } from '../components/macros/VarDisplay';
-import { Set } from '../components/macros/Set';
-import { Print } from '../components/macros/Print';
-import { If } from '../components/macros/If';
-import { For } from '../components/macros/For';
-import { Do } from '../components/macros/Do';
-import { Button } from '../components/macros/Button';
-import { StoryTitle } from '../components/macros/StoryTitle';
-import { Restart } from '../components/macros/Restart';
-import { Back } from '../components/macros/Back';
-import { Forward } from '../components/macros/Forward';
-import { QuickSave } from '../components/macros/QuickSave';
-import { QuickLoad } from '../components/macros/QuickLoad';
-import { SettingsButton } from '../components/macros/SettingsButton';
-import { Saves } from '../components/macros/Saves';
-import { Include } from '../components/macros/Include';
-import { Goto } from '../components/macros/Goto';
-import { Unset } from '../components/macros/Unset';
-import { Textbox } from '../components/macros/Textbox';
-import { Numberbox } from '../components/macros/Numberbox';
-import { Textarea } from '../components/macros/Textarea';
-import { Checkbox } from '../components/macros/Checkbox';
-import { Radiobutton } from '../components/macros/Radiobutton';
-import { Listbox } from '../components/macros/Listbox';
-import { Cycle } from '../components/macros/Cycle';
-import { MacroLink } from '../components/macros/MacroLink';
-import { Switch } from '../components/macros/Switch';
-import { Timed } from '../components/macros/Timed';
-import { Repeat } from '../components/macros/Repeat';
-import { Stop } from '../components/macros/Stop';
-import { Type } from '../components/macros/Type';
-import { Widget } from '../components/macros/Widget';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
-import { Computed } from '../components/macros/Computed';
-import { Meter } from '../components/macros/Meter';
-import { PassageDisplay } from '../components/macros/PassageDisplay';
 import { getWidget } from '../widgets/widget-registry';
-import { getMacro } from '../registry';
+import { getMacro, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, Branch, HtmlNode, MacroNode, VariableNode } from './ast';
+import type { ASTNode, HtmlNode, MacroNode, VariableNode } from './ast';
 import { useStoryStore } from '../store';
 import { useInterpolate } from '../hooks/use-interpolate';
 
@@ -56,8 +22,6 @@ const defaultUpdater: LocalsUpdater = {
 
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
-
-const EMPTY_BRANCHES: Branch[] = [];
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -123,374 +87,42 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 }
 
 function renderMacro(node: MacroNode, key: number) {
-  switch (node.name) {
-    case 'set':
-      return (
-        <Set
-          key={key}
-          rawArgs={node.rawArgs}
-        />
-      );
+  if (isSubMacro(node.name)) return null;
 
-    case 'computed':
-      return (
-        <Computed
-          key={key}
-          rawArgs={node.rawArgs}
-        />
-      );
-
-    case 'print':
-      return (
-        <Print
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'meter':
-      return (
-        <Meter
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'passage':
-      return (
-        <PassageDisplay
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'if':
-      return (
-        <If
-          key={key}
-          branches={node.branches ?? EMPTY_BRANCHES}
-        />
-      );
-
-    case 'for':
-      return (
-        <For
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'do':
-      return (
-        <Do
-          key={key}
-          children={node.children}
-        />
-      );
-
-    case 'button':
-      return (
-        <Button
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'story-title':
-      return (
-        <StoryTitle
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'back':
-      return (
-        <Back
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'forward':
-      return (
-        <Forward
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'restart':
-      return (
-        <Restart
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'quicksave':
-      return (
-        <QuickSave
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'quickload':
-      return (
-        <QuickLoad
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'settings':
-      return (
-        <SettingsButton
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'saves':
-      return (
-        <Saves
-          key={key}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'include':
-      return (
-        <Include
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'goto':
-      return (
-        <Goto
-          key={key}
-          rawArgs={node.rawArgs}
-        />
-      );
-
-    case 'unset':
-      return (
-        <Unset
-          key={key}
-          rawArgs={node.rawArgs}
-        />
-      );
-
-    case 'textbox':
-      return (
-        <Textbox
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'numberbox':
-      return (
-        <Numberbox
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'textarea':
-      return (
-        <Textarea
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'checkbox':
-      return (
-        <Checkbox
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'radiobutton':
-      return (
-        <Radiobutton
-          key={key}
-          rawArgs={node.rawArgs}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'listbox':
-      return (
-        <Listbox
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'cycle':
-      return (
-        <Cycle
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'link':
-      return (
-        <MacroLink
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'switch':
-      return (
-        <Switch
-          key={key}
-          rawArgs={node.rawArgs}
-          branches={node.branches ?? EMPTY_BRANCHES}
-        />
-      );
-
-    case 'timed': {
-      const firstBranch = node.branches?.[0];
-      return (
-        <Timed
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          branches={node.branches ?? EMPTY_BRANCHES}
-          className={node.className ?? firstBranch?.className}
-          id={node.id ?? firstBranch?.id}
-        />
-      );
-    }
-
-    case 'repeat':
-      return (
-        <Repeat
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'stop':
-      return <Stop key={key} />;
-
-    case 'type':
-      return (
-        <Type
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-          className={node.className}
-          id={node.id}
-        />
-      );
-
-    case 'widget':
-      return (
-        <Widget
-          key={key}
-          rawArgs={node.rawArgs}
-          children={node.children}
-        />
-      );
-
-    // {option}, {case}, {default}, {next} are handled by parent components
-    case 'option':
-    case 'case':
-    case 'default':
-    case 'next':
-      return null;
-
-    default: {
-      // Check widget registry for user-defined widgets
-      const widget = getWidget(node.name);
-      if (widget) {
-        return (
-          <WidgetInvocation
-            key={key}
-            body={widget.body}
-            params={widget.params}
-            rawArgs={node.rawArgs}
-          />
-        );
-      }
-
-      // Check component registry for custom macros
-      const Component = getMacro(node.name);
-      if (Component) {
-        return (
-          <Component
-            key={key}
-            rawArgs={node.rawArgs}
-            className={node.className}
-            id={node.id}
-          >
-            {renderNodes(node.children)}
-          </Component>
-        );
-      }
-
-      return (
-        <span
-          key={key}
-          class="error"
-        >
-          {`{unknown macro: ${node.name}}`}
-        </span>
-      );
-    }
+  const widget = getWidget(node.name);
+  if (widget) {
+    return (
+      <WidgetInvocation
+        key={key}
+        body={widget.body}
+        params={widget.params}
+        rawArgs={node.rawArgs}
+      />
+    );
   }
+
+  const Component = getMacro(node.name);
+  if (Component) {
+    return (
+      <Component
+        key={key}
+        rawArgs={node.rawArgs}
+        className={node.className}
+        id={node.id}
+        children={node.children}
+        branches={node.branches}
+      />
+    );
+  }
+
+  return (
+    <span
+      key={key}
+      class="error"
+    >
+      {`{unknown macro: ${node.name}}`}
+    </span>
+  );
 }
 
 /**

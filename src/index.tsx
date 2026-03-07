@@ -14,6 +14,7 @@ import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
 import type { ASTNode } from './markup/ast';
+import './macros/register-builtins';
 import './styles.css';
 
 function renderErrors(root: HTMLElement, errors: string[]) {

@@ -1,16 +1,10 @@
 import { useStoryStore } from '../../store';
 import { extractOptions } from './option-utils';
 import { useAction } from '../../hooks/use-action';
-import type { ASTNode } from '../../markup/ast';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface CycleProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
-
-export function Cycle({ rawArgs, children, className, id }: CycleProps) {
+export function Cycle({ rawArgs, children = [], className, id }: MacroProps) {
   const varName = rawArgs.trim().replace(/["']/g, '');
   const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
@@ -55,3 +49,5 @@ export function Cycle({ rawArgs, children, className, id }: CycleProps) {
     </button>
   );
 }
+
+registerMacro('cycle', Cycle);

@@ -1,12 +1,9 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface QuickLoadProps {
-  className?: string;
-  id?: string;
-}
-
-export function QuickLoad({ className, id }: QuickLoadProps) {
+export function QuickLoad({ className, id }: MacroProps) {
   const load = useStoryStore((s) => s.load);
   const hasSave = useStoryStore((s) => s.hasSave);
   // Subscribe to saveVersion so we re-render when a save is created
@@ -41,3 +38,5 @@ export function QuickLoad({ className, id }: QuickLoadProps) {
     </button>
   );
 }
+
+registerMacro('quickload', QuickLoad);

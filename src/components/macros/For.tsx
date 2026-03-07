@@ -14,14 +14,9 @@ import {
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 import type { ASTNode } from '../../markup/ast';
-
-interface ForProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
 
 /**
  * Parse for-loop args: "@item, @i of $list" or "@item of $list"
@@ -94,7 +89,7 @@ function ForIteration({
   );
 }
 
-export function For({ rawArgs, children, className, id }: ForProps) {
+export function For({ rawArgs, children = [], className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -167,3 +162,5 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     );
   return <>{content}</>;
 }
+
+registerMacro('for', For);

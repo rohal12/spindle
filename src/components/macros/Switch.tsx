@@ -2,14 +2,11 @@ import { evaluate } from '../../expression';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { currentSourceLocation } from '../../utils/source-location';
+import { registerMacro, registerSubMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 import type { Branch } from '../../markup/ast';
 
-interface SwitchProps {
-  rawArgs: string;
-  branches: Branch[];
-}
-
-export function Switch({ rawArgs, branches }: SwitchProps) {
+export function Switch({ rawArgs, branches = [] }: MacroProps) {
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let switchValue: unknown;
@@ -65,3 +62,7 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
 
   return null;
 }
+
+registerMacro('switch', Switch);
+registerSubMacro('case');
+registerSubMacro('default');

@@ -1,12 +1,9 @@
 import { useState } from 'preact/hooks';
 import { SaveLoadDialog } from '../SaveLoadDialog';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface SavesProps {
-  className?: string;
-  id?: string;
-}
-
-export function Saves({ className, id }: SavesProps) {
+export function Saves({ className, id }: MacroProps) {
   const [open, setOpen] = useState(false);
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
 
@@ -23,3 +20,5 @@ export function Saves({ className, id }: SavesProps) {
     </>
   );
 }
+
+registerMacro('saves', Saves);

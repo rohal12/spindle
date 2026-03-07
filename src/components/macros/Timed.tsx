@@ -2,26 +2,21 @@ import { useState, useEffect, useMemo } from 'preact/hooks';
 import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
 import { useInterpolate } from '../../hooks/use-interpolate';
-import type { ASTNode, Branch } from '../../markup/ast';
-
-interface TimedProps {
-  rawArgs: string;
-  children: ASTNode[];
-  branches: Branch[];
-  className?: string;
-  id?: string;
-}
+import { registerMacro, registerSubMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
+import type { ASTNode } from '../../markup/ast';
 
 export function Timed({
   rawArgs,
-  children,
-  branches,
+  children = [],
+  branches = [],
   className,
   id,
-}: TimedProps) {
+}: MacroProps) {
   const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
+  const firstBranch = branches[0];
+  className = resolve(className ?? firstBranch?.className);
+  id = resolve(id ?? firstBranch?.id);
   // Section 0 = initial children, sections 1..N = {next} branches
   // Each section has its own delay
   const sections = useMemo(() => {
@@ -64,3 +59,6 @@ export function Timed({
     );
   return <>{content}</>;
 }
+
+registerMacro('timed', Timed);
+registerSubMacro('next');

@@ -2,16 +2,10 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { renderInlineNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
 import { useInterpolate } from '../../hooks/use-interpolate';
-import type { ASTNode } from '../../markup/ast';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface TypeProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
-
-export function Type({ rawArgs, children, className, id }: TypeProps) {
+export function Type({ rawArgs, children = [], className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -78,3 +72,5 @@ export function Type({ rawArgs, children, className, id }: TypeProps) {
     </span>
   );
 }
+
+registerMacro('type', Type);

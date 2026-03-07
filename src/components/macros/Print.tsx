@@ -2,14 +2,10 @@ import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface PrintProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
-
-export function Print({ rawArgs, className, id }: PrintProps) {
+export function Print({ rawArgs, className, id }: MacroProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
@@ -39,3 +35,5 @@ export function Print({ rawArgs, className, id }: PrintProps) {
     );
   }
 }
+
+registerMacro('print', Print);
