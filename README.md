@@ -2,7 +2,6 @@
 
 [![npm version](https://img.shields.io/npm/v/@rohal12/spindle)](https://www.npmjs.com/package/@rohal12/spindle)
 [![npm downloads](https://img.shields.io/npm/dm/@rohal12/spindle)](https://www.npmjs.com/package/@rohal12/spindle)
-[![bundle size](https://img.shields.io/bundlephobia/minzip/@rohal12/spindle)](https://bundlephobia.com/package/@rohal12/spindle)
 [![CI](https://img.shields.io/github/actions/workflow/status/rohal12/spindle/ci.yml)](https://github.com/rohal12/spindle/actions/workflows/ci.yml)
 [![last commit](https://img.shields.io/github/last-commit/rohal12/spindle)](https://github.com/rohal12/spindle/commits)
 [![license](https://img.shields.io/github/license/rohal12/spindle)](UNLICENSE)
