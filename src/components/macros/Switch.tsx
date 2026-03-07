@@ -26,8 +26,10 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
   }
 
   // Find matching {case} branch or {default}
+  // Skip first branch (index 0) — it holds the switch expression, not a case
   let defaultBranch: Branch | null = null;
-  for (const branch of branches) {
+  for (let i = 1; i < branches.length; i++) {
+    const branch = branches[i]!;
     // {default} has empty rawArgs
     if (branch.rawArgs === '') {
       defaultBranch = branch;
