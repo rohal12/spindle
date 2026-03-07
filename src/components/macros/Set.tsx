@@ -1,5 +1,5 @@
 import { useRef, useContext } from 'preact/hooks';
-import { LocalsContext } from '../../markup/render';
+import { LocalsUpdateContext } from '../../markup/render';
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
@@ -9,14 +9,14 @@ interface SetProps {
 }
 
 export function Set({ rawArgs }: SetProps) {
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
   const ran = useRef(false);
 
   if (!ran.current) {
     ran.current = true;
 
     try {
-      executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+      executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
     } catch (err) {
       console.error(
         `spindle: Error in {set ${rawArgs}}${currentSourceLocation()}:`,

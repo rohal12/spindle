@@ -44,17 +44,18 @@ import type { ASTNode, Branch, HtmlNode, MacroNode, VariableNode } from './ast';
 import { useStoryStore } from '../store';
 import { useInterpolate } from '../hooks/use-interpolate';
 
-export interface LocalsScope {
-  values: Record<string, unknown>;
+export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
+  getValues: () => Record<string, unknown>;
 }
 
-const defaultLocalsScope: LocalsScope = {
-  values: {},
+const defaultUpdater: LocalsUpdater = {
   update: () => {},
+  getValues: () => ({}),
 };
 
-export const LocalsContext = createContext<LocalsScope>(defaultLocalsScope);
+export const LocalsValuesContext = createContext<Record<string, unknown>>({});
+export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 
 const EMPTY_BRANCHES: Branch[] = [];
 

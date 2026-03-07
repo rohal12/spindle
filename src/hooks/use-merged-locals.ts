@@ -1,6 +1,6 @@
 import { useContext, useMemo } from 'preact/hooks';
 import { useStoryStore } from '../store';
-import { LocalsContext } from '../markup/render';
+import { LocalsValuesContext } from '../markup/render';
 
 /**
  * Strip `@` prefix from locals scope values so they can be passed
@@ -30,9 +30,9 @@ export function useMergedLocals(): readonly [
 ] {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
-  const scope = useContext(LocalsContext);
+  const localsValues = useContext(LocalsValuesContext);
 
   return useMemo(() => {
-    return [variables, temporary, stripLocalsPrefix(scope.values)] as const;
-  }, [variables, temporary, scope.values]);
+    return [variables, temporary, stripLocalsPrefix(localsValues)] as const;
+  }, [variables, temporary, localsValues]);
 }

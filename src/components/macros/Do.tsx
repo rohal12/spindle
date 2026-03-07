@@ -1,6 +1,6 @@
 import { useLayoutEffect, useContext } from 'preact/hooks';
 import type { ASTNode } from '../../markup/ast';
-import { LocalsContext } from '../../markup/render';
+import { LocalsUpdateContext } from '../../markup/render';
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
@@ -18,11 +18,11 @@ function collectText(nodes: ASTNode[]): string {
 
 export function Do({ children }: DoProps) {
   const code = collectText(children);
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   useLayoutEffect(() => {
     try {
-      executeMutation(code, stripLocalsPrefix(scope.values), scope.update);
+      executeMutation(code, stripLocalsPrefix(getValues()), update);
     } catch (err) {
       console.error(`spindle: Error in {do}${currentSourceLocation()}:`, err);
     }
