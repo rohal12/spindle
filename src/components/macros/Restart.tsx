@@ -1,12 +1,9 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface RestartProps {
-  className?: string;
-  id?: string;
-}
-
-export function Restart({ className, id }: RestartProps) {
+export function Restart({ className, id }: MacroProps) {
   const restart = useStoryStore((s) => s.restart);
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
 
@@ -34,3 +31,5 @@ export function Restart({ className, id }: RestartProps) {
     </button>
   );
 }
+
+registerMacro('restart', Restart);

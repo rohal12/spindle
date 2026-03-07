@@ -1,11 +1,8 @@
 import { useStoryStore } from '../../store';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface StoryTitleProps {
-  className?: string;
-  id?: string;
-}
-
-export function StoryTitle({ className, id }: StoryTitleProps) {
+export function StoryTitle({ className, id }: MacroProps) {
   const name = useStoryStore((s) => s.storyData?.name || '');
   const cls = className ? `story-title ${className}` : 'story-title';
 
@@ -18,3 +15,5 @@ export function StoryTitle({ className, id }: StoryTitleProps) {
     </span>
   );
 }
+
+registerMacro('story-title', StoryTitle);

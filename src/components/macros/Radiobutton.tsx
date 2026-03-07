@@ -1,11 +1,7 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
-
-interface RadiobuttonProps {
-  rawArgs: string;
-  className?: string;
-  id?: string;
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 function parseArgs(rawArgs: string): {
   varName: string;
@@ -32,7 +28,7 @@ function parseArgs(rawArgs: string): {
   };
 }
 
-export function Radiobutton({ rawArgs, className, id }: RadiobuttonProps) {
+export function Radiobutton({ rawArgs, className, id }: MacroProps) {
   const { varName, value: radioValue, label } = parseArgs(rawArgs);
   const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
@@ -68,3 +64,5 @@ export function Radiobutton({ rawArgs, className, id }: RadiobuttonProps) {
     </label>
   );
 }
+
+registerMacro('radiobutton', Radiobutton);

@@ -10,7 +10,7 @@ Call `Story.registerMacro()` from a `{do}` block in `StoryInit`:
 :: StoryInit
 {do}
   Story.registerMacro("alert", (props) => {
-    return <div class="alert">{props.children}</div>;
+    return <div class="alert">{renderNodes(props.children ?? [])}</div>;
   });
 {/do}
 ```
@@ -27,12 +27,13 @@ Macro names are case-insensitive: `{alert}`, `{Alert}`, and `{ALERT}` all resolv
 
 Every custom macro receives these props:
 
-| Prop        | Type                       | Description                                                                         |
-| ----------- | -------------------------- | ----------------------------------------------------------------------------------- |
-| `rawArgs`   | `string`                   | The raw argument string after the macro name, e.g. `"$x + 1"` in `{mymacro $x + 1}` |
-| `className` | `string \| undefined`      | CSS class from selector syntax: `{.highlight mymacro}`                              |
-| `id`        | `string \| undefined`      | CSS id from selector syntax: `{#foo mymacro}`                                       |
-| `children`  | `preact.ComponentChildren` | Rendered child content (for block macros with `{/mymacro}`)                         |
+| Prop        | Type                     | Description                                                                                                                     |
+| ----------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `rawArgs`   | `string`                 | The raw argument string after the macro name, e.g. `"$x + 1"` in `{mymacro $x + 1}`                                             |
+| `className` | `string \| undefined`    | CSS class from selector syntax: `{.highlight mymacro}`                                                                          |
+| `id`        | `string \| undefined`    | CSS id from selector syntax: `{#foo mymacro}`                                                                                   |
+| `children`  | `ASTNode[] \| undefined` | Raw AST child nodes (for block macros with `{/mymacro}`). Render with `renderNodes(children)` or `renderInlineNodes(children)`. |
+| `branches`  | `Branch[] \| undefined`  | Branch nodes from sub-macros like `{case}`, `{default}`, `{next}`. Only present for macros that define branching sub-macros.    |
 
 ## Reading State
 
@@ -114,7 +115,9 @@ function MyButton({ rawArgs, children }) {
     }
   };
 
-  return <button onClick={handleClick}>{children}</button>;
+  return (
+    <button onClick={handleClick}>{renderInlineNodes(children ?? [])}</button>
+  );
 }
 ```
 
@@ -184,7 +187,9 @@ const { update, getValues } = useContext(LocalsUpdateContext);
 const handleClick = () => {
   executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
 };
-return <button onClick={handleClick}>{children}</button>;
+return (
+  <button onClick={handleClick}>{renderInlineNodes(children ?? [])}</button>
+);
 ```
 
 ## Variable Namespaces at a Glance
@@ -212,7 +217,7 @@ function MyOutput({ rawArgs, className, id, children }) {
       id={id}
       class={className}
     >
-      {children}
+      {renderNodes(children ?? [])}
     </div>
   );
 }
@@ -246,7 +251,7 @@ A `{confirm}` macro that shows a confirmation dialog before executing code:
 
     return (
       <button id={props.id} class={cls} onClick={handleClick}>
-        {props.children}
+        {renderInlineNodes(props.children ?? [])}
       </button>
     );
   });

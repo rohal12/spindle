@@ -1,12 +1,9 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface QuickSaveProps {
-  className?: string;
-  id?: string;
-}
-
-export function QuickSave({ className, id }: QuickSaveProps) {
+export function QuickSave({ className, id }: MacroProps) {
   const save = useStoryStore((s) => s.save);
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
 
@@ -29,3 +26,5 @@ export function QuickSave({ className, id }: QuickSaveProps) {
     </button>
   );
 }
+
+registerMacro('quicksave', QuickSave);

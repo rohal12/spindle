@@ -1,12 +1,9 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface BackProps {
-  className?: string;
-  id?: string;
-}
-
-export function Back({ className, id }: BackProps) {
+export function Back({ className, id }: MacroProps) {
   const goBack = useStoryStore((s) => s.goBack);
   const canGoBack = useStoryStore((s) => s.historyIndex > 0);
   const cls = className ? `menubar-button ${className}` : 'menubar-button';
@@ -31,3 +28,5 @@ export function Back({ className, id }: BackProps) {
     </button>
   );
 }
+
+registerMacro('back', Back);

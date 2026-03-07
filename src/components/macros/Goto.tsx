@@ -2,12 +2,10 @@ import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface GotoProps {
-  rawArgs: string;
-}
-
-export function Goto({ rawArgs }: GotoProps) {
+export function Goto({ rawArgs }: MacroProps) {
   const [variables, temporary, locals] = useMergedLocals();
 
   useLayoutEffect(() => {
@@ -23,3 +21,5 @@ export function Goto({ rawArgs }: GotoProps) {
 
   return null;
 }
+
+registerMacro('goto', Goto);

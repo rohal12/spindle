@@ -4,25 +4,19 @@ import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
 import { hasInterpolation, interpolate } from '../../interpolation';
 import { useStoryStore } from '../../store';
-import type { ASTNode } from '../../markup/ast';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
   stop: () => {},
 });
 
-interface RepeatProps {
-  rawArgs: string;
-  children: ASTNode[];
-  className?: string;
-  id?: string;
-}
-
 export function Repeat({
   rawArgs,
-  children,
+  children = [],
   className: rawClassName,
   id: rawId,
-}: RepeatProps) {
+}: MacroProps) {
   const [className, id] = useMemo(() => {
     const resolveOnce = (s: string | undefined) => {
       if (!s || !hasInterpolation(s)) return s;
@@ -67,3 +61,5 @@ export function Repeat({
     );
   return content;
 }
+
+registerMacro('repeat', Repeat);

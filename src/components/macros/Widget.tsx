@@ -1,11 +1,7 @@
 import { useLayoutEffect } from 'preact/hooks';
 import { registerWidget } from '../../widgets/widget-registry';
-import type { ASTNode } from '../../markup/ast';
-
-interface WidgetProps {
-  rawArgs: string;
-  children: ASTNode[];
-}
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
 /**
  * Parse widget definition args: "WidgetName" or "WidgetName" $param1 $param2
@@ -17,7 +13,7 @@ function parseWidgetDef(rawArgs: string): { name: string; params: string[] } {
   return { name, params };
 }
 
-export function Widget({ rawArgs, children }: WidgetProps) {
+export function Widget({ rawArgs, children = [] }: MacroProps) {
   const { name, params } = parseWidgetDef(rawArgs);
 
   useLayoutEffect(() => {
@@ -26,3 +22,5 @@ export function Widget({ rawArgs, children }: WidgetProps) {
 
   return null;
 }
+
+registerMacro('widget', Widget);

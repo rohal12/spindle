@@ -1,12 +1,9 @@
 import { useStoryStore } from '../../store';
 import { useAction } from '../../hooks/use-action';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface ForwardProps {
-  className?: string;
-  id?: string;
-}
-
-export function Forward({ className, id }: ForwardProps) {
+export function Forward({ className, id }: MacroProps) {
   const goForward = useStoryStore((s) => s.goForward);
   const canGoForward = useStoryStore(
     (s) => s.historyIndex < s.history.length - 1,
@@ -33,3 +30,5 @@ export function Forward({ className, id }: ForwardProps) {
     </button>
   );
 }
+
+registerMacro('forward', Forward);

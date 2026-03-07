@@ -1,15 +1,12 @@
 import { useLayoutEffect, useContext } from 'preact/hooks';
-import type { ASTNode } from '../../markup/ast';
 import { LocalsUpdateContext } from '../../markup/render';
 import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
 import { collectText } from '../../utils/extract-text';
+import { registerMacro } from '../../registry';
+import type { MacroProps } from '../../registry';
 
-interface DoProps {
-  children: ASTNode[];
-}
-
-export function Do({ children }: DoProps) {
+export function Do({ children = [] }: MacroProps) {
   const code = collectText(children);
   const { update, getValues } = useContext(LocalsUpdateContext);
 
@@ -23,3 +20,5 @@ export function Do({ children }: DoProps) {
 
   return null;
 }
+
+registerMacro('do', Do);
