@@ -1,6 +1,6 @@
 import { useStoryStore } from '../../store';
 import { useContext } from 'preact/hooks';
-import { LocalsContext } from '../../markup/render';
+import { LocalsValuesContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
 
 interface VarDisplayProps {
@@ -14,7 +14,7 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
-  const localsScope = useContext(LocalsContext);
+  const localsValues = useContext(LocalsValuesContext);
   const parts = name.split('.');
   const root = parts[0]!;
   const storeValue = useStoryStore((s) =>
@@ -28,7 +28,7 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   let value: unknown;
   if (scope === 'local') {
     const key = `@${root}`;
-    value = key in localsScope.values ? localsScope.values[key] : undefined;
+    value = key in localsValues ? localsValues[key] : undefined;
   } else {
     value = storeValue;
   }

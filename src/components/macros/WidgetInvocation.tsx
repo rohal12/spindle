@@ -1,6 +1,15 @@
-import { useContext, useState, useCallback } from 'preact/hooks';
-import { LocalsContext, renderNodes } from '../../markup/render';
-import type { LocalsScope } from '../../markup/render';
+import {
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'preact/hooks';
+import {
+  LocalsValuesContext,
+  LocalsUpdateContext,
+  renderNodes,
+} from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
@@ -75,16 +84,21 @@ function WidgetBody({
     ...ownKeys,
   }));
 
+  const valuesRef = useRef(localState);
+  valuesRef.current = localState;
+
+  const getValues = useCallback(() => valuesRef.current, []);
   const update = useCallback((key: string, value: unknown) => {
     setLocalState((prev) => ({ ...prev, [key]: value }));
   }, []);
-
-  const scope: LocalsScope = { values: localState, update };
+  const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
   return (
-    <LocalsContext.Provider value={scope}>
-      {renderNodes(body)}
-    </LocalsContext.Provider>
+    <LocalsUpdateContext.Provider value={updater}>
+      <LocalsValuesContext.Provider value={localState}>
+        {renderNodes(body)}
+      </LocalsValuesContext.Provider>
+    </LocalsUpdateContext.Provider>
   );
 }
 
@@ -93,7 +107,7 @@ export function WidgetInvocation({
   params,
   rawArgs,
 }: WidgetInvocationProps) {
-  const parentScope = useContext(LocalsContext);
+  const parentValues = useContext(LocalsValuesContext);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   if (params.length === 0 || !rawArgs) {
@@ -120,7 +134,7 @@ export function WidgetInvocation({
   return (
     <WidgetBody
       body={body}
-      parentValues={parentScope.values}
+      parentValues={parentValues}
       ownKeys={ownKeys}
     />
   );

@@ -1241,6 +1241,38 @@ describe('compiled story e2e', () => {
       expect(texts).toContain('rusty key');
       expect(texts).toContain('torch');
     });
+
+    it('set inside for-loop accumulates using @local', async () => {
+      await goToForEdges();
+      const el = await page.$('#for-set-total');
+      expect(await el!.textContent()).toBe('Total: 60');
+    });
+
+    it('do inside for-loop concatenates using @local', async () => {
+      await goToForEdges();
+      const el = await page.$('#for-do-result');
+      expect(await el!.textContent()).toBe('Result: abc');
+    });
+
+    it('nested for with set uses correct @local scope', async () => {
+      await goToForEdges();
+      const el = await page.$('#for-nested-log');
+      expect(await el!.textContent()).toBe('Log: X1X2Y1Y2');
+    });
+
+    it('button inside for-loop picks correct @local on click', async () => {
+      await goToForEdges();
+      const btns = await page.$$('.for-pick-btn');
+      expect(btns.length).toBe(3);
+      // Click the "Pick 20" button (second one)
+      await btns[1]!.click();
+      await page.waitForFunction(() =>
+        document.querySelector('#for-btn-pick')?.textContent?.includes('20'),
+      );
+      expect(await page.$eval('#for-btn-pick', (el) => el.textContent)).toBe(
+        'Picked: 20',
+      );
+    });
   });
 
   // ===========================================================================

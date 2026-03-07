@@ -68,16 +68,16 @@ Use `evaluate()` when your macro takes an expression argument and needs its valu
 
 ### `stripLocalsPrefix()`
 
-For mutating macros that don't need reactive variable subscriptions, use `stripLocalsPrefix()` with `useContext(LocalsContext)` instead of `useMergedLocals()`. This avoids re-renders when unrelated variables change:
+For mutating macros that don't need reactive variable subscriptions, use `stripLocalsPrefix()` with `LocalsUpdateContext` instead of `useMergedLocals()`. This avoids re-renders when unrelated variables or locals change:
 
 ```js
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 
-const scope = useContext(LocalsContext);
-const locals = stripLocalsPrefix(scope.values);
+const { update, getValues } = useContext(LocalsUpdateContext);
+const locals = stripLocalsPrefix(getValues());
 ```
 
-Use this in combination with `executeMutation()`, which reads store variables via `getState()` internally.
+The `getValues()` function returns the current locals values without subscribing to changes. Use this in combination with `executeMutation()`, which reads store variables via `getState()` internally.
 
 ### Direct store access
 
@@ -104,11 +104,11 @@ import { executeMutation } from '../../execute-mutation';
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 
 function MyButton({ rawArgs, children }) {
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   const handleClick = () => {
     try {
-      executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+      executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
     } catch (err) {
       console.error('MyButton error:', err);
     }
@@ -118,7 +118,7 @@ function MyButton({ rawArgs, children }) {
 }
 ```
 
-> **Why not `useMergedLocals()`?** Mutating macros don't need to subscribe to store variables reactively — `executeMutation()` reads the latest state via `getState()` internally. Using `stripLocalsPrefix()` with `useContext(LocalsContext)` avoids unnecessary re-renders.
+> **Why not `useMergedLocals()`?** Mutating macros don't need to subscribe to store variables or locals values reactively — `executeMutation()` reads the latest store state via `getState()` internally, and `getValues()` reads current locals from a ref without subscribing to changes.
 
 ### Why clone-diff-apply?
 
@@ -148,11 +148,11 @@ Macros like `{set}` and `{print}` execute during the Preact render pass. Their e
 ```js
 function MySetup({ rawArgs }) {
   const ran = useRef(false);
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   if (!ran.current) {
     ran.current = true;
-    executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+    executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
   }
 
   return null;
@@ -165,10 +165,10 @@ Macros like `{do}` run in a `useLayoutEffect` — after the component mounts but
 
 ```js
 function MyEffect({ rawArgs }) {
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   useLayoutEffect(() => {
-    executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+    executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
   }, []);
 
   return null;
@@ -180,8 +180,9 @@ function MyEffect({ rawArgs }) {
 Macros like `{button}` and `{link}` run code in response to clicks. Wrap `executeMutation()` in an event handler:
 
 ```js
+const { update, getValues } = useContext(LocalsUpdateContext);
 const handleClick = () => {
-  executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+  executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
 };
 return <button onClick={handleClick}>{children}</button>;
 ```
@@ -194,7 +195,7 @@ return <button onClick={handleClick}>{children}</button>;
 | `_`    | Temporary | Passage                       | No     | Yes                    |
 | `@`    | Local     | Block (for-loop, widget body) | No     | N/A (block-scoped)     |
 
-When mutating state, `executeMutation()` handles all three: it diffs `$` and `_` changes against the store and propagates `@` changes through the `LocalsContext`.
+When mutating state, `executeMutation()` handles all three: it diffs `$` and `_` changes against the store and propagates `@` changes through `LocalsUpdateContext`.
 
 ## CSS Selectors
 
@@ -227,12 +228,12 @@ A `{confirm}` macro that shows a confirmation dialog before executing code:
 :: StoryInit
 {do}
   Story.registerMacro("confirm", (props) => {
-    const scope = useContext(LocalsContext);
+    const { update, getValues } = useContext(LocalsUpdateContext);
 
     const handleClick = () => {
       if (window.confirm("Are you sure?")) {
         try {
-          executeMutation(props.rawArgs, stripLocalsPrefix(scope.values), scope.update);
+          executeMutation(props.rawArgs, stripLocalsPrefix(getValues()), update);
         } catch (err) {
           console.error("confirm error:", err);
         }

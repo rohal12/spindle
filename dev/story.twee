@@ -38,6 +38,10 @@ $dynId = ""
 $forBtnCount = 0
 $unset_a = ""
 $unset_b = ""
+$forSetTotal = 0
+$forDoResult = ""
+$forNestedLog = ""
+$forBtnPick = 0
 
 
 :: StoryInit
@@ -923,6 +927,36 @@ For-btn count: {$forBtnCount}
 {for @i of [0, 1]}
   <span class="inv-in-for">{print $inventory[@i]}</span>
 {/for}
+
+**Set inside for-loop accumulates using @local:**
+{set $forSetTotal = 0}
+{for @item of [10, 20, 30]}
+  {set $forSetTotal = $forSetTotal + @item}
+{/for}
+<span id="for-set-total">Total: {$forSetTotal}</span>
+
+**Do inside for-loop concatenates using @local:**
+{set $forDoResult = ""}
+{for @name of ["a", "b", "c"]}
+  {do}$forDoResult = $forDoResult + @name{/do}
+{/for}
+<span id="for-do-result">Result: {$forDoResult}</span>
+
+**Nested for with set uses correct @local scope:**
+{set $forNestedLog = ""}
+{for @o of ["X", "Y"]}
+  {for @i of [1, 2]}
+    {set $forNestedLog = $forNestedLog + @o + @i}
+  {/for}
+{/for}
+<span id="for-nested-log">Log: {$forNestedLog}</span>
+
+**Button inside for-loop picks correct @local:**
+{set $forBtnPick = 0}
+{for @val of [10, 20, 30]}
+  {button $forBtnPick = @val}<span class="for-pick-btn">Pick {@val}</span>{/button}
+{/for}
+<span id="for-btn-pick">Picked: {$forBtnPick}</span>
 
 [[Back to start|Start]]
 

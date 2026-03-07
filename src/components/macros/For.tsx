@@ -1,7 +1,16 @@
-import { useContext, useState, useCallback } from 'preact/hooks';
+import {
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'preact/hooks';
 import { evaluate } from '../../expression';
-import { LocalsContext, renderNodes } from '../../markup/render';
-import type { LocalsScope } from '../../markup/render';
+import {
+  LocalsValuesContext,
+  LocalsUpdateContext,
+  renderNodes,
+} from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
@@ -63,16 +72,21 @@ function ForIteration({
     ...initialValues,
   }));
 
+  const valuesRef = useRef(localState);
+  valuesRef.current = localState;
+
+  const getValues = useCallback(() => valuesRef.current, []);
   const update = useCallback((key: string, value: unknown) => {
     setLocalState((prev) => ({ ...prev, [key]: value }));
   }, []);
-
-  const scope: LocalsScope = { values: localState, update };
+  const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
   return (
-    <LocalsContext.Provider value={scope}>
-      {renderNodes(children)}
-    </LocalsContext.Provider>
+    <LocalsUpdateContext.Provider value={updater}>
+      <LocalsValuesContext.Provider value={localState}>
+        {renderNodes(children)}
+      </LocalsValuesContext.Provider>
+    </LocalsUpdateContext.Provider>
   );
 }
 
@@ -80,7 +94,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
-  const parentScope = useContext(LocalsContext);
+  const parentValues = useContext(LocalsValuesContext);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let parsed: ReturnType<typeof parseForArgs>;
@@ -130,7 +144,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
     return (
       <ForIteration
         key={i}
-        parentValues={parentScope.values}
+        parentValues={parentValues}
         ownKeys={ownKeys}
         initialValues={{}}
         children={children}

@@ -1,5 +1,5 @@
 import { useContext } from 'preact/hooks';
-import { renderInlineNodes, LocalsContext } from '../../markup/render';
+import { renderInlineNodes, LocalsUpdateContext } from '../../markup/render';
 import { collectText } from '../../utils/extract-text';
 import { useAction } from '../../hooks/use-action';
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
@@ -19,11 +19,11 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   const handleClick = () => {
     try {
-      executeMutation(rawArgs, stripLocalsPrefix(scope.values), scope.update);
+      executeMutation(rawArgs, stripLocalsPrefix(getValues()), update);
     } catch (err) {
       console.error(
         `spindle: Error in {button ${rawArgs}}${currentSourceLocation()}:`,

@@ -1,7 +1,7 @@
 import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import type { ASTNode } from '../../markup/ast';
-import { LocalsContext } from '../../markup/render';
+import { LocalsUpdateContext } from '../../markup/render';
 import { stripLocalsPrefix } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { executeMutation } from '../../execute-mutation';
@@ -81,11 +81,11 @@ export function MacroLink({
   className = resolve(className);
   id = resolve(id);
   const { display, passage } = parseArgs(rawArgs);
-  const scope = useContext(LocalsContext);
+  const { update, getValues } = useContext(LocalsUpdateContext);
 
   const handleClick = (e: Event) => {
     e.preventDefault();
-    executeChildren(children, stripLocalsPrefix(scope.values), scope.update);
+    executeChildren(children, stripLocalsPrefix(getValues()), update);
     if (passage) {
       useStoryStore.getState().navigate(passage);
     }
@@ -98,7 +98,7 @@ export function MacroLink({
     label: display,
     target: passage ?? undefined,
     perform: () => {
-      executeChildren(children, stripLocalsPrefix(scope.values), scope.update);
+      executeChildren(children, stripLocalsPrefix(getValues()), update);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }
