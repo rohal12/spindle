@@ -1,4 +1,4 @@
-import { useLayoutEffect, useContext } from 'preact/hooks';
+import { useRef, useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import { deepClone } from '../../class-registry';
@@ -13,8 +13,10 @@ interface SetProps {
 export function Set({ rawArgs }: SetProps) {
   const scope = useContext(LocalsContext);
   const [, , mergedLocals] = useMergedLocals();
+  const ran = useRef(false);
 
-  useLayoutEffect(() => {
+  if (!ran.current) {
+    ran.current = true;
     const state = useStoryStore.getState();
     const vars = deepClone(state.variables);
     const temps = deepClone(state.temporary);
@@ -27,7 +29,7 @@ export function Set({ rawArgs }: SetProps) {
         `spindle: Error in {set ${rawArgs}}${currentSourceLocation()}:`,
         err,
       );
-      return;
+      return null;
     }
 
     // Diff and apply store changes
@@ -48,7 +50,7 @@ export function Set({ rawArgs }: SetProps) {
         scope.update(`@${key}`, localsClone[key]);
       }
     }
-  }, []);
+  }
 
   return null;
 }

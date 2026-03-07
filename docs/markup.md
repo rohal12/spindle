@@ -75,6 +75,28 @@ Prefix `.class` or `#id` selectors inside the opening brace:
 
 Multiple classes are space-joined: `{.red.bold print $x}` produces `class="red bold"`.
 
+Selectors can include variable interpolations for dynamic class names and IDs:
+
+```
+{set $theme = "dark"}
+{.{$theme} if $health > 0}
+  Content styled with the current theme class.
+{/if}
+
+{.status-{$level} print $message}
+```
+
+## Escaped Braces
+
+Since `{` and `}` are used for macros and variable display, use a backslash to display literal braces:
+
+```
+The set macro syntax is \{set $x = 5\}.
+Object notation: \{ key: "value" \}
+```
+
+This renders as: `The set macro syntax is {set $x = 5}.`
+
 ## HTML Tags
 
 A curated set of HTML tags is supported directly in passage content:
@@ -89,6 +111,14 @@ Void tags (`br`, `col`, `hr`, `img`, `wbr`) are self-closing. All other tags req
   <br>
   <img src="icon.png">
 </div>
+```
+
+Variable references (`{$var}`, `{_var}`, `{@var}`) inside HTML attributes are interpolated at render time:
+
+```
+{set $color = "red"}
+<div class="{$color}">This div has the "red" class.</div>
+<span data-name="{$character.name}">Named span</span>
 ```
 
 Tags not in the supported set are treated as plain text.

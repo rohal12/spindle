@@ -4,6 +4,7 @@ import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 
 interface IncludeProps {
@@ -13,6 +14,9 @@ interface IncludeProps {
 }
 
 export function Include({ rawArgs, className, id }: IncludeProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const storyData = useStoryStore((s) => s.storyData);
   const [variables, temporary, locals] = useMergedLocals();
 

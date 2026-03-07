@@ -111,6 +111,46 @@ describe('execute', () => {
     expect(vars.player).toEqual({ name: 'Hero', hp: 100 });
   });
 
+  it('preserves $ inside string literals', () => {
+    const vars: Record<string, unknown> = {};
+    execute('$with_dollar = "costs $5"', vars, {});
+    expect(vars.with_dollar).toBe('costs $5');
+  });
+
+  it('preserves @ inside string literals', () => {
+    const vars: Record<string, unknown> = {};
+    execute('$with_at = "email@test"', vars, {});
+    expect(vars.with_at).toBe('email@test');
+  });
+
+  it('preserves _ inside string literals', () => {
+    const vars: Record<string, unknown> = {};
+    execute('$with_underscore = "snake_case"', vars, {});
+    expect(vars.with_underscore).toBe('snake_case');
+  });
+
+  it('preserves special chars in single-quoted strings', () => {
+    const vars: Record<string, unknown> = {};
+    execute("$msg = 'costs $5 for user@home'", vars, {});
+    expect(vars.msg).toBe('costs $5 for user@home');
+  });
+
+  it('preserves special chars in backtick template literal parts', () => {
+    const vars: Record<string, unknown> = {};
+    execute('$msg = `costs $5 for user@home`', vars, {});
+    expect(vars.msg).toBe('costs $5 for user@home');
+  });
+
+  it('transforms variables inside template literal interpolations', () => {
+    const vars: Record<string, unknown> = { name: 'Hero' };
+    expect(evaluate('`hello ${$name}`', vars, {})).toBe('hello Hero');
+  });
+
+  it('handles template literal with both literal sigils and interpolated vars', () => {
+    const vars: Record<string, unknown> = { price: 5 };
+    expect(evaluate('`costs $${$price}`', vars, {})).toBe('costs $5');
+  });
+
   it('throws on syntax errors', () => {
     expect(() => execute('$x =', {}, {})).toThrow();
   });

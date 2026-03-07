@@ -124,6 +124,16 @@ Before evaluation, the expression system transforms:
 
 Standard JavaScript operators and built-in functions (`Math`, `Array` methods, string methods) all work.
 
+Variable sigils inside string literals are preserved as-is. This means `$`, `_`, and `@` inside quoted strings won't be transformed:
+
+```
+{set $greeting = "Hello, " + $name}
+{print `Price: $${$cost}`}
+{if $label === "$special"}
+```
+
+In the second example, the literal `$` before `${$cost}` is kept, while `$cost` inside the template interpolation is resolved to the variable.
+
 ### Passage tracking functions
 
 The following functions are available in any expression to check passage visit and render history:

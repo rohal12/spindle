@@ -1,5 +1,6 @@
 import { useStoryStore } from '../store';
 import { useAction } from '../hooks/use-action';
+import { useInterpolate } from '../hooks/use-interpolate';
 
 interface PassageLinkProps {
   target: string;
@@ -15,6 +16,9 @@ export function PassageLink({
   children,
 }: PassageLinkProps) {
   const navigate = useStoryStore((s) => s.navigate);
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
 
   const handleClick = (e: MouseEvent) => {
     e.preventDefault();

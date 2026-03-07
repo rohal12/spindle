@@ -17,6 +17,27 @@ $has_key = false
 $has_note = false
 $count = 0
 $demo_ran = false
+$theme = "dark"
+$weapon = "sword"
+$difficulty = "normal"
+$stance = "balanced"
+$notes = ""
+$accept_terms = false
+$username = ""
+$age = 0
+$unset_test = ""
+$repeat_count = 0
+$goto_landed = false
+$special_name = ""
+$html_like = ""
+$with_at = ""
+$with_underscore = ""
+$multi_word = ""
+$storyVar = ""
+$dynId = ""
+$forBtnCount = 0
+$unset_a = ""
+$unset_b = ""
 
 
 :: StoryInit
@@ -59,7 +80,17 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Test macros->Macro Demo]] | [[Markdown demo->Markdown Demo]]
 
+[[Widget demo->Widget Demo]] | [[Extra macros->Extra Macros]] | [[Form inputs->Form Inputs]] | [[Interpolation->Interpolation Demo]]
+
 - Character Generation: [[Character Generation]]
+
+[[Edge cases->Edge Cases]] | [[Special chars->Special Chars Passage]] | [[Var namespaces->Var Namespace Tests]]
+
+[[Selector combos->Selector Combos]] | [[Macro combos->Macro Combos]] | [[Widget edges->Widget Edge Cases]]
+
+[[For loop edges->For Loop Edge Cases]] | [[HTML interop->HTML Interop]] | [[Markdown edges->Markdown Edge Cases]]
+
+[[Computed vars->Computed Var Tests]] | [[Unset tests->Unset Tests]] | [[Link syntax->Link Syntax Edge Cases]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -367,3 +398,670 @@ Current level: {$player.level}
 {if _points == 0}
 {button $player = _temp}Confirm{/button} [[Go Back -> Start]]
 {/if}
+
+:: Widgets [widget]
+{widget "StatLine" @label @value}
+<span class="stat-line"><strong>{@label}:</strong> {@value}</span>
+{/widget}
+
+{widget "Greeting" @who}
+Hello, {@who}! Welcome back.
+{/widget}
+
+{widget "Badge"}
+<span class="badge">★</span>
+{/widget}
+
+:: Widget Demo
+### Widget Demo
+
+Widgets with parameters:
+
+{StatLine "Health", $player.hp}
+
+{StatLine "Name", $player.name}
+
+{Greeting $player.name}
+
+Widget without parameters: {Badge}
+
+[[Back to start|Start]]
+
+:: Includable Passage
+This content was included from another passage. Player name: {$player.name}.
+
+:: Extra Macros
+{set _switchVal = "warrior"}
+### Extra Macros
+
+**Include macro:**
+
+{include "Includable Passage"}
+
+**Switch/case/default:**
+
+{switch _switchVal}
+  {case "mage"}
+    You are a mage.
+  {case "warrior"}
+    You are a warrior.
+  {default}
+    Unknown class.
+{/switch}
+
+**Meter macro:**
+
+{#hp-meter.health-bar meter $player.hp $player.maxHp "%"}
+
+**Link macro:**
+
+{link "Set flag" "Start"}
+  {set $has_key = true}
+{/link}
+
+**Unset macro:**
+
+{set $unset_test = "exists"}
+Before unset: {$unset_test}.
+{unset $unset_test}
+
+**Story title:** {story-title}
+
+**Passage tracking:**
+
+{if hasVisited("Hallway")}
+  You have visited the Hallway.
+{else}
+  You have NOT visited the Hallway.
+{/if}
+
+Visit count for Start: {print visited("Start")}
+
+**Current passage:** {print currentPassage().name}
+
+**Timed macro:**
+
+{#timed-output timed 100ms}
+  Timed content appeared!
+  {next 100ms}
+    Second section!
+{/timed}
+
+**Type macro:**
+
+{#type-output type 10ms}Typed text here{/type}
+
+**Repeat macro:**
+
+{set $repeat_count = 0}
+{#repeat-output repeat 50ms}
+  {set $repeat_count = $repeat_count + 1}
+  Tick {$repeat_count}.
+  {if $repeat_count >= 3}{stop}{/if}
+{/repeat}
+
+**ID syntax on variable:** {#player-name-display $player.name}
+
+**ID syntax on link:** [[#id-test-link Back to start|Start]]
+
+[[Back to start|Start]]
+
+:: Goto Source
+{set $goto_landed = true}
+{goto "Goto Target"}
+
+:: Goto Target
+Goto landed successfully. Flag: {$goto_landed}.
+
+[[Back to start|Start]]
+
+:: Form Inputs
+### Form Inputs
+
+**Textbox:**
+
+{#name-input textbox $username "Enter name"}
+
+Name is: {$username}
+
+**Numberbox:**
+
+{#age-input numberbox $age "Enter age"}
+
+Age is: {$age}
+
+**Checkbox:**
+
+{#terms-check checkbox $accept_terms "Accept terms"}
+
+Terms accepted: {$accept_terms}
+
+**Radio buttons:**
+
+{radiobutton $difficulty "easy" "Easy"}
+{radiobutton $difficulty "normal" "Normal"}
+{radiobutton $difficulty "hard" "Hard"}
+
+Difficulty: {$difficulty}
+
+**Listbox:**
+
+{#weapon-select listbox $weapon}
+  {option "sword"}
+  {option "bow"}
+  {option "staff"}
+{/listbox}
+
+Weapon: {$weapon}
+
+**Cycle:**
+
+{#stance-cycle cycle $stance}
+  {option "balanced"}
+  {option "offensive"}
+  {option "defensive"}
+{/cycle}
+
+Stance: {$stance}
+
+[[Back to start|Start]]
+
+:: Interpolation Demo
+{set $theme = "dark"}
+{set _highlight = "active"}
+### Interpolation Demo
+
+**Dynamic class via selector interpolation:**
+
+{.{$theme} print "themed content"}
+
+{.prefix-{$theme} print "prefixed content"}
+
+**Dynamic class via HTML attribute interpolation:**
+
+<span class="{$theme}-text">HTML interpolated class</span>
+
+<div class="box {$theme}" id="themed-box">Interpolated in attributes</div>
+
+**Temporary variable interpolation:**
+
+{.{_highlight} print "highlighted"}
+
+**For loop with interpolated class:**
+
+{for @item of ["alpha", "beta"]}
+  <span class="item-{@item}">{@item}</span>
+{/for}
+
+[[Back to start|Start]]
+
+
+:: Edge Cases
+{set _spaced = "hello world"}
+{set _special = "test&value"}
+{set _empty = ""}
+{set _numstr = "42"}
+{set _zero = 0}
+{set _null_like = "null"}
+{set _bool_false = false}
+{set _bool_true = true}
+{set _with_quotes = "it's a \"test\""}
+### Edge Cases
+
+**String with spaces:** {_spaced}
+
+**String with ampersand:** {_special}
+
+**Empty string display:** [{_empty}]
+
+**Numeric string:** {_numstr}
+
+**Zero value:** {_zero}
+
+**Boolean false:** {_bool_false}
+
+**Boolean true:** {_bool_true}
+
+**Null-like string:** {_null_like}
+
+**Conditional on empty string:**
+{if _empty}empty is truthy{else}empty is falsy{/if}
+
+**Conditional on zero:**
+{if _zero}zero is truthy{else}zero is falsy{/if}
+
+**Conditional on false:**
+{if _bool_false}false is truthy{else}false is falsy{/if}
+
+**Conditional on non-empty string:**
+{if _spaced}spaced is truthy{else}spaced is falsy{/if}
+
+**Print with arithmetic on numeric string:**
+{print _numstr * 2}
+
+**Comparison operators:**
+{if $player.hp >= 100}hp-gte-100{/if}
+{if $player.hp <= 100}hp-lte-100{/if}
+{if $player.hp == 100}hp-eq-100{/if}
+{if $player.hp !== 50}hp-neq-50{/if}
+
+**Nested property access:**
+{$player.name} has {$player.hp} HP
+
+**Deep dot path on object:**
+{print $player.healthStatus}
+
+**For loop with index:**
+{for @val, @idx of ["x", "y", "z"]}
+  <span class="idx-item" id="idx-{@idx}">{@idx}:{@val}</span>
+{/for}
+
+**For loop over empty array:**
+{for @item of []}SHOULD-NOT-APPEAR{/for}
+
+**Nested if inside for:**
+{for @n of [1, 2, 3]}
+  {if @n == 2}<span class="found-two">two</span>{/if}
+{/for}
+
+**Multiple elseif chain:**
+{set _chain = "c"}
+{if _chain == "a"}chain-a{elseif _chain == "b"}chain-b{elseif _chain == "c"}chain-c{elseif _chain == "d"}chain-d{else}chain-default{/if}
+
+**String concatenation in print:**
+{print "Hello" + " " + "World"}
+
+**Math expressions:**
+{print Math.floor(7.9)}
+{print Math.max(3, 7, 1)}
+{print Math.min(10, 5, 20)}
+
+[[Back to start|Start]]
+
+
+:: Special Chars Passage
+{set $special_name = "O'Brien"}
+{set $html_like = "<b>bold</b>"}
+{set $multi_word = "multiple words here"}
+{set $with_underscore = "snake_case_value"}
+{set $with_at = "user at domain"}
+### Special Characters
+
+**Name with apostrophe:** {$special_name}
+
+**HTML-like content in variable:** {$html_like}
+
+**At sign in value:** {$with_at}
+
+**Underscore in value:** {$with_underscore}
+
+**Multi-word value:** {$multi_word}
+
+**Variable in bold markdown:** **{$player.name}**
+
+**Variable in italic markdown:** *{$player.name}*
+
+**Multiple variables in one line:** {$player.name} / {$player.hp} / {$player.strength}
+
+**Literal curly braces:** This \{is\} not a macro. This {is} a macro that throws an error
+
+**Print with string containing special chars:**
+{print "10 > 5 ? 'yes' : 'no'"}
+
+**Ternary in print:**
+{print $player.hp > 50 ? "healthy" : "hurt"}
+
+[[Back to start|Start]]
+
+
+:: Var Namespace Tests
+{set _tempVar = "temp-value"}
+{set $storyVar = "story-value"}
+### Variable Namespace Tests
+
+**Story variable $:** {$storyVar}
+
+**Temporary variable _:** {_tempVar}
+
+**Temp var cleared after navigation:** navigate away and back to check
+
+**Set and read in same passage:**
+{set _freshTemp = "fresh"}
+{_freshTemp}
+
+**Overwrite story var:**
+{set $storyVar = "overwritten"}
+{$storyVar}
+
+**For loop @local vs outer _temp:**
+{set _outer = "outer-val"}
+Outer: {_outer}
+{for @item of ["inner"]}
+  For-local: {@item}
+  Outer-in-for: {_outer}
+{/for}
+
+**Computed temporary variable:**
+{computed _doubled = $player.hp * 2}
+Doubled HP: {_doubled}
+
+**Multiple set on same line:**
+{set _a = 1}{set _b = 2}{set _c = 3}
+Sum: {print _a + _b + _c}
+
+[[Check temp cleared|Temp Check Target]]
+[[Back to start|Start]]
+
+:: Temp Check Target
+### Temp Variable Check
+
+The temporary variable _tempVar should be empty here: [{_tempVar}]
+
+The story variable should persist: {$storyVar}
+
+[[Back to start|Start]]
+
+
+:: Selector Combos
+{set _dynClass = "highlight"}
+{set $dynId = "dynamic-1"}
+### Selector Combinations
+
+**Class on variable:** {.styled-var $player.name}
+
+**ID on variable:** {#id-var $player.hp}
+
+**Class and ID on variable:** {.cls-combo#id-combo $player.name}
+
+**Class on print:** {.styled-print print $player.hp + 10}
+
+**ID on print:** {#id-print print "id-content"}
+
+**Class on if:**
+{.if-styled if true}styled-if-content{/if}
+
+**Multiple classes on variable:** {.cls-a.cls-b $player.name}
+
+**Class on for loop:**
+{.for-styled for @item of ["a"]}for-class-{@item}{/for}
+
+**Interpolated class on variable:** {.{_dynClass} $player.name}
+
+**Interpolated class on print:** {.glow-{_dynClass} print "glow-content"}
+
+**Interpolated in HTML data attribute:**
+<span data-theme="{$theme}">{$theme}</span>
+
+[[Back to start|Start]]
+
+
+:: Macro Combos
+### Macro Combinations
+
+**Button that sets temp var:**
+{set _btnResult = "before"}
+Result: {_btnResult}
+{#set-temp-btn button _btnResult = "after"}Change Temp{/button}
+
+**Button with expression:**
+{#expr-btn button $count = $count + 5}Add 5{/button}
+Count after: {$count}
+
+**Link macro without passage (action only):**
+{link "Toggle flag"}
+  {set $has_key = !$has_key}
+{/link}
+Key state: {$has_key}
+
+**Link macro with passage:**
+{link "Go home" "Start"}
+  {set $visited_rooms = $visited_rooms + 100}
+{/link}
+
+**Include with variable passage name:**
+{set _passageName = "Includable Passage"}
+{include _passageName}
+
+**Nested if/else with variables:**
+{if $player.hp >= 100}
+  {if $player.strength > 3}
+    Strong and healthy
+  {else}
+    Healthy but weak
+  {/if}
+{else}
+  Not at full health
+{/if}
+
+**Switch with number:**
+{set _numSwitch = 2}
+{switch _numSwitch}
+  {case 1}Switch: one
+  {case 2}Switch: two
+  {case 3}Switch: three
+  {default}Switch: other
+{/switch}
+
+**Meter with zero max:**
+{#zero-meter meter 0 0 "%"}
+
+**Meter with percentage label:**
+{#pct-meter.test-meter meter $player.hp $player.maxHp "%"}
+
+**Meter with custom label:**
+{#custom-meter meter $player.hp $player.maxHp "HP"}
+
+[[Back to start|Start]]
+
+
+:: Widget Edge Cases
+### Widget Edge Cases
+
+**StatLine with special characters:**
+{StatLine "Stat's Name", "value with spaces"}
+
+**StatLine with numeric zero:**
+{StatLine "Zero", 0}
+
+**StatLine with boolean:**
+{StatLine "Flag", $has_key}
+
+**StatLine with expression:**
+{StatLine "Double HP", $player.hp * 2}
+
+**Greeting with multi-word name:**
+{set $player.name = "Sir Reginald the Third"}
+{Greeting $player.name}
+
+**Reset name:**
+{set $player.name = "Adventurer"}
+
+**Badge repeated multiple times:**
+{Badge} {Badge} {Badge}
+
+[[Back to start|Start]]
+
+
+:: For Loop Edge Cases
+### For Loop Edge Cases
+
+**Single item array:**
+{for @item of ["only"]}
+  <span class="single-item">{@item}</span>
+{/for}
+
+**Array with numbers:**
+{for @num of [10, 20, 30]}
+  <span class="num-item">{@num}</span>
+{/for}
+
+**Array with mixed types:**
+{for @val of ["str", 42, true, false]}
+  <span class="mixed-item">{@val}</span>
+{/for}
+
+**Nested for loops:**
+{for @outer of ["A", "B"]}
+  {for @inner of [1, 2]}
+    <span class="nested-item">{@outer}-{@inner}</span>
+  {/for}
+{/for}
+
+**For loop with button inside:**
+{set $forBtnCount = 0}
+{for @label of ["X", "Y"]}
+  {button $forBtnCount = $forBtnCount + 1}{@label}{/button}
+{/for}
+For-btn count: {$forBtnCount}
+
+**For loop with if inside:**
+{for @n of [1, 2, 3, 4, 5]}
+  {if @n % 2 == 0}<span class="even-num">{@n}</span>{/if}
+{/for}
+
+**For loop accessing story variable:**
+{for @i of [0, 1]}
+  <span class="inv-in-for">{print $inventory[@i]}</span>
+{/for}
+
+[[Back to start|Start]]
+
+
+:: HTML Interop
+{set _dataVal = "custom-data"}
+### HTML Interop
+
+**Nested HTML elements:**
+<div class="outer"><span class="inner">nested content</span></div>
+
+**HTML with Twine variable:**
+<div class="html-var-container">{$player.name}</div>
+
+**HTML with Twine macro:**
+<div class="html-macro-container">{print $player.hp * 3}</div>
+
+**HTML self-closing:**
+<br/>
+
+**HTML with data attribute:**
+<div data-value="test-data" class="data-el">data attribute element</div>
+
+**HTML with interpolated data attribute:**
+<div data-val="{_dataVal}" class="interp-data-el">interpolated data</div>
+
+**HTML with boolean attribute:**
+<div hidden class="hidden-el">hidden element</div>
+
+**Table with variables:**
+
+| Name | Value |
+| --- | --- |
+| HP | {$player.hp} |
+| Name | {$player.name} |
+
+**HTML with multiple classes:**
+<span class="cls1 cls2 cls3">multi-class html</span>
+
+[[Back to start|Start]]
+
+
+:: Markdown Edge Cases
+### Markdown & Twine Integration
+
+**Bold with variable:** **{$player.name}** is bold
+
+**Italic with variable:** *{$player.name}* is italic
+
+**Code with variable:** the value is `{$player.hp}`
+
+**List with variables:**
+- Name: {$player.name}
+- HP: {$player.hp}
+- Items: {print $inventory.length}
+
+**Blockquote with variable:**
+> Player {$player.name} says hello
+
+**Heading with variable:**
+
+**Variable in table cell:**
+
+| Stat | Value |
+| --- | --- |
+| HP | {$player.hp} |
+| Str | {$player.strength} |
+
+**Link after bold:** **bold text** then [[Back to start|Start]]
+
+**Multiple formatting:** **{$player.name}** has *{$player.hp}* HP and ~~no weakness~~
+
+[[Back to start|Start]]
+
+
+:: Computed Var Tests
+### Computed Variable Tests
+
+{set _base = 10}
+{computed _result = _base * 5}
+{set _computed = _result + 10}
+
+Basic computed plus 10: {_computed}
+
+{set _base = 20}
+Computed after base change: {_result}
+
+{computed _fromStory = $player.hp + $player.strength}
+**Computed from story vars:** {_fromStory}
+
+{computed _conditional = $player.hp >= 100 ? "max" : "damaged"}
+**Computed with ternary:** {_conditional}
+
+{computed _stringComp = $player.name + " (Level " + $player.level + ")"}
+**Computed string concat:** {_stringComp}
+
+[[Back to start|Start]]
+
+
+:: Unset Tests
+### Unset Tests
+
+{set $unset_a = "exists-a"}
+{set $unset_b = "exists-b"}
+{set _unset_temp = "exists-temp"}
+
+**Before unset:**
+A: {$unset_a}
+B: {$unset_b}
+Temp: {_unset_temp}
+
+{unset $unset_a}
+{unset _unset_temp}
+
+**After unset:**
+A: [{$unset_a}]
+B: {$unset_b}
+Temp: [{_unset_temp}]
+
+[[Back to start|Start]]
+
+
+:: Link Syntax Edge Cases
+### Link Syntax Edge Cases
+
+**Pipe with spaces:** [[  Spaced Display  |  Start  ]]
+
+**Arrow with spaces:** [[  Arrow Spaced  ->  Start  ]]
+
+**Reverse arrow with spaces:** [[  Start  <-  Rev Spaced  ]]
+
+**Plain link:** [[Start]]
+
+**Link with class:** [[.link-cls Classed Link|Start]]
+
+**Link with ID:** [[#link-id ID Link|Start]]
+
+**Link with class and ID:** [[.link-cls2#link-id2 Both|Start]]
+
+**Multiple links inline:** [[Link A|Start]] | [[Link B|Start]] | [[Link C|Start]]
+
+[[Back to start|Start]]

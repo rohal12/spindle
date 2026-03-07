@@ -5,6 +5,7 @@ import type { ASTNode } from '../../markup/ast';
 import { deepClone } from '../../class-registry';
 import { LocalsContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 import { currentSourceLocation } from '../../utils/source-location';
 
 interface MacroLinkProps {
@@ -99,6 +100,9 @@ export function MacroLink({
   className,
   id,
 }: MacroLinkProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const { display, passage } = parseArgs(rawArgs);
   const scope = useContext(LocalsContext);
   const [, , mergedLocals] = useMergedLocals();

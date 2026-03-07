@@ -1,6 +1,7 @@
 import { useStoryStore } from '../../store';
 import { useContext } from 'preact/hooks';
 import { LocalsContext } from '../../markup/render';
+import { useInterpolate } from '../../hooks/use-interpolate';
 
 interface VarDisplayProps {
   name: string;
@@ -10,6 +11,9 @@ interface VarDisplayProps {
 }
 
 export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const localsScope = useContext(LocalsContext);
   const parts = name.split('.');
   const root = parts[0]!;

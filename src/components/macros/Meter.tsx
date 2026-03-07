@@ -1,5 +1,6 @@
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { useInterpolate } from '../../hooks/use-interpolate';
 
 interface MeterProps {
   rawArgs: string;
@@ -83,6 +84,9 @@ function formatLabel(
 }
 
 export function Meter({ rawArgs, className, id }: MeterProps) {
+  const resolve = useInterpolate();
+  className = resolve(className);
+  id = resolve(id);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   try {
