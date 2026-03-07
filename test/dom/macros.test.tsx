@@ -143,6 +143,45 @@ describe('macro components', () => {
       const error = el.querySelector('.error');
       expect(error).not.toBeNull();
     });
+
+    it('set inside for-loop modifies store variable using @local', () => {
+      useStoryStore.getState().setVariable('items', [10, 20, 30]);
+      useStoryStore.getState().setVariable('total', 0);
+      renderPassage('{for @item of $items}{set $total = $total + @item}{/for}');
+      expect(useStoryStore.getState().variables.total).toBe(60);
+    });
+
+    it('do inside for-loop can modify store variables', () => {
+      useStoryStore.getState().setVariable('names', ['a', 'b']);
+      useStoryStore.getState().setVariable('result', '');
+      renderPassage(
+        '{for @name of $names}{do}$result = $result + @name{/do}{/for}',
+      );
+      expect(useStoryStore.getState().variables.result).toBe('ab');
+    });
+
+    it('button inside for-loop reads correct @local on click', () => {
+      useStoryStore.getState().setVariable('items', [1, 2, 3]);
+      useStoryStore.getState().setVariable('picked', 0);
+      const el = renderPassage(
+        '{for @item of $items}{button $picked = @item}Pick{/button}{/for}',
+      );
+      const buttons = el.querySelectorAll('button.macro-button');
+      expect(buttons.length).toBe(3);
+      // Click the second button (item=2)
+      (buttons[1] as HTMLElement).click();
+      expect(useStoryStore.getState().variables.picked).toBe(2);
+    });
+
+    it('nested for-loops scope @locals correctly with set', () => {
+      useStoryStore.getState().setVariable('outer', ['a', 'b']);
+      useStoryStore.getState().setVariable('inner', [1, 2]);
+      useStoryStore.getState().setVariable('log', '');
+      renderPassage(
+        '{for @o of $outer}{for @i of $inner}{set $log = $log + @o + @i}{/for}{/for}',
+      );
+      expect(useStoryStore.getState().variables.log).toBe('a1a2b1b2');
+    });
   });
 
   describe('{do}', () => {
