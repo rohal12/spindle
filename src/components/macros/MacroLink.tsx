@@ -5,6 +5,7 @@ import type { ASTNode } from '../../markup/ast';
 import { deepClone } from '../../class-registry';
 import { LocalsContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 
 interface MacroLinkProps {
   rawArgs: string;
@@ -56,14 +57,20 @@ function executeChildren(
       try {
         execute(node.rawArgs, vars, temps, localsClone);
       } catch (err) {
-        console.error(`spindle: Error in {link} child {set}:`, err);
+        console.error(
+          `spindle: Error in {link} child {set}${currentSourceLocation()}:`,
+          err,
+        );
       }
     } else if (node.name === 'do') {
       const code = collectText(node.children);
       try {
         execute(code, vars, temps, localsClone);
       } catch (err) {
-        console.error(`spindle: Error in {link} child {do}:`, err);
+        console.error(
+          `spindle: Error in {link} child {do}${currentSourceLocation()}:`,
+          err,
+        );
       }
     }
   }

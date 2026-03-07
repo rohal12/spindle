@@ -1,6 +1,7 @@
 import { evaluate } from '../../expression';
 import { renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { currentSourceLocation } from '../../utils/source-location';
 import type { Branch } from '../../markup/ast';
 
 interface IfProps {
@@ -46,7 +47,7 @@ export function If({ branches }: IfProps) {
           class="error"
           title={String(err)}
         >
-          {`{if error: ${err instanceof Error ? err.message : String(err)}}`}
+          {`{if error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
         </span>
       );
     }
