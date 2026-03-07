@@ -1,11 +1,10 @@
 import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
-import { execute } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
-import { deepClone } from '../../class-registry';
 import { LocalsContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
+import { executeMutation } from '../../execute-mutation';
 import { currentSourceLocation } from '../../utils/source-location';
 
 interface MacroLinkProps {
@@ -47,16 +46,11 @@ function executeChildren(
   mergedLocals: Record<string, unknown>,
   scopeUpdate: (key: string, value: unknown) => void,
 ) {
-  const state = useStoryStore.getState();
-  const vars = deepClone(state.variables);
-  const temps = deepClone(state.temporary);
-  const localsClone = { ...mergedLocals };
-
   for (const node of children) {
     if (node.type !== 'macro') continue;
     if (node.name === 'set') {
       try {
-        execute(node.rawArgs, vars, temps, localsClone);
+        executeMutation(node.rawArgs, mergedLocals, scopeUpdate);
       } catch (err) {
         console.error(
           `spindle: Error in {link} child {set}${currentSourceLocation()}:`,
@@ -66,30 +60,13 @@ function executeChildren(
     } else if (node.name === 'do') {
       const code = collectText(node.children);
       try {
-        execute(code, vars, temps, localsClone);
+        executeMutation(code, mergedLocals, scopeUpdate);
       } catch (err) {
         console.error(
           `spindle: Error in {link} child {do}${currentSourceLocation()}:`,
           err,
         );
       }
-    }
-  }
-
-  // Apply changes
-  for (const key of Object.keys(vars)) {
-    if (vars[key] !== state.variables[key]) {
-      state.setVariable(key, vars[key]);
-    }
-  }
-  for (const key of Object.keys(temps)) {
-    if (temps[key] !== state.temporary[key]) {
-      state.setTemporary(key, temps[key]);
-    }
-  }
-  for (const key of Object.keys(localsClone)) {
-    if (localsClone[key] !== mergedLocals[key]) {
-      scopeUpdate(`@${key}`, localsClone[key]);
     }
   }
 }

@@ -74,6 +74,28 @@ export default defineConfig({
               { text: 'Example', link: '/widgets#example' },
             ],
           },
+          {
+            text: 'Custom Macros',
+            link: '/custom-macros',
+            collapsed: true,
+            items: [
+              {
+                text: 'Registering a Macro',
+                link: '/custom-macros#registering-a-macro',
+              },
+              { text: 'Reading State', link: '/custom-macros#reading-state' },
+              { text: 'Mutating State', link: '/custom-macros#mutating-state' },
+              { text: 'When Code Runs', link: '/custom-macros#when-code-runs' },
+              {
+                text: 'Variable Namespaces',
+                link: '/custom-macros#variable-namespaces-at-a-glance',
+              },
+              {
+                text: 'Complete Example',
+                link: '/custom-macros#complete-example',
+              },
+            ],
+          },
         ],
       },
       {
