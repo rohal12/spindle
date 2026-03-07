@@ -172,6 +172,64 @@ describe('tokenize', () => {
       const vars = tokens.filter((t) => t.type === 'variable');
       expect(vars).toHaveLength(2);
     });
+
+    it('parses {@local} as local variable token', () => {
+      const tokens = tokenize('{@item}');
+      expect(tokens).toEqual([
+        {
+          type: 'variable',
+          name: 'item',
+          scope: 'local',
+          start: 0,
+          end: 7,
+        },
+      ]);
+    });
+
+    it('parses {@local.field} with dot path', () => {
+      const tokens = tokenize('{@player.name}');
+      expect(tokens).toEqual([
+        {
+          type: 'variable',
+          name: 'player.name',
+          scope: 'local',
+          start: 0,
+          end: 14,
+        },
+      ]);
+    });
+
+    it('handles @ local in text', () => {
+      const tokens = tokenize('Item: {@item} here');
+      expect(tokens).toHaveLength(3);
+      expect(tokens[1]).toEqual({
+        type: 'variable',
+        name: 'item',
+        scope: 'local',
+        start: 6,
+        end: 13,
+      });
+    });
+
+    it('handles mixed $, _, and @ variables', () => {
+      const tokens = tokenize('{$a} {@b} {_c}');
+      const vars = tokens.filter((t) => t.type === 'variable');
+      expect(vars).toHaveLength(3);
+      expect(vars[0]).toMatchObject({ scope: 'variable', name: 'a' });
+      expect(vars[1]).toMatchObject({ scope: 'local', name: 'b' });
+      expect(vars[2]).toMatchObject({ scope: 'temporary', name: 'c' });
+    });
+
+    it('parses {.class @local} with selector prefix', () => {
+      const tokens = tokenize('{.highlight @item}');
+      expect(tokens).toHaveLength(1);
+      expect(tokens[0]).toMatchObject({
+        type: 'variable',
+        name: 'item',
+        scope: 'local',
+        className: 'highlight',
+      });
+    });
   });
 
   describe('macros', () => {

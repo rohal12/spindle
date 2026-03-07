@@ -83,12 +83,16 @@ function formatLabel(
 }
 
 export function Meter({ rawArgs, className, id }: MeterProps) {
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   try {
     const { currentExpr, maxExpr, labelMode } = parseArgs(rawArgs);
-    const current = Number(evaluate(currentExpr, mergedVars, mergedTemps));
-    const max = Number(evaluate(maxExpr, mergedVars, mergedTemps));
+    const current = Number(
+      evaluate(currentExpr, mergedVars, mergedTemps, mergedLocals),
+    );
+    const max = Number(
+      evaluate(maxExpr, mergedVars, mergedTemps, mergedLocals),
+    );
     const pct =
       max === 0 ? 0 : Math.max(0, Math.min(100, (current / max) * 100));
     const label = formatLabel(current, max, labelMode);

@@ -1,7 +1,10 @@
+import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
 import { deepClone } from '../../class-registry';
+import { LocalsContext } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface MacroLinkProps {
   rawArgs: string;
@@ -37,23 +40,28 @@ import { useAction } from '../../hooks/use-action';
 /**
  * Execute the children imperatively: walk AST for {set} and {do} macros.
  */
-function executeChildren(children: ASTNode[]) {
+function executeChildren(
+  children: ASTNode[],
+  mergedLocals: Record<string, unknown>,
+  scopeUpdate: (key: string, value: unknown) => void,
+) {
   const state = useStoryStore.getState();
   const vars = deepClone(state.variables);
   const temps = deepClone(state.temporary);
+  const localsClone = { ...mergedLocals };
 
   for (const node of children) {
     if (node.type !== 'macro') continue;
     if (node.name === 'set') {
       try {
-        execute(node.rawArgs, vars, temps);
+        execute(node.rawArgs, vars, temps, localsClone);
       } catch (err) {
         console.error(`spindle: Error in {link} child {set}:`, err);
       }
     } else if (node.name === 'do') {
       const code = collectText(node.children);
       try {
-        execute(code, vars, temps);
+        execute(code, vars, temps, localsClone);
       } catch (err) {
         console.error(`spindle: Error in {link} child {do}:`, err);
       }
@@ -71,6 +79,11 @@ function executeChildren(children: ASTNode[]) {
       state.setTemporary(key, temps[key]);
     }
   }
+  for (const key of Object.keys(localsClone)) {
+    if (localsClone[key] !== mergedLocals[key]) {
+      scopeUpdate(`@${key}`, localsClone[key]);
+    }
+  }
 }
 
 export function MacroLink({
@@ -80,10 +93,12 @@ export function MacroLink({
   id,
 }: MacroLinkProps) {
   const { display, passage } = parseArgs(rawArgs);
+  const scope = useContext(LocalsContext);
+  const [, , mergedLocals] = useMergedLocals();
 
   const handleClick = (e: Event) => {
     e.preventDefault();
-    executeChildren(children);
+    executeChildren(children, mergedLocals, scope.update);
     if (passage) {
       useStoryStore.getState().navigate(passage);
     }
@@ -96,7 +111,7 @@ export function MacroLink({
     label: display,
     target: passage ?? undefined,
     perform: () => {
-      executeChildren(children);
+      executeChildren(children, mergedLocals, scope.update);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }

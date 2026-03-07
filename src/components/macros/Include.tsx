@@ -3,6 +3,7 @@ import { evaluate } from '../../expression';
 import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { renderNodes } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface IncludeProps {
   rawArgs: string;
@@ -12,14 +13,13 @@ interface IncludeProps {
 
 export function Include({ rawArgs, className, id }: IncludeProps) {
   const storyData = useStoryStore((s) => s.storyData);
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
+  const [variables, temporary, locals] = useMergedLocals();
 
   if (!storyData) return null;
 
   let passageName: string;
   try {
-    const result = evaluate(rawArgs, variables, temporary);
+    const result = evaluate(rawArgs, variables, temporary, locals);
     passageName = String(result);
   } catch {
     passageName = rawArgs.replace(/^["']|["']$/g, '');

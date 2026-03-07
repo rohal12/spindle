@@ -29,7 +29,7 @@ export interface MacroToken {
 export interface VariableToken {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary';
+  scope: 'variable' | 'temporary' | 'local';
   className?: string;
   id?: string;
   start: number;
@@ -419,6 +419,34 @@ export function tokenize(input: string): Token[] {
           continue;
         }
 
+        if (charAfter === '@') {
+          // {.class#id @local.field}
+          i = afterSelectors + 1;
+          const nameStart = i;
+          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
+          const name = input.slice(nameStart, i);
+
+          if (input[i] === '}') {
+            i++; // skip }
+            const token: VariableToken = {
+              type: 'variable',
+              name,
+              scope: 'local',
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Not valid — treat as text
+          i = start + 1;
+          textStart = start;
+          continue;
+        }
+
         if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
           // {.class#id macroName args}
           i = afterSelectors;
@@ -510,6 +538,32 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         // Not a valid temporary token — treat as text
+        i = start + 1;
+        textStart = start;
+        continue;
+      }
+
+      // {@local.field}
+      if (nextChar === '@') {
+        flushText(i);
+        i += 2;
+        const nameStart = i;
+        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
+        const name = input.slice(nameStart, i);
+
+        if (input[i] === '}') {
+          i++; // skip }
+          tokens.push({
+            type: 'variable',
+            name,
+            scope: 'local',
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Not a valid local token — treat as text
         i = start + 1;
         textStart = start;
         continue;

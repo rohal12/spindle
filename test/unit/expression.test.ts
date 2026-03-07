@@ -58,6 +58,18 @@ describe('evaluate', () => {
     // Accessing undefined property returns undefined, not an error
     expect(evaluate('$missing', {}, {})).toBeUndefined();
   });
+
+  it('reads @local variables', () => {
+    expect(evaluate('@count', {}, {}, { count: 7 })).toBe(7);
+  });
+
+  it('handles mixed $, _, and @ variables', () => {
+    expect(evaluate('@x + $y + _z', { y: 10 }, { z: 20 }, { x: 5 })).toBe(35);
+  });
+
+  it('returns undefined for missing @local', () => {
+    expect(evaluate('@missing', {}, {}, {})).toBeUndefined();
+  });
 });
 
 describe('execute', () => {
@@ -101,6 +113,25 @@ describe('execute', () => {
 
   it('throws on syntax errors', () => {
     expect(() => execute('$x =', {}, {})).toThrow();
+  });
+
+  it('sets a @local variable', () => {
+    const locals: Record<string, unknown> = {};
+    execute('@count = 42', {}, {}, locals);
+    expect(locals.count).toBe(42);
+  });
+
+  it('modifies existing @local', () => {
+    const locals: Record<string, unknown> = { x: 10 };
+    execute('@x = @x + 5', {}, {}, locals);
+    expect(locals.x).toBe(15);
+  });
+
+  it('can mix @ and $ in assignment', () => {
+    const vars: Record<string, unknown> = { total: 0 };
+    const locals: Record<string, unknown> = { item: 10 };
+    execute('$total = $total + @item', vars, {}, locals);
+    expect(vars.total).toBe(10);
   });
 });
 

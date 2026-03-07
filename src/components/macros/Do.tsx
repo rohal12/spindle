@@ -1,8 +1,10 @@
-import { useLayoutEffect } from 'preact/hooks';
+import { useLayoutEffect, useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
 import { deepClone } from '../../class-registry';
+import { LocalsContext } from '../../markup/render';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface DoProps {
   children: ASTNode[];
@@ -17,14 +19,17 @@ function collectText(nodes: ASTNode[]): string {
 
 export function Do({ children }: DoProps) {
   const code = collectText(children);
+  const scope = useContext(LocalsContext);
+  const [, , mergedLocals] = useMergedLocals();
 
   useLayoutEffect(() => {
     const state = useStoryStore.getState();
     const vars = deepClone(state.variables);
     const temps = deepClone(state.temporary);
+    const localsClone = { ...mergedLocals };
 
     try {
-      execute(code, vars, temps);
+      execute(code, vars, temps, localsClone);
     } catch (err) {
       console.error(`spindle: Error in {do}:`, err);
       return;
@@ -39,6 +44,11 @@ export function Do({ children }: DoProps) {
     for (const key of Object.keys(temps)) {
       if (temps[key] !== state.temporary[key]) {
         state.setTemporary(key, temps[key]);
+      }
+    }
+    for (const key of Object.keys(localsClone)) {
+      if (localsClone[key] !== mergedLocals[key]) {
+        scope.update(`@${key}`, localsClone[key]);
       }
     }
   }, []);

@@ -14,7 +14,7 @@ export interface VariableSchema extends FieldSchema {
 
 const DECLARATION_RE = /^\$(\w+)\s*=\s*(.+)$/;
 const VAR_REF_RE = /\$(\w+(?:\.\w+)*)/g;
-const FOR_LOCAL_RE = /\{for\s+(\$\w+)(?:\s*,\s*(\$\w+))?\s+of\b/g;
+const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
 
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
@@ -77,16 +77,16 @@ export function parseStoryVariables(
 
 /**
  * Extract for-loop local variable names from passage content.
- * `{for $item of ...}` → "item"
- * `{for $index, $item of ...}` → "index", "item"
+ * `{for @item of ...}` → "item"
+ * `{for @index, @item of ...}` → "index", "item"
  */
 function extractForLocals(content: string): Set<string> {
   const locals = new Set<string>();
   let match: RegExpExecArray | null;
   FOR_LOCAL_RE.lastIndex = 0;
   while ((match = FOR_LOCAL_RE.exec(content)) !== null) {
-    locals.add(match[1]!.slice(1)); // strip $
-    if (match[2]) locals.add(match[2]!.slice(1));
+    locals.add(match[1]!);
+    if (match[2]) locals.add(match[2]!);
   }
   return locals;
 }

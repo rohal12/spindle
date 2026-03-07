@@ -27,20 +27,20 @@ Each condition is a JavaScript expression where `$var` references story variable
 Loop over an array.
 
 ```
-{for $item of $inventory}
-  - {$item}
+{for @item of $inventory}
+  - {@item}
 {/for}
 ```
 
 With an index variable:
 
 ```
-{for $item, $i of $items}
-  {print $i + 1}. {$item}
+{for @item, @i of $items}
+  {print @i + 1}. {@item}
 {/for}
 ```
 
-The loop variables (`$item`, `$i`) are local to the loop body and do not affect story variables.
+The loop variables (`@item`, `@i`) use the `@` prefix and are block-scoped to the loop body. They do not affect `$` story variables or `_` temporary variables.
 
 ### `{switch}` / `{case}` / `{default}`
 

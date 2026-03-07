@@ -8,10 +8,10 @@ interface PrintProps {
 }
 
 export function Print({ rawArgs, className, id }: PrintProps) {
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   try {
-    const result = evaluate(rawArgs, mergedVars, mergedTemps);
+    const result = evaluate(rawArgs, mergedVars, mergedTemps, mergedLocals);
     const display = result == null ? '' : String(result);
     if (className || id)
       return (

@@ -4,22 +4,30 @@ import { LocalsContext } from '../../markup/render';
 
 interface VarDisplayProps {
   name: string;
-  scope: 'variable' | 'temporary';
+  scope: 'variable' | 'temporary' | 'local';
   className?: string;
   id?: string;
 }
 
 export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
-  const locals = useContext(LocalsContext);
+  const localsScope = useContext(LocalsContext);
   const parts = name.split('.');
   const root = parts[0]!;
   const storeValue = useStoryStore((s) =>
-    scope === 'variable' ? s.variables[root] : s.temporary[root],
+    scope === 'variable'
+      ? s.variables[root]
+      : scope === 'temporary'
+        ? s.temporary[root]
+        : undefined,
   );
 
-  // Locals (from for-loops) override store values
-  const key = scope === 'variable' ? `$${root}` : `_${root}`;
-  let value = key in locals ? locals[key] : storeValue;
+  let value: unknown;
+  if (scope === 'local') {
+    const key = `@${root}`;
+    value = key in localsScope.values ? localsScope.values[key] : undefined;
+  } else {
+    value = storeValue;
+  }
 
   // Resolve dot path (e.g. "character.name" → character['name'])
   for (let i = 1; i < parts.length; i++) {

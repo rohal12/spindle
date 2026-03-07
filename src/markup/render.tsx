@@ -42,7 +42,17 @@ import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, Branch, MacroNode } from './ast';
 
-export const LocalsContext = createContext<Record<string, unknown>>({});
+export interface LocalsScope {
+  values: Record<string, unknown>;
+  update: (key: string, value: unknown) => void;
+}
+
+const defaultLocalsScope: LocalsScope = {
+  values: {},
+  update: () => {},
+};
+
+export const LocalsContext = createContext<LocalsScope>(defaultLocalsScope);
 
 const EMPTY_BRANCHES: Branch[] = [];
 

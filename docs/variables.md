@@ -1,6 +1,6 @@
 # Variables
 
-Spindle has two kinds of variables: **story variables** that persist across passages and **temporary variables** that reset on each navigation.
+Spindle has three kinds of variables: **story variables** that persist across passages, **temporary variables** that reset on each navigation, and **local variables** that are scoped to a block (for-loop or widget body).
 
 ## Story Variables
 
@@ -106,7 +106,7 @@ Then use methods and getters in your passages:
 
 ## Expressions
 
-Anywhere Spindle expects a value (conditions in `{if}`, values in `{set}`, arguments to `{print}`), you write JavaScript expressions with `$var` and `_var` placeholders:
+Anywhere Spindle expects a value (conditions in `{if}`, values in `{set}`, arguments to `{print}`), you write JavaScript expressions with `$var`, `_var`, and `@var` placeholders:
 
 ```
 {if $health > 0 && $character.alive}
@@ -120,6 +120,7 @@ Before evaluation, the expression system transforms:
 
 - `$varName` into a reference to the story variable `varName`
 - `_tempName` into a reference to the temporary variable `tempName`
+- `@localName` into a reference to the block-scoped local `localName`
 
 Standard JavaScript operators and built-in functions (`Math`, `Array` methods, string methods) all work.
 
@@ -172,14 +173,51 @@ Access passage metadata in expressions:
 
 **Rendered** is a superset of visited — it also counts passages rendered inline via `{include}`.
 
+## Local Variables
+
+Local variables start with `@` and are block-scoped to for-loops and widget bodies. They do not conflict with `$` story variables or `_` temporary variables.
+
 ### For-loop locals
 
-Inside a `{for}` loop, the loop variables are available as locals and do not conflict with story variables of the same name:
+Inside a `{for}` loop, the loop variables use `@` prefix and are scoped to the loop body:
 
 ```
-{for $item, $i of $inventory}
-  {print $i + 1}. {$item}
+{for @item, @i of $inventory}
+  {print @i + 1}. {@item}
 {/for}
 ```
 
-Here `$item` and `$i` are scoped to the loop body.
+### Widget locals
+
+Widget parameters also use `@` prefix:
+
+```
+{widget "StatusBar" @label @value @max}
+  <div class="bar">{@label}: {@value}/{@max}</div>
+{/widget}
+
+{StatusBar "HP", $health, $maxHealth}
+```
+
+### Mutating locals
+
+Locals can be modified within their scope using `{set}`:
+
+```
+{for @item, @i of $inventory}
+  {set @label = @item + " (" + (@i + 1) + ")"}
+  {@label}
+{/for}
+```
+
+### Nesting
+
+Inner scopes inherit parent locals. Each scope maintains its own bindings:
+
+```
+{for @item of $items}
+  {for @sub of @item.children}
+    {@item.name}: {@sub}
+  {/for}
+{/for}
+```

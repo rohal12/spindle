@@ -1,5 +1,6 @@
-import { useContext } from 'preact/hooks';
+import { useContext, useState, useCallback } from 'preact/hooks';
 import { LocalsContext, renderNodes } from '../../markup/render';
+import type { LocalsScope } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
@@ -60,20 +61,47 @@ function splitArgs(raw: string): string[] {
   return args;
 }
 
+function WidgetBody({
+  body,
+  parentValues,
+  ownKeys,
+}: {
+  body: ASTNode[];
+  parentValues: Record<string, unknown>;
+  ownKeys: Record<string, unknown>;
+}) {
+  const [localState, setLocalState] = useState<Record<string, unknown>>(() => ({
+    ...parentValues,
+    ...ownKeys,
+  }));
+
+  const update = useCallback((key: string, value: unknown) => {
+    setLocalState((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const scope: LocalsScope = { values: localState, update };
+
+  return (
+    <LocalsContext.Provider value={scope}>
+      {renderNodes(body)}
+    </LocalsContext.Provider>
+  );
+}
+
 export function WidgetInvocation({
   body,
   params,
   rawArgs,
 }: WidgetInvocationProps) {
-  const parentLocals = useContext(LocalsContext);
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const parentScope = useContext(LocalsContext);
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   if (params.length === 0 || !rawArgs) {
     return <>{renderNodes(body)}</>;
   }
 
   const argExprs = splitArgs(rawArgs);
-  const locals: Record<string, unknown> = { ...parentLocals };
+  const ownKeys: Record<string, unknown> = {};
 
   for (let i = 0; i < params.length; i++) {
     const param = params[i]!;
@@ -81,17 +109,19 @@ export function WidgetInvocation({
     let value: unknown;
     if (expr !== undefined) {
       try {
-        value = evaluate(expr, mergedVars, mergedTemps);
+        value = evaluate(expr, mergedVars, mergedTemps, mergedLocals);
       } catch {
         value = undefined;
       }
     }
-    locals[param] = value;
+    ownKeys[param] = value;
   }
 
   return (
-    <LocalsContext.Provider value={locals}>
-      {renderNodes(body)}
-    </LocalsContext.Provider>
+    <WidgetBody
+      body={body}
+      parentValues={parentScope.values}
+      ownKeys={ownKeys}
+    />
   );
 }

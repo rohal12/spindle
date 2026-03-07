@@ -1,9 +1,11 @@
+import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { execute } from '../../expression';
-import { renderInlineNodes } from '../../markup/render';
+import { renderInlineNodes, LocalsContext } from '../../markup/render';
 import { deepClone } from '../../class-registry';
 import { collectText } from '../../utils/extract-text';
 import { useAction } from '../../hooks/use-action';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 import type { ASTNode } from '../../markup/ast';
 
 interface ButtonProps {
@@ -14,13 +16,17 @@ interface ButtonProps {
 }
 
 export function Button({ rawArgs, children, className, id }: ButtonProps) {
+  const scope = useContext(LocalsContext);
+  const [, , mergedLocals] = useMergedLocals();
+
   const handleClick = () => {
     const state = useStoryStore.getState();
     const vars = deepClone(state.variables);
     const temps = deepClone(state.temporary);
+    const localsClone = { ...mergedLocals };
 
     try {
-      execute(rawArgs, vars, temps);
+      execute(rawArgs, vars, temps, localsClone);
     } catch (err) {
       console.error(`spindle: Error in {button ${rawArgs}}:`, err);
       return;
@@ -34,6 +40,11 @@ export function Button({ rawArgs, children, className, id }: ButtonProps) {
     for (const key of Object.keys(temps)) {
       if (temps[key] !== state.temporary[key]) {
         state.setTemporary(key, temps[key]);
+      }
+    }
+    for (const key of Object.keys(localsClone)) {
+      if (localsClone[key] !== mergedLocals[key]) {
+        scope.update(`@${key}`, localsClone[key]);
       }
     }
   };
