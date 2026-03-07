@@ -1,22 +1,24 @@
 import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface GotoProps {
   rawArgs: string;
 }
 
 export function Goto({ rawArgs }: GotoProps) {
+  const [variables, temporary, locals] = useMergedLocals();
+
   useLayoutEffect(() => {
-    const state = useStoryStore.getState();
     let passageName: string;
     try {
-      const result = evaluate(rawArgs, state.variables, state.temporary);
+      const result = evaluate(rawArgs, variables, temporary, locals);
       passageName = String(result);
     } catch {
       passageName = rawArgs.replace(/^["']|["']$/g, '');
     }
-    state.navigate(passageName);
+    useStoryStore.getState().navigate(passageName);
   }, []);
 
   return null;

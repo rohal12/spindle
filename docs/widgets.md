@@ -37,12 +37,12 @@ Widget names are case-insensitive: `{statusbar}`, `{StatusBar}`, and `{STATUSBAR
 
 ## Arguments
 
-Widgets can accept arguments, making them more flexible. Declare parameter names after the widget name using `$` or `_` prefixed variables:
+Widgets can accept arguments, making them more flexible. Declare parameter names after the widget name using `@` prefixed local variables:
 
 ```
 :: StoryInit
-{widget "StatLine" $label $value $max}
-  **{$label}:** {$value} / {$max}
+{widget "StatLine" @label @value @max}
+  **{@label}:** {@value} / {@max}
 {/widget}
 ```
 
@@ -61,20 +61,7 @@ Arguments are evaluated as expressions, so you can pass variables, literals, or 
 {StatLine "Damage", $strength * 2, 100}
 ```
 
-Parameters are scoped to the widget body — they don't affect story variables with the same name. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
-
-### Temporary Parameters
-
-Use `_` prefixed parameters for temporary variables that should not conflict with story variables:
-
-```
-{widget "Badge" _text _color}
-  <span class="badge" style="color: {_color}">{_text}</span>
-{/widget}
-
-{Badge "NEW", "green"}
-{Badge "SALE", "red"}
-```
+Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
 
 ## How Widgets Work
 
@@ -118,10 +105,10 @@ A parameterized widget for reusable UI:
 
 ```
 :: StoryInit
-{widget "ResourceBar" $label $current $maximum}
+{widget "ResourceBar" @label @current @maximum}
   <div class="resource-bar">
-    <span class="resource-label">{$label}</span>
-    {meter $current $maximum}
+    <span class="resource-label">{@label}</span>
+    {meter @current @maximum}
   </div>
 {/widget}
 

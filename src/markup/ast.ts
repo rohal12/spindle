@@ -16,7 +16,7 @@ export interface LinkNode {
 export interface VariableNode {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary';
+  scope: 'variable' | 'temporary' | 'local';
   className?: string;
   id?: string;
 }

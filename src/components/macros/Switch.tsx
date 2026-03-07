@@ -9,11 +9,11 @@ interface SwitchProps {
 }
 
 export function Switch({ rawArgs, branches }: SwitchProps) {
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let switchValue: unknown;
   try {
-    switchValue = evaluate(rawArgs, mergedVars, mergedTemps);
+    switchValue = evaluate(rawArgs, mergedVars, mergedTemps, mergedLocals);
   } catch (err) {
     return (
       <span
@@ -35,7 +35,12 @@ export function Switch({ rawArgs, branches }: SwitchProps) {
     }
 
     try {
-      const caseValue = evaluate(branch.rawArgs, mergedVars, mergedTemps);
+      const caseValue = evaluate(
+        branch.rawArgs,
+        mergedVars,
+        mergedTemps,
+        mergedLocals,
+      );
       if (switchValue === caseValue) {
         return <>{renderNodes(branch.children)}</>;
       }

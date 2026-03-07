@@ -21,6 +21,7 @@ interface ExpressionFns {
 type CompiledExpression = (
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
+  locals: Record<string, unknown>,
   __fns: ExpressionFns,
 ) => unknown;
 
@@ -34,11 +35,13 @@ const fnCache = new Map<string, CompiledExpression>();
  */
 const VAR_RE = /\$(\w+)/g;
 const TEMP_RE = /\b_(\w+)/g;
+const LOCAL_RE = /@(\w+)/g;
 
 function transform(expr: string): string {
   return expr
     .replace(VAR_RE, 'variables["$1"]')
-    .replace(TEMP_RE, 'temporary["$1"]');
+    .replace(TEMP_RE, 'temporary["$1"]')
+    .replace(LOCAL_RE, 'locals["$1"]');
 }
 
 const preamble =
@@ -55,6 +58,7 @@ function getOrCompile(key: string, body: string): CompiledExpression {
   const fn = new Function(
     'variables',
     'temporary',
+    'locals',
     '__fns',
     preamble + body,
   ) as CompiledExpression;
@@ -136,11 +140,12 @@ export function evaluate(
   expr: string,
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
+  locals: Record<string, unknown> = {},
 ): unknown {
   const transformed = transform(expr);
   const body = `return (${transformed});`;
   const fn = getOrCompile(body, body);
-  return fn(variables, temporary, buildExpressionFns());
+  return fn(variables, temporary, locals, buildExpressionFns());
 }
 
 /**
@@ -151,15 +156,16 @@ export function execute(
   code: string,
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
+  locals: Record<string, unknown> = {},
 ): void {
   const transformed = transform(code);
   const fn = getOrCompile('exec:' + transformed, transformed);
-  fn(variables, temporary, buildExpressionFns());
+  fn(variables, temporary, locals, buildExpressionFns());
 }
 
 /**
  * Convenience: evaluate using store state directly.
  */
 export function evaluateWithState(expr: string, state: StoryState): unknown {
-  return evaluate(expr, state.variables, state.temporary);
+  return evaluate(expr, state.variables, state.temporary, {});
 }

@@ -3,24 +3,26 @@ import { useStoryStore } from '../store';
 import { LocalsContext } from '../markup/render';
 
 /**
- * Merge store variables/temporary with LocalsContext values.
- * Locals prefixed with `$` go into variables, `_` into temporary.
+ * Return store variables, temporary, and @-prefixed locals from context.
+ * Locals use `@` prefix keys internally; the returned locals dict has
+ * the prefix stripped so it can be passed directly to evaluate/execute.
  */
 export function useMergedLocals(): readonly [
+  Record<string, unknown>,
   Record<string, unknown>,
   Record<string, unknown>,
 ] {
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
-  const locals = useContext(LocalsContext);
+  const scope = useContext(LocalsContext);
 
   return useMemo(() => {
-    const vars = { ...variables };
-    const temps = { ...temporary };
-    for (const [key, val] of Object.entries(locals)) {
-      if (key.startsWith('$')) vars[key.slice(1)] = val;
-      else if (key.startsWith('_')) temps[key.slice(1)] = val;
+    const locals: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(scope.values)) {
+      if (key.startsWith('@')) {
+        locals[key.slice(1)] = val;
+      }
     }
-    return [vars, temps] as const;
-  }, [variables, temporary, locals]);
+    return [variables, temporary, locals] as const;
+  }, [variables, temporary, scope.values]);
 }

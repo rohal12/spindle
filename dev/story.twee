@@ -248,8 +248,8 @@ Health: {$player.hp}/{$player.maxHp} —
 
 Inventory ({print $inventory.length} items):
 
-{for $item, $i of $inventory}
-  {print $i + 1}. {$item}
+{for @item, @i of $inventory}
+  {print @i + 1}. {@item}
 {/for}
 
 

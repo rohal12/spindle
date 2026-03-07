@@ -168,21 +168,21 @@ describe('validatePassages', () => {
     );
   });
 
-  it('skips for-loop locals', () => {
+  it('skips for-loop locals (@ syntax not matched by $ validator)', () => {
     const schema = parseStoryVariables('$inventory = []');
     const passages = makePassages(
       ['StoryVariables', '$inventory = []'],
-      ['Start', '{for $item of $inventory}$item{/for}'],
+      ['Start', '{for @item of $inventory}{@item}{/for}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
   });
 
-  it('skips for-loop locals with index', () => {
+  it('skips for-loop locals with index (@ syntax)', () => {
     const schema = parseStoryVariables('$inventory = []');
     const passages = makePassages(
       ['StoryVariables', '$inventory = []'],
-      ['Start', '{for $i, $item of $inventory}$i: $item{/for}'],
+      ['Start', '{for @i, @item of $inventory}{@i}: {@item}{/for}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);

@@ -13,9 +13,7 @@ interface WidgetProps {
 function parseWidgetDef(rawArgs: string): { name: string; params: string[] } {
   const tokens = rawArgs.trim().split(/\s+/);
   const name = tokens[0]!.replace(/["']/g, '');
-  const params = tokens
-    .slice(1)
-    .filter((t) => t.startsWith('$') || t.startsWith('_'));
+  const params = tokens.slice(1).filter((t) => t.startsWith('@'));
   return { name, params };
 }
 

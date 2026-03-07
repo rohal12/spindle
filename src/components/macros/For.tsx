@@ -1,6 +1,7 @@
-import { useContext } from 'preact/hooks';
+import { useContext, useState, useCallback } from 'preact/hooks';
 import { evaluate } from '../../expression';
 import { LocalsContext, renderNodes } from '../../markup/render';
+import type { LocalsScope } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import type { ASTNode } from '../../markup/ast';
 
@@ -12,7 +13,7 @@ interface ForProps {
 }
 
 /**
- * Parse for-loop args: "$item, $i of $list" or "$item of $list"
+ * Parse for-loop args: "@item, @i of $list" or "@item of $list"
  */
 function parseForArgs(rawArgs: string): {
   itemVar: string;
@@ -31,12 +32,51 @@ function parseForArgs(rawArgs: string): {
   const itemVar = vars[0]!;
   const indexVar = vars.length > 1 ? vars[1]! : null;
 
+  if (!itemVar.startsWith('@')) {
+    throw new Error(`{for} loop variable must use @ prefix: got "${itemVar}"`);
+  }
+  if (indexVar && !indexVar.startsWith('@')) {
+    throw new Error(
+      `{for} index variable must use @ prefix: got "${indexVar}"`,
+    );
+  }
+
   return { itemVar, indexVar, listExpr };
 }
 
+function ForIteration({
+  parentValues,
+  ownKeys,
+  initialValues,
+  children,
+}: {
+  parentValues: Record<string, unknown>;
+  ownKeys: Record<string, unknown>;
+  initialValues: Record<string, unknown>;
+  children: ASTNode[];
+}) {
+  const [localState, setLocalState] = useState<Record<string, unknown>>(() => ({
+    ...parentValues,
+    ...ownKeys,
+    ...initialValues,
+  }));
+
+  const update = useCallback((key: string, value: unknown) => {
+    setLocalState((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const scope: LocalsScope = { values: localState, update };
+
+  return (
+    <LocalsContext.Provider value={scope}>
+      {renderNodes(children)}
+    </LocalsContext.Provider>
+  );
+}
+
 export function For({ rawArgs, children, className, id }: ForProps) {
-  const parentLocals = useContext(LocalsContext);
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const parentScope = useContext(LocalsContext);
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let parsed: ReturnType<typeof parseForArgs>;
   try {
@@ -56,7 +96,7 @@ export function For({ rawArgs, children, className, id }: ForProps) {
 
   let list: unknown[];
   try {
-    const result = evaluate(listExpr, mergedVars, mergedTemps);
+    const result = evaluate(listExpr, mergedVars, mergedTemps, mergedLocals);
     if (!Array.isArray(result)) {
       return (
         <span class="error">
@@ -77,19 +117,19 @@ export function For({ rawArgs, children, className, id }: ForProps) {
   }
 
   const content = list.map((item, i) => {
-    const locals = {
-      ...parentLocals,
+    const ownKeys: Record<string, unknown> = {
       [itemVar]: item,
       ...(indexVar ? { [indexVar]: i } : undefined),
     };
 
     return (
-      <LocalsContext.Provider
+      <ForIteration
         key={i}
-        value={locals}
-      >
-        {renderNodes(children)}
-      </LocalsContext.Provider>
+        parentValues={parentScope.values}
+        ownKeys={ownKeys}
+        initialValues={{}}
+        children={children}
+      />
     );
   });
 

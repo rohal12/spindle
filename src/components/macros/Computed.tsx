@@ -59,7 +59,7 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 }
 
 export function Computed({ rawArgs }: ComputedProps) {
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   let target: string;
   let expr: string;
@@ -84,7 +84,7 @@ export function Computed({ rawArgs }: ComputedProps) {
 
     let newValue: unknown;
     try {
-      newValue = evaluate(expr, mergedVars, mergedTemps);
+      newValue = evaluate(expr, mergedVars, mergedTemps, mergedLocals);
     } catch (err) {
       console.error(`spindle: Error in {computed ${rawArgs}}:`, err);
       return;

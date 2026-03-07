@@ -120,7 +120,7 @@ describe('macro components', () => {
   describe('{for}', () => {
     it('iterates over an array', () => {
       useStoryStore.getState().setVariable('items', ['a', 'b', 'c']);
-      const el = renderPassage('{for $item of $items}{$item} {/for}');
+      const el = renderPassage('{for @item of $items}{@item} {/for}');
       expect(el.textContent).toContain('a');
       expect(el.textContent).toContain('b');
       expect(el.textContent).toContain('c');
@@ -129,7 +129,7 @@ describe('macro components', () => {
     it('provides index variable', () => {
       useStoryStore.getState().setVariable('items', ['x', 'y']);
       const el = renderPassage(
-        '{for $item, $i of $items}{print $i}: {$item} {/for}',
+        '{for @item, @i of $items}{print @i}: {@item} {/for}',
       );
       expect(el.textContent).toContain('0');
       expect(el.textContent).toContain('x');
@@ -139,7 +139,7 @@ describe('macro components', () => {
 
     it('shows error for non-array', () => {
       useStoryStore.getState().setVariable('x', 42);
-      const el = renderPassage('{for $item of $x}item{/for}');
+      const el = renderPassage('{for @item of $x}item{/for}');
       const error = el.querySelector('.error');
       expect(error).not.toBeNull();
     });

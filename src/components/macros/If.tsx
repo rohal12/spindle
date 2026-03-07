@@ -8,7 +8,7 @@ interface IfProps {
 }
 
 export function If({ branches }: IfProps) {
-  const [mergedVars, mergedTemps] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   function renderBranch(branch: Branch) {
     const children = renderNodes(branch.children);
@@ -31,7 +31,12 @@ export function If({ branches }: IfProps) {
     }
 
     try {
-      const result = evaluate(branch.rawArgs, mergedVars, mergedTemps);
+      const result = evaluate(
+        branch.rawArgs,
+        mergedVars,
+        mergedTemps,
+        mergedLocals,
+      );
       if (result) {
         return renderBranch(branch);
       }
