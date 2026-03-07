@@ -370,6 +370,16 @@ Show content after a delay. Chain sections with `{next}`.
 
 Delay formats: `2s` (seconds), `500ms` (milliseconds), or `500` (bare number = milliseconds).
 
+CSS selectors apply per-section — each section's `.class#id` only affects that section:
+
+```
+{.fade-in timed 2s}
+  The door creaks open...
+  {.dramatic next 1s}
+    A figure steps out.
+{/timed}
+```
+
 ### `{repeat}`
 
 Repeat content at an interval.

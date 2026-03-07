@@ -4,30 +4,19 @@ import { parseDelay } from '../../utils/parse-delay';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { registerMacro, registerSubMacro } from '../../registry';
 import type { MacroProps } from '../../registry';
-import type { ASTNode } from '../../markup/ast';
 
-export function Timed({
-  rawArgs,
-  children = [],
-  branches = [],
-  className,
-  id,
-}: MacroProps) {
+export function Timed({ branches = [] }: MacroProps) {
   const resolve = useInterpolate();
-  const firstBranch = branches[0];
-  className = resolve(className ?? firstBranch?.className);
-  id = resolve(id ?? firstBranch?.id);
-  // Section 0 = initial children, sections 1..N = {next} branches
-  // Each section has its own delay
+  // For branching blocks, className/id from the opening tag goes on branches[0],
+  // so the component-level className/id is unused. Each branch carries its own.
   const sections = useMemo(() => {
-    const result: { delay: number; nodes: ASTNode[] }[] = [];
-    result.push({ delay: parseDelay(rawArgs), nodes: children });
-    for (const branch of branches) {
-      const delay = branch.rawArgs ? parseDelay(branch.rawArgs) : 0;
-      result.push({ delay, nodes: branch.children });
-    }
-    return result;
-  }, [rawArgs, children, branches]);
+    return branches.map((branch) => ({
+      delay: branch.rawArgs ? parseDelay(branch.rawArgs) : 0,
+      nodes: branch.children,
+      className: branch.className,
+      id: branch.id,
+    }));
+  }, [branches]);
 
   const [visibleIndex, setVisibleIndex] = useState(-1);
 
@@ -46,13 +35,16 @@ export function Timed({
 
   if (visibleIndex < 0) return null;
 
-  const content = renderNodes(sections[visibleIndex]!.nodes);
+  const section = sections[visibleIndex]!;
+  const content = renderNodes(section.nodes);
+  const sectionClass = resolve(section.className);
+  const sectionId = resolve(section.id);
 
-  if (className || id)
+  if (sectionClass || sectionId)
     return (
       <span
-        id={id}
-        class={className}
+        id={sectionId}
+        class={sectionClass}
       >
         {content}
       </span>

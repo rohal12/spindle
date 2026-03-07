@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
-- `{timed}` macro now inherits CSS class/id from its first branch when not set on the outer tag
+- `{timed}` macro CSS class/id applies per-section: each `{next}` branch's selectors only affect that branch, not the outer wrapper
 - Synchronous macro execution during render (Set, Unset, Computed update immediately rather than deferring)
 - Variables embedded in markdown code spans (backticks) are now passed through as text rather than rendered as reactive variable displays
 
