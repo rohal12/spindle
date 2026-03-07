@@ -99,7 +99,10 @@ function boot() {
           const widgetName = tokens2[0]!.replace(/["']/g, '');
           const params = tokens2
             .slice(1)
-            .filter((t) => t.startsWith('$') || t.startsWith('_'));
+            .filter(
+              (t) =>
+                t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
+            );
           registerWidget(widgetName, node.children as ASTNode[], params);
         }
       }

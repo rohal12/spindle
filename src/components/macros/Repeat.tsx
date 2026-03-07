@@ -1,8 +1,9 @@
 import { createContext } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
-import { useInterpolate } from '../../hooks/use-interpolate';
+import { hasInterpolation, interpolate } from '../../interpolation';
+import { useStoryStore } from '../../store';
 import type { ASTNode } from '../../markup/ast';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
@@ -16,10 +17,21 @@ interface RepeatProps {
   id?: string;
 }
 
-export function Repeat({ rawArgs, children, className, id }: RepeatProps) {
-  const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
+export function Repeat({
+  rawArgs,
+  children,
+  className: rawClassName,
+  id: rawId,
+}: RepeatProps) {
+  const [className, id] = useMemo(() => {
+    const resolveOnce = (s: string | undefined) => {
+      if (!s || !hasInterpolation(s)) return s;
+      const st = useStoryStore.getState();
+      return interpolate(s, st.variables, st.temporary, {});
+    };
+    return [resolveOnce(rawClassName), resolveOnce(rawId)];
+  }, [rawClassName, rawId]);
+
   const delay = parseDelay(rawArgs);
   const [count, setCount] = useState(0);
   const [stopped, setStopped] = useState(false);
@@ -40,7 +52,7 @@ export function Repeat({ rawArgs, children, className, id }: RepeatProps) {
 
   const content = (
     <RepeatContext.Provider value={{ stop }}>
-      {renderNodes(children)}
+      <span key={count}>{renderNodes(children)}</span>
     </RepeatContext.Provider>
   );
 

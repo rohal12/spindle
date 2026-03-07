@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'preact/hooks';
+import { useLayoutEffect, useRef } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
@@ -59,6 +59,34 @@ function valuesEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
+function computeAndApply(
+  expr: string,
+  name: string,
+  isTemp: boolean,
+  variables: Record<string, unknown>,
+  temporary: Record<string, unknown>,
+  locals: Record<string, unknown>,
+  rawArgs: string,
+): void {
+  const state = useStoryStore.getState();
+  let newValue: unknown;
+  try {
+    newValue = evaluate(expr, variables, temporary, locals);
+  } catch (err) {
+    console.error(
+      `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
+      err,
+    );
+    return;
+  }
+
+  const current = isTemp ? state.temporary[name] : state.variables[name];
+  if (!valuesEqual(current, newValue)) {
+    if (isTemp) state.setTemporary(name, newValue);
+    else state.setVariable(name, newValue);
+  }
+}
+
 export function Computed({ rawArgs }: ComputedProps) {
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
@@ -79,31 +107,34 @@ export function Computed({ rawArgs }: ComputedProps) {
   const isTemp = target.startsWith('_');
   const name = target.slice(1);
 
-  // Evaluate in useLayoutEffect so preceding {set} effects have already run
-  useLayoutEffect(() => {
+  // Synchronous first evaluation — sees preceding synchronous {set} mutations
+  const ran = useRef(false);
+  if (!ran.current) {
+    ran.current = true;
     const state = useStoryStore.getState();
+    computeAndApply(
+      expr,
+      name,
+      isTemp,
+      state.variables,
+      state.temporary,
+      mergedLocals,
+      rawArgs,
+    );
+  }
 
-    let newValue: unknown;
-    try {
-      newValue = evaluate(expr, mergedVars, mergedTemps, mergedLocals);
-    } catch (err) {
-      console.error(
-        `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
-        err,
-      );
-      return;
-    }
-
-    const current = isTemp ? state.temporary[name] : state.variables[name];
-
-    if (!valuesEqual(current, newValue)) {
-      if (isTemp) {
-        state.setTemporary(name, newValue);
-      } else {
-        state.setVariable(name, newValue);
-      }
-    }
-  });
+  // Reactive re-evaluation when dependencies change (via useMergedLocals subscription)
+  useLayoutEffect(() => {
+    computeAndApply(
+      expr,
+      name,
+      isTemp,
+      mergedVars,
+      mergedTemps,
+      mergedLocals,
+      rawArgs,
+    );
+  }, [mergedVars, mergedTemps, mergedLocals]);
 
   return null;
 }

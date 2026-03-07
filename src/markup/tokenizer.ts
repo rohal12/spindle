@@ -308,6 +308,15 @@ export function tokenize(input: string): Token[] {
   }
 
   while (i < input.length) {
+    // Handle escaped braces: \{ and \}
+    if (input[i] === '\\' && (input[i + 1] === '{' || input[i + 1] === '}')) {
+      flushText(i);
+      tokens.push({ type: 'text', value: input[i + 1]!, start: i, end: i + 2 });
+      i += 2;
+      textStart = i;
+      continue;
+    }
+
     // Check for [[ link
     if (input[i] === '[' && input[i + 1] === '[') {
       flushText(i);

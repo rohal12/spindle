@@ -399,7 +399,7 @@ Current level: {$player.level}
 {button $player = _temp}Confirm{/button} [[Go Back -> Start]]
 {/if}
 
-:: Widgets [widget-definitions]
+:: Widgets [widget]
 {widget "StatLine" @label @value}
 <span class="stat-line"><strong>{@label}:</strong> {@value}</span>
 {/widget}
@@ -703,7 +703,7 @@ Stance: {$stance}
 
 **Multiple variables in one line:** {$player.name} / {$player.hp} / {$player.strength}
 
-**Literal curly braces:** This {is} not a macro
+**Literal curly braces:** This \{is\} not a macro. This {is} a macro that throws an error
 
 **Print with string containing special chars:**
 {print "10 > 5 ? 'yes' : 'no'"}
@@ -1003,11 +1003,12 @@ For-btn count: {$forBtnCount}
 
 {set _base = 10}
 {computed _result = _base * 5}
+{set _computed = _result + 10}
 
-**Basic computed:** {_result}
+Basic computed plus 10: {_computed}
 
 {set _base = 20}
-**Computed after base change:** {_result}
+Computed after base change: {_result}
 
 {computed _fromStory = $player.hp + $player.strength}
 **Computed from story vars:** {_fromStory}

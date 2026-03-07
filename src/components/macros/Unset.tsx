@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 
 interface UnsetProps {
@@ -6,7 +6,10 @@ interface UnsetProps {
 }
 
 export function Unset({ rawArgs }: UnsetProps) {
-  useLayoutEffect(() => {
+  const ran = useRef(false);
+
+  if (!ran.current) {
+    ran.current = true;
     const state = useStoryStore.getState();
     const name = rawArgs.trim();
 
@@ -19,7 +22,7 @@ export function Unset({ rawArgs }: UnsetProps) {
         `spindle: {unset} expects a variable ($name or _name), got "${name}"`,
       );
     }
-  }, []);
+  }
 
   return null;
 }

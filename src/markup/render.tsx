@@ -40,7 +40,8 @@ import { getWidget } from '../widgets/widget-registry';
 import { getMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, Branch, HtmlNode, MacroNode } from './ast';
+import type { ASTNode, Branch, HtmlNode, MacroNode, VariableNode } from './ast';
+import { useStoryStore } from '../store';
 import { useInterpolate } from '../hooks/use-interpolate';
 
 export interface LocalsScope {
@@ -395,17 +396,19 @@ function renderMacro(node: MacroNode, key: number) {
         />
       );
 
-    case 'timed':
+    case 'timed': {
+      const firstBranch = node.branches?.[0];
       return (
         <Timed
           key={key}
           rawArgs={node.rawArgs}
           children={node.children}
           branches={node.branches ?? EMPTY_BRANCHES}
-          className={node.className}
-          id={node.id}
+          className={node.className ?? firstBranch?.className}
+          id={node.id ?? firstBranch?.id}
         />
       );
+    }
 
     case 'repeat':
       return (
@@ -551,6 +554,31 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   return nodes.map((node, i) => renderSingleNode(node, i));
 }
 
+function hasUnclosedBacktick(s: string): boolean {
+  let count = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '`') count++;
+  }
+  return count % 2 === 1;
+}
+
+function getVariableTextValue(node: VariableNode): string {
+  const state = useStoryStore.getState();
+  const parts = node.name.split('.');
+  const root = parts[0]!;
+
+  let value: unknown;
+  if (node.scope === 'variable') value = state.variables[root];
+  else if (node.scope === 'temporary') value = state.temporary[root];
+
+  for (let i = 1; i < parts.length; i++) {
+    if (value == null || typeof value !== 'object') return '';
+    value = (value as Record<string, unknown>)[parts[i]!];
+  }
+
+  return value == null ? '' : String(value);
+}
+
 /**
  * Render AST nodes with full CommonMark markdown support.
  *
@@ -578,7 +606,10 @@ export function renderNodes(nodes: ASTNode[]): preact.ComponentChildren {
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
-      combined += node.value;
+      combined += node.value.replace(/^[ \t]{4,}/gm, ' ');
+    } else if (node.type === 'variable' && hasUnclosedBacktick(combined)) {
+      // Inline variable value to avoid placeholder inside code span
+      combined += getVariableTextValue(node);
     } else {
       const phIdx = components.length;
       components.push(renderSingleNode(node, i));
