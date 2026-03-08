@@ -6,12 +6,12 @@ import { random, randomInt } from './prng';
 interface ExpressionFns {
   currentPassage: () => Passage | undefined;
   previousPassage: () => Passage | undefined;
-  visited: (name: string) => number;
-  hasVisited: (name: string) => boolean;
+  visited: (name?: string) => number;
+  hasVisited: (name?: string) => boolean;
   hasVisitedAny: (...names: string[]) => boolean;
   hasVisitedAll: (...names: string[]) => boolean;
-  rendered: (name: string) => number;
-  hasRendered: (name: string) => boolean;
+  rendered: (name?: string) => number;
+  hasRendered: (name?: string) => boolean;
   hasRenderedAny: (...names: string[]) => boolean;
   hasRenderedAll: (...names: string[]) => boolean;
   random: () => number;
@@ -191,15 +191,17 @@ export function buildExpressionFns() {
     return cachedFns;
   }
 
-  const visited = (name: string): number => visitCounts[name] ?? 0;
-  const hasVisited = (name: string): boolean => visited(name) > 0;
+  const visited = (name?: string): number =>
+    visitCounts[name ?? useStoryStore.getState().currentPassage] ?? 0;
+  const hasVisited = (name?: string): boolean => visited(name) > 0;
   const hasVisitedAny = (...names: string[]): boolean =>
     names.some((n) => visited(n) > 0);
   const hasVisitedAll = (...names: string[]): boolean =>
     names.every((n) => visited(n) > 0);
 
-  const rendered = (name: string): number => renderCounts[name] ?? 0;
-  const hasRendered = (name: string): boolean => rendered(name) > 0;
+  const rendered = (name?: string): number =>
+    renderCounts[name ?? useStoryStore.getState().currentPassage] ?? 0;
+  const hasRendered = (name?: string): boolean => rendered(name) > 0;
   const hasRenderedAny = (...names: string[]): boolean =>
     names.some((n) => rendered(n) > 0);
   const hasRenderedAll = (...names: string[]): boolean =>

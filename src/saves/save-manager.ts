@@ -299,6 +299,49 @@ export async function loadQuickSave(
   return loadSave(existingId);
 }
 
+// --- Session Persistence (survives F5, cleared on tab close) ---
+
+const SESSION_KEY_PREFIX = 'spindle.session.';
+
+/**
+ * Write a pre-serialized session payload to sessionStorage.
+ * Callers are responsible for serializing variables (see persistSession in store.ts).
+ */
+export function saveSession(ifid: string, data: unknown): void {
+  try {
+    sessionStorage.setItem(
+      `${SESSION_KEY_PREFIX}${ifid}`,
+      JSON.stringify(data),
+    );
+  } catch {
+    // sessionStorage unavailable or full — silently ignore
+  }
+}
+
+export function loadSession(ifid: string): SavePayload | undefined {
+  try {
+    const raw = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${ifid}`);
+    if (!raw) return undefined;
+    const payload: SavePayload = JSON.parse(raw);
+    payload.variables = deserialize(payload.variables);
+    payload.history = payload.history.map((m) => ({
+      ...m,
+      variables: deserialize(m.variables),
+    }));
+    return payload;
+  } catch {
+    return undefined;
+  }
+}
+
+export function clearSession(ifid: string): void {
+  try {
+    sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${ifid}`);
+  } catch {
+    // ignore
+  }
+}
+
 // --- Export / Import ---
 
 export async function exportSave(

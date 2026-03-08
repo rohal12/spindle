@@ -142,11 +142,11 @@ The following functions are available in any expression to check passage visit a
 | ------------------------------- | --------- | ------------------------------------------------------------ |
 | `currentPassage()`              | `object`  | The current passage object (name, tags, metadata, content)   |
 | `previousPassage()`             | `object`  | The previous passage object, or `undefined` on start         |
-| `visited("name")`               | `number`  | Times the passage was visited                                |
+| `visited("name")`               | `number`  | Times the passage was visited (current passage if omitted)   |
 | `hasVisited("name")`            | `boolean` | Whether the passage was visited at least once                |
 | `hasVisitedAny("a", "b", ...)`  | `boolean` | Whether **any** of the passages were visited                 |
 | `hasVisitedAll("a", "b", ...)`  | `boolean` | Whether **all** of the passages were visited                 |
-| `rendered("name")`              | `number`  | Times the passage was rendered (visits + includes)           |
+| `rendered("name")`              | `number`  | Times the passage was rendered (current passage if omitted)  |
 | `hasRendered("name")`           | `boolean` | Whether the passage was rendered at least once               |
 | `hasRenderedAny("a", "b", ...)` | `boolean` | Whether **any** of the passages were rendered                |
 | `hasRenderedAll("a", "b", ...)` | `boolean` | Whether **all** of the passages were rendered                |

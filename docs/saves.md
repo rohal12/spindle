@@ -2,6 +2,16 @@
 
 Spindle stores saves in the browser's IndexedDB, organized by playthroughs.
 
+## Session Persistence
+
+Spindle automatically saves the current game state to the browser's session storage on every navigation. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same variables, same history.
+
+- Session state persists across page refreshes within the same tab.
+- Closing the tab or browser clears the session — the next visit starts fresh.
+- Restarting the story (via `{restart}` or `Story.restart()`) clears the session.
+
+This is separate from the save system — no manual save/load is needed for refresh recovery.
+
 ## Quick Save and Quick Load
 
 The fastest way to save and load:
@@ -70,11 +80,13 @@ A save captures:
 
 - The current passage name
 - All story variables (deep-cloned)
-- The full navigation history
+- The navigation history (up to `Story.config.maxHistory` moments, default 40)
 - The current position in the history
 - Passage visit and render counts
 
 Temporary variables (`_name`) are **not** saved — they reset on load.
+
+History is stored efficiently using Immer patches (only changed variables per navigation), but saves contain full snapshots for portability.
 
 ### Class Instances
 

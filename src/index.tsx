@@ -5,6 +5,7 @@ import { useStoryStore } from './store';
 import { installStoryAPI } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
+import { loadSession } from './saves/save-manager';
 import {
   parseStoryVariables,
   validatePassages,
@@ -88,6 +89,12 @@ function boot() {
 
   // Execute StoryInit passage if it exists
   executeStoryInit();
+
+  // Restore session state if the page was refreshed
+  const sessionPayload = loadSession(storyData.ifid);
+  if (sessionPayload) {
+    useStoryStore.getState().loadFromPayload(sessionPayload);
+  }
 
   // Register widgets from passages tagged "widget"
   for (const [, passage] of storyData.passages) {
