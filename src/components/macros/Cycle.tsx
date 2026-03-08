@@ -1,11 +1,10 @@
-import { extractOptions } from './option-utils';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'cycle',
   storeVar: true,
   render({ children = [] }, ctx) {
-    const options = extractOptions(children);
+    const options = ctx.extractOptions(children);
 
     const handleClick = () => {
       if (options.length === 0) return;

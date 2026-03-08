@@ -1,11 +1,10 @@
-import { parseVarArgs } from './option-utils';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'textbox',
   storeVar: true,
   render({ rawArgs }, ctx) {
-    const { placeholder } = parseVarArgs(rawArgs);
+    const { placeholder } = ctx.parseVarArgs(rawArgs);
 
     ctx.useAction({
       type: 'textbox',

@@ -378,6 +378,10 @@ Usage:
 | `ctx.mutate(code)`               | Run a Spindle expression that modifies variables                                             |
 | `ctx.update(key, val)`           | Directly update a local (`@`) variable                                                       |
 | `ctx.getValues()`                | Get the current local variable values                                                        |
+| `ctx.collectText(nodes)`         | Extract plain text from child AST nodes (e.g. for labels or code strings)                    |
+| `ctx.sourceLocation()`           | Returns a string like `" (in passage 'Forest')"` for error messages                          |
+| `ctx.parseVarArgs(rawArgs)`      | Parse `"$var 'placeholder'"` into `{ varName, placeholder }` — useful for input macros       |
+| `ctx.extractOptions(children)`   | Walk child AST nodes to collect `{option}` sub-macro values as a `string[]`                  |
 | `ctx.useAction(config)`          | Register an action for testing/automation tools                                              |
 | `ctx.hooks`                      | `useState`, `useRef`, `useEffect`, `useLayoutEffect`, `useCallback`, `useMemo`, `useContext` |
 

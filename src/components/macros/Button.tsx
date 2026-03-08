@@ -1,5 +1,3 @@
-import { collectText } from '../../utils/extract-text';
-import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -11,7 +9,7 @@ defineMacro({
         ctx.mutate(rawArgs);
       } catch (err) {
         console.error(
-          `spindle: Error in {button ${rawArgs}}${currentSourceLocation()}:`,
+          `spindle: Error in {button ${rawArgs}}${ctx.sourceLocation()}:`,
           err,
         );
       }
@@ -21,7 +19,7 @@ defineMacro({
       type: 'button',
       key: rawArgs,
       authorId: ctx.id,
-      label: collectText(children) || rawArgs,
+      label: ctx.collectText(children) || rawArgs,
       perform: handleClick,
     });
 

@@ -1,4 +1,3 @@
-import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -13,7 +12,7 @@ defineMacro({
         ctx.mutate(rawArgs);
       } catch (err) {
         console.error(
-          `spindle: Error in {set ${rawArgs}}${currentSourceLocation()}:`,
+          `spindle: Error in {set ${rawArgs}}${ctx.sourceLocation()}:`,
           err,
         );
         return null;

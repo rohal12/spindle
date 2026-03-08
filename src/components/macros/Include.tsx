@@ -1,7 +1,6 @@
 import { useStoryStore } from '../../store';
 import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
-import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -27,7 +26,7 @@ defineMacro({
     }
     if (!passage) {
       return (
-        <span class="error">{`{include${currentSourceLocation()}: passage "${passageName}" not found}`}</span>
+        <span class="error">{`{include${ctx.sourceLocation()}: passage "${passageName}" not found}`}</span>
       );
     }
 

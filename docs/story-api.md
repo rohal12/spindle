@@ -83,7 +83,7 @@ Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
 {/do}
 ```
 
-The `ctx` object provides `h`, `renderNodes`, `renderInlineNodes`, `hooks`, and any values from the enabled feature flags. The `render` function runs inside a Preact component and can call hooks via `ctx.hooks`.
+The `ctx` object provides `h`, `renderNodes`, `renderInlineNodes`, `collectText`, `sourceLocation`, `hooks`, and any values from the enabled feature flags. The `render` function runs inside a Preact component and can call hooks via `ctx.hooks`.
 
 ### `Story.registerClass(name, constructor)`
 

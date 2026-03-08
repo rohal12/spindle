@@ -1,4 +1,3 @@
-import { extractOptions } from './option-utils';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -6,7 +5,7 @@ defineMacro({
   subMacros: ['option'],
   storeVar: true,
   render({ children = [] }, ctx) {
-    const options = extractOptions(children);
+    const options = ctx.extractOptions(children);
 
     ctx.useAction({
       type: 'listbox',

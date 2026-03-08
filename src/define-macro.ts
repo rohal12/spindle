@@ -21,6 +21,9 @@ import { evaluate } from './expression';
 import { useStoryStore } from './store';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
+import { collectText } from './utils/extract-text';
+import { currentSourceLocation } from './utils/source-location';
+import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import { registerMacro, registerSubMacro } from './registry';
 import type { MacroProps } from './registry';
 
@@ -46,6 +49,10 @@ export interface MacroContext {
   value?: unknown;
   setValue?: (value: unknown) => void;
   evaluate?: (expr: string) => unknown;
+  collectText: typeof collectText;
+  sourceLocation: typeof currentSourceLocation;
+  parseVarArgs: typeof parseVarArgs;
+  extractOptions: typeof extractOptions;
   wrap: (content: ComponentChildren) => VNode<any>;
   useAction: (opts: UseActionOptions) => string;
   h: typeof h;
@@ -96,6 +103,10 @@ export function defineMacro(config: MacroDefinition): void {
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
     const ctx: MacroContext = {
+      collectText,
+      sourceLocation: currentSourceLocation,
+      parseVarArgs,
+      extractOptions,
       h,
       renderNodes,
       renderInlineNodes,
