@@ -67,7 +67,7 @@ describe('renderNodes', () => {
     const paragraphs = el.querySelectorAll('p');
     expect(paragraphs.length).toBeGreaterThanOrEqual(3);
     // All three links should render
-    const links = el.querySelectorAll('a.passage-link');
+    const links = el.querySelectorAll('a.macro-link');
     expect(links).toHaveLength(3);
   });
 
@@ -81,7 +81,7 @@ describe('renderNodes', () => {
 
   it('renders links as anchor elements', () => {
     const el = renderMarkup('[[Go|Start]]');
-    const link = el.querySelector('a.passage-link');
+    const link = el.querySelector('a.macro-link');
     expect(link).not.toBeNull();
     expect(link!.textContent).toBe('Go');
   });
@@ -110,7 +110,7 @@ describe('renderNodes', () => {
       const el = renderMarkup('[[.fancy Go|Start]]');
       const link = el.querySelector('a');
       expect(link).not.toBeNull();
-      expect(link!.className).toBe('passage-link fancy');
+      expect(link!.className).toBe('macro-link fancy');
     });
 
     it('wraps variable in span when className present', () => {
@@ -167,7 +167,7 @@ describe('renderNodes', () => {
       const el = renderMarkup('[[.fancy.bold Go|Start]]');
       const link = el.querySelector('a');
       expect(link).not.toBeNull();
-      expect(link!.className).toBe('passage-link fancy bold');
+      expect(link!.className).toBe('macro-link fancy bold');
     });
 
     it('sets id on passage link', () => {
@@ -175,7 +175,7 @@ describe('renderNodes', () => {
       const link = el.querySelector('a');
       expect(link).not.toBeNull();
       expect(link!.id).toBe('door');
-      expect(link!.className).toBe('passage-link');
+      expect(link!.className).toBe('macro-link');
     });
 
     it('sets id and className on passage link', () => {
@@ -183,7 +183,7 @@ describe('renderNodes', () => {
       const link = el.querySelector('a');
       expect(link).not.toBeNull();
       expect(link!.id).toBe('door');
-      expect(link!.className).toBe('passage-link fancy');
+      expect(link!.className).toBe('macro-link fancy');
     });
 
     it('wraps variable in span when id present', () => {

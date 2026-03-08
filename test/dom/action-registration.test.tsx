@@ -51,7 +51,7 @@ describe('action registration', () => {
     );
   });
 
-  describe('PassageLink', () => {
+  describe('wiki-link (desugared to {link})', () => {
     it('registers a link action on mount', () => {
       renderPassage('[[Go to Forest|Forest]]');
       const actions = getActions();

@@ -1,5 +1,4 @@
 import { createContext } from 'preact';
-import { PassageLink } from '../components/PassageLink';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
 import { getWidget } from '../widgets/widget-registry';
@@ -135,18 +134,6 @@ function renderSingleNode(
   switch (node.type) {
     case 'text':
       return node.value;
-
-    case 'link':
-      return (
-        <PassageLink
-          key={key}
-          target={node.target}
-          className={node.className}
-          id={node.id}
-        >
-          {node.display}
-        </PassageLink>
-      );
 
     case 'variable':
       return (

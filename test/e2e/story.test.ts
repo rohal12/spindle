@@ -30,7 +30,7 @@ let baseUrl: string;
 
 /** Click a visible passage link by its text */
 async function clickLink(text: string) {
-  await page.click(`a.passage-link:has-text("${text}")`);
+  await page.click(`a.macro-link:has-text("${text}")`);
 }
 
 beforeAll(async () => {
@@ -94,7 +94,7 @@ describe('compiled story e2e', () => {
     });
 
     it('shows navigation links', async () => {
-      const links = await page.$$eval('a.passage-link', (els) =>
+      const links = await page.$$eval('a.macro-link', (els) =>
         els.map((el) => el.textContent),
       );
       expect(links).toContain('Open the door');
@@ -222,7 +222,7 @@ describe('compiled story e2e', () => {
       });
 
       it('renders all four link syntaxes', async () => {
-        const links = await page.$$eval('a.passage-link', (els) =>
+        const links = await page.$$eval('a.macro-link', (els) =>
           els.map((el) => el.textContent),
         );
         expect(links).toContain('Back to start');
@@ -237,7 +237,7 @@ describe('compiled story e2e', () => {
       });
 
       it('renders CSS class on link', async () => {
-        const link = await page.$('a.passage-link.fancy');
+        const link = await page.$('a.macro-link.fancy');
         expect(link).not.toBeNull();
         expect(await link!.textContent()).toBe('Back to start');
       });
@@ -310,7 +310,7 @@ describe('compiled story e2e', () => {
       }
 
       expect(await page.$('button.macro-button:has-text("+1")')).toBeNull();
-      const link = await page.$('a.passage-link:has-text("You reached 10")');
+      const link = await page.$('a.macro-link:has-text("You reached 10")');
       expect(link).not.toBeNull();
     });
   });
@@ -1333,7 +1333,7 @@ describe('compiled story e2e', () => {
     it('renders link after bold text', async () => {
       const text = await page.textContent('.passage');
       expect(text).toContain('bold text');
-      const link = await page.$('a.passage-link:has-text("Back to start")');
+      const link = await page.$('a.macro-link:has-text("Back to start")');
       expect(link).not.toBeNull();
     });
 
@@ -1432,29 +1432,29 @@ describe('compiled story e2e', () => {
     });
 
     it('renders pipe link with surrounding spaces (trimmed)', async () => {
-      const link = await page.$('a.passage-link:has-text("Spaced Display")');
+      const link = await page.$('a.macro-link:has-text("Spaced Display")');
       expect(link).not.toBeNull();
     });
 
     it('renders arrow link with surrounding spaces (trimmed)', async () => {
-      const link = await page.$('a.passage-link:has-text("Arrow Spaced")');
+      const link = await page.$('a.macro-link:has-text("Arrow Spaced")');
       expect(link).not.toBeNull();
     });
 
     it('renders reverse arrow link with surrounding spaces (trimmed)', async () => {
-      const link = await page.$('a.passage-link:has-text("Rev Spaced")');
+      const link = await page.$('a.macro-link:has-text("Rev Spaced")');
       expect(link).not.toBeNull();
     });
 
     it('renders plain link', async () => {
-      const links = await page.$$eval('a.passage-link', (els) =>
+      const links = await page.$$eval('a.macro-link', (els) =>
         els.map((el) => el.textContent),
       );
       expect(links).toContain('Start');
     });
 
     it('renders link with CSS class', async () => {
-      const link = await page.$('a.passage-link.link-cls');
+      const link = await page.$('a.macro-link.link-cls');
       expect(link).not.toBeNull();
       expect(await link!.textContent()).toBe('Classed Link');
     });
@@ -1466,13 +1466,13 @@ describe('compiled story e2e', () => {
     });
 
     it('renders link with both class and ID', async () => {
-      const link = await page.$('a.passage-link.link-cls2#link-id2');
+      const link = await page.$('a.macro-link.link-cls2#link-id2');
       expect(link).not.toBeNull();
       expect(await link!.textContent()).toBe('Both');
     });
 
     it('renders multiple inline links', async () => {
-      const links = await page.$$eval('a.passage-link', (els) =>
+      const links = await page.$$eval('a.macro-link', (els) =>
         els.map((el) => el.textContent),
       );
       expect(links).toContain('Link A');
