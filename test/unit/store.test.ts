@@ -77,7 +77,10 @@ describe('useStoryStore', () => {
       const state = useStoryStore.getState();
       expect(state.variables).toEqual({ health: 100, name: 'Hero' });
       expect(state.variableDefaults).toBe(defaults);
-      expect(state.history[0].variables).toEqual({ health: 100, name: 'Hero' });
+      expect(state.getHistoryVariables(0)).toEqual({
+        health: 100,
+        name: 'Hero',
+      });
     });
 
     it("throws if start passage pid doesn't exist", () => {
@@ -497,13 +500,13 @@ describe('useStoryStore', () => {
       useStoryStore.getState().navigate('Room');
 
       // History moment for "Room" should have captured score=10
-      const historyVars = useStoryStore.getState().history[1].variables;
+      const historyVars = useStoryStore.getState().getHistoryVariables(1);
       expect(historyVars).toEqual({ score: 10 });
 
       // Mutating current variables should not affect the history snapshot
       useStoryStore.getState().setVariable('score', 999);
 
-      expect(useStoryStore.getState().history[1].variables).toEqual({
+      expect(useStoryStore.getState().getHistoryVariables(1)).toEqual({
         score: 10,
       });
     });
@@ -552,7 +555,7 @@ describe('useStoryStore', () => {
       expect(current.hp).toBe(50);
 
       // History snapshot should be independent
-      const historyPlayer = useStoryStore.getState().history[1].variables
+      const historyPlayer = useStoryStore.getState().getHistoryVariables(1)
         .player as Player;
       expect(historyPlayer instanceof Player).toBe(true);
       expect(historyPlayer.hp).toBe(80); // unaffected by current mutation

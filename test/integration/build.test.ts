@@ -5,10 +5,12 @@ import { resolve } from 'path';
 const projectRoot = resolve(import.meta.dirname!, '../..');
 const formatJsPath = resolve(projectRoot, 'dist/format.js');
 const formatJsonPath = resolve(projectRoot, 'format.json');
+const packageJsonPath = resolve(projectRoot, 'package.json');
 
 describe('build output: dist/format.js', () => {
   const raw = readFileSync(formatJsPath, 'utf-8');
   const formatMeta = JSON.parse(readFileSync(formatJsonPath, 'utf-8'));
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 
   it('file exists and is non-empty', () => {
     expect(raw.length).toBeGreaterThan(0);
@@ -62,8 +64,8 @@ describe('build output: dist/format.js', () => {
     expect(parsed.name).toBe(formatMeta.name);
   });
 
-  it('version matches format.json', () => {
+  it('version matches package.json', () => {
     parsed ??= JSON.parse(jsonStr);
-    expect(parsed.version).toBe(formatMeta.version);
+    expect(parsed.version).toBe(packageJson.version);
   });
 });

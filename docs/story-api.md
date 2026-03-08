@@ -156,19 +156,20 @@ Standard keys like `position` and `size` are included alongside any custom keys 
 
 Spindle tracks how many times each passage has been **visited** (navigated to) and **rendered** (visited or included). Back/forward navigation does not increment counts — only new visits and `{include}` calls do.
 
-### `Story.visited(name)`
+### `Story.visited(name?)`
 
-Returns the number of times the player has visited the named passage.
+Returns the number of times the player has visited the named passage. If `name` is omitted, uses the current passage.
 
 ```
 {do}
   var count = Story.visited("Dark Cave");
+  var thisCount = Story.visited(); // current passage
 {/do}
 ```
 
-### `Story.hasVisited(name)`
+### `Story.hasVisited(name?)`
 
-Returns `true` if the player has visited the named passage at least once.
+Returns `true` if the player has visited the named passage at least once. If `name` is omitted, uses the current passage.
 
 ### `Story.hasVisitedAny(...names)`
 
@@ -184,13 +185,13 @@ Returns `true` if the player has visited **any** of the named passages.
 
 Returns `true` if the player has visited **all** of the named passages.
 
-### `Story.rendered(name)`
+### `Story.rendered(name?)`
 
-Returns the number of times the named passage has been rendered — this includes both visits and `{include}` calls.
+Returns the number of times the named passage has been rendered — this includes both visits and `{include}` calls. If `name` is omitted, uses the current passage.
 
-### `Story.hasRendered(name)`
+### `Story.hasRendered(name?)`
 
-Returns `true` if the named passage has been rendered at least once.
+Returns `true` if the named passage has been rendered at least once. If `name` is omitted, uses the current passage.
 
 ### `Story.hasRenderedAny(...names)`
 
@@ -406,6 +407,23 @@ The settings API. See [Settings](settings.md) for full details.
 - `Story.settings.set(name, value)` — change a setting's value
 - `Story.settings.getAll()` — get all settings as an object
 - `Story.settings.hasAny()` — returns `true` if any settings are defined
+
+### `Story.config`
+
+Configuration options for the story engine.
+
+#### `Story.config.maxHistory`
+
+Get or set the maximum number of history moments to keep. Oldest entries are discarded when the limit is exceeded. Default: `40`.
+
+```
+{do}
+  Story.config.maxHistory = 20;  // keep fewer moments (less memory)
+  Story.config.maxHistory = 100; // keep more moments (more undo range)
+{/do}
+```
+
+Visit and render counts are unaffected by history trimming — they are tracked independently.
 
 ### `Story.saves`
 

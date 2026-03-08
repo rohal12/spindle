@@ -9,10 +9,14 @@ const projectRoot = resolve(__dirname, '..');
 const htmlPath = resolve(projectRoot, 'dist/intermediate/template/format.html');
 const html = readFileSync(htmlPath, 'utf-8');
 
-// Read format metadata
+// Read format metadata (version comes from package.json so it stays in sync with npm)
+const packageJson = JSON.parse(
+  readFileSync(resolve(projectRoot, 'package.json'), 'utf-8'),
+);
 const formatMeta = JSON.parse(
   readFileSync(resolve(projectRoot, 'format.json'), 'utf-8'),
 );
+formatMeta.version = packageJson.version;
 
 // Build the story format JSONP payload
 const formatData = {

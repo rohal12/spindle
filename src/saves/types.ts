@@ -1,10 +1,17 @@
-import type { HistoryMoment } from '../store';
 import type { PRNGSnapshot } from '../prng';
+
+/** History moment as persisted in saves (full variable snapshots). */
+export interface SaveHistoryMoment {
+  passage: string;
+  variables: Record<string, unknown>;
+  timestamp: number;
+  prng?: PRNGSnapshot | null;
+}
 
 export interface SavePayload {
   passage: string;
   variables: Record<string, unknown>;
-  history: HistoryMoment[];
+  history: SaveHistoryMoment[];
   historyIndex: number;
   visitCounts?: Record<string, number>;
   renderCounts?: Record<string, number>;

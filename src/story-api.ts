@@ -41,12 +41,12 @@ export interface StoryAPI {
   save(slot?: string): void;
   load(slot?: string): void;
   hasSave(slot?: string): boolean;
-  visited(name: string): number;
-  hasVisited(name: string): boolean;
+  visited(name?: string): number;
+  hasVisited(name?: string): boolean;
   hasVisitedAny(...names: string[]): boolean;
   hasVisitedAll(...names: string[]): boolean;
-  rendered(name: string): number;
-  hasRendered(name: string): boolean;
+  rendered(name?: string): number;
+  hasRendered(name?: string): boolean;
   hasRenderedAny(...names: string[]): boolean;
   hasRenderedAll(...names: string[]): boolean;
   currentPassage(): Passage | undefined;
@@ -67,6 +67,9 @@ export interface StoryAPI {
   waitForActions(): Promise<StoryAction[]>;
   random(): number;
   randomInt(min: number, max: number): number;
+  readonly config: {
+    maxHistory: number;
+  };
   readonly prng: {
     init(seed?: string, useEntropy?: boolean): void;
     isEnabled(): boolean;
@@ -120,12 +123,13 @@ function createStoryAPI(): StoryAPI {
       return useStoryStore.getState().hasSave(slot);
     },
 
-    visited(name: string): number {
-      return useStoryStore.getState().visitCounts[name] ?? 0;
+    visited(name?: string): number {
+      const state = useStoryStore.getState();
+      return state.visitCounts[name ?? state.currentPassage] ?? 0;
     },
 
-    hasVisited(name: string): boolean {
-      return (useStoryStore.getState().visitCounts[name] ?? 0) > 0;
+    hasVisited(name?: string): boolean {
+      return this.visited(name) > 0;
     },
 
     hasVisitedAny(...names: string[]): boolean {
@@ -138,12 +142,13 @@ function createStoryAPI(): StoryAPI {
       return names.every((n) => (visitCounts[n] ?? 0) > 0);
     },
 
-    rendered(name: string): number {
-      return useStoryStore.getState().renderCounts[name] ?? 0;
+    rendered(name?: string): number {
+      const state = useStoryStore.getState();
+      return state.renderCounts[name ?? state.currentPassage] ?? 0;
     },
 
-    hasRendered(name: string): boolean {
-      return (useStoryStore.getState().renderCounts[name] ?? 0) > 0;
+    hasRendered(name?: string): boolean {
+      return this.rendered(name) > 0;
     },
 
     hasRenderedAny(...names: string[]): boolean {
@@ -264,6 +269,15 @@ function createStoryAPI(): StoryAPI {
 
     randomInt(min: number, max: number): number {
       return randomInt(min, max);
+    },
+
+    config: {
+      get maxHistory(): number {
+        return useStoryStore.getState().maxHistory;
+      },
+      set maxHistory(limit: number) {
+        useStoryStore.getState().setMaxHistory(limit);
+      },
     },
 
     prng: {
