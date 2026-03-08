@@ -1,6 +1,5 @@
 {
   "name": "spindle",
-  "version": "0.2.0",
   "author": "Rohal12",
   "description": "A Preact-based story format for Twine 2.",
   "image": "",
