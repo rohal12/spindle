@@ -1,13 +1,6 @@
-import { evaluate } from '../../expression';
-import { useMergedLocals } from '../../hooks/use-merged-locals';
-import { useInterpolate } from '../../hooks/use-interpolate';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
+import { MacroError } from './MacroError';
 
-/**
- * Parse rawArgs into currentExpr, maxExpr, and optional labelMode.
- * Supports: {meter $current $max}, {meter $current $max "%"}, etc.
- */
 function parseArgs(rawArgs: string): {
   currentExpr: string;
   maxExpr: string;
@@ -25,8 +18,6 @@ function parseArgs(rawArgs: string): {
   }
 
   // Split remaining into two expressions.
-  // Expressions can contain dots, brackets, parens — we need to find the split point.
-  // Strategy: walk tokens, splitting on whitespace that isn't inside parens/brackets.
   const exprs = splitExpressions(rest);
   if (exprs.length < 2) {
     throw new Error(
@@ -79,48 +70,40 @@ function formatLabel(
   return `${current} / ${max}`;
 }
 
-export function Meter({ rawArgs, className, id }: MacroProps) {
-  const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
-  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
+defineMacro({
+  name: 'meter',
+  interpolate: true,
+  merged: true,
+  render({ rawArgs }, ctx) {
+    try {
+      const { currentExpr, maxExpr, labelMode } = parseArgs(rawArgs);
+      const current = Number(ctx.evaluate!(currentExpr));
+      const max = Number(ctx.evaluate!(maxExpr));
+      const pct =
+        max === 0 ? 0 : Math.max(0, Math.min(100, (current / max) * 100));
+      const label = formatLabel(current, max, labelMode);
 
-  try {
-    const { currentExpr, maxExpr, labelMode } = parseArgs(rawArgs);
-    const current = Number(
-      evaluate(currentExpr, mergedVars, mergedTemps, mergedLocals),
-    );
-    const max = Number(
-      evaluate(maxExpr, mergedVars, mergedTemps, mergedLocals),
-    );
-    const pct =
-      max === 0 ? 0 : Math.max(0, Math.min(100, (current / max) * 100));
-    const label = formatLabel(current, max, labelMode);
+      const classes = ctx.cls;
 
-    const classes = ['macro-meter', className].filter(Boolean).join(' ');
-
-    return (
-      <div
-        class={classes}
-        id={id}
-      >
+      return (
         <div
-          class="macro-meter-fill"
-          style={`width: ${pct}%`}
+          class={classes}
+          id={ctx.id}
+        >
+          <div
+            class="macro-meter-fill"
+            style={`width: ${pct}%`}
+          />
+          {label != null && <span class="macro-meter-label">{label}</span>}
+        </div>
+      );
+    } catch (err) {
+      return (
+        <MacroError
+          macro="meter"
+          error={err}
         />
-        {label != null && <span class="macro-meter-label">{label}</span>}
-      </div>
-    );
-  } catch (err) {
-    return (
-      <span
-        class="error"
-        title={String(err)}
-      >
-        {`{meter error: ${err instanceof Error ? err.message : String(err)}}`}
-      </span>
-    );
-  }
-}
-
-registerMacro('meter', Meter);
+      );
+    }
+  },
+});

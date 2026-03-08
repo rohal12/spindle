@@ -7,6 +7,7 @@ import {
   registerAction,
   resetIdCounters,
 } from '../../src/action-registry';
+import { getMacro } from '../../src/registry';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -244,6 +245,76 @@ describe('StoryAPI', () => {
           throw new Error(`spindle: Unknown event "${event}".`);
         }
       }).toThrow('Unknown event');
+    });
+  });
+
+  describe('defineMacro', () => {
+    it('registers a macro in the registry', async () => {
+      const { defineMacro } = await import('../../src/define-macro');
+      defineMacro({
+        name: 'test-custom',
+        render() {
+          return null;
+        },
+      });
+      expect(getMacro('test-custom')).toBeDefined();
+    });
+
+    it('is available on the Story API', () => {
+      expect(typeof Story?.defineMacro).toBe('function');
+    });
+
+    it('registers with feature flags', async () => {
+      const { defineMacro } = await import('../../src/define-macro');
+      defineMacro({
+        name: 'test-flagged',
+        interpolate: true,
+        merged: true,
+        render() {
+          return null;
+        },
+      });
+      expect(getMacro('test-flagged')).toBeDefined();
+    });
+
+    it('registers sub-macros', async () => {
+      const { defineMacro } = await import('../../src/define-macro');
+      const { isSubMacro } = await import('../../src/registry');
+      defineMacro({
+        name: 'test-branching',
+        subMacros: ['test-sub-a', 'test-sub-b'],
+        render() {
+          return null;
+        },
+      });
+      expect(isSubMacro('test-sub-a')).toBe(true);
+      expect(isSubMacro('test-sub-b')).toBe(true);
+    });
+
+    it('provides h, renderNodes, renderInlineNodes, and hooks in context', async () => {
+      const { defineMacro } = await import('../../src/define-macro');
+      let receivedCtx: any = null;
+      defineMacro({
+        name: 'test-ctx',
+        render(_props, ctx) {
+          receivedCtx = ctx;
+          return null;
+        },
+      });
+      // Render via Preact so hooks have a valid context
+      const { render } = await import('preact');
+      const { h } = await import('preact');
+      const Component = getMacro('test-ctx')!;
+      const container = document.createElement('div');
+      render(h(Component as any, { rawArgs: '' }), container);
+      expect(receivedCtx).not.toBeNull();
+      expect(typeof receivedCtx.h).toBe('function');
+      expect(typeof receivedCtx.renderNodes).toBe('function');
+      expect(typeof receivedCtx.renderInlineNodes).toBe('function');
+      expect(typeof receivedCtx.hooks.useState).toBe('function');
+      expect(typeof receivedCtx.hooks.useRef).toBe('function');
+      expect(typeof receivedCtx.mutate).toBe('function');
+      expect(typeof receivedCtx.cls).toBe('string');
     });
   });
 });

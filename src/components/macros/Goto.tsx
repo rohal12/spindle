@@ -1,25 +1,21 @@
-import { useLayoutEffect } from 'preact/hooks';
 import { useStoryStore } from '../../store';
-import { evaluate } from '../../expression';
-import { useMergedLocals } from '../../hooks/use-merged-locals';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function Goto({ rawArgs }: MacroProps) {
-  const [variables, temporary, locals] = useMergedLocals();
+defineMacro({
+  name: 'goto',
+  merged: true,
+  render({ rawArgs }, ctx) {
+    ctx.hooks.useLayoutEffect(() => {
+      let passageName: string;
+      try {
+        const result = ctx.evaluate!(rawArgs);
+        passageName = String(result);
+      } catch {
+        passageName = rawArgs.replace(/^["']|["']$/g, '');
+      }
+      useStoryStore.getState().navigate(passageName);
+    }, []);
 
-  useLayoutEffect(() => {
-    let passageName: string;
-    try {
-      const result = evaluate(rawArgs, variables, temporary, locals);
-      passageName = String(result);
-    } catch {
-      passageName = rawArgs.replace(/^["']|["']$/g, '');
-    }
-    useStoryStore.getState().navigate(passageName);
-  }, []);
-
-  return null;
-}
-
-registerMacro('goto', Goto);
+    return null;
+  },
+});

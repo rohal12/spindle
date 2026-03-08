@@ -1,5 +1,18 @@
 import type { ASTNode } from '../../markup/ast';
 
+export function parseVarArgs(rawArgs: string): {
+  varName: string;
+  placeholder: string;
+} {
+  const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s*(?:["'](.*)["'])?\s*$/);
+  if (!match) {
+    return { varName: rawArgs.trim(), placeholder: '' };
+  }
+  const varName = match[1]!.replace(/["']/g, '');
+  const placeholder = match[2] || '';
+  return { varName, placeholder };
+}
+
 /**
  * Walk AST children to find {option} macro nodes, returning their rawArgs as values.
  */

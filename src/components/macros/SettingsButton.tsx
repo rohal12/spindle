@@ -1,28 +1,29 @@
-import { useState } from 'preact/hooks';
 import { settings } from '../../settings';
 import { SettingsDialog } from '../SettingsDialog';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function SettingsButton({ className, id }: MacroProps) {
-  const [open, setOpen] = useState(false);
+defineMacro({
+  name: 'settings',
+  render(_, ctx) {
+    const [open, setOpen] = ctx.hooks.useState(false);
 
-  if (!settings.hasAny()) return null;
+    if (!settings.hasAny()) return null;
 
-  const cls = className ? `menubar-button ${className}` : 'menubar-button';
+    const cls = ctx.className
+      ? `menubar-button ${ctx.className}`
+      : 'menubar-button';
 
-  return (
-    <>
-      <button
-        id={id}
-        class={cls}
-        onClick={() => setOpen(true)}
-      >
-        ⚙ Settings
-      </button>
-      {open && <SettingsDialog onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-registerMacro('settings', SettingsButton);
+    return (
+      <>
+        <button
+          id={ctx.id}
+          class={cls}
+          onClick={() => setOpen(true)}
+        >
+          ⚙ Settings
+        </button>
+        {open && <SettingsDialog onClose={() => setOpen(false)} />}
+      </>
+    );
+  },
+});

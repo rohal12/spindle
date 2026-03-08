@@ -1,56 +1,53 @@
-import { useState, useEffect, useMemo } from 'preact/hooks';
-import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
-import { useInterpolate } from '../../hooks/use-interpolate';
-import { registerMacro, registerSubMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function Timed({ branches = [] }: MacroProps) {
-  const resolve = useInterpolate();
-  // For branching blocks, className/id from the opening tag goes on branches[0],
-  // so the component-level className/id is unused. Each branch carries its own.
-  const sections = useMemo(() => {
-    return branches.map((branch) => ({
-      delay: branch.rawArgs ? parseDelay(branch.rawArgs) : 0,
-      nodes: branch.children,
-      className: branch.className,
-      id: branch.id,
-    }));
-  }, [branches]);
+defineMacro({
+  name: 'timed',
+  subMacros: ['next'],
+  interpolate: true,
+  render({ branches = [] }, ctx) {
+    const { useState, useEffect, useMemo } = ctx.hooks;
 
-  const [visibleIndex, setVisibleIndex] = useState(-1);
+    const sections = useMemo(() => {
+      return branches.map((branch) => ({
+        delay: branch.rawArgs ? parseDelay(branch.rawArgs) : 0,
+        nodes: branch.children,
+        className: branch.className,
+        id: branch.id,
+      }));
+    }, [branches]);
 
-  useEffect(() => {
-    if (visibleIndex >= sections.length - 1) return;
+    const [visibleIndex, setVisibleIndex] = useState(-1);
 
-    const nextIndex = visibleIndex + 1;
-    const delay = sections[nextIndex]!.delay;
+    useEffect(() => {
+      if (visibleIndex >= sections.length - 1) return;
 
-    const timer = setTimeout(() => {
-      setVisibleIndex(nextIndex);
-    }, delay);
+      const nextIndex = visibleIndex + 1;
+      const delay = sections[nextIndex]!.delay;
 
-    return () => clearTimeout(timer);
-  }, [visibleIndex, sections]);
+      const timer = setTimeout(() => {
+        setVisibleIndex(nextIndex);
+      }, delay);
 
-  if (visibleIndex < 0) return null;
+      return () => clearTimeout(timer);
+    }, [visibleIndex, sections]);
 
-  const section = sections[visibleIndex]!;
-  const content = renderNodes(section.nodes);
-  const sectionClass = resolve(section.className);
-  const sectionId = resolve(section.id);
+    if (visibleIndex < 0) return null;
 
-  if (sectionClass || sectionId)
-    return (
-      <span
-        id={sectionId}
-        class={sectionClass}
-      >
-        {content}
-      </span>
-    );
-  return <>{content}</>;
-}
+    const section = sections[visibleIndex]!;
+    const content = ctx.renderNodes(section.nodes);
+    const sectionClass = ctx.resolve!(section.className);
+    const sectionId = ctx.resolve!(section.id);
 
-registerMacro('timed', Timed);
-registerSubMacro('next');
+    if (sectionClass || sectionId)
+      return (
+        <span
+          id={sectionId}
+          class={sectionClass}
+        >
+          {content}
+        </span>
+      );
+    return <>{content}</>;
+  },
+});

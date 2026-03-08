@@ -1,7 +1,5 @@
 import { useStoryStore } from '../../store';
-import { useAction } from '../../hooks/use-action';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
 function parseArgs(rawArgs: string): { varName: string; label: string } {
   const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s+["']?(.+?)["']?\s*$/);
@@ -13,38 +11,37 @@ function parseArgs(rawArgs: string): { varName: string; label: string } {
   return { varName, label };
 }
 
-export function Checkbox({ rawArgs, className, id }: MacroProps) {
-  const { varName, label } = parseArgs(rawArgs);
-  const name = varName.startsWith('$') ? varName.slice(1) : varName;
+defineMacro({
+  name: 'checkbox',
+  render({ rawArgs }, ctx) {
+    const { varName, label } = parseArgs(rawArgs);
+    const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
-  const value = useStoryStore((s) => s.variables[name]);
-  const setVariable = useStoryStore((s) => s.setVariable);
+    const value = useStoryStore((s) => s.variables[name]);
+    const setVariable = useStoryStore((s) => s.setVariable);
 
-  useAction({
-    type: 'checkbox',
-    key: `$${name}`,
-    authorId: id,
-    label: label || name,
-    variable: name,
-    value: !!value,
-    perform: (v) => setVariable(name, v !== undefined ? !!v : !value),
-  });
+    ctx.useAction({
+      type: 'checkbox',
+      key: `$${name}`,
+      authorId: ctx.id,
+      label: label || name,
+      variable: name,
+      value: !!value,
+      perform: (v) => setVariable(name, v !== undefined ? !!v : !value),
+    });
 
-  const cls = className ? `macro-checkbox ${className}` : 'macro-checkbox';
-
-  return (
-    <label
-      id={id}
-      class={cls}
-    >
-      <input
-        type="checkbox"
-        checked={!!value}
-        onChange={() => setVariable(name, !value)}
-      />
-      {label ? ` ${label}` : null}
-    </label>
-  );
-}
-
-registerMacro('checkbox', Checkbox);
+    return (
+      <label
+        id={ctx.id}
+        class={ctx.cls}
+      >
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={() => setVariable(name, !value)}
+        />
+        {label ? ` ${label}` : null}
+      </label>
+    );
+  },
+});

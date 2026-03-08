@@ -1,19 +1,19 @@
 import { useStoryStore } from '../../store';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function StoryTitle({ className, id }: MacroProps) {
-  const name = useStoryStore((s) => s.storyData?.name || '');
-  const cls = className ? `story-title ${className}` : 'story-title';
+defineMacro({
+  name: 'story-title',
+  render(_, ctx) {
+    const name = useStoryStore((s) => s.storyData?.name || '');
+    const cls = ctx.className ? `story-title ${ctx.className}` : 'story-title';
 
-  return (
-    <span
-      id={id}
-      class={cls}
-    >
-      {name}
-    </span>
-  );
-}
-
-registerMacro('story-title', StoryTitle);
+    return (
+      <span
+        id={ctx.id}
+        class={cls}
+      >
+        {name}
+      </span>
+    );
+  },
+});
