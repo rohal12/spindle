@@ -32,22 +32,24 @@ defineMacro({
       return () => clearTimeout(timer);
     }, [visibleIndex, sections]);
 
-    if (visibleIndex < 0) return null;
+    if (visibleIndex < 0) return ctx.wrap(null);
 
     const section = sections[visibleIndex]!;
     const content = ctx.renderNodes(section.nodes);
     const sectionClass = ctx.resolve!(section.className);
     const sectionId = ctx.resolve!(section.id);
 
-    if (sectionClass || sectionId)
-      return (
+    const inner =
+      sectionClass || sectionId ? (
         <span
           id={sectionId}
           class={sectionClass}
         >
           {content}
         </span>
+      ) : (
+        content
       );
-    return <>{content}</>;
+    return ctx.wrap(inner);
   },
 });
