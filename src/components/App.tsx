@@ -1,6 +1,7 @@
 import { useEffect } from 'preact/hooks';
 import { useStoryStore } from '../store';
 import { StoryInterface } from './StoryInterface';
+import { TriggerDialogHost } from './TriggerDialogHost';
 
 export function App() {
   const storyData = useStoryStore((s) => s.storyData);
@@ -24,5 +25,10 @@ export function App() {
     return <div class="loading">Loading...</div>;
   }
 
-  return <StoryInterface />;
+  return (
+    <>
+      <StoryInterface />
+      <TriggerDialogHost />
+    </>
+  );
 }

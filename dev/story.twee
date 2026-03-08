@@ -45,6 +45,8 @@ $forBtnPick = 0
 $ready_count = 0
 $done_count = 0
 $ready_conditional = false
+$watchTest = 0
+$watchGold = 0
 
 
 :: StoryInit
@@ -99,7 +101,7 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Computed vars->Computed Var Tests]] | [[Unset tests->Unset Tests]] | [[Link syntax->Link Syntax Edge Cases]]
 
-[[Code passages->Code Passages Test]]
+[[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -252,7 +254,7 @@ This passage demonstrates all macros.
 
 Reactivity — press the button to increment the counter:
 
-Count: {$count} {if $count < 10}{button $count = $count + 1}+1{/button}{else}[[You reached 10! Continue->Start]]{/if}
+Count: {$count} {if $count < 10}{button "+1"}{set $count = $count + 1}{/button}{else}[[You reached 10! Continue->Start]]{/if}
 
 Unlike traditional Twine formats that re-render the entire passage, only the count and the button area above re-render. Everything else on the page stays untouched.
 
@@ -279,10 +281,10 @@ Health: {$player.hp}/{$player.maxHp} —
 
 
 {if $player.hp > 0}
-  {.red button $player.damage(10)}Drink Poison{/button}
+  {.red button "Drink Poison"}{do}$player.damage(10){/do}{/button}
 {/if}
 {if $player.hp < $player.maxHp}
-  {.green button $player.heal(10)}Drink Health potion{/button}
+  {.green button "Drink Health potion"}{do}$player.heal(10){/do}{/button}
 {/if}
 
 
@@ -305,11 +307,11 @@ CSS class syntax:
 
 {.highlight if $player.hp < 50}You're hurt!{/if} — if with class
 
-{.danger button $player.damage(10)}Take 10 (styled){/button} — button with class
+{.danger button "Take 10 (styled)"}{do}$player.damage(10){/do}{/button} — button with class
 
 [[.fancy Back to start|Start]] — link with class
 
-{.danger.large button $player.damage(5)}Multi-class button{/button} — multiple classes
+{.danger.large button "Multi-class button"}{do}$player.damage(5){/do}{/button} — multiple classes
 
 
 All link syntaxes:
@@ -391,21 +393,21 @@ Authors can target it with CSS using [data-tags~="special"].
 ### Debug
 Current level: {$player.level}
 
-{button $player.level++}Level Up!{/button}
+{button "Level Up!"}{do}$player.level++{/do}{/button}
 
 ### Character Generation
 
 | Stat | Base | | New | |
 | --- | --- | --- | --- | --- |
-| Strength | {$player.strength} | → | {_temp.strength} | {if _temp.strength > $player.strength}{button _temp.strength--}-{/button}{/if} {if _points > 0}{button _temp.strength++}+{/button}{/if} |
-| Dexterity | {$player.dexterity} | → | {_temp.dexterity} | {if _temp.dexterity > $player.dexterity}{button _temp.dexterity--}-{/button}{/if} {if _points > 0}{button _temp.dexterity++}+{/button}{/if} |
-| Intelligence | {$player.intelligence} | → | {_temp.intelligence} | {if _temp.intelligence > $player.intelligence}{button _temp.intelligence--}-{/button}{/if} {if _points > 0}{button _temp.intelligence++}+{/button}{/if} |
+| Strength | {$player.strength} | → | {_temp.strength} | {if _temp.strength > $player.strength}{button "-"}{do}_temp.strength--{/do}{/button}{/if} {if _points > 0}{button "+"}{do}_temp.strength++{/do}{/button}{/if} |
+| Dexterity | {$player.dexterity} | → | {_temp.dexterity} | {if _temp.dexterity > $player.dexterity}{button "-"}{do}_temp.dexterity--{/do}{/button}{/if} {if _points > 0}{button "+"}{do}_temp.dexterity++{/do}{/button}{/if} |
+| Intelligence | {$player.intelligence} | → | {_temp.intelligence} | {if _temp.intelligence > $player.intelligence}{button "-"}{do}_temp.intelligence--{/do}{/button}{/if} {if _points > 0}{button "+"}{do}_temp.intelligence++{/do}{/button}{/if} |
 
 {if _points > 0}**Points remaining:** {_points}{/if}
 {if _points == 0}**All points allocated**{/if}
 
 {if _points == 0}
-{button $player = _temp}Confirm{/button} [[Go Back -> Start]]
+{button "Confirm"}{set $player = _temp}{/button} [[Go Back -> Start]]
 {/if}
 
 :: Widgets [widget]
@@ -810,10 +812,10 @@ The story variable should persist: {$storyVar}
 **Button that sets temp var:**
 {set _btnResult = "before"}
 Result: {_btnResult}
-{#set-temp-btn button _btnResult = "after"}Change Temp{/button}
+{#set-temp-btn button "Change Temp"}{set _btnResult = "after"}{/button}
 
 **Button with expression:**
-{#expr-btn button $count = $count + 5}Add 5{/button}
+{#expr-btn button "Add 5"}{set $count = $count + 5}{/button}
 Count after: {$count}
 
 **Link macro without passage (action only):**
@@ -919,7 +921,7 @@ Key state: {$has_key}
 **For loop with button inside:**
 {set $forBtnCount = 0}
 {for @label of ["X", "Y"]}
-  {button $forBtnCount = $forBtnCount + 1}{@label}{/button}
+  {button "{@label}"}{set $forBtnCount = $forBtnCount + 1}{/button}
 {/for}
 For-btn count: {$forBtnCount}
 
@@ -959,7 +961,7 @@ For-btn count: {$forBtnCount}
 **Button inside for-loop picks correct @local:**
 {set $forBtnPick = 0}
 {for @val of [10, 20, 30]}
-  {button $forBtnPick = @val}<span class="for-pick-btn">Pick {@val}</span>{/button}
+  {.for-pick-btn button "Pick {@val}"}{set $forBtnPick = @val}{/button}
 {/for}
 <span id="for-btn-pick">Picked: {$forBtnPick}</span>
 
@@ -1134,3 +1136,27 @@ Ready conditional: {.ready-cond span}{$ready_conditional}{/span}
 
 :: Code Passages Return
 Intermediate passage. [[Return->Code Passages Test]]
+
+:: Watch Tests
+{watch '$watchTest >= 3' dialog "Watch Dialog Result" once}
+{watch '$watchGold >= 100' goto "Watch Goto Result" once name "gold-watch"}
+
+Current watchTest: {$watchTest}
+Current watchGold: {$watchGold}
+
+{button "Increment watchTest"}{set $watchTest = $watchTest + 1}{/button}
+
+{button "Set watchTest to 5"}{set $watchTest = 5}{/button}
+
+{button "Set gold to 100"}{set $watchGold = 100}{/button}
+
+{button "Unwatch gold"}{unwatch "gold-watch"}{/button}
+
+[[Start]]
+
+:: Watch Dialog Result
+The watchTest variable reached 3 or more! This dialog was triggered by a watch.
+
+:: Watch Goto Result
+You reached 100 gold! This passage was reached via a watch goto.
+[[Watch Tests]]

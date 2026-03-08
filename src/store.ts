@@ -9,6 +9,7 @@ import {
 import type { StoryData } from './parser';
 import type { SavePayload, SaveHistoryMoment } from './saves/types';
 import { executeStoryInit } from './story-init';
+import { resetTriggers } from './triggers';
 import {
   initSaveSystem,
   startNewPlaythrough,
@@ -441,6 +442,7 @@ export const useStoryStore = create<StoryState>()(
       if (!startPassage) return;
 
       resetPRNG();
+      resetTriggers();
       const initialVars = deepClone(variableDefaults);
       resetModuleState(deepClone(initialVars));
 

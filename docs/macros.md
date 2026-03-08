@@ -190,27 +190,26 @@ The primary way to navigate. See [Markup](markup.md#links).
 
 ### `{link}`
 
-A link macro that can execute code when clicked.
+A link that navigates to a passage. The display text and target passage go in the opening tag as quoted strings. An optional body can contain macros that execute on click before navigation.
 
 ```
-{link "Go north" "North Room"}Click to go north{/link}
+{link "Go north" "North Room"}{/link}
 ```
 
-With variable changes embedded in the body:
+With macros in the body:
 
 ```
 {link "Take key" "Next Room"}
   {set $has_key = true}
-  Pick up the key
 {/link}
 ```
 
-Any `{set}` or `{do}` macros inside the link body execute when clicked, before navigation.
+Body macros execute when clicked, before navigation.
 
 If only one quoted string is given, it's used as both display and passage:
 
 ```
-{link "North Room"}Go north{/link}
+{link "North Room"}{/link}
 ```
 
 ### `{goto}`
@@ -226,14 +225,25 @@ Runs during rendering, so the passage changes instantly.
 
 ### `{button}`
 
-A clickable button that executes code.
+A clickable button that runs its body macros on click. The label goes in the opening tag (supports interpolation), the body contains macros like `{set}` or `{do}`.
 
 ```
-{button $health -= 10}Take damage{/button}
-{button $count = $count + 1}+1{/button}
+{button "Take damage"}{do}$health -= 10{/do}{/button}
+{button "Count: {$count}"}{set $count = $count + 1}{/button}
 ```
 
-Unlike `{link}`, a button does not navigate to another passage — it only runs the code in `rawArgs` when clicked.
+Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.
+
+### `{dialog}`
+
+A button that opens a modal dialog showing another passage. The label goes in the opening tag, the passage name goes in the body.
+
+```
+{dialog "Open Map"}Map{/dialog}
+{dialog "View Inventory"}Inventory Screen{/dialog}
+```
+
+The dialog closes when the player clicks outside it or presses Escape.
 
 ### `{back}`
 
@@ -446,6 +456,38 @@ Define a reusable content block. Optionally declare parameters after the name.
 ```
 
 Invoke with arguments: `{StatLine "Health", $health, 100}`. See [Widgets](widgets.md).
+
+## Watchers
+
+### `{watch}`
+
+An edge-triggered watcher that monitors a condition and fires an action when it becomes true. The condition is a quoted expression string, followed by keyword options.
+
+```
+{watch '$health <= 0' dialog "Game Over" once}
+{watch '$gold >= 100' goto "Victory" once name "gold-watch"}
+```
+
+| Option     | Description                                        |
+| ---------- | -------------------------------------------------- |
+| `dialog`   | Show a passage as a modal dialog                   |
+| `goto`     | Navigate to a passage                              |
+| `run`      | Execute a code string (e.g. `run "$health -= 1"`)  |
+| `once`     | Remove the watcher after it fires once             |
+| `name`     | Name the watcher for later removal via `{unwatch}` |
+| `priority` | Numeric priority (higher fires first)              |
+
+Watchers are **edge-triggered** — they fire only on a `false → true` transition of the condition. A condition that is already true when the watcher is registered will not fire until it becomes false and then true again.
+
+Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough.
+
+### `{unwatch}`
+
+Remove a named watcher.
+
+```
+{unwatch "gold-watch"}
+```
 
 ## Saves and UI
 

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStoryStore } from '../../src/store';
 import { executeStoryInit } from '../../src/story-init';

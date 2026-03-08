@@ -1,63 +1,30 @@
+import { h, render } from 'preact';
 import { useStoryStore } from './store';
 import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
-import { execute } from './expression';
-import type { ASTNode } from './markup/ast';
+import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
-import { deepClone } from './class-registry';
 
 /**
- * Walk AST nodes from StoryInit and execute {set} and {do} imperatively
- * (no Preact rendering needed for initialization).
- */
-function walkAndExecute(
-  nodes: ASTNode[],
-  vars: Record<string, unknown>,
-  temps: Record<string, unknown>,
-) {
-  for (const node of nodes) {
-    if (node.type !== 'macro') continue;
-
-    if (node.name === 'set') {
-      execute(node.rawArgs, vars, temps);
-    } else if (node.name === 'do') {
-      const code = node.children
-        .map((n) => (n.type === 'text' ? n.value : ''))
-        .join('');
-      execute(code, vars, temps);
-    }
-  }
-}
-
-/**
- * Execute the StoryInit passage: tokenize, parse, and run all {set}/{do} macros.
- * Called during boot and after restart() to ensure variables are initialized.
+ * Execute the StoryInit passage: tokenize, parse, and render all macros
+ * into a detached DOM node so their side effects fire through the normal
+ * Preact pipeline. This is macro-agnostic — any macro works in StoryInit.
  */
 export function executeStoryInit() {
   const state = useStoryStore.getState();
   if (!state.storyData) return;
 
   const storyInit = state.storyData.passages.get('StoryInit');
-  if (!storyInit) return;
+  if (storyInit) {
+    const tokens = tokenize(storyInit.content);
+    const ast = buildAST(tokens);
 
-  const tokens = tokenize(storyInit.content);
-  const ast = buildAST(tokens);
-
-  const vars = deepClone(state.variables);
-  const temps = deepClone(state.temporary);
-
-  walkAndExecute(ast, vars, temps);
-
-  // Apply all changes to the store
-  for (const key of Object.keys(vars)) {
-    if (vars[key] !== state.variables[key]) {
-      state.setVariable(key, vars[key]);
-    }
-  }
-  for (const key of Object.keys(temps)) {
-    if (temps[key] !== state.temporary[key]) {
-      state.setTemporary(key, temps[key]);
-    }
+    const container = document.createElement('div');
+    render(
+      h(() => renderNodes(ast) as any, null),
+      container,
+    );
+    render(null, container);
   }
 
   // Register SaveTitle passage if it exists
