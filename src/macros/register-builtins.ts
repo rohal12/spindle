@@ -31,3 +31,4 @@ import '../components/macros/Listbox';
 import '../components/macros/Cycle';
 import '../components/macros/Span';
 import '../components/macros/PassageDisplay';
+import '../components/macros/Watch';

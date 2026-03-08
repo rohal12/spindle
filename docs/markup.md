@@ -70,7 +70,7 @@ Prefix `.class` or `#id` selectors inside the opening brace:
 
 {.large#title print $name}
 
-{.danger button $health = 0}Die{/button}
+{.danger button "Die"}{set $health = 0}{/button}
 ```
 
 Multiple classes are space-joined: `{.red.bold print $x}` produces `class="red bold"`.

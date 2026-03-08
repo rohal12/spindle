@@ -3,21 +3,15 @@ import { PassageDialog } from '../PassageDialog';
 
 defineMacro({
   name: 'dialog',
-  merged: true,
+  interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const [open, setOpen] = ctx.hooks.useState(false);
 
-    let passageName: string;
-    try {
-      const result = ctx.evaluate!(rawArgs);
-      passageName = String(result);
-    } catch {
-      passageName = rawArgs.replace(/^["']|["']$/g, '').trim();
-    }
-
-    const label = children.length
-      ? ctx.renderInlineNodes(children)
-      : passageName;
+    const label = ctx.resolve?.(rawArgs.replace(/^["']|["']$/g, '')) ?? rawArgs;
+    const passageName = ctx
+      .collectText(children)
+      .trim()
+      .replace(/^["']|["']$/g, '');
 
     return (
       <>

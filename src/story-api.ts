@@ -21,6 +21,8 @@ import {
   randomInt,
   snapshotPRNG,
 } from './prng';
+import { addTrigger, removeTrigger } from './triggers';
+import type { WatchOptions } from './triggers';
 
 export type { StoryAction };
 
@@ -65,6 +67,11 @@ export interface StoryAPI {
   on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
   on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
   waitForActions(): Promise<StoryAction[]>;
+  watch(
+    condition: string,
+    callbackOrOptions: (() => void) | WatchOptions,
+  ): () => void;
+  unwatch(name: string): void;
   random(): number;
   randomInt(min: number, max: number): number;
   readonly config: {
@@ -261,6 +268,17 @@ function createStoryAPI(): StoryAPI {
           });
         });
       });
+    },
+
+    watch(
+      condition: string,
+      callbackOrOptions: (() => void) | WatchOptions,
+    ): () => void {
+      return addTrigger(condition, callbackOrOptions);
+    },
+
+    unwatch(name: string): void {
+      removeTrigger(name);
     },
 
     random(): number {

@@ -164,7 +164,7 @@ describe('macro components', () => {
       useStoryStore.getState().setVariable('items', [1, 2, 3]);
       useStoryStore.getState().setVariable('picked', 0);
       const el = renderPassage(
-        '{for @item of $items}{button $picked = @item}Pick{/button}{/for}',
+        '{for @item of $items}{button "Pick"}{set $picked = @item}{/button}{/for}',
       );
       const buttons = el.querySelectorAll('button.macro-button');
       expect(buttons.length).toBe(3);

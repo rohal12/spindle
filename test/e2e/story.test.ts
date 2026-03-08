@@ -1526,4 +1526,77 @@ describe('compiled story e2e', () => {
       expect(cond).toBe('true');
     });
   });
+
+  // ===========================================================================
+  // Watch / Trigger system
+  // ===========================================================================
+  describe('Watch / Trigger system', () => {
+    it('watch with dialog fires when condition becomes true', async () => {
+      await navigateFresh();
+      await clickLink('Watch triggers');
+      await page.waitForSelector('[data-passage="Watch Tests"]');
+
+      // Click "Increment watchTest" 3 times to reach threshold
+      for (let i = 0; i < 3; i++) {
+        await page.click('button:has-text("Increment watchTest")');
+      }
+
+      // Dialog should appear
+      await page.waitForSelector('.dialog-overlay');
+      const dialogText = await page.textContent('.dialog-body');
+      expect(dialogText).toContain('watchTest variable reached 3');
+
+      // Close dialog
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('watch with goto navigates when condition becomes true', async () => {
+      await navigateFresh();
+      await clickLink('Watch triggers');
+      await page.waitForSelector('[data-passage="Watch Tests"]');
+
+      await page.click('button:has-text("Set gold to 100")');
+
+      // Should navigate to Watch Goto Result
+      await page.waitForSelector('[data-passage="Watch Goto Result"]');
+      const text = await page.textContent('.passage');
+      expect(text).toContain('reached 100 gold');
+    });
+
+    it('unwatch removes trigger before it fires', async () => {
+      await navigateFresh();
+      await clickLink('Watch triggers');
+      await page.waitForSelector('[data-passage="Watch Tests"]');
+
+      // Unwatch gold trigger first
+      await page.click('button:has-text("Unwatch gold")');
+
+      // Set gold to 100 — should NOT navigate
+      await page.click('button:has-text("Set gold to 100")');
+
+      // Still on Watch Tests passage
+      await page.waitForTimeout(200);
+      const passage = await page.getAttribute('[data-passage]', 'data-passage');
+      expect(passage).toBe('Watch Tests');
+    });
+
+    it('once trigger does not re-fire', async () => {
+      await navigateFresh();
+      await clickLink('Watch triggers');
+      await page.waitForSelector('[data-passage="Watch Tests"]');
+
+      // Trigger the dialog
+      await page.click('button:has-text("Set watchTest to 5")');
+      await page.waitForSelector('.dialog-overlay');
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+
+      // Set watchTest again — no dialog should appear (once trigger self-removed)
+      await page.click('button:has-text("Increment watchTest")');
+      await page.waitForTimeout(200);
+      const overlay = await page.$('.dialog-overlay');
+      expect(overlay).toBeNull();
+    });
+  });
 });

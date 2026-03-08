@@ -1,8 +1,10 @@
+import { h, render } from 'preact';
 import { useStoryStore } from '../../store';
-import type { ASTNode } from '../../markup/ast';
-import { executeMutation } from '../../execute-mutation';
-import { collectText } from '../../utils/extract-text';
-import { currentSourceLocation } from '../../utils/source-location';
+import {
+  renderNodes,
+  LocalsUpdateContext,
+  LocalsValuesContext,
+} from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 
 function parseArgs(rawArgs: string): {
@@ -26,37 +28,23 @@ function parseArgs(rawArgs: string): {
   return { display: rawArgs.trim(), passage: null };
 }
 
-/**
- * Execute the children imperatively: walk AST for {set} and {do} macros.
- */
-function executeChildren(
-  children: ASTNode[],
-  mergedLocals: Record<string, unknown>,
-  scopeUpdate: (key: string, value: unknown) => void,
+function renderChildrenDetached(
+  children: import('../../markup/ast').ASTNode[],
+  getValues: () => Record<string, unknown>,
+  update: (key: string, value: unknown) => void,
 ) {
-  for (const node of children) {
-    if (node.type !== 'macro') continue;
-    if (node.name === 'set') {
-      try {
-        executeMutation(node.rawArgs, mergedLocals, scopeUpdate);
-      } catch (err) {
-        console.error(
-          `spindle: Error in {link} child {set}${currentSourceLocation()}:`,
-          err,
-        );
-      }
-    } else if (node.name === 'do') {
-      const code = collectText(node.children);
-      try {
-        executeMutation(code, mergedLocals, scopeUpdate);
-      } catch (err) {
-        console.error(
-          `spindle: Error in {link} child {do}${currentSourceLocation()}:`,
-          err,
-        );
-      }
-    }
-  }
+  const container = document.createElement('div');
+  const vnode = h(
+    LocalsUpdateContext.Provider,
+    { value: { update, getValues } },
+    h(
+      LocalsValuesContext.Provider,
+      { value: getValues() },
+      renderNodes(children),
+    ),
+  );
+  render(vnode, container);
+  render(null, container);
 }
 
 defineMacro({
@@ -67,7 +55,7 @@ defineMacro({
 
     const handleClick = (e: Event) => {
       e.preventDefault();
-      executeChildren(children, ctx.getValues(), ctx.update);
+      renderChildrenDetached(children, ctx.getValues, ctx.update);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }
@@ -80,7 +68,7 @@ defineMacro({
       label: display,
       target: passage ?? undefined,
       perform: () => {
-        executeChildren(children, ctx.getValues(), ctx.update);
+        renderChildrenDetached(children, ctx.getValues, ctx.update);
         if (passage) {
           useStoryStore.getState().navigate(passage);
         }

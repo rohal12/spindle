@@ -151,7 +151,7 @@ describe('renderNodes', () => {
 
     it('appends className to button', () => {
       const el = renderMarkup(
-        '{.danger button $count = $count + 1}Click{/button}',
+        '{.danger button "Click"}$count = $count + 1{/button}',
       );
       const btn = el.querySelector('button');
       expect(btn).not.toBeNull();
@@ -217,7 +217,7 @@ describe('renderNodes', () => {
 
     it('sets id on button', () => {
       const el = renderMarkup(
-        '{#attack button $count = $count + 1}Hit{/button}',
+        '{#attack button "Hit"}$count = $count + 1{/button}',
       );
       const btn = el.querySelector('button');
       expect(btn).not.toBeNull();
@@ -226,7 +226,7 @@ describe('renderNodes', () => {
 
     it('sets id and className on button', () => {
       const el = renderMarkup(
-        '{#attack.danger button $count = $count + 1}Hit{/button}',
+        '{#attack.danger button "Hit"}$count = $count + 1{/button}',
       );
       const btn = el.querySelector('button');
       expect(btn).not.toBeNull();
@@ -261,7 +261,7 @@ describe('renderNodes', () => {
           '{/if}\n' +
           '\n' +
           '{if $health > 0}\n' +
-          '  {.red button $health -= 10}Drink Poison{/button}\n' +
+          '  {.red button "Drink Poison"}$health -= 10{/button}\n' +
           '{/if}',
       );
       // Green span for health status

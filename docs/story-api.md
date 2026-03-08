@@ -47,6 +47,33 @@ Go to the next passage in history (after going back).
 
 Restart the story. Restores variable defaults and re-runs `StoryInit`.
 
+### `Story.watch(condition, callbackOrOptions)`
+
+Register an edge-triggered watcher. Fires the callback or action when the condition transitions from false to true. Returns an unsubscribe function.
+
+```
+{do}
+  // Callback style
+  Story.watch('$health <= 0', function() { Story.goto('Game Over'); });
+
+  // Options style
+  Story.watch('$health <= 0', { dialog: 'Game Over', once: true });
+  Story.watch('$gold >= 100', { goto: 'Victory', once: true, name: 'gold-watch' });
+{/do}
+```
+
+Options: `goto`, `dialog`, `run`, `once`, `name`, `priority`. See [`{watch}` macro](macros.md#watch) for details.
+
+### `Story.unwatch(name)`
+
+Remove a named watcher.
+
+```
+{do}
+  Story.unwatch('gold-watch');
+{/do}
+```
+
 ### `Story.save()`
 
 Perform a quick save.
@@ -244,7 +271,7 @@ Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `ch
 IDs are generated automatically from the action type and a content-based key:
 
 - Links: `link:PassageName`
-- Buttons: `button:$count = $count + 1`
+- Buttons: `button:"Take damage"`
 - Inputs: `textbox:$name`, `cycle:$weapon`
 - Menubar: `back:back`, `forward:forward`, `restart:restart`, `save:quicksave`, `load:quickload`
 
