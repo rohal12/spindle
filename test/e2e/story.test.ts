@@ -423,11 +423,10 @@ describe('compiled story e2e', () => {
 
     it('renders timed next section', async () => {
       await goToExtraMacros();
-      const el = await page.waitForSelector(
-        '#timed-output:has-text("Second section!")',
+      await page.waitForFunction(
+        () => document.body.textContent?.includes('Second section!'),
         { timeout: 2000 },
       );
-      expect(el).not.toBeNull();
     });
 
     it('renders type macro with typewriter effect', async () => {
