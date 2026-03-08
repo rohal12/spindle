@@ -5,14 +5,6 @@ export interface TextNode {
   value: string;
 }
 
-export interface LinkNode {
-  type: 'link';
-  display: string;
-  target: string;
-  className?: string;
-  id?: string;
-}
-
 export interface VariableNode {
   type: 'variable';
   name: string;
@@ -45,7 +37,7 @@ export interface HtmlNode {
   children: ASTNode[];
 }
 
-export type ASTNode = TextNode | LinkNode | VariableNode | MacroNode | HtmlNode;
+export type ASTNode = TextNode | VariableNode | MacroNode | HtmlNode;
 
 /** Macros that require a closing tag and can contain children */
 const BLOCK_MACROS = new Set([
@@ -102,14 +94,16 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         break;
 
       case 'link': {
-        const linkNode: LinkNode = {
-          type: 'link',
-          display: token.display,
-          target: token.target,
+        const rawArgs = `"${token.display}" "${token.target}"`;
+        const macroNode: MacroNode = {
+          type: 'macro',
+          name: 'link',
+          rawArgs,
+          children: [],
         };
-        if (token.className) linkNode.className = token.className;
-        if (token.id) linkNode.id = token.id;
-        current().push(linkNode);
+        if (token.className) macroNode.className = token.className;
+        if (token.id) macroNode.id = token.id;
+        current().push(macroNode);
         break;
       }
 

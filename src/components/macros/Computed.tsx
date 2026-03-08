@@ -1,15 +1,12 @@
-import { useLayoutEffect, useRef } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
-import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { currentSourceLocation } from '../../utils/source-location';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
+import { MacroError } from './MacroError';
 
 function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   const trimmed = rawArgs.trim();
 
-  // Find the first '=' that isn't part of '==' or '!='
   let depth = 0;
   for (let i = 0; i < trimmed.length; i++) {
     const ch = trimmed[i];
@@ -85,56 +82,54 @@ function computeAndApply(
   }
 }
 
-export function Computed({ rawArgs }: MacroProps) {
-  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
+defineMacro({
+  name: 'computed',
+  merged: true,
+  render({ rawArgs }, ctx) {
+    const [mergedVars, mergedTemps, mergedLocals] = ctx.merged!;
 
-  let target: string;
-  let expr: string;
-  try {
-    ({ target, expr } = parseComputedArgs(rawArgs));
-  } catch (err) {
-    return (
-      <span
-        class="error"
-        title={String(err)}
-      >
-        {`{computed error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
-      </span>
-    );
-  }
-  const isTemp = target.startsWith('_');
-  const name = target.slice(1);
+    let target: string;
+    let expr: string;
+    try {
+      ({ target, expr } = parseComputedArgs(rawArgs));
+    } catch (err) {
+      return (
+        <MacroError
+          macro="computed"
+          error={err}
+        />
+      );
+    }
+    const isTemp = target.startsWith('_');
+    const name = target.slice(1);
 
-  // Synchronous first evaluation — sees preceding synchronous {set} mutations
-  const ran = useRef(false);
-  if (!ran.current) {
-    ran.current = true;
-    const state = useStoryStore.getState();
-    computeAndApply(
-      expr,
-      name,
-      isTemp,
-      state.variables,
-      state.temporary,
-      mergedLocals,
-      rawArgs,
-    );
-  }
+    const ran = ctx.hooks.useRef(false);
+    if (!ran.current) {
+      ran.current = true;
+      const state = useStoryStore.getState();
+      computeAndApply(
+        expr,
+        name,
+        isTemp,
+        state.variables,
+        state.temporary,
+        mergedLocals,
+        rawArgs,
+      );
+    }
 
-  // Reactive re-evaluation when dependencies change (via useMergedLocals subscription)
-  useLayoutEffect(() => {
-    computeAndApply(
-      expr,
-      name,
-      isTemp,
-      mergedVars,
-      mergedTemps,
-      mergedLocals,
-      rawArgs,
-    );
-  }, [mergedVars, mergedTemps, mergedLocals]);
+    ctx.hooks.useLayoutEffect(() => {
+      computeAndApply(
+        expr,
+        name,
+        isTemp,
+        mergedVars,
+        mergedTemps,
+        mergedLocals,
+        rawArgs,
+      );
+    }, [mergedVars, mergedTemps, mergedLocals]);
 
-  return null;
-}
-
-registerMacro('computed', Computed);
+    return null;
+  },
+});

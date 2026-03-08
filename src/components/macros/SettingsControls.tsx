@@ -1,9 +1,6 @@
 import { useState } from 'preact/hooks';
-import { settings, type SettingDef } from '../settings';
-
-interface SettingsDialogProps {
-  onClose: () => void;
-}
+import { settings, type SettingDef } from '../../settings';
+import { defineMacro } from '../../define-macro';
 
 function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   const [value, setValue] = useState(() => settings.get(name));
@@ -67,40 +64,25 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   }
 }
 
-export function SettingsDialog({ onClose }: SettingsDialogProps) {
+function SettingsControlsContent() {
   const defs = settings.getDefinitions();
 
-  const handleBackdrop = (e: MouseEvent) => {
-    if ((e.target as HTMLElement).classList.contains('settings-overlay')) {
-      onClose();
-    }
-  };
-
   return (
-    <div
-      class="settings-overlay"
-      onClick={handleBackdrop}
-    >
-      <div class="settings-panel">
-        <div class="settings-header">
-          <span>Settings</span>
-          <button
-            class="settings-close"
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
-        <div class="settings-body">
-          {Array.from(defs.entries()).map(([name, def]) => (
-            <SettingControl
-              key={name}
-              name={name}
-              def={def}
-            />
-          ))}
-        </div>
-      </div>
+    <div class="settings-controls">
+      {Array.from(defs.entries()).map(([name, def]) => (
+        <SettingControl
+          key={name}
+          name={name}
+          def={def}
+        />
+      ))}
     </div>
   );
 }
+
+defineMacro({
+  name: 'settings-controls',
+  render() {
+    return <SettingsControlsContent />;
+  },
+});

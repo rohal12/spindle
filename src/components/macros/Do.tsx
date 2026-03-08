@@ -1,24 +1,18 @@
-import { useLayoutEffect, useContext } from 'preact/hooks';
-import { LocalsUpdateContext } from '../../markup/render';
-import { executeMutation } from '../../execute-mutation';
-import { currentSourceLocation } from '../../utils/source-location';
-import { collectText } from '../../utils/extract-text';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function Do({ children = [] }: MacroProps) {
-  const code = collectText(children);
-  const { update, getValues } = useContext(LocalsUpdateContext);
+defineMacro({
+  name: 'do',
+  render({ children = [] }, ctx) {
+    const code = ctx.collectText(children);
 
-  useLayoutEffect(() => {
-    try {
-      executeMutation(code, getValues(), update);
-    } catch (err) {
-      console.error(`spindle: Error in {do}${currentSourceLocation()}:`, err);
-    }
-  }, []);
+    ctx.hooks.useLayoutEffect(() => {
+      try {
+        ctx.mutate(code);
+      } catch (err) {
+        console.error(`spindle: Error in {do}${ctx.sourceLocation()}:`, err);
+      }
+    }, []);
 
-  return null;
-}
-
-registerMacro('do', Do);
+    return null;
+  },
+});

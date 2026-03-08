@@ -1,51 +1,41 @@
-import { useStoryStore } from '../../store';
-import { extractOptions } from './option-utils';
-import { useAction } from '../../hooks/use-action';
-import { registerMacro, registerSubMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function Listbox({ rawArgs, children = [], className, id }: MacroProps) {
-  const varName = rawArgs.trim().replace(/["']/g, '');
-  const name = varName.startsWith('$') ? varName.slice(1) : varName;
+defineMacro({
+  name: 'listbox',
+  subMacros: ['option'],
+  storeVar: true,
+  render({ children = [] }, ctx) {
+    const options = ctx.extractOptions(children);
 
-  const value = useStoryStore((s) => s.variables[name]);
-  const setVariable = useStoryStore((s) => s.setVariable);
+    ctx.useAction({
+      type: 'listbox',
+      key: `$${ctx.varName}`,
+      authorId: ctx.id,
+      label: ctx.varName!,
+      variable: ctx.varName,
+      options,
+      value: ctx.value,
+      perform: (v) => {
+        if (v !== undefined) ctx.setValue!(String(v));
+      },
+    });
 
-  const options = extractOptions(children);
-
-  useAction({
-    type: 'listbox',
-    key: `$${name}`,
-    authorId: id,
-    label: name,
-    variable: name,
-    options,
-    value,
-    perform: (v) => {
-      if (v !== undefined) setVariable(name, String(v));
-    },
-  });
-
-  const cls = className ? `macro-listbox ${className}` : 'macro-listbox';
-
-  return (
-    <select
-      id={id}
-      class={cls}
-      value={value == null ? '' : String(value)}
-      onChange={(e) => setVariable(name, (e.target as HTMLSelectElement).value)}
-    >
-      {options.map((opt) => (
-        <option
-          key={opt}
-          value={opt}
-        >
-          {opt}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-registerMacro('listbox', Listbox);
-registerSubMacro('option');
+    return (
+      <select
+        id={ctx.id}
+        class={ctx.cls}
+        value={ctx.value == null ? '' : String(ctx.value)}
+        onChange={(e) => ctx.setValue!((e.target as HTMLSelectElement).value)}
+      >
+        {options.map((opt) => (
+          <option
+            key={opt}
+            value={opt}
+          >
+            {opt}
+          </option>
+        ))}
+      </select>
+    );
+  },
+});

@@ -44,25 +44,6 @@ tw-storydata {
   }
 }
 
-.passage-link {
-  color: #64b5f6;
-  text-decoration: none;
-  border-bottom: 1px solid rgba(100, 181, 246, 0.3);
-  transition:
-    color 0.2s,
-    border-color 0.2s;
-  cursor: pointer;
-}
-
-.passage-link:hover {
-  color: #90caf9;
-  border-bottom-color: #90caf9;
-}
-
-.passage-link:active {
-  color: #42a5f5;
-}
-
 .macro-button {
   background: rgba(100, 181, 246, 0.15);
   color: #64b5f6;
@@ -154,9 +135,9 @@ tw-storydata {
   background: transparent;
 }
 
-/* Settings dialog */
+/* Generic dialog */
 
-.settings-overlay {
+.dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -166,28 +147,33 @@ tw-storydata {
   background: rgba(0, 0, 0, 0.6);
 }
 
-.settings-panel {
+.dialog-panel {
   background: #16213e;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   width: 90%;
-  max-width: 400px;
+  max-width: 500px;
   max-height: 80vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   color: #e0e0e0;
   font-family: system-ui, sans-serif;
+  position: relative;
 }
 
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1em 1.25em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-weight: 600;
+.dialog-saves {
+  max-width: 550px;
 }
 
-.settings-close {
+.dialog-settings {
+  max-width: 400px;
+}
+
+.dialog-close {
+  position: absolute;
+  top: 0.75em;
+  right: 0.75em;
+  z-index: 1;
   background: transparent;
   border: none;
   color: #9e9e9e;
@@ -197,11 +183,19 @@ tw-storydata {
   line-height: 1;
 }
 
-.settings-close:hover {
+.dialog-close:hover {
   color: #e0e0e0;
 }
 
-.settings-body {
+.dialog-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Settings controls */
+
+.settings-controls {
   padding: 1em 1.25em;
   display: flex;
   flex-direction: column;
@@ -235,29 +229,13 @@ tw-storydata {
   height: 1.1em;
 }
 
-/* Saves dialog */
+/* Save manager */
 
-.saves-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.saves-panel {
-  background: #16213e;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  width: 90%;
-  max-width: 550px;
-  max-height: 80vh;
+.save-manager {
   display: flex;
   flex-direction: column;
-  color: #e0e0e0;
-  font-family: system-ui, sans-serif;
+  flex: 1;
+  min-height: 0;
 }
 
 .saves-header {
@@ -265,6 +243,7 @@ tw-storydata {
   align-items: center;
   justify-content: space-between;
   padding: 1em 1.25em;
+  padding-right: 3em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-weight: 600;
   flex-shrink: 0;
@@ -304,20 +283,6 @@ tw-storydata {
 }
 
 .saves-mode-toggle button:hover:not(.active) {
-  color: #e0e0e0;
-}
-
-.saves-close {
-  background: transparent;
-  border: none;
-  color: #9e9e9e;
-  font-size: 1.1em;
-  cursor: pointer;
-  padding: 0.25em;
-  line-height: 1;
-}
-
-.saves-close:hover {
   color: #e0e0e0;
 }
 
@@ -558,6 +523,10 @@ tw-storydata {
 .macro-link:hover {
   color: #90caf9;
   border-bottom-color: #90caf9;
+}
+
+.macro-link:active {
+  color: #42a5f5;
 }
 
 /* Macro: form inputs */

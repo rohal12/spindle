@@ -1,50 +1,33 @@
-import { useStoryStore } from '../../store';
-import { useAction } from '../../hooks/use-action';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-function parseArgs(rawArgs: string): { varName: string; placeholder: string } {
-  const match = rawArgs.match(/^\s*(["']?\$\w+["']?)\s*(?:["'](.*)["'])?\s*$/);
-  if (!match) {
-    return { varName: rawArgs.trim(), placeholder: '' };
-  }
-  const varName = match[1]!.replace(/["']/g, '');
-  const placeholder = match[2] || '';
-  return { varName, placeholder };
-}
+defineMacro({
+  name: 'numberbox',
+  storeVar: true,
+  render({ rawArgs }, ctx) {
+    const { placeholder } = ctx.parseVarArgs(rawArgs);
 
-export function Numberbox({ rawArgs, className, id }: MacroProps) {
-  const { varName, placeholder } = parseArgs(rawArgs);
-  const name = varName.startsWith('$') ? varName.slice(1) : varName;
+    ctx.useAction({
+      type: 'numberbox',
+      key: `$${ctx.varName}`,
+      authorId: ctx.id,
+      label: placeholder || ctx.varName!,
+      variable: ctx.varName,
+      value: ctx.value,
+      perform: (v) => ctx.setValue!(v !== undefined ? Number(v) : 0),
+    });
 
-  const value = useStoryStore((s) => s.variables[name]);
-  const setVariable = useStoryStore((s) => s.setVariable);
-
-  useAction({
-    type: 'numberbox',
-    key: `$${name}`,
-    authorId: id,
-    label: placeholder || name,
-    variable: name,
-    value,
-    perform: (v) => setVariable(name, v !== undefined ? Number(v) : 0),
-  });
-
-  const cls = className ? `macro-numberbox ${className}` : 'macro-numberbox';
-
-  return (
-    <input
-      type="number"
-      id={id}
-      class={cls}
-      value={value == null ? '' : String(value)}
-      placeholder={placeholder}
-      onInput={(e) => {
-        const val = (e.target as HTMLInputElement).value;
-        setVariable(name, val === '' ? 0 : Number(val));
-      }}
-    />
-  );
-}
-
-registerMacro('numberbox', Numberbox);
+    return (
+      <input
+        type="number"
+        id={ctx.id}
+        class={ctx.cls}
+        value={ctx.value == null ? '' : String(ctx.value)}
+        placeholder={placeholder}
+        onInput={(e) => {
+          const val = (e.target as HTMLInputElement).value;
+          ctx.setValue!(val === '' ? 0 : Number(val));
+        }}
+      />
+    );
+  },
+});

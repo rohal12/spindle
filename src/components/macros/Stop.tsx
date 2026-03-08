@@ -1,16 +1,15 @@
-import { useLayoutEffect, useContext } from 'preact/hooks';
 import { RepeatContext } from './Repeat';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
-export function Stop(_props: MacroProps) {
-  const { stop } = useContext(RepeatContext);
+defineMacro({
+  name: 'stop',
+  render(_props, ctx) {
+    const { stop } = ctx.hooks.useContext(RepeatContext);
 
-  useLayoutEffect(() => {
-    stop();
-  }, [stop]);
+    ctx.hooks.useLayoutEffect(() => {
+      stop();
+    }, [stop]);
 
-  return null;
-}
-
-registerMacro('stop', Stop);
+    return null;
+  },
+});

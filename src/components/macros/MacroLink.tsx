@@ -1,12 +1,9 @@
-import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import type { ASTNode } from '../../markup/ast';
-import { LocalsUpdateContext } from '../../markup/render';
-import { useInterpolate } from '../../hooks/use-interpolate';
 import { executeMutation } from '../../execute-mutation';
+import { collectText } from '../../utils/extract-text';
 import { currentSourceLocation } from '../../utils/source-location';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
 function parseArgs(rawArgs: string): {
   display: string;
@@ -28,9 +25,6 @@ function parseArgs(rawArgs: string): {
   // Fallback: treat entire rawArgs as display text
   return { display: rawArgs.trim(), passage: null };
 }
-
-import { collectText } from '../../utils/extract-text';
-import { useAction } from '../../hooks/use-action';
 
 /**
  * Execute the children imperatively: walk AST for {set} and {do} macros.
@@ -65,52 +59,43 @@ function executeChildren(
   }
 }
 
-export function MacroLink({
-  rawArgs,
-  children = [],
-  className,
-  id,
-}: MacroProps) {
-  const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
-  const { display, passage } = parseArgs(rawArgs);
-  const { update, getValues } = useContext(LocalsUpdateContext);
+defineMacro({
+  name: 'link',
+  interpolate: true,
+  render({ rawArgs, children = [] }, ctx) {
+    const { display, passage } = parseArgs(rawArgs);
 
-  const handleClick = (e: Event) => {
-    e.preventDefault();
-    executeChildren(children, getValues(), update);
-    if (passage) {
-      useStoryStore.getState().navigate(passage);
-    }
-  };
-
-  useAction({
-    type: 'link',
-    key: passage || display,
-    authorId: id,
-    label: display,
-    target: passage ?? undefined,
-    perform: () => {
-      executeChildren(children, getValues(), update);
+    const handleClick = (e: Event) => {
+      e.preventDefault();
+      executeChildren(children, ctx.getValues(), ctx.update);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }
-    },
-  });
+    };
 
-  const cls = className ? `macro-link ${className}` : 'macro-link';
+    ctx.useAction({
+      type: 'link',
+      key: passage || display,
+      authorId: ctx.id,
+      label: display,
+      target: passage ?? undefined,
+      perform: () => {
+        executeChildren(children, ctx.getValues(), ctx.update);
+        if (passage) {
+          useStoryStore.getState().navigate(passage);
+        }
+      },
+    });
 
-  return (
-    <a
-      id={id}
-      class={cls}
-      href="#"
-      onClick={handleClick}
-    >
-      {display}
-    </a>
-  );
-}
-
-registerMacro('link', MacroLink);
+    return (
+      <a
+        id={ctx.id}
+        class={ctx.cls}
+        href="#"
+        onClick={handleClick}
+      >
+        {display}
+      </a>
+    );
+  },
+});

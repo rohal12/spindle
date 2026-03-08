@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { SaveLoadDialog } from '../../src/components/SaveLoadDialog';
+import { SaveManagerContent } from '../../src/components/macros/SaveManager';
+import { DialogCloseContext } from '../../src/components/PassageDialog';
 import { useStoryStore } from '../../src/store';
 import {
   initSaveSystem,
@@ -54,7 +55,16 @@ async function flush() {
   });
 }
 
-describe('SaveLoadDialog', () => {
+function renderSaveManager(container: HTMLElement, onClose?: () => void) {
+  render(
+    <DialogCloseContext.Provider value={onClose ?? null}>
+      <SaveManagerContent />
+    </DialogCloseContext.Provider>,
+    container,
+  );
+}
+
+describe('SaveManagerContent', () => {
   let container: HTMLElement;
   let onClose: () => void;
   const IFID = 'dialog-test-ifid';
@@ -72,8 +82,8 @@ describe('SaveLoadDialog', () => {
     useStoryStore.setState({ playthroughId: ptId });
   });
 
-  it('renders the dialog with mode toggle', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+  it('renders with mode toggle', async () => {
+    renderSaveManager(container, onClose);
     await flush();
 
     const buttons = container.querySelectorAll('.saves-mode-toggle button');
@@ -83,7 +93,7 @@ describe('SaveLoadDialog', () => {
   });
 
   it('starts in load mode', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const loadBtn = container.querySelector('.saves-mode-toggle button.active');
@@ -92,14 +102,14 @@ describe('SaveLoadDialog', () => {
   });
 
   it('shows "No saves yet" in load mode when empty', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     expect(container.textContent).toContain('No saves yet');
   });
 
   it('switches to save mode on click', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const saveBtn = container.querySelector(
@@ -112,7 +122,7 @@ describe('SaveLoadDialog', () => {
   });
 
   it('shows "+ New Save" button in save mode', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     // Switch to save mode
@@ -127,33 +137,12 @@ describe('SaveLoadDialog', () => {
     expect(newSaveBtn!.textContent).toContain('New Save');
   });
 
-  it('close button calls onClose', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
-    await flush();
-
-    const closeBtn = container.querySelector('.saves-close') as HTMLElement;
-    await act(() => closeBtn.click());
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it('clicking overlay backdrop calls onClose', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
-    await flush();
-
-    const overlay = container.querySelector('.saves-overlay') as HTMLElement;
-    // Simulate click on the overlay itself (not a child)
-    const event = new MouseEvent('click', { bubbles: true });
-    Object.defineProperty(event, 'target', { value: overlay });
-    overlay.dispatchEvent(event);
-    expect(onClose).toHaveBeenCalled();
-  });
-
   it('displays saves after creating one', async () => {
     // Create a save via the manager
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     // Switch to load mode (default)
@@ -165,7 +154,7 @@ describe('SaveLoadDialog', () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const actions = container.querySelectorAll('.save-slot-action');
@@ -180,7 +169,7 @@ describe('SaveLoadDialog', () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     // Switch to save mode
@@ -198,7 +187,7 @@ describe('SaveLoadDialog', () => {
   });
 
   it('shows Import button in toolbar', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const toolbar = container.querySelector('.saves-toolbar');
@@ -210,7 +199,7 @@ describe('SaveLoadDialog', () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const header = container.querySelector('.playthrough-header');
@@ -223,7 +212,7 @@ describe('SaveLoadDialog', () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     // Initially saves are visible
@@ -253,7 +242,7 @@ describe('SaveLoadDialog', () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());
 
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     const meta = container.querySelector('.save-slot-meta');
@@ -264,7 +253,7 @@ describe('SaveLoadDialog', () => {
   });
 
   it('creates a new save when clicking "+ New Save"', async () => {
-    render(<SaveLoadDialog onClose={onClose} />, container);
+    renderSaveManager(container, onClose);
     await flush();
 
     // Switch to save mode
@@ -288,7 +277,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const exportBtns = [
@@ -312,7 +301,7 @@ describe('SaveLoadDialog', () => {
         return el;
       });
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const exportBtns = [
@@ -330,7 +319,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const exportBtns = [
@@ -347,7 +336,7 @@ describe('SaveLoadDialog', () => {
 
   describe('import', () => {
     it('Import button triggers file input click', async () => {
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -370,7 +359,7 @@ describe('SaveLoadDialog', () => {
       const exported = await exportSave(record.meta.id);
       const fileContent = JSON.stringify(exported);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const beforeSlots = container.querySelectorAll('.save-slot').length;
@@ -402,7 +391,7 @@ describe('SaveLoadDialog', () => {
       const exported = await exportSave(record.meta.id);
       const fileContent = JSON.stringify(exported);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -427,7 +416,7 @@ describe('SaveLoadDialog', () => {
     });
 
     it('shows error for invalid JSON file', async () => {
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -452,7 +441,7 @@ describe('SaveLoadDialog', () => {
     });
 
     it('shows error for valid JSON but invalid save format', async () => {
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -492,7 +481,7 @@ describe('SaveLoadDialog', () => {
       };
       const fileContent = JSON.stringify(modified);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -518,7 +507,7 @@ describe('SaveLoadDialog', () => {
     });
 
     it('does nothing when no file is selected', async () => {
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -546,7 +535,7 @@ describe('SaveLoadDialog', () => {
       const exported = await exportSave(record.meta.id);
       const fileContent = JSON.stringify(exported);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const fileInput = container.querySelector(
@@ -587,7 +576,7 @@ describe('SaveLoadDialog', () => {
       // Change state after saving
       useStoryStore.getState().setVariable('hp', 10);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const loadBtns = [
@@ -606,7 +595,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const loadBtns = [
@@ -626,7 +615,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       // Switch to save mode
@@ -655,7 +644,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const renameBtns = [
@@ -672,7 +661,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const renameBtns = [
@@ -704,7 +693,7 @@ describe('SaveLoadDialog', () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const renameBtns = [
@@ -737,7 +726,7 @@ describe('SaveLoadDialog', () => {
       // Mock confirm to return true
       globalThis.confirm = vi.fn<() => boolean>(() => true);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const deleteBtns = [
@@ -757,7 +746,7 @@ describe('SaveLoadDialog', () => {
 
       globalThis.confirm = vi.fn<() => boolean>(() => false);
 
-      render(<SaveLoadDialog onClose={onClose} />, container);
+      renderSaveManager(container, onClose);
       await flush();
 
       const beforeSlots = container.querySelectorAll('.save-slot').length;

@@ -53,5 +53,4 @@ jobs:
             - Security issues
             - Bug risks
             - Code quality and adherence to project conventions
-          claude_args: --max-turns 100 --verbose
-          show_full_output: true
+          claude_args: --max-turns 100 

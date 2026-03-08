@@ -4,6 +4,8 @@ import { settings } from './settings';
 import type { SavePayload } from './saves/types';
 import { setTitleGenerator } from './saves/save-manager';
 import { registerClass } from './class-registry';
+import { defineMacro } from './define-macro';
+import type { MacroDefinition } from './define-macro';
 import {
   getActions,
   getAction,
@@ -53,6 +55,7 @@ export interface StoryAPI {
   readonly passage: string;
   readonly settings: typeof settings;
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
+  defineMacro(config: MacroDefinition): void;
   readonly saves: {
     setTitleGenerator(fn: (payload: SavePayload) => string): void;
   };
@@ -177,6 +180,10 @@ function createStoryAPI(): StoryAPI {
 
     registerClass(name: string, ctor: new (...args: any[]) => any): void {
       registerClass(name, ctor);
+    },
+
+    defineMacro(config: MacroDefinition): void {
+      defineMacro(config);
     },
 
     saves: {

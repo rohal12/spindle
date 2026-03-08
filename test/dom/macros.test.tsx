@@ -300,7 +300,7 @@ describe('macro components', () => {
       useStoryStore.getState().setVariable('show', true);
 
       const el = renderPassage('{if $show}[[Go|Next]]{/if}');
-      const link = el.querySelector('a.passage-link');
+      const link = el.querySelector('a.macro-link');
       expect(link).not.toBeNull();
       expect(link!.textContent).toBe('Go');
     });

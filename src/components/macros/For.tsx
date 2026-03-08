@@ -5,17 +5,13 @@ import {
   useRef,
   useMemo,
 } from 'preact/hooks';
-import { evaluate } from '../../expression';
 import {
   LocalsValuesContext,
   LocalsUpdateContext,
   renderNodes,
 } from '../../markup/render';
-import { useMergedLocals } from '../../hooks/use-merged-locals';
-import { useInterpolate } from '../../hooks/use-interpolate';
-import { currentSourceLocation } from '../../utils/source-location';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
+import { MacroError } from './MacroError';
 import type { ASTNode } from '../../markup/ast';
 
 /**
@@ -89,78 +85,64 @@ function ForIteration({
   );
 }
 
-export function For({ rawArgs, children = [], className, id }: MacroProps) {
-  const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
-  const parentValues = useContext(LocalsValuesContext);
-  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
+defineMacro({
+  name: 'for',
+  interpolate: true,
+  merged: true,
+  render({ rawArgs, children = [] }, ctx) {
+    const parentValues = useContext(LocalsValuesContext);
 
-  let parsed: ReturnType<typeof parseForArgs>;
-  try {
-    parsed = parseForArgs(rawArgs);
-  } catch (err) {
-    return (
-      <span
-        class="error"
-        title={String(err)}
-      >
-        {`{for error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
-      </span>
-    );
-  }
-
-  const { itemVar, indexVar, listExpr } = parsed;
-
-  let list: unknown[];
-  try {
-    const result = evaluate(listExpr, mergedVars, mergedTemps, mergedLocals);
-    if (!Array.isArray(result)) {
+    let parsed: ReturnType<typeof parseForArgs>;
+    try {
+      parsed = parseForArgs(rawArgs);
+    } catch (err) {
       return (
-        <span class="error">
-          {`{for error${currentSourceLocation()}: expression did not evaluate to an array}`}
-        </span>
+        <MacroError
+          macro="for"
+          error={err}
+        />
       );
     }
-    list = result;
-  } catch (err) {
-    return (
-      <span
-        class="error"
-        title={String(err)}
-      >
-        {`{for error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
-      </span>
-    );
-  }
 
-  const content = list.map((item, i) => {
-    const ownKeys: Record<string, unknown> = {
-      [itemVar]: item,
-      ...(indexVar ? { [indexVar]: i } : undefined),
-    };
+    const { itemVar, indexVar, listExpr } = parsed;
 
-    return (
-      <ForIteration
-        key={i}
-        parentValues={parentValues}
-        ownKeys={ownKeys}
-        initialValues={{}}
-        children={children}
-      />
-    );
-  });
+    let list: unknown[];
+    try {
+      const result = ctx.evaluate!(listExpr);
+      if (!Array.isArray(result)) {
+        return (
+          <span class="error">
+            {`{for error: expression did not evaluate to an array}`}
+          </span>
+        );
+      }
+      list = result;
+    } catch (err) {
+      return (
+        <MacroError
+          macro="for"
+          error={err}
+        />
+      );
+    }
 
-  if (className || id)
-    return (
-      <span
-        id={id}
-        class={className}
-      >
-        {content}
-      </span>
-    );
-  return <>{content}</>;
-}
+    const content = list.map((item, i) => {
+      const ownKeys: Record<string, unknown> = {
+        [itemVar]: item,
+        ...(indexVar ? { [indexVar]: i } : undefined),
+      };
 
-registerMacro('for', For);
+      return (
+        <ForIteration
+          key={i}
+          parentValues={parentValues}
+          ownKeys={ownKeys}
+          initialValues={{}}
+          children={children}
+        />
+      );
+    });
+
+    return ctx.wrap(content);
+  },
+});

@@ -12,7 +12,8 @@ export type ActionType =
   | 'forward'
   | 'restart'
   | 'save'
-  | 'load';
+  | 'load'
+  | 'dialog';
 
 export interface StoryAction {
   id: string;

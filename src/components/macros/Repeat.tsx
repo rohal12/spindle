@@ -1,65 +1,60 @@
 import { createContext } from 'preact';
-import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
-import { renderNodes } from '../../markup/render';
 import { parseDelay } from '../../utils/parse-delay';
 import { hasInterpolation, interpolate } from '../../interpolation';
 import { useStoryStore } from '../../store';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
   stop: () => {},
 });
 
-export function Repeat({
-  rawArgs,
-  children = [],
-  className: rawClassName,
-  id: rawId,
-}: MacroProps) {
-  const [className, id] = useMemo(() => {
-    const resolveOnce = (s: string | undefined) => {
-      if (!s || !hasInterpolation(s)) return s;
-      const st = useStoryStore.getState();
-      return interpolate(s, st.variables, st.temporary, {});
-    };
-    return [resolveOnce(rawClassName), resolveOnce(rawId)];
-  }, [rawClassName, rawId]);
+defineMacro({
+  name: 'repeat',
+  render({ rawArgs, children = [], className: rawClassName, id: rawId }, ctx) {
+    const { useState, useEffect, useCallback, useMemo } = ctx.hooks;
 
-  const delay = parseDelay(rawArgs);
-  const [count, setCount] = useState(0);
-  const [stopped, setStopped] = useState(false);
+    const [className, id] = useMemo(() => {
+      const resolveOnce = (s: string | undefined) => {
+        if (!s || !hasInterpolation(s)) return s;
+        const st = useStoryStore.getState();
+        return interpolate(s, st.variables, st.temporary, {});
+      };
+      return [resolveOnce(rawClassName), resolveOnce(rawId)];
+    }, [rawClassName, rawId]);
 
-  const stop = useCallback(() => setStopped(true), []);
+    const delay = parseDelay(rawArgs);
+    const [count, setCount] = useState(0);
+    const [stopped, setStopped] = useState(false);
 
-  useEffect(() => {
-    if (stopped) return;
-    const interval = setInterval(() => {
-      setCount((c) => c + 1);
-    }, delay);
-    return () => clearInterval(interval);
-  }, [delay, stopped]);
+    const stop = useCallback(() => setStopped(true), []);
 
-  if (count === 0 && !stopped) return null;
+    useEffect(() => {
+      if (stopped) return;
+      const interval = setInterval(() => {
+        setCount((c) => c + 1);
+      }, delay);
+      return () => clearInterval(interval);
+    }, [delay, stopped]);
 
-  const cls = className ? `macro-repeat ${className}` : undefined;
+    if (count === 0 && !stopped) return null;
 
-  const content = (
-    <RepeatContext.Provider value={{ stop }}>
-      <span key={count}>{renderNodes(children)}</span>
-    </RepeatContext.Provider>
-  );
+    const cls = className ? `macro-repeat ${className}` : undefined;
 
-  if (cls || id)
-    return (
-      <span
-        id={id}
-        class={cls}
-      >
-        {content}
-      </span>
+    const content = (
+      <RepeatContext.Provider value={{ stop }}>
+        <span key={count}>{ctx.renderNodes(children)}</span>
+      </RepeatContext.Provider>
     );
-  return content;
-}
 
-registerMacro('repeat', Repeat);
+    if (cls || id)
+      return (
+        <span
+          id={id}
+          class={cls}
+        >
+          {content}
+        </span>
+      );
+    return content;
+  },
+});

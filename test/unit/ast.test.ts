@@ -13,9 +13,16 @@ describe('buildAST', () => {
       expect(ast).toEqual([{ type: 'text', value: 'Hello world' }]);
     });
 
-    it('converts link tokens to link nodes', () => {
+    it('desugars link tokens to {link} macro nodes', () => {
       const ast = parse('[[Go|Target]]');
-      expect(ast).toEqual([{ type: 'link', display: 'Go', target: 'Target' }]);
+      expect(ast).toEqual([
+        {
+          type: 'macro',
+          name: 'link',
+          rawArgs: '"Go" "Target"',
+          children: [],
+        },
+      ]);
     });
 
     it('converts variable tokens to variable nodes', () => {
@@ -114,16 +121,27 @@ describe('buildAST', () => {
       const ast = parse('{if $x}[[Go|Target]]{/if}');
       const node = ast[0] as MacroNode;
       expect(node.branches![0].children).toEqual([
-        { type: 'link', display: 'Go', target: 'Target' },
+        {
+          type: 'macro',
+          name: 'link',
+          rawArgs: '"Go" "Target"',
+          children: [],
+        },
       ]);
     });
   });
 
   describe('className passthrough', () => {
-    it('passes className from link token to link node', () => {
+    it('passes className from link token to desugared link node', () => {
       const ast = parse('[[.fancy Go|Target]]');
       expect(ast).toEqual([
-        { type: 'link', display: 'Go', target: 'Target', className: 'fancy' },
+        {
+          type: 'macro',
+          name: 'link',
+          rawArgs: '"Go" "Target"',
+          children: [],
+          className: 'fancy',
+        },
       ]);
     });
 
@@ -190,10 +208,16 @@ describe('buildAST', () => {
   });
 
   describe('id passthrough', () => {
-    it('passes id from link token to link node', () => {
+    it('passes id from desugared link token to macro node', () => {
       const ast = parse('[[#door Go|Target]]');
       expect(ast).toEqual([
-        { type: 'link', display: 'Go', target: 'Target', id: 'door' },
+        {
+          type: 'macro',
+          name: 'link',
+          rawArgs: '"Go" "Target"',
+          children: [],
+          id: 'door',
+        },
       ]);
     });
 
@@ -204,13 +228,14 @@ describe('buildAST', () => {
       ]);
     });
 
-    it('passes both id and className to link node', () => {
+    it('passes both id and className to desugared link node', () => {
       const ast = parse('[[#door.fancy Go|Target]]');
       expect(ast).toEqual([
         {
-          type: 'link',
-          display: 'Go',
-          target: 'Target',
+          type: 'macro',
+          name: 'link',
+          rawArgs: '"Go" "Target"',
+          children: [],
           className: 'fancy',
           id: 'door',
         },
@@ -581,7 +606,7 @@ describe('buildAST', () => {
         'text',
         'macro',
         'text',
-        'link',
+        'macro',
       ]);
     });
 

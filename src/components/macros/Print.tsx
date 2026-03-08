@@ -1,39 +1,22 @@
-import { evaluate } from '../../expression';
-import { useMergedLocals } from '../../hooks/use-merged-locals';
-import { useInterpolate } from '../../hooks/use-interpolate';
-import { currentSourceLocation } from '../../utils/source-location';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
+import { MacroError } from './MacroError';
 
-export function Print({ rawArgs, className, id }: MacroProps) {
-  const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
-  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
-
-  try {
-    const result = evaluate(rawArgs, mergedVars, mergedTemps, mergedLocals);
-    const display = result == null ? '' : String(result);
-    if (className || id)
+defineMacro({
+  name: 'print',
+  interpolate: true,
+  merged: true,
+  render({ rawArgs }, ctx) {
+    try {
+      const result = ctx.evaluate!(rawArgs);
+      const display = result == null ? '' : String(result);
+      return ctx.wrap(display);
+    } catch (err) {
       return (
-        <span
-          id={id}
-          class={className}
-        >
-          {display}
-        </span>
+        <MacroError
+          macro="print"
+          error={err}
+        />
       );
-    return <>{display}</>;
-  } catch (err) {
-    return (
-      <span
-        class="error"
-        title={String(err)}
-      >
-        {`{print error${currentSourceLocation()}: ${err instanceof Error ? err.message : String(err)}}`}
-      </span>
-    );
-  }
-}
-
-registerMacro('print', Print);
+    }
+  },
+});

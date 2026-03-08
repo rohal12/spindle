@@ -1,7 +1,5 @@
 import { useStoryStore } from '../../store';
-import { useAction } from '../../hooks/use-action';
-import { registerMacro } from '../../registry';
-import type { MacroProps } from '../../registry';
+import { defineMacro } from '../../define-macro';
 
 function parseArgs(rawArgs: string): {
   varName: string;
@@ -28,41 +26,38 @@ function parseArgs(rawArgs: string): {
   };
 }
 
-export function Radiobutton({ rawArgs, className, id }: MacroProps) {
-  const { varName, value: radioValue, label } = parseArgs(rawArgs);
-  const name = varName.startsWith('$') ? varName.slice(1) : varName;
+defineMacro({
+  name: 'radiobutton',
+  render({ rawArgs }, ctx) {
+    const { varName, value: radioValue, label } = parseArgs(rawArgs);
+    const name = varName.startsWith('$') ? varName.slice(1) : varName;
 
-  const currentValue = useStoryStore((s) => s.variables[name]);
-  const setVariable = useStoryStore((s) => s.setVariable);
+    const currentValue = useStoryStore((s) => s.variables[name]);
+    const setVariable = useStoryStore((s) => s.setVariable);
 
-  useAction({
-    type: 'radiobutton',
-    key: `$${name}:${radioValue}`,
-    authorId: id,
-    label: label || radioValue,
-    variable: name,
-    value: currentValue,
-    perform: () => setVariable(name, radioValue),
-  });
+    ctx.useAction({
+      type: 'radiobutton',
+      key: `$${name}:${radioValue}`,
+      authorId: ctx.id,
+      label: label || radioValue,
+      variable: name,
+      value: currentValue,
+      perform: () => setVariable(name, radioValue),
+    });
 
-  const cls = className
-    ? `macro-radiobutton ${className}`
-    : 'macro-radiobutton';
-
-  return (
-    <label
-      id={id}
-      class={cls}
-    >
-      <input
-        type="radio"
-        name={`radio-${name}`}
-        checked={currentValue === radioValue}
-        onChange={() => setVariable(name, radioValue)}
-      />
-      {label ? ` ${label}` : null}
-    </label>
-  );
-}
-
-registerMacro('radiobutton', Radiobutton);
+    return (
+      <label
+        id={ctx.id}
+        class={ctx.cls}
+      >
+        <input
+          type="radio"
+          name={`radio-${name}`}
+          checked={currentValue === radioValue}
+          onChange={() => setVariable(name, radioValue)}
+        />
+        {label ? ` ${label}` : null}
+      </label>
+    );
+  },
+});

@@ -59,6 +59,32 @@ Load the quick save.
 
 Returns `true` if a quick save exists for the current session.
 
+### `Story.defineMacro(config)`
+
+Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
+
+| Property      | Type        | Description                                                         |
+| ------------- | ----------- | ------------------------------------------------------------------- |
+| `name`        | `string`    | Macro name (case-insensitive)                                       |
+| `interpolate` | `boolean?`  | Resolve variable interpolations in className/id                     |
+| `merged`      | `boolean?`  | Provide `ctx.merged` variable 3-tuple + `ctx.evaluate()`            |
+| `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()` |
+| `subMacros`   | `string[]?` | Register sub-macro names for branching                              |
+| `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function               |
+
+```
+{do}
+  Story.defineMacro({
+    name: "shout",
+    render: function(props, ctx) {
+      return ctx.h("span", null, props.rawArgs.toUpperCase());
+    }
+  });
+{/do}
+```
+
+The `ctx` object provides `h`, `renderNodes`, `renderInlineNodes`, `collectText`, `sourceLocation`, `hooks`, and any values from the enabled feature flags. The `render` function runs inside a Preact component and can call hooks via `ctx.hooks`.
+
 ### `Story.registerClass(name, constructor)`
 
 Register a class so its instances can be cloned, saved, and restored with their prototype intact.
