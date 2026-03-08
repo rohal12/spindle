@@ -29,4 +29,5 @@ import '../components/macros/Checkbox';
 import '../components/macros/Radiobutton';
 import '../components/macros/Listbox';
 import '../components/macros/Cycle';
+import '../components/macros/Span';
 import '../components/macros/PassageDisplay';

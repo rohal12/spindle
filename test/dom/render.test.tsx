@@ -86,6 +86,27 @@ describe('renderNodes', () => {
     expect(link!.textContent).toBe('Go');
   });
 
+  it('renders wiki-link with apostrophe in passage name', () => {
+    const store = useStoryStore.getState();
+    store.init(
+      makeStoryData([
+        makePassage(1, 'Start', 'Start'),
+        makePassage(2, "The Director's Cut", 'Content'),
+      ]),
+    );
+    const el = renderMarkup("[[Watch it|The Director's Cut]]");
+    const link = el.querySelector('a.macro-link');
+    expect(link).not.toBeNull();
+    expect(link!.textContent).toBe('Watch it');
+  });
+
+  it('renders wiki-link with apostrophe in display text', () => {
+    const el = renderMarkup("[[It's time|Start]]");
+    const link = el.querySelector('a.macro-link');
+    expect(link).not.toBeNull();
+    expect(link!.textContent).toBe("It's time");
+  });
+
   it('renders {$var} with store value', () => {
     useStoryStore.getState().setVariable('name', 'Hero');
     const el = renderMarkup('{$name}');

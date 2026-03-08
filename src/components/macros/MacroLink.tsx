@@ -11,10 +11,10 @@ function parseArgs(rawArgs: string): {
 } {
   // {link "text" "Passage"} or {link "text"}
   const parts: string[] = [];
-  const re = /["']([^"']+)["']/g;
+  const re = /(["'])(.*?)\1/g;
   let m;
   while ((m = re.exec(rawArgs)) !== null) {
-    parts.push(m[1]!);
+    parts.push(m[2]!);
   }
   if (parts.length >= 2) {
     return { display: parts[0]!, passage: parts[1]! };

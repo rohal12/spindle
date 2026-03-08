@@ -176,6 +176,48 @@ describe('extended macro components', () => {
       const actions = getActions();
       expect(actions.some((a) => a.type === 'link')).toBe(true);
     });
+
+    it('handles apostrophes in double-quoted passage names', () => {
+      useStoryStore
+        .getState()
+        .init(
+          makeStoryData([
+            makePassage(1, 'Start', 'Start'),
+            makePassage(5, "The Director's Cut", 'Director content'),
+          ]),
+        );
+      const el = renderPassage('{link "Watch" "The Director\'s Cut"}{/link}');
+      const link = el.querySelector('.macro-link') as HTMLElement;
+      expect(link).not.toBeNull();
+      expect(link!.textContent).toBe('Watch');
+      link.click();
+      expect(useStoryStore.getState().currentPassage).toBe(
+        "The Director's Cut",
+      );
+    });
+
+    it('handles apostrophes in display text', () => {
+      const el = renderPassage('{link "It\'s a trap" "Room"}{/link}');
+      const link = el.querySelector('.macro-link');
+      expect(link).not.toBeNull();
+      expect(link!.textContent).toBe("It's a trap");
+    });
+
+    it('handles single-quoted args without apostrophes', () => {
+      const el = renderPassage("{link 'Click me' 'Room'}{/link}");
+      const link = el.querySelector('.macro-link') as HTMLElement;
+      expect(link).not.toBeNull();
+      expect(link!.textContent).toBe('Click me');
+      link.click();
+      expect(useStoryStore.getState().currentPassage).toBe('Room');
+    });
+
+    it('handles double quotes inside single-quoted args', () => {
+      const el = renderPassage("{link 'Say \"hello\"' 'Room'}{/link}");
+      const link = el.querySelector('.macro-link');
+      expect(link).not.toBeNull();
+      expect(link!.textContent).toBe('Say "hello"');
+    });
   });
 
   describe('{back}', () => {

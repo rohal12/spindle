@@ -71,6 +71,8 @@ afterAll(async () => {
 
 async function navigateFresh() {
   await page.goto(`${baseUrl}/story.html`);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto(`${baseUrl}/story.html`);
   await page.waitForSelector('[data-passage]');
 }
 
@@ -1478,6 +1480,50 @@ describe('compiled story e2e', () => {
       expect(links).toContain('Link A');
       expect(links).toContain('Link B');
       expect(links).toContain('Link C');
+    });
+  });
+
+  describe('Code Passages', () => {
+    it('PassageReady executes {set} before passage renders', async () => {
+      await navigateFresh();
+      await clickLink('Code passages');
+      await page.waitForSelector('[data-passage="Code Passages Test"]');
+      const readyCount = await page.textContent('.ready-count');
+      expect(Number(readyCount)).toBeGreaterThan(0);
+    });
+
+    it('PassageHeader content appears in passage', async () => {
+      const header = await page.$('.passage-header-content');
+      expect(header).not.toBeNull();
+      const text = await header!.textContent();
+      expect(text).toContain('Header:');
+    });
+
+    it('PassageFooter content appears in passage', async () => {
+      const footer = await page.$('.passage-footer-content');
+      expect(footer).not.toBeNull();
+      const text = await footer!.textContent();
+      expect(text).toContain('End of passage');
+    });
+
+    it('PassageDone executes after display', async () => {
+      await navigateFresh();
+      await clickLink('Code passages');
+      await page.waitForSelector('[data-passage="Code Passages Test"]');
+      const doneCount = await page.textContent('.done-count');
+      expect(Number(doneCount)).toBeGreaterThan(0);
+    });
+
+    it('PassageReady supports conditional logic with {if}', async () => {
+      await navigateFresh();
+      await clickLink('Code passages');
+      await page.waitForSelector('[data-passage="Code Passages Test"]');
+      await clickLink('Navigate away and back');
+      await page.waitForSelector('[data-passage="Code Passages Return"]');
+      await clickLink('Return');
+      await page.waitForSelector('[data-passage="Code Passages Test"]');
+      const cond = await page.textContent('.ready-cond');
+      expect(cond).toBe('true');
     });
   });
 });

@@ -1,7 +1,7 @@
 import { useStoryStore } from '../store';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
-import { renderNodes } from '../markup/render';
+import { renderInlineNodes } from '../markup/render';
 
 const DEFAULT_MARKUP =
   '<header class="story-menubar">{story-title}{back}{forward}{restart}{quicksave}{quickload}{saves}{settings}</header>\n{passage}';
@@ -16,7 +16,7 @@ export function StoryInterface() {
   try {
     const tokens = tokenize(markup);
     const ast = buildAST(tokens);
-    return <>{renderNodes(ast)}</>;
+    return <>{renderInlineNodes(ast)}</>;
   } catch (err) {
     return (
       <span class="error">

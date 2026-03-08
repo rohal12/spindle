@@ -42,6 +42,9 @@ $forSetTotal = 0
 $forDoResult = ""
 $forNestedLog = ""
 $forBtnPick = 0
+$ready_count = 0
+$done_count = 0
+$ready_conditional = false
 
 
 :: StoryInit
@@ -95,6 +98,8 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 [[For loop edges->For Loop Edge Cases]] | [[HTML interop->HTML Interop]] | [[Markdown edges->Markdown Edge Cases]]
 
 [[Computed vars->Computed Var Tests]] | [[Unset tests->Unset Tests]] | [[Link syntax->Link Syntax Edge Cases]]
+
+[[Code passages->Code Passages Test]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -1099,3 +1104,33 @@ Temp: [{_unset_temp}]
 **Multiple links inline:** [[Link A|Start]] | [[Link B|Start]] | [[Link C|Start]]
 
 [[Back to start|Start]]
+
+
+:: PassageReady
+{set $ready_count = $ready_count + 1}
+{if visited(currentPassage().name) > 1}{set $ready_conditional = true}{/if}
+
+:: PassageHeader
+{.passage-header-content span}**Header:** Current visit #{$ready_count}{/span}
+
+:: PassageFooter
+{.passage-footer-content span}*— End of passage —*{/span}
+
+:: PassageDone
+{set $done_count = $done_count + 1}
+
+:: Code Passages Test
+### Code Passages
+
+Ready count: {.ready-count span}{$ready_count}{/span}
+
+Done count: {.done-count span}{$done_count}{/span}
+
+Ready conditional: {.ready-cond span}{$ready_conditional}{/span}
+
+[[Navigate away and back|Code Passages Return]]
+
+[[Back to start|Start]]
+
+:: Code Passages Return
+Intermediate passage. [[Return->Code Passages Test]]

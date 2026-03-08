@@ -1,5 +1,5 @@
 import { useStoryStore } from '../../store';
-import { Passage } from '../Passage';
+import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -18,11 +18,21 @@ defineMacro({
       );
     }
 
+    const readyPassage = storyData?.passages.get('PassageReady');
+
     return (
       <div
         id={ctx.id ?? 'story'}
         class={ctx.className ?? 'story'}
       >
+        {readyPassage && (
+          <div
+            key={`ready-${currentPassage}`}
+            hidden
+          >
+            {renderPassageContent(readyPassage)}
+          </div>
+        )}
         <Passage
           passage={passage}
           key={currentPassage}
