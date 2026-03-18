@@ -29,8 +29,32 @@ tw-storydata {
   padding: 2em 1.5em;
 }
 
+/* Passage transitions */
+
+.passage-container {
+  position: relative;
+}
+
+.passage-container--crossfading {
+  display: grid;
+}
+
+.passage-container--crossfading > * {
+  grid-area: 1 / 1;
+}
+
 .passage {
-  animation: passage-fade-in 0.3s ease-in;
+  animation: passage-fade-in var(--passage-in-duration, 0.3s) ease;
+}
+
+.passage[data-transition='none'] {
+  animation: none;
+}
+
+.passage-snapshot {
+  animation: passage-fade-out var(--passage-out-duration, 0.3s) ease forwards;
+  pointer-events: none;
+  user-select: none;
 }
 
 @keyframes passage-fade-in {
@@ -41,6 +65,24 @@ tw-storydata {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes passage-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .passage,
+  .passage-snapshot {
+    animation-duration: 0.01s !important;
   }
 }
 
