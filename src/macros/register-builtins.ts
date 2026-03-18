@@ -20,6 +20,7 @@ import '../components/macros/Dialog';
 import '../components/macros/SaveManager';
 import '../components/macros/SettingsControls';
 import '../components/macros/Include';
+import '../components/macros/Nobr';
 import '../components/macros/Goto';
 import '../components/macros/Unset';
 import '../components/macros/Textbox';

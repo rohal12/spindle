@@ -9,7 +9,8 @@ import { sourceLocationOf } from '../utils/source-location';
 export function renderPassageContent(passage: PassageData) {
   const tokens = tokenize(passage.content);
   const ast = buildAST(tokens);
-  return renderNodes(ast);
+  const nobr = passage.tags.includes('nobr');
+  return renderNodes(ast, nobr ? { nobr: true } : undefined);
 }
 
 interface PassageProps {
