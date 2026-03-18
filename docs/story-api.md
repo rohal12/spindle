@@ -74,6 +74,35 @@ Remove a named watcher.
 {/do}
 ```
 
+### `Story.setTransition(config)`
+
+Set the default transition used for all passage navigations. Pass `null` to revert to the built-in default (`fade-through`, 300ms, 50ms pause).
+
+| Property   | Type      | Default | Description                                             |
+| ---------- | --------- | ------- | ------------------------------------------------------- |
+| `type`     | `string`  | —       | `'none'`, `'fade'`, `'fade-through'`, `'crossfade'`     |
+| `duration` | `number?` | `300`   | Animation duration in milliseconds                      |
+| `pause`    | `number?` | `50`    | Pause between outgoing and incoming (fade-through only) |
+
+```
+{do}
+  Story.setTransition({ type: 'crossfade', duration: 600 });
+  Story.setTransition({ type: 'none' }); // disable transitions
+  Story.setTransition(null); // revert to default
+{/do}
+```
+
+### `Story.setNextTransition(config)`
+
+Set a one-shot transition for the next navigation only. Consumed automatically when any navigation occurs — even if passage tags override the visual result.
+
+```
+{do}
+  Story.setNextTransition({ type: 'none' }); // next navigation is instant
+  Story.goto("DroneAttack");
+{/do}
+```
+
 ### `Story.save()`
 
 Perform a quick save.

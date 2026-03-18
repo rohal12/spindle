@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable passage transitions with outgoing phase support
+  - Four transition types: `none` (instant), `fade` (incoming only), `fade-through` (fade out, optional pause, fade in), `crossfade` (simultaneous overlap)
+  - `Story.setTransition(config)` sets a persistent default transition
+  - `Story.setNextTransition(config)` sets a one-shot transition for the next navigation only
+  - Per-passage transition via tags: `[transition:crossfade duration:600 pause:200]`
+  - Priority chain: passage tags > one-shot > persistent default > built-in default
+  - CSS custom properties (`--passage-in-duration`, `--passage-out-duration`, `--passage-pause`) for author styling
+  - `data-transition` attribute on `.passage` for CSS targeting per type
+  - `prefers-reduced-motion` support
 - `:storyready` DOM event dispatched after Spindle finishes loading and rendering
 - Escaped braces (`\{`, `\}`) to display literal `{` and `}` characters in passage text
 - String-aware expression transformer that preserves `$var`/`_var`/`@var` sigils inside string literals and template literal text, while still transforming code and `${…}` interpolations
@@ -17,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interpolation engine (`interpolate()` / `hasInterpolation()`) for resolving `{$var}`, `{_var}`, `{@var}` with dot-path support in string contexts
 - Comprehensive e2e test suite covering edge cases (nested macros, widget locals, computed reactivity, timed/repeat macros, form inputs, and more)
 - Unit tests for expression transformer, interpolation engine, option-utils, and tokenizer
+
+### Changed
+
+- Default passage transition changed from incoming-only fade to `fade-through` (300ms fade out, 50ms pause, 300ms fade in). Use `Story.setTransition({ type: 'fade' })` to restore the old behavior.
+- Passage animation easing changed from `ease-in` to `ease`
+- `.passage` element is now wrapped in a `.passage-container` div
 
 ### Fixed
 

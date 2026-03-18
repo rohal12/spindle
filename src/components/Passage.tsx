@@ -14,6 +14,7 @@ export function renderPassageContent(passage: PassageData) {
 
 interface PassageProps {
   passage: PassageData;
+  dataTransition?: string;
 }
 
 const CODE_PASSAGES = new Set([
@@ -23,7 +24,7 @@ const CODE_PASSAGES = new Set([
   'PassageDone',
 ]);
 
-export function Passage({ passage }: PassageProps) {
+export function Passage({ passage, dataTransition }: PassageProps) {
   const storyData = useStoryStore((s) => s.storyData);
   const isCodePassage = CODE_PASSAGES.has(passage.name);
   const [doneReady, setDoneReady] = useState(false);
@@ -92,6 +93,7 @@ export function Passage({ passage }: PassageProps) {
       class="passage"
       data-passage={passage.name}
       data-tags={passage.tags.join(' ')}
+      data-transition={dataTransition}
     >
       {headerContent && <div class="passage-header">{headerContent}</div>}
       {content}

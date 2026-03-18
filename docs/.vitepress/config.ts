@@ -103,6 +103,7 @@ export default defineConfig({
         items: [
           { text: 'Saves', link: '/saves' },
           { text: 'Settings', link: '/settings' },
+          { text: 'Transitions', link: '/transitions' },
           { text: 'Story API', link: '/story-api' },
         ],
       },
