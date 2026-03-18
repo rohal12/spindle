@@ -23,6 +23,7 @@ import {
 } from './prng';
 import { addTrigger, removeTrigger } from './triggers';
 import type { WatchOptions } from './triggers';
+import type { TransitionConfig } from './transition';
 
 export type { StoryAction };
 
@@ -72,6 +73,8 @@ export interface StoryAPI {
     callbackOrOptions: (() => void) | WatchOptions,
   ): () => void;
   unwatch(name: string): void;
+  setTransition(config: TransitionConfig | null): void;
+  setNextTransition(config: TransitionConfig | null): void;
   random(): number;
   randomInt(min: number, max: number): number;
   readonly config: {
@@ -279,6 +282,14 @@ function createStoryAPI(): StoryAPI {
 
     unwatch(name: string): void {
       removeTrigger(name);
+    },
+
+    setTransition(config: TransitionConfig | null): void {
+      useStoryStore.getState().setTransition(config);
+    },
+
+    setNextTransition(config: TransitionConfig | null): void {
+      useStoryStore.getState().setNextTransition(config);
     },
 
     random(): number {
