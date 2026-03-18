@@ -1,6 +1,7 @@
 import { useStoryStore } from '../../store';
 import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
+import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -33,10 +34,16 @@ defineMacro({
       );
     }
 
+    const nobr = passage.tags.includes('nobr');
     const tokens = tokenize(passage.content);
     const ast = buildAST(tokens);
-    const content = inline ? ctx.renderInlineNodes(ast) : ctx.renderNodes(ast);
+    const content = inline
+      ? ctx.renderInlineNodes(ast)
+      : ctx.renderNodes(ast, nobr ? { nobr: true } : undefined);
 
+    if (nobr) {
+      return ctx.wrap(ctx.h(NobrContext.Provider, { value: true }, content));
+    }
     return ctx.wrap(content);
   },
 });

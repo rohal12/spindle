@@ -61,6 +61,12 @@ describe('extended macro components', () => {
       makePassage(3, 'End', 'The end'),
       makePassage(4, 'Helper', 'Included content here'),
       makePassage(5, 'Markdown', '**bold** text'),
+      makePassage(
+        6,
+        'TestPanel',
+        '<div class="row">\n  <span class="a">Alpha</span>\n  <span class="b">Beta</span>\n</div>\n<div class="row">\n  <span class="c">Gamma</span>\n</div>',
+        ['nobr'],
+      ),
     ]);
     useStoryStore.getState().init(storyData);
   });
@@ -135,6 +141,17 @@ describe('extended macro components', () => {
       expect(el.querySelector('strong')).not.toBeNull();
       expect(el.querySelector('strong')!.textContent).toBe('bold');
     });
+
+    it('respects [nobr] tag on included passage', () => {
+      const el = renderPassage(
+        '<div class="panel">{include "TestPanel"}</div>',
+      );
+      const panel = el.querySelector('.panel')!;
+      expect(panel.querySelector('p')).toBeNull();
+      expect(panel.querySelector('.row .a')!.textContent).toBe('Alpha');
+      expect(panel.querySelector('.row .b')!.textContent).toBe('Beta');
+      expect(panel.querySelector('.row .c')!.textContent).toBe('Gamma');
+    });
   });
 
   describe('{nobr}', () => {
@@ -143,6 +160,14 @@ describe('extended macro components', () => {
       expect(el.querySelector('p')).toBeNull();
       expect(el.querySelector('strong')).not.toBeNull();
       expect(el.textContent).toContain('bold');
+    });
+
+    it('suppresses <p> inside nested HTML elements', () => {
+      const el = renderPassage(
+        '{nobr}<div class="layout"><div class="inner">text</div></div>{/nobr}',
+      );
+      expect(el.querySelector('p')).toBeNull();
+      expect(el.querySelector('.layout .inner')).not.toBeNull();
     });
 
     it('renders <p> tags by default without {nobr}', () => {

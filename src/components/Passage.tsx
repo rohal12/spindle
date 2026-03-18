@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
-import { renderNodes } from '../markup/render';
+import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
@@ -89,7 +89,9 @@ export function Passage({ passage, dataTransition }: PassageProps) {
     }
   }, [doneReady, donePassage?.content]);
 
-  return (
+  const nobr = passage.tags.includes('nobr');
+
+  const inner = (
     <div
       class="passage"
       data-passage={passage.name}
@@ -101,5 +103,11 @@ export function Passage({ passage, dataTransition }: PassageProps) {
       {footerContent && <div class="passage-footer">{footerContent}</div>}
       {doneContent && <div hidden>{doneContent}</div>}
     </div>
+  );
+
+  return nobr ? (
+    <NobrContext.Provider value={true}>{inner}</NobrContext.Provider>
+  ) : (
+    inner
   );
 }

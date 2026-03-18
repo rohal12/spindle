@@ -1,4 +1,5 @@
 import { createContext } from 'preact';
+import { useContext } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
 import { getWidget } from '../widgets/widget-registry';
@@ -21,6 +22,7 @@ const defaultUpdater: LocalsUpdater = {
 
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
+export const NobrContext = createContext(false);
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -80,6 +82,7 @@ function convertDomNode(
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
+  const nobr = useContext(NobrContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = resolve(v) ?? v;
@@ -87,7 +90,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   return h(
     node.tag,
     attrs,
-    node.children.length > 0 ? renderNodes(node.children) : undefined,
+    node.children.length > 0
+      ? renderNodes(node.children, nobr ? { nobr: true } : undefined)
+      : undefined,
   );
 }
 
