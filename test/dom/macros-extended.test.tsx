@@ -145,6 +145,14 @@ describe('extended macro components', () => {
       expect(el.textContent).toContain('bold');
     });
 
+    it('suppresses <p> inside nested HTML elements', () => {
+      const el = renderPassage(
+        '{nobr}<div class="layout"><div class="inner">text</div></div>{/nobr}',
+      );
+      expect(el.querySelector('p')).toBeNull();
+      expect(el.querySelector('.layout .inner')).not.toBeNull();
+    });
+
     it('renders <p> tags by default without {nobr}', () => {
       const el = renderPassage('Some text here');
       expect(el.querySelector('p')).not.toBeNull();
