@@ -47,7 +47,7 @@ This replaces the current incoming-only fade as the default. The old behavior is
 
 Priority from highest to lowest:
 
-1. **Tags on the target passage** — if a `transition:` tag is present, use it (unspecified fields filled from built-in defaults). Each level is a complete override, not a merge.
+1. **Tags on the target passage** — if a `transition:` tag is present, use it. Unspecified fields within that level are filled from the built-in default (not from lower-priority levels). For example, `transition:crossfade` with no `duration:` tag yields `{ type: 'crossfade', duration: 300, pause: 50 }`.
 2. **`Story.setNextTransition()`** — one-shot, **always consumed on navigation** regardless of whether tags override the visual result. This prevents stale one-shots from firing on unintended later navigations.
 3. **`Story.setTransition()`** — persistent author default.
 4. **Built-in default** — `{ type: 'fade-through', duration: 300, pause: 50 }`.
@@ -111,7 +111,7 @@ This decoupling means the store updates immediately (history, visit counts, vari
 
 When a navigation triggers and the transition has an outgoing phase:
 
-1. `cloneNode(true)` on the current `.passage` element.
+1. `cloneNode(true)` on the `.passage` div specifically (not the passage container or `#story` wrapper — the PassageReady hidden div and other siblings are not included in the snapshot).
 2. Strip `id` attributes from the clone to avoid duplicates.
 3. Apply inline styles: `pointer-events: none; user-select: none` (inert).
 4. Insert the clone into the passage container (the wrapper div that holds `.passage`).
@@ -119,6 +119,29 @@ When a navigation triggers and the transition has an outgoing phase:
 6. For `fade-through`: hide the real passage area (PassageDisplay renders nothing during outgoing/paused phases), animate the clone's opacity to 0, wait for `pause`, then mount the new passage.
 7. For `crossfade`: mount the new passage immediately alongside the snapshot. Both the snapshot and the new `.passage` are positioned via CSS grid stacking (`display: grid; grid-area: 1/1` on the container) so they overlap visually. Animate the clone out and the new passage in simultaneously.
 8. On animation end (or after `duration` ms `setTimeout` fallback), remove the clone from DOM.
+
+### Passage Container
+
+PassageDisplay introduces a new intermediate wrapper div (`.passage-container`) between the existing `#story` div and the `.passage` element. This wrapper is the target for snapshot insertion and crossfade layout. Introducing a new element avoids changing `#story`'s display property during crossfade, which could break StoryInterface layouts.
+
+```html
+<div
+  id="story"
+  class="story"
+>
+  <!-- PassageReady hidden div -->
+  <div class="passage-container">
+    <div
+      class="passage"
+      data-passage="..."
+      data-tags="..."
+      data-transition="..."
+    >
+      <!-- passage content -->
+    </div>
+  </div>
+</div>
+```
 
 ### Crossfade Layout
 
@@ -134,6 +157,10 @@ During the `crossfading` state, the passage container uses CSS grid stacking to 
 ```
 
 This avoids absolute positioning and its associated height-collapse issues.
+
+### `data-transition` Attribute Delivery
+
+The `data-transition` attribute on `.passage` is passed as a prop from PassageDisplay to the Passage component, which renders it on the `.passage` div. This ensures the attribute is present in the initial render, before the CSS animation starts — avoiding a flash where the default animation briefly plays before being overridden. The snapshot clone inherits it from the cloned DOM, and also receives it via JS during snapshot setup.
 
 ### Timing Orchestration
 
@@ -326,6 +353,25 @@ The keyframes include a subtle `translateY` motion in addition to opacity. The o
 }
 ```
 
+### Reduced Motion
+
+Respect `prefers-reduced-motion` at the CSS level:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .passage,
+  .passage-snapshot {
+    animation-duration: 0.01s !important;
+  }
+}
+```
+
+Using `0.01s` rather than `animation: none` ensures the state machine still receives `animationend` events and completes its phase transitions normally. The visual effect is effectively instant.
+
+### Snapshot Media Handling
+
+`cloneNode(true)` will clone media elements (audio/video) if authors have embedded them in passage content. During snapshot setup (step 3), the snapshot mechanism also pauses and mutes any `<audio>` and `<video>` elements in the clone to prevent duplicate playback. This is a targeted querySelectorAll on the clone, not a general-purpose sanitizer.
+
 ### Author Overrides
 
 Authors can replace keyframes in their story stylesheet:
@@ -373,9 +419,9 @@ No old passage exists — always uses `fade` behavior (incoming only), regardles
 
 The `data-transition` attribute is set to the exact `TransitionType` string: `"none"`, `"fade"`, `"fade-through"`, or `"crossfade"`. CSS attribute selectors handle hyphens without issue.
 
-### `Story.restart()`
+### `Story.restart()` and `Story.load()`
 
-Treated as navigation to the start passage. Transition applies normally.
+Both `restart()` and `load()` change `currentPassage` without going through `navigate()`. They reset state (history, variables, etc.) similar to a fresh start. Both are treated like first-passage-load: incoming-only `fade`, no outgoing phase. The rationale is the same — the old game state is conceptually gone, not transitioning to a new scene within the same story.
 
 ### PassageReady/PassageDone Timing
 
@@ -383,13 +429,14 @@ Stays anchored to the new passage's mount lifecycle. PassageReady fires when the
 
 ## Files to Modify
 
-| File                                       | Changes                                                                                                                  |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `src/store.ts`                             | Add `transitionConfig`, `nextTransition` state + actions                                                                 |
-| `src/story-api.ts`                         | Add `setTransition()`, `setNextTransition()` methods                                                                     |
-| `src/components/macros/PassageDisplay.tsx` | State machine, snapshot logic, transition orchestration                                                                  |
-| `src/styles.css`                           | Add `passage-fade-out` keyframes, `.passage-snapshot` rules, CSS custom properties, `data-transition` selectors          |
-| `src/transition.ts` (new)                  | `TransitionConfig` type, `resolveTransitionFromTags()`, `resolveTransition()` (full resolution chain), built-in defaults |
+| File                                       | Changes                                                                                                                                            |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/store.ts`                             | Add `transitionConfig`, `nextTransition` state + actions                                                                                           |
+| `src/story-api.ts`                         | Add `setTransition()`, `setNextTransition()` methods                                                                                               |
+| `src/components/macros/PassageDisplay.tsx` | State machine, snapshot logic, transition orchestration, passage container wrapper                                                                 |
+| `src/components/Passage.tsx`               | Accept and render `data-transition` prop on `.passage` div                                                                                         |
+| `src/styles.css`                           | Add `passage-fade-out` keyframes, `.passage-snapshot` rules, CSS custom properties, `data-transition` selectors, reduced motion, passage container |
+| `src/transition.ts` (new)                  | `TransitionConfig` type, `resolveTransitionFromTags()`, `resolveTransition()` (full resolution chain), built-in defaults                           |
 
 ## Out of Scope
 
