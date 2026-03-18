@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Variable interpolation in CSS selectors on macros and variable display (e.g. `{.{$color} print $msg}`)
 - Interpolation engine (`interpolate()` / `hasInterpolation()`) for resolving `{$var}`, `{_var}`, `{@var}` with dot-path support in string contexts
 - `{include}` macro `inline` flag to render included passage without markdown processing (e.g. `{include "Data" inline}`)
+- `{nobr}...{/nobr}` block macro to suppress `<p>` wrapping while keeping inline markdown
+- `[nobr]` passage tag to suppress `<p>` wrapping for an entire passage
 - Comprehensive e2e test suite covering edge cases (nested macros, widget locals, computed reactivity, timed/repeat macros, form inputs, and more)
 - Unit tests for expression transformer, interpolation engine, option-utils, and tokenizer
 

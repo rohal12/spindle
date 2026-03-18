@@ -54,6 +54,7 @@ const BLOCK_MACROS = new Set([
   'type',
   'widget',
   'span',
+  'nobr',
 ]);
 
 /** Map from branch macro name → required parent macro name */
