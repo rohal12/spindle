@@ -12,12 +12,15 @@ defineMacro({
 
     if (!storyData) return null;
 
+    const inline = /\binline\b/.test(rawArgs);
+    const nameExpr = rawArgs.replace(/\binline\b/, '').trim();
+
     let passageName: string;
     try {
-      const result = ctx.evaluate!(rawArgs);
+      const result = ctx.evaluate!(nameExpr);
       passageName = String(result);
     } catch {
-      passageName = rawArgs.replace(/^["']|["']$/g, '');
+      passageName = nameExpr.replace(/^["']|["']$/g, '');
     }
 
     const passage = storyData.passages.get(passageName);
@@ -32,7 +35,7 @@ defineMacro({
 
     const tokens = tokenize(passage.content);
     const ast = buildAST(tokens);
-    const content = ctx.renderNodes(ast);
+    const content = inline ? ctx.renderInlineNodes(ast) : ctx.renderNodes(ast);
 
     return ctx.wrap(content);
   },
