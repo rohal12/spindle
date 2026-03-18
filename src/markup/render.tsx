@@ -29,9 +29,15 @@ export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 function htmlToPreact(
   html: string,
   components: preact.ComponentChildren[],
+  nobr = false,
 ): preact.ComponentChildren {
   const temp = document.createElement('div');
   temp.innerHTML = html.trim();
+  if (nobr) {
+    for (const p of Array.from(temp.querySelectorAll(':scope > p'))) {
+      p.replaceWith(...Array.from(p.childNodes));
+    }
+  }
   const children = Array.from(temp.childNodes).map((child, i) =>
     convertDomNode(child, i, components),
   );
@@ -210,7 +216,10 @@ function getVariableTextValue(node: VariableNode): string {
  * After micromark processes the combined string, the HTML is parsed back into
  * Preact VNodes with placeholders replaced by the real rendered components.
  */
-export function renderNodes(nodes: ASTNode[]): preact.ComponentChildren {
+export function renderNodes(
+  nodes: ASTNode[],
+  options?: { nobr?: boolean },
+): preact.ComponentChildren {
   if (nodes.length === 0) return null;
 
   // If there's no text at all, render nodes directly without markdown
@@ -241,5 +250,5 @@ export function renderNodes(nodes: ASTNode[]): preact.ComponentChildren {
   const html = markdownToHtml(combined);
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, components);
+  return htmlToPreact(html, components, options?.nobr);
 }

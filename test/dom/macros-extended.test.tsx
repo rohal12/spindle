@@ -11,8 +11,13 @@ import {
 import { clearWidgets } from '../../src/widgets/widget-registry';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
-function makePassage(pid: number, name: string, content: string): PassageData {
-  return { pid, name, tags: [], metadata: {}, content };
+function makePassage(
+  pid: number,
+  name: string,
+  content: string,
+  tags: string[] = [],
+): PassageData {
+  return { pid, name, tags, metadata: {}, content };
 }
 
 function makeStoryData(passages: PassageData[], startNode = 1): StoryData {
@@ -129,6 +134,32 @@ describe('extended macro components', () => {
       const el = renderPassage('{include "Markdown"}');
       expect(el.querySelector('strong')).not.toBeNull();
       expect(el.querySelector('strong')!.textContent).toBe('bold');
+    });
+  });
+
+  describe('{nobr}', () => {
+    it('suppresses <p> wrapping but keeps inline markdown', () => {
+      const el = renderPassage('{nobr}**bold** text{/nobr}');
+      expect(el.querySelector('p')).toBeNull();
+      expect(el.querySelector('strong')).not.toBeNull();
+      expect(el.textContent).toContain('bold');
+    });
+
+    it('renders <p> tags by default without {nobr}', () => {
+      const el = renderPassage('Some text here');
+      expect(el.querySelector('p')).not.toBeNull();
+    });
+  });
+
+  describe('[nobr] passage tag', () => {
+    it('suppresses <p> wrapping for the entire passage', () => {
+      const passage = makePassage(10, 'NoBr', '**bold** text', ['nobr']);
+      const storyData = makeStoryData([passage], 10);
+      useStoryStore.getState().init(storyData);
+      const container = document.createElement('div');
+      render(<Passage passage={passage} />, container);
+      expect(container.querySelector('p')).toBeNull();
+      expect(container.querySelector('strong')).not.toBeNull();
     });
   });
 

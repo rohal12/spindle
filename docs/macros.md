@@ -447,6 +447,24 @@ Add `inline` to skip markdown processing and render the passage content as inlin
 {include "RawData" inline}
 ```
 
+### `{nobr}`
+
+Suppress `<p>` tag generation within a block while keeping inline markdown (bold, italic, etc.).
+
+```
+{nobr}
+**bold** and *italic* — no <p> wrapping
+{/nobr}
+```
+
+Entire passages can be marked with the `[nobr]` tag to achieve the same effect:
+
+```
+:: MyLayout [nobr]
+<div class="sidebar">{include "Nav"}</div>
+<div class="content">{passage}</div>
+```
+
 ### `{widget}`
 
 Define a reusable content block. Optionally declare parameters after the name.
