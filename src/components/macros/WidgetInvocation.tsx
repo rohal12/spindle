@@ -8,6 +8,7 @@ import {
 import {
   LocalsValuesContext,
   LocalsUpdateContext,
+  NobrContext,
   renderNodes,
 } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
@@ -79,6 +80,7 @@ function WidgetBody({
   parentValues: Record<string, unknown>;
   ownKeys: Record<string, unknown>;
 }) {
+  const nobr = useContext(NobrContext);
   const [localState, setLocalState] = useState<Record<string, unknown>>(() => ({
     ...parentValues,
     ...ownKeys,
@@ -96,7 +98,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body)}
+        {renderNodes(body, nobr ? { nobr: true } : undefined)}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -108,10 +110,11 @@ export function WidgetInvocation({
   rawArgs,
 }: WidgetInvocationProps) {
   const parentValues = useContext(LocalsValuesContext);
+  const nobr = useContext(NobrContext);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   if (params.length === 0 || !rawArgs) {
-    return <>{renderNodes(body)}</>;
+    return <>{renderNodes(body, nobr ? { nobr: true } : undefined)}</>;
   }
 
   const argExprs = splitArgs(rawArgs);
