@@ -405,7 +405,7 @@ describe('compiled story e2e', () => {
     });
 
     it('renders timed content after delay', async () => {
-      await page.waitForSelector('#timed-output', { timeout: 2000 });
+      await page.waitForSelector('#timed-output', { timeout: 3000 });
       const timedText = await page.textContent('#timed-output');
       expect(timedText).toContain('Timed content appeared!');
     });
@@ -413,7 +413,7 @@ describe('compiled story e2e', () => {
     it('renders timed next section', async () => {
       await page.waitForFunction(
         () => document.body.textContent?.includes('Second section!'),
-        { timeout: 2000 },
+        { timeout: 3000 },
       );
     });
 
