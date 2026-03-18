@@ -7,6 +7,7 @@ import {
   type Patch,
 } from 'immer';
 import type { StoryData } from './parser';
+import type { TransitionConfig } from './transition';
 import type { SavePayload, SaveHistoryMoment } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { resetTriggers } from './triggers';
@@ -202,6 +203,8 @@ export interface StoryState {
   maxHistory: number;
   saveError: string | null;
   loadError: string | null;
+  transitionConfig: TransitionConfig | null;
+  nextTransition: TransitionConfig | null;
 
   setMaxHistory: (limit: number) => void;
   init: (
@@ -223,6 +226,9 @@ export interface StoryState {
   getSavePayload: () => SavePayload;
   loadFromPayload: (payload: SavePayload) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
+  setTransition: (config: TransitionConfig | null) => void;
+  setNextTransition: (config: TransitionConfig | null) => void;
+  consumeNextTransition: () => TransitionConfig | null;
 }
 
 export const useStoryStore = create<StoryState>()(
@@ -241,6 +247,8 @@ export const useStoryStore = create<StoryState>()(
     maxHistory: 40,
     saveError: null,
     loadError: null,
+    transitionConfig: null,
+    nextTransition: null,
 
     setMaxHistory: (limit: number) => {
       set((state) => {
@@ -615,6 +623,28 @@ export const useStoryStore = create<StoryState>()(
 
     getHistoryVariables: (index: number): Record<string, unknown> => {
       return deepClone(reconstructVarsAt(index));
+    },
+
+    setTransition: (config: TransitionConfig | null) => {
+      set((state) => {
+        state.transitionConfig = config as TransitionConfig | null;
+      });
+    },
+
+    setNextTransition: (config: TransitionConfig | null) => {
+      set((state) => {
+        state.nextTransition = config as TransitionConfig | null;
+      });
+    },
+
+    consumeNextTransition: (): TransitionConfig | null => {
+      const current = get().nextTransition;
+      if (current !== null) {
+        set((state) => {
+          state.nextTransition = null;
+        });
+      }
+      return current;
     },
   })),
 );

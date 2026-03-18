@@ -49,6 +49,8 @@ describe('useStoryStore', () => {
       historyIndex: -1,
       visitCounts: {},
       renderCounts: {},
+      transitionConfig: null,
+      nextTransition: null,
     });
   });
 
