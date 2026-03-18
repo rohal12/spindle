@@ -61,6 +61,12 @@ describe('extended macro components', () => {
       makePassage(3, 'End', 'The end'),
       makePassage(4, 'Helper', 'Included content here'),
       makePassage(5, 'Markdown', '**bold** text'),
+      makePassage(
+        6,
+        'TestPanel',
+        '<div class="row">\n  <span class="a">Alpha</span>\n  <span class="b">Beta</span>\n</div>\n<div class="row">\n  <span class="c">Gamma</span>\n</div>',
+        ['nobr'],
+      ),
     ]);
     useStoryStore.getState().init(storyData);
   });
@@ -134,6 +140,17 @@ describe('extended macro components', () => {
       const el = renderPassage('{include "Markdown"}');
       expect(el.querySelector('strong')).not.toBeNull();
       expect(el.querySelector('strong')!.textContent).toBe('bold');
+    });
+
+    it('respects [nobr] tag on included passage', () => {
+      const el = renderPassage(
+        '<div class="panel">{include "TestPanel"}</div>',
+      );
+      const panel = el.querySelector('.panel')!;
+      expect(panel.querySelector('p')).toBeNull();
+      expect(panel.querySelector('.row .a')!.textContent).toBe('Alpha');
+      expect(panel.querySelector('.row .b')!.textContent).toBe('Beta');
+      expect(panel.querySelector('.row .c')!.textContent).toBe('Gamma');
     });
   });
 
