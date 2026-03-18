@@ -107,6 +107,10 @@ PassageDisplay maintains a local `displayedPassage` ref (separate from the store
 
 This decoupling means the store updates immediately (history, visit counts, variable resets all happen on navigation), but the visual swap is deferred until the transition orchestrator is ready.
 
+**Key implementation detail:** The existing `key={currentPassage}` on `<Passage>` must be changed to `key={displayedPassage}` so that Preact's unmount/remount is controlled by the state machine, not by the store update.
+
+**Detecting restart/load vs navigate:** PassageDisplay detects these by comparing the store's `historyIndex` and history length. A `restart()` resets history to a single entry; a `load()` replaces the entire history. If the history has been replaced (different `playthroughId` or `historyIndex` reset to 0 with a fresh history), PassageDisplay treats it as a first-load and skips the outgoing phase. Back/forward change `historyIndex` but preserve history — PassageDisplay detects these as normal `currentPassage` changes and runs the full transition, including consuming `nextTransition`.
+
 ### Snapshot Mechanism
 
 When a navigation triggers and the transition has an outgoing phase:
@@ -342,7 +346,7 @@ The keyframes include a subtle `translateY` motion in addition to opacity. The o
 
 ### Type Targeting
 
-`data-transition` attribute on both `.passage` and `.passage-snapshot`:
+`data-transition` attribute on both `.passage` and `.passage-snapshot`. Note that `data-transition="fade"` and `data-transition="fade-through"` have no type-specific CSS overrides — they use the default `.passage` animation rule, which is correct since both types use the standard fade-in keyframes. Only `none` and author-defined custom types need attribute-specific selectors:
 
 ```css
 .passage[data-transition='none'] {
