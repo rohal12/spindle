@@ -441,6 +441,12 @@ Render another passage's content inline.
 
 The argument can be a literal passage name or an expression that evaluates to one.
 
+Add `inline` to skip markdown processing and render the passage content as inline nodes only:
+
+```
+{include "RawData" inline}
+```
+
 ### `{widget}`
 
 Define a reusable content block. Optionally declare parameters after the name.

@@ -55,6 +55,7 @@ describe('extended macro components', () => {
       makePassage(2, 'Room', 'A room'),
       makePassage(3, 'End', 'The end'),
       makePassage(4, 'Helper', 'Included content here'),
+      makePassage(5, 'Markdown', '**bold** text'),
     ]);
     useStoryStore.getState().init(storyData);
   });
@@ -116,6 +117,18 @@ describe('extended macro components', () => {
       expect(useStoryStore.getState().renderCounts['Helper']).toBeGreaterThan(
         0,
       );
+    });
+
+    it('renders without markdown when inline flag is set', () => {
+      const el = renderPassage('{include "Markdown" inline}');
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**bold** text');
+    });
+
+    it('renders with markdown by default', () => {
+      const el = renderPassage('{include "Markdown"}');
+      expect(el.querySelector('strong')).not.toBeNull();
+      expect(el.querySelector('strong')!.textContent).toBe('bold');
     });
   });
 
