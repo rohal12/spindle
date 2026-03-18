@@ -13,9 +13,11 @@ import { useInterpolate } from './hooks/use-interpolate';
 import { useMergedLocals } from './hooks/use-merged-locals';
 import {
   LocalsUpdateContext,
-  renderNodes,
+  NobrContext,
+  renderNodes as _renderNodes,
   renderInlineNodes,
 } from './markup/render';
+import type { ASTNode } from './markup/ast';
 import { executeMutation } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
@@ -56,7 +58,7 @@ export interface MacroContext {
   wrap: (content: ComponentChildren) => VNode<any>;
   useAction: (opts: UseActionOptions) => string;
   h: typeof h;
-  renderNodes: typeof renderNodes;
+  renderNodes: typeof _renderNodes;
   renderInlineNodes: typeof renderInlineNodes;
   hooks: {
     useState: typeof useState;
@@ -102,6 +104,11 @@ export function defineMacro(config: MacroDefinition): void {
 
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
+    const nobr = useContext(NobrContext);
+    const renderNodes = nobr
+      ? (nodes: ASTNode[], options?: { nobr?: boolean }) =>
+          _renderNodes(nodes, { nobr: true, ...options })
+      : _renderNodes;
     const ctx: MacroContext = {
       collectText,
       sourceLocation: currentSourceLocation,

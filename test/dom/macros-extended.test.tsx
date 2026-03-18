@@ -170,6 +170,18 @@ describe('extended macro components', () => {
       expect(el.querySelector('.layout .inner')).not.toBeNull();
     });
 
+    it('propagates into {for} loop body', () => {
+      useStoryStore.getState().setVariable('items', ['Alpha', 'Beta']);
+      const el = renderPassage(
+        '{nobr}{for @item of $items}<span class="trait">{@item}</span>{/for}{/nobr}',
+      );
+      expect(el.querySelector('p')).toBeNull();
+      const traits = el.querySelectorAll('.trait');
+      expect(traits.length).toBe(2);
+      expect(traits[0]!.textContent).toBe('Alpha');
+      expect(traits[1]!.textContent).toBe('Beta');
+    });
+
     it('renders <p> tags by default without {nobr}', () => {
       const el = renderPassage('Some text here');
       expect(el.querySelector('p')).not.toBeNull();

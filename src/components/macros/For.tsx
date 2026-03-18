@@ -8,6 +8,7 @@ import {
 import {
   LocalsValuesContext,
   LocalsUpdateContext,
+  NobrContext,
   renderNodes,
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
@@ -76,10 +77,12 @@ function ForIteration({
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
+  const nobr = useContext(NobrContext);
+
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children)}
+        {renderNodes(children, nobr ? { nobr: true } : undefined)}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
