@@ -56,7 +56,7 @@ function convertDomNode(
   }
   if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as Element;
-    const tag = el.tagName.toLowerCase();
+    const tag = el.localName;
 
     // Check if it's a placeholder for a Twine component
     const twIdx = el.getAttribute('data-tw');
