@@ -465,6 +465,12 @@ Entire passages can be marked with the `[nobr]` tag to achieve the same effect:
 <div class="content">{passage}</div>
 ```
 
+To disable `<p>` wrapping globally for the entire story, call in a `script` passage or StoryInit:
+
+```js
+Story.setNobr(true);
+```
+
 ### `{widget}`
 
 Define a reusable content block. Optionally declare parameters after the name.

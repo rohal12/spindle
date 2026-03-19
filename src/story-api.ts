@@ -73,6 +73,7 @@ export interface StoryAPI {
     callbackOrOptions: (() => void) | WatchOptions,
   ): () => void;
   unwatch(name: string): void;
+  setNobr(enabled: boolean): void;
   setTransition(config: TransitionConfig | null): void;
   setNextTransition(config: TransitionConfig | null): void;
   random(): number;
@@ -282,6 +283,10 @@ function createStoryAPI(): StoryAPI {
 
     unwatch(name: string): void {
       removeTrigger(name);
+    },
+
+    setNobr(enabled: boolean): void {
+      useStoryStore.setState({ nobr: enabled });
     },
 
     setTransition(config: TransitionConfig | null): void {

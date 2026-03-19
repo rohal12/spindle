@@ -205,6 +205,7 @@ export interface StoryState {
   loadError: string | null;
   transitionConfig: TransitionConfig | null;
   nextTransition: TransitionConfig | null;
+  nobr: boolean;
 
   setMaxHistory: (limit: number) => void;
   init: (
@@ -249,6 +250,7 @@ export const useStoryStore = create<StoryState>()(
     loadError: null,
     transitionConfig: null,
     nextTransition: null,
+    nobr: false,
 
     setMaxHistory: (limit: number) => {
       set((state) => {
