@@ -74,6 +74,28 @@ Remove a named watcher.
 {/do}
 ```
 
+### `Story.setNobr(enabled)`
+
+Globally enable or disable `<p>` tag wrapping from markdown. When `true`, all passages and macros suppress paragraph wrapping while keeping inline markdown (bold, italic, etc.).
+
+```
+{do}
+  Story.setNobr(true);  // disable <p> wrapping everywhere
+  Story.setNobr(false); // re-enable (default)
+{/do}
+```
+
+### `Story.setCSS(enabled)`
+
+Enable or disable all built-in Spindle styles. Useful when you want full control over styling without needing to override every default rule.
+
+```
+{do}
+  Story.setCSS(false); // disable all built-in styles
+  Story.setCSS(true);  // re-enable (default)
+{/do}
+```
+
 ### `Story.setTransition(config)`
 
 Set the default transition used for all passage navigations. Pass `null` to revert to the built-in default (`fade-through`, 300ms, 50ms pause).

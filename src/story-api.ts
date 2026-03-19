@@ -74,6 +74,7 @@ export interface StoryAPI {
   ): () => void;
   unwatch(name: string): void;
   setNobr(enabled: boolean): void;
+  setCSS(enabled: boolean): void;
   setTransition(config: TransitionConfig | null): void;
   setNextTransition(config: TransitionConfig | null): void;
   random(): number;
@@ -287,6 +288,11 @@ function createStoryAPI(): StoryAPI {
 
     setNobr(enabled: boolean): void {
       useStoryStore.setState({ nobr: enabled });
+    },
+
+    setCSS(enabled: boolean): void {
+      const el = document.getElementById('spindle-styles');
+      if (el) (el as HTMLStyleElement).disabled = !enabled;
     },
 
     setTransition(config: TransitionConfig | null): void {
