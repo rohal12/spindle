@@ -17,7 +17,7 @@ import { buildAST } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
-import './styles.css';
+import builtinCSS from './styles.css?inline';
 
 function renderErrors(root: HTMLElement, errors: string[]) {
   root.innerHTML = '';
@@ -41,6 +41,12 @@ function renderErrors(root: HTMLElement, errors: string[]) {
 
 function boot() {
   const storyData = parseStoryData();
+
+  // Inject built-in styles with an id so they can be disabled at runtime
+  const builtinStyle = document.createElement('style');
+  builtinStyle.id = 'spindle-styles';
+  builtinStyle.textContent = builtinCSS;
+  document.head.appendChild(builtinStyle);
 
   // Install Story API before author script runs
   installStoryAPI();

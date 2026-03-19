@@ -1,11 +1,13 @@
 import { useEffect } from 'preact/hooks';
 import { useStoryStore } from '../store';
+import { NobrContext } from '../markup/render';
 import { StoryInterface } from './StoryInterface';
 import { TriggerDialogHost } from './TriggerDialogHost';
 
 export function App() {
   const storyData = useStoryStore((s) => s.storyData);
   const currentPassage = useStoryStore((s) => s.currentPassage);
+  const nobr = useStoryStore((s) => s.nobr);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -25,10 +27,16 @@ export function App() {
     return <div class="loading">Loading...</div>;
   }
 
-  return (
+  const content = (
     <>
       <StoryInterface />
       <TriggerDialogHost />
     </>
+  );
+
+  return nobr ? (
+    <NobrContext.Provider value={true}>{content}</NobrContext.Provider>
+  ) : (
+    content
   );
 }
