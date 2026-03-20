@@ -137,7 +137,7 @@ defineMacro({
 
       return (
         <ForIteration
-          key={i}
+          key={`${i}-${JSON.stringify(item)}`}
           parentValues={parentValues}
           ownKeys={ownKeys}
           initialValues={{}}
