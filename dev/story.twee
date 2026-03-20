@@ -884,9 +884,6 @@ Key state: {$has_key}
 {set $player.name = "Sir Reginald the Third"}
 {Greeting $player.name}
 
-**Reset name:**
-{set $player.name = "Adventurer"}
-
 **Badge repeated multiple times:**
 {Badge} {Badge} {Badge}
 

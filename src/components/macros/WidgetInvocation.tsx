@@ -81,17 +81,19 @@ function WidgetBody({
   ownKeys: Record<string, unknown>;
 }) {
   const nobr = useContext(NobrContext);
-  const [localState, setLocalState] = useState<Record<string, unknown>>(() => ({
-    ...parentValues,
-    ...ownKeys,
-  }));
+  const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
+    {},
+  );
+
+  // Recomputed every render — picks up new ownKeys from parent
+  const localState = { ...parentValues, ...ownKeys, ...localMutations };
 
   const valuesRef = useRef(localState);
   valuesRef.current = localState;
 
   const getValues = useCallback(() => valuesRef.current, []);
   const update = useCallback((key: string, value: unknown) => {
-    setLocalState((prev) => ({ ...prev, [key]: value }));
+    setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
