@@ -141,14 +141,15 @@ Returns `true` if a quick save exists for the current session.
 
 Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
 
-| Property      | Type        | Description                                                         |
-| ------------- | ----------- | ------------------------------------------------------------------- |
-| `name`        | `string`    | Macro name (case-insensitive)                                       |
-| `interpolate` | `boolean?`  | Resolve variable interpolations in className/id                     |
-| `merged`      | `boolean?`  | Provide `ctx.merged` variable 3-tuple + `ctx.evaluate()`            |
-| `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()` |
-| `subMacros`   | `string[]?` | Register sub-macro names for branching                              |
-| `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function               |
+| Property      | Type        | Description                                                                    |
+| ------------- | ----------- | ------------------------------------------------------------------------------ |
+| `name`        | `string`    | Macro name (case-insensitive)                                                  |
+| `block`       | `boolean?`  | Declare as block macro (`{macro}...{/macro}`). Auto-set when `subMacros` given |
+| `interpolate` | `boolean?`  | Resolve variable interpolations in className/id                                |
+| `merged`      | `boolean?`  | Provide `ctx.merged` variable 3-tuple + `ctx.evaluate()`                       |
+| `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()`            |
+| `subMacros`   | `string[]?` | Register sub-macro names for branching                                         |
+| `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function                          |
 
 ```
 {do}
@@ -449,6 +450,27 @@ Returns a random integer between `min` and `max` (inclusive).
 PRNG state is automatically saved and restored. After loading a save, the random sequence continues from exactly where it was when the save was made. History navigation (back/forward) also restores the PRNG state from that point in the story.
 
 ## Events
+
+### `:storystartup`
+
+A DOM event dispatched on `document` after the Story API is installed and author JavaScript has executed, but **before** passages are parsed or rendered. This is the right place for external scripts to register custom macros (including block macros) so they are available at parse time.
+
+```js
+document.addEventListener(':storystartup', function () {
+  Story.defineMacro({
+    name: 'choices',
+    block: true,
+    subMacros: ['choice'],
+    render: function (props, ctx) {
+      /* ... */
+    },
+  });
+});
+```
+
+::: tip
+You don't need `:storystartup` for macros defined in the story JavaScript (the `:: StoryScript` passage) — those run synchronously before `:storystartup` fires and before passages are parsed. The event is for **external scripts** loaded independently from the story format.
+:::
 
 ### `:storyready`
 

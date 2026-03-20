@@ -28,6 +28,7 @@ import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import { registerMacro, registerSubMacro } from './registry';
 import type { MacroProps } from './registry';
+import { registerBlockMacro } from './markup/ast';
 
 export function macroClass(type: string, className?: string): string {
   const base = `macro-${type}`;
@@ -74,6 +75,7 @@ export interface MacroContext {
 export interface MacroDefinition {
   name: string;
   subMacros?: string[];
+  block?: boolean;
   interpolate?: boolean;
   merged?: boolean;
   storeVar?: boolean;
@@ -157,5 +159,11 @@ export function defineMacro(config: MacroDefinition): void {
   registerMacro(config.name, Wrapper);
   if (config.subMacros) {
     for (const sub of config.subMacros) registerSubMacro(sub);
+  }
+  if (
+    config.block === true ||
+    (config.block !== false && config.subMacros && config.subMacros.length > 0)
+  ) {
+    registerBlockMacro(config.name);
   }
 }

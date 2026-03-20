@@ -57,6 +57,16 @@ const BLOCK_MACROS = new Set([
   'nobr',
 ]);
 
+/** Register a custom macro as a block macro so the AST builder nests children. */
+export function registerBlockMacro(name: string): void {
+  BLOCK_MACROS.add(name.toLowerCase());
+}
+
+/** Unregister a custom block macro (for test cleanup). */
+export function unregisterBlockMacro(name: string): void {
+  BLOCK_MACROS.delete(name.toLowerCase());
+}
+
 /** Map from branch macro name → required parent macro name */
 const BRANCH_PARENT: Record<string, string> = {
   elseif: 'if',

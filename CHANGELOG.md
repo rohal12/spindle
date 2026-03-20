@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `:storystartup` DOM event dispatched after Story API installation and author JS execution, but before first render — enables external scripts to register custom macros (including block macros) in time for passage parsing
+- `block` flag on `Story.defineMacro()` to declare custom block macros that accept `{macro}...{/macro}` children; inferred automatically when `subMacros` is provided
 - Configurable passage transitions with outgoing phase support
   - Four transition types: `none` (instant), `fade` (incoming only), `fade-through` (fade out, optional pause, fade in), `crossfade` (simultaneous overlap)
   - `Story.setTransition(config)` sets a persistent default transition
