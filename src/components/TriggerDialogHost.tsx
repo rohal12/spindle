@@ -49,6 +49,7 @@ export function TriggerDialogHost() {
       passageName={current.passageName}
       panelClass={current.panelClass}
       onClose={handleClose}
+      showCloseButton={current.showCloseButton}
     />
   );
 }

@@ -1723,6 +1723,57 @@ describe('compiled story e2e', () => {
       expect(overlay).toBeNull();
     });
 
+    it('Story.openDialog with showCloseButton: false hides close button', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open dialog without close button")');
+      await page.waitForSelector('.dialog-overlay');
+
+      const closeBtn = await page.$('.dialog-close');
+      expect(closeBtn).toBeNull();
+
+      // Dialog body should still render
+      const dialogText = await page.textContent('.dialog-body');
+      expect(dialogText).toContain('programmatic dialog');
+
+      // Close via backdrop click
+      await page.click('.dialog-overlay', { position: { x: 5, y: 5 } });
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('{dialog} macro renders close button by default', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open via macro")');
+      await page.waitForSelector('.dialog-overlay');
+
+      const closeBtn = await page.$('.dialog-close');
+      expect(closeBtn).not.toBeNull();
+
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('{dialog} macro with noclose flag hides close button', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open via macro (hidden close)")');
+      await page.waitForSelector('.dialog-overlay');
+
+      const closeBtn = await page.$('.dialog-close');
+      expect(closeBtn).toBeNull();
+
+      // Close via backdrop click
+      await page.click('.dialog-overlay', { position: { x: 5, y: 5 } });
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
     it('Story.isDialogOpen returns correct status', async () => {
       await navigateFresh();
       await clickLink('Dialog API');

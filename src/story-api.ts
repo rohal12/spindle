@@ -80,7 +80,10 @@ export interface StoryAPI {
     callbackOrOptions: (() => void) | WatchOptions,
   ): () => void;
   unwatch(name: string): void;
-  openDialog(passageName: string, options?: { panelClass?: string }): void;
+  openDialog(
+    passageName: string,
+    options?: { panelClass?: string; showCloseButton?: boolean },
+  ): void;
   closeDialog(): void;
   closeAllDialogs(): void;
   isDialogOpen(): boolean;
@@ -297,8 +300,15 @@ function createStoryAPI(): StoryAPI {
       removeTrigger(name);
     },
 
-    openDialog(passageName: string, options?: { panelClass?: string }): void {
-      pushDialog({ passageName, panelClass: options?.panelClass });
+    openDialog(
+      passageName: string,
+      options?: { panelClass?: string; showCloseButton?: boolean },
+    ): void {
+      pushDialog({
+        passageName,
+        panelClass: options?.panelClass,
+        showCloseButton: options?.showCloseButton,
+      });
     },
 
     closeDialog(): void {

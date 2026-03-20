@@ -3,11 +3,15 @@ import { PassageDialog } from '../PassageDialog';
 
 defineMacro({
   name: 'dialog',
+  block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const [open, setOpen] = ctx.hooks.useState(false);
 
-    const label = ctx.resolve?.(rawArgs.replace(/^["']|["']$/g, '')) ?? rawArgs;
+    const noclose = /\bnoclose\s*$/.test(rawArgs);
+    const labelRaw = rawArgs.replace(/\bnoclose\s*$/, '').trim();
+    const label =
+      ctx.resolve?.(labelRaw.replace(/^["']|["']$/g, '')) ?? labelRaw;
     const passageName = ctx
       .collectText(children)
       .trim()
@@ -26,6 +30,7 @@ defineMacro({
           <PassageDialog
             passageName={passageName}
             onClose={() => setOpen(false)}
+            showCloseButton={!noclose}
           />
         )}
       </>

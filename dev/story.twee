@@ -1207,6 +1207,14 @@ You reached 100 gold! This passage was reached via a watch goto.
   {/do}
 {/button}
 
+{button "Open dialog without close button"}
+  {do}Story.openDialog("Dialog API Content", { showCloseButton: false }){/do}
+{/button}
+
+{dialog "Open via macro"}Dialog API Content{/dialog}
+
+{dialog "Open via macro (hidden close)" noclose}Dialog API Content{/dialog}
+
 [[Start]]
 
 :: Dialog API Content

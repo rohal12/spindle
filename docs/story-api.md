@@ -78,16 +78,18 @@ Remove a named watcher.
 
 Open a dialog displaying the given passage. If a dialog is already open, the new one is queued and displayed after the current one closes.
 
-| Parameter            | Type      | Description                                 |
-| -------------------- | --------- | ------------------------------------------- |
-| `passageName`        | `string`  | Name of the passage to render in the dialog |
-| `options`            | `object?` | Optional settings                           |
-| `options.panelClass` | `string?` | CSS class added to the dialog panel         |
+| Parameter                 | Type       | Description                                         |
+| ------------------------- | ---------- | --------------------------------------------------- |
+| `passageName`             | `string`   | Name of the passage to render in the dialog         |
+| `options`                 | `object?`  | Optional settings                                   |
+| `options.panelClass`      | `string?`  | CSS class added to the dialog panel                 |
+| `options.showCloseButton` | `boolean?` | Show the default `✕` close button (default: `true`) |
 
 ```
 {do}
   Story.openDialog("Help");
   Story.openDialog("Credits", { panelClass: "wide-panel" });
+  Story.openDialog("Custom", { showCloseButton: false });
 {/do}
 ```
 

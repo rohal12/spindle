@@ -13,6 +13,7 @@ export interface WatchOptions {
 export interface QueuedDialog {
   passageName: string;
   panelClass?: string;
+  showCloseButton?: boolean;
 }
 
 interface Trigger {
