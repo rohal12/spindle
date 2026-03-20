@@ -74,6 +74,53 @@ Remove a named watcher.
 {/do}
 ```
 
+### `Story.openDialog(passageName, options?)`
+
+Open a dialog displaying the given passage. If a dialog is already open, the new one is queued and displayed after the current one closes.
+
+| Parameter            | Type      | Description                                 |
+| -------------------- | --------- | ------------------------------------------- |
+| `passageName`        | `string`  | Name of the passage to render in the dialog |
+| `options`            | `object?` | Optional settings                           |
+| `options.panelClass` | `string?` | CSS class added to the dialog panel         |
+
+```
+{do}
+  Story.openDialog("Help");
+  Story.openDialog("Credits", { panelClass: "wide-panel" });
+{/do}
+```
+
+### `Story.closeDialog()`
+
+Close the currently displayed dialog. If more dialogs are queued, the next one appears automatically.
+
+```
+{button "Done"}
+  {do}Story.closeDialog(){/do}
+{/button}
+```
+
+### `Story.closeAllDialogs()`
+
+Close the current dialog and clear the entire dialog queue.
+
+```
+{do}Story.closeAllDialogs(){/do}
+```
+
+### `Story.isDialogOpen()`
+
+Returns `true` if a dialog is currently displayed.
+
+```
+{do}
+  if (Story.isDialogOpen()) {
+    Story.closeDialog();
+  }
+{/do}
+```
+
 ### `Story.setNobr(enabled)`
 
 Globally enable or disable `<p>` tag wrapping from markdown. When `true`, all passages and macros suppress paragraph wrapping while keeping inline markdown (bold, italic, etc.).
