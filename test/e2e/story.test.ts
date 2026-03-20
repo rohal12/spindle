@@ -1630,4 +1630,127 @@ describe('compiled story e2e', () => {
       expect(overlay).toBeNull();
     });
   });
+
+  // ===========================================================================
+  // Dialog API (Story.openDialog / closeDialog / closeAllDialogs / isDialogOpen)
+  // ===========================================================================
+  describe('Dialog API', () => {
+    it('Story.openDialog opens a dialog with passage content', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open simple dialog")');
+      await page.waitForSelector('.dialog-overlay');
+      const dialogText = await page.textContent('.dialog-body');
+      expect(dialogText).toContain('programmatic dialog');
+      expect(dialogText).toContain('Story.openDialog()');
+
+      // Close via close button
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('Story.openDialog applies panelClass', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open dialog with panelClass")');
+      await page.waitForSelector('.dialog-overlay');
+      const panel = await page.$('.dialog-panel.custom-dialog');
+      expect(panel).not.toBeNull();
+
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('Story.openDialog queues multiple dialogs', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Open two dialogs")');
+      await page.waitForSelector('.dialog-overlay');
+
+      // First dialog
+      const firstText = await page.textContent('.dialog-body');
+      expect(firstText).toContain('programmatic dialog');
+
+      // Close first — second should appear
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay');
+      const secondText = await page.textContent('.dialog-body');
+      expect(secondText).toContain('second queued dialog');
+
+      // Close second
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+    });
+
+    it('Story.closeDialog closes dialog programmatically', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Close from outside")');
+      await page.waitForSelector('.dialog-overlay');
+
+      // Dialog should auto-close after ~100ms via setTimeout
+      await page.waitForSelector('.dialog-overlay', {
+        state: 'detached',
+        timeout: 2000,
+      });
+    });
+
+    it('Story.closeAllDialogs clears queue and closes', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      await page.click('button:has-text("Close all dialogs")');
+      await page.waitForSelector('.dialog-overlay');
+
+      // Should auto-close after ~100ms and NOT show the second dialog
+      await page.waitForSelector('.dialog-overlay', {
+        state: 'detached',
+        timeout: 2000,
+      });
+
+      // Wait a bit to make sure no second dialog appears
+      await page.waitForTimeout(300);
+      const overlay = await page.$('.dialog-overlay');
+      expect(overlay).toBeNull();
+    });
+
+    it('Story.isDialogOpen returns correct status', async () => {
+      await navigateFresh();
+      await clickLink('Dialog API');
+      await page.waitForSelector('[data-passage="Dialog API Tests"]');
+
+      // Not open initially
+      const beforeOpen = await page.evaluate(() =>
+        (window as any).Story.isDialogOpen(),
+      );
+      expect(beforeOpen).toBe(false);
+
+      // Open dialog
+      await page.click('button:has-text("Open simple dialog")');
+      await page.waitForSelector('.dialog-overlay');
+
+      const whileOpen = await page.evaluate(() =>
+        (window as any).Story.isDialogOpen(),
+      );
+      expect(whileOpen).toBe(true);
+
+      // Close and check again
+      await page.click('.dialog-close');
+      await page.waitForSelector('.dialog-overlay', { state: 'detached' });
+
+      const afterClose = await page.evaluate(() =>
+        (window as any).Story.isDialogOpen(),
+      );
+      expect(afterClose).toBe(false);
+    });
+  });
 });

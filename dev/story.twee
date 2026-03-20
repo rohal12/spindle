@@ -101,7 +101,7 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Computed vars->Computed Var Tests]] | [[Unset tests->Unset Tests]] | [[Link syntax->Link Syntax Edge Cases]]
 
-[[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[SVG test->SVG Interop]]
+[[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[Dialog API->Dialog API Tests]] | [[SVG test->SVG Interop]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -1173,3 +1173,44 @@ You reached 100 gold! This passage was reached via a watch goto.
 </svg>
 
 [[Back to start|Start]]
+
+:: Dialog API Tests
+### Dialog API Tests
+
+{button "Open simple dialog"}
+  {do}Story.openDialog("Dialog API Content"){/do}
+{/button}
+
+{button "Open dialog with panelClass"}
+  {do}Story.openDialog("Dialog API Content", { panelClass: "custom-dialog" }){/do}
+{/button}
+
+{button "Open two dialogs (queue)"}
+  {do}
+    Story.openDialog("Dialog API Content");
+    Story.openDialog("Dialog API Second");
+  {/do}
+{/button}
+
+{button "Close from outside"}
+  {do}
+    Story.openDialog("Dialog API Content");
+    setTimeout(function() { Story.closeDialog(); }, 100);
+  {/do}
+{/button}
+
+{button "Close all dialogs"}
+  {do}
+    Story.openDialog("Dialog API Content");
+    Story.openDialog("Dialog API Second");
+    setTimeout(function() { Story.closeAllDialogs(); }, 100);
+  {/do}
+{/button}
+
+[[Start]]
+
+:: Dialog API Content
+This is a programmatic dialog. It was opened via Story.openDialog().
+
+:: Dialog API Second
+This is the second queued dialog.
