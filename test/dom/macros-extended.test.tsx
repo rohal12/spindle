@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import {
@@ -67,6 +68,7 @@ describe('extended macro components', () => {
         '<div class="row">\n  <span class="a">Alpha</span>\n  <span class="b">Beta</span>\n</div>\n<div class="row">\n  <span class="c">Gamma</span>\n</div>',
         ['nobr'],
       ),
+      makePassage(7, 'Help', 'Help content here'),
     ]);
     useStoryStore.getState().init(storyData);
   });
@@ -502,6 +504,42 @@ describe('extended macro components', () => {
       const el = renderPassage('{#main include "Helper"}');
       const span = el.querySelector('#main');
       expect(span).not.toBeNull();
+    });
+  });
+
+  describe('{dialog}', () => {
+    it('renders close button by default', () => {
+      const el = renderPassage('{dialog "Open"}Help{/dialog}');
+      const btn = el.querySelector('button') as HTMLElement;
+      expect(btn).not.toBeNull();
+      expect(btn.textContent).toBe('Open');
+
+      act(() => {
+        btn.click();
+      });
+      const closeBtn = el.querySelector('.dialog-close');
+      expect(closeBtn).not.toBeNull();
+    });
+
+    it('hides close button with noclose flag', () => {
+      const el = renderPassage('{dialog "Open" noclose}Help{/dialog}');
+      const btn = el.querySelector('button') as HTMLElement;
+      act(() => {
+        btn.click();
+      });
+
+      const closeBtn = el.querySelector('.dialog-close');
+      expect(closeBtn).toBeNull();
+
+      // Dialog body should still render
+      const body = el.querySelector('.dialog-body');
+      expect(body).not.toBeNull();
+    });
+
+    it('noclose does not appear in button label', () => {
+      const el = renderPassage('{dialog "Open" noclose}Help{/dialog}');
+      const btn = el.querySelector('button') as HTMLElement;
+      expect(btn.textContent).toBe('Open');
     });
   });
 });

@@ -12,6 +12,7 @@ interface PassageDialogProps {
   fallbackMarkup?: string;
   panelClass?: string;
   onClose: () => void;
+  showCloseButton?: boolean;
 }
 
 export function PassageDialog({
@@ -19,6 +20,7 @@ export function PassageDialog({
   fallbackMarkup,
   panelClass,
   onClose,
+  showCloseButton = true,
 }: PassageDialogProps) {
   const storyData = useStoryStore((s) => s.storyData);
 
@@ -55,12 +57,14 @@ export function PassageDialog({
         onClick={handleBackdrop}
       >
         <div class={cls}>
-          <button
-            class="dialog-close"
-            onClick={onClose}
-          >
-            ✕
-          </button>
+          {showCloseButton && (
+            <button
+              class="dialog-close"
+              onClick={onClose}
+            >
+              ✕
+            </button>
+          )}
           <div class="dialog-body">{content}</div>
         </div>
       </div>

@@ -340,6 +340,18 @@ describe('StoryAPI', () => {
       });
     });
 
+    it('openDialog with showCloseButton option', async () => {
+      const { shiftDialogQueue, resetTriggers } =
+        await import('../../src/triggers');
+      resetTriggers();
+      Story.openDialog('Help', { showCloseButton: false });
+      const item = shiftDialogQueue();
+      expect(item).toEqual({
+        passageName: 'Help',
+        showCloseButton: false,
+      });
+    });
+
     it('closeDialog invokes registered close callback', async () => {
       const { registerDialogHost, resetTriggers } =
         await import('../../src/triggers');

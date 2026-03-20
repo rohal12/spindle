@@ -245,6 +245,12 @@ A button that opens a modal dialog showing another passage. The label goes in th
 
 The dialog closes when the player clicks outside it or presses Escape.
 
+Add `noclose` to hide the default close button — useful when your dialog content provides its own close UI:
+
+```
+{dialog "Custom UI" noclose}My Custom Dialog{/dialog}
+```
+
 ### `{back}`
 
 A button that goes to the previous passage in the history.

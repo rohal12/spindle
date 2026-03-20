@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Story.setNobr(true)` global config to disable `<p>` wrapping everywhere
 - `Story.setCSS(false)` to disable all built-in Spindle styles at runtime
 - Programmatic dialog API: `Story.openDialog(passageName, options?)`, `Story.closeDialog()`, `Story.closeAllDialogs()`, `Story.isDialogOpen()` for imperative dialog control from `{do}` blocks, custom macros, and event handlers
+- `showCloseButton` option for dialogs: hide the default `✕` close button via `{dialog "Label" noclose}`, `Story.openDialog(name, { showCloseButton: false })`, or `defineMenubarAction({ dialog: { showCloseButton: false } })`
 - Comprehensive e2e test suite covering edge cases (nested macros, widget locals, computed reactivity, timed/repeat macros, form inputs, and more)
 - Unit tests for expression transformer, interpolation engine, option-utils, and tokenizer
 
@@ -47,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `{timed}` macro CSS class/id applies per-section: each `{next}` branch's selectors only affect that branch, not the outer wrapper
 - Synchronous macro execution during render (Set, Unset, Computed update immediately rather than deferring)
 - Variables embedded in markdown code spans (backticks) are now passed through as text rather than rendered as reactive variable displays
+- `{dialog}` macro now correctly registers as a block macro so `{dialog}...{/dialog}` syntax works in all environments
 
 ## [0.4.0] - 2026-3-5
 

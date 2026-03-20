@@ -18,6 +18,7 @@ interface MenubarActionConfig {
     passageName: string;
     fallbackMarkup?: string;
     panelClass?: string;
+    showCloseButton?: boolean;
   };
 }
 
@@ -72,6 +73,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
               fallbackMarkup={config.dialog.fallbackMarkup}
               panelClass={config.dialog.panelClass}
               onClose={() => setDialogOpen(false)}
+              showCloseButton={config.dialog.showCloseButton}
             />
           )}
         </>
