@@ -10,6 +10,11 @@ export interface WatchOptions {
   priority?: number;
 }
 
+export interface QueuedDialog {
+  passageName: string;
+  panelClass?: string;
+}
+
 interface Trigger {
   id: number;
   name?: string;
@@ -25,8 +30,14 @@ let triggers: Trigger[] = [];
 let checking = false;
 
 type DialogCallback = () => void;
-let dialogQueue: string[] = [];
+let dialogQueue: QueuedDialog[] = [];
 let dialogNotify: DialogCallback | null = null;
+
+interface DialogHostCallbacks {
+  close: () => void;
+  isOpen: () => boolean;
+}
+let dialogHostCallbacks: DialogHostCallbacks | null = null;
 
 function evalCondition(condition: string): boolean {
   const state = useStoryStore.getState();
@@ -84,7 +95,7 @@ function fireTrigger(trigger: Trigger): void {
   }
 
   if (options.dialog) {
-    dialogQueue.push(options.dialog);
+    dialogQueue.push({ passageName: options.dialog });
     dialogNotify?.();
   }
 
@@ -141,6 +152,7 @@ export function resetTriggers(): void {
   triggers = [];
   dialogQueue = [];
   nextId = 0;
+  dialogHostCallbacks?.close();
 }
 
 export function subscribeTriggerDialogs(cb: () => void): () => void {
@@ -152,10 +164,34 @@ export function subscribeTriggerDialogs(cb: () => void): () => void {
   };
 }
 
-export function shiftDialogQueue(): string | undefined {
+export function shiftDialogQueue(): QueuedDialog | undefined {
   return dialogQueue.shift();
 }
 
 export function dialogQueueLength(): number {
   return dialogQueue.length;
+}
+
+export function pushDialog(item: QueuedDialog): void {
+  dialogQueue.push(item);
+  dialogNotify?.();
+}
+
+export function clearDialogQueue(): void {
+  dialogQueue = [];
+}
+
+export function registerDialogHost(callbacks: DialogHostCallbacks): () => void {
+  dialogHostCallbacks = callbacks;
+  return () => {
+    if (dialogHostCallbacks === callbacks) dialogHostCallbacks = null;
+  };
+}
+
+export function closeCurrentDialog(): void {
+  dialogHostCallbacks?.close();
+}
+
+export function isDialogShowing(): boolean {
+  return dialogHostCallbacks?.isOpen() ?? false;
 }

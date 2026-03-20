@@ -21,7 +21,14 @@ import {
   randomInt,
   snapshotPRNG,
 } from './prng';
-import { addTrigger, removeTrigger } from './triggers';
+import {
+  addTrigger,
+  removeTrigger,
+  pushDialog,
+  clearDialogQueue,
+  closeCurrentDialog,
+  isDialogShowing,
+} from './triggers';
 import type { WatchOptions } from './triggers';
 import type { TransitionConfig } from './transition';
 
@@ -73,6 +80,10 @@ export interface StoryAPI {
     callbackOrOptions: (() => void) | WatchOptions,
   ): () => void;
   unwatch(name: string): void;
+  openDialog(passageName: string, options?: { panelClass?: string }): void;
+  closeDialog(): void;
+  closeAllDialogs(): void;
+  isDialogOpen(): boolean;
   setNobr(enabled: boolean): void;
   setCSS(enabled: boolean): void;
   setTransition(config: TransitionConfig | null): void;
@@ -284,6 +295,23 @@ function createStoryAPI(): StoryAPI {
 
     unwatch(name: string): void {
       removeTrigger(name);
+    },
+
+    openDialog(passageName: string, options?: { panelClass?: string }): void {
+      pushDialog({ passageName, panelClass: options?.panelClass });
+    },
+
+    closeDialog(): void {
+      closeCurrentDialog();
+    },
+
+    closeAllDialogs(): void {
+      clearDialogQueue();
+      closeCurrentDialog();
+    },
+
+    isDialogOpen(): boolean {
+      return isDialogShowing();
     },
 
     setNobr(enabled: boolean): void {

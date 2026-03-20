@@ -1,26 +1,21 @@
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { PassageDialog } from './PassageDialog';
 import {
   subscribeTriggerDialogs,
   shiftDialogQueue,
   dialogQueueLength,
+  registerDialogHost,
 } from '../triggers';
+import type { QueuedDialog } from '../triggers';
 
 export function TriggerDialogHost() {
-  const [current, setCurrent] = useState<string | null>(null);
+  const [current, setCurrent] = useState<QueuedDialog | null>(null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
 
   const advance = useCallback(() => {
     const next = shiftDialogQueue();
     setCurrent(next ?? null);
-  }, []);
-
-  useEffect(() => {
-    return subscribeTriggerDialogs(() => {
-      setCurrent((prev) => {
-        if (prev !== null) return prev; // already showing one
-        return shiftDialogQueue() ?? null;
-      });
-    });
   }, []);
 
   const handleClose = useCallback(() => {
@@ -31,11 +26,28 @@ export function TriggerDialogHost() {
     }
   }, [advance]);
 
+  useEffect(() => {
+    return registerDialogHost({
+      close: handleClose,
+      isOpen: () => currentRef.current !== null,
+    });
+  }, [handleClose]);
+
+  useEffect(() => {
+    return subscribeTriggerDialogs(() => {
+      setCurrent((prev) => {
+        if (prev !== null) return prev; // already showing one
+        return shiftDialogQueue() ?? null;
+      });
+    });
+  }, []);
+
   if (!current) return null;
 
   return (
     <PassageDialog
-      passageName={current}
+      passageName={current.passageName}
+      panelClass={current.panelClass}
       onClose={handleClose}
     />
   );
