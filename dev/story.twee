@@ -101,7 +101,7 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Computed vars->Computed Var Tests]] | [[Unset tests->Unset Tests]] | [[Link syntax->Link Syntax Edge Cases]]
 
-[[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]]
+[[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[SVG test->SVG Interop]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -1160,3 +1160,19 @@ The watchTest variable reached 3 or more! This dialog was triggered by a watch.
 :: Watch Goto Result
 You reached 100 gold! This passage was reached via a watch goto.
 [[Watch Tests]]
+
+
+:: SVG Interop
+### SVG Interop
+
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="test-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff0000"/>
+      <stop offset="100%" stop-color="#0000ff"/>
+    </linearGradient>
+  </defs>
+  <line x1="10" y1="100" x2="190" y2="100" stroke="url(#test-grad)" stroke-width="4"/>
+</svg>
+
+[[Back to start|Start]]

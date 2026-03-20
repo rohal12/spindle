@@ -418,4 +418,23 @@ describe('renderNodes', () => {
       expect(container.textContent).toBe('10');
     });
   });
+
+  describe('SVG rendering', () => {
+    it('creates specialized SVG element types, not generic SVGElement', () => {
+      const el = renderMarkup(
+        '<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">' +
+          '<defs>' +
+          '<linearGradient id="test-grad">' +
+          '<stop offset="0%" stop-color="#ff0000"/>' +
+          '<stop offset="100%" stop-color="#0000ff"/>' +
+          '</linearGradient>' +
+          '</defs>' +
+          '<line x1="10" y1="100" x2="190" y2="100" stroke="url(#test-grad)" stroke-width="4"/>' +
+          '</svg>',
+      );
+      const grad = el.querySelector('#test-grad');
+      expect(grad).not.toBeNull();
+      expect(grad!.constructor.name).toBe('SVGLinearGradientElement');
+    });
+  });
 });

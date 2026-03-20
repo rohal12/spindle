@@ -1288,6 +1288,36 @@ describe('compiled story e2e', () => {
   });
 
   // ===========================================================================
+  // SVG Interop — SVG elements render with correct specialized types
+  // ===========================================================================
+  describe('SVG Interop passage', () => {
+    beforeAll(async () => {
+      await navigateFresh();
+      await clickLink('SVG test');
+      await page.waitForSelector('[data-passage="SVG Interop"]');
+    });
+
+    it('renders linearGradient as SVGLinearGradientElement', async () => {
+      const ctorName = await page.$eval(
+        '#test-grad',
+        (el) => el.constructor.name,
+      );
+      expect(ctorName).toBe('SVGLinearGradientElement');
+    });
+
+    it('renders SVG line element with non-zero dimensions', async () => {
+      const bbox = await page.$eval(
+        '[data-passage="SVG Interop"] line',
+        (el) => {
+          const rect = (el as SVGLineElement).getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        },
+      );
+      expect(bbox.width).toBeGreaterThan(0);
+    });
+  });
+
+  // ===========================================================================
   // Markdown Edge Cases — variables in bold/italic/list/table/blockquote
   // ===========================================================================
   describe('Markdown Edge Cases passage', () => {
