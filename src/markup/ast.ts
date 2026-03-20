@@ -179,6 +179,10 @@ export function buildAST(tokens: Token[]): ASTNode[] {
       }
 
       case 'macro': {
+        // Normalize macro name to lowercase — registration is lowercase,
+        // but the tokenizer preserves original casing from passage markup.
+        const name = token.name.toLowerCase();
+
         if (token.isClose) {
           // Closing tag — pop from stack
           if (stack.length === 0) {
@@ -188,7 +192,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
           }
 
           const top = stack[stack.length - 1]!;
-          if (top.node.type !== 'macro' || top.node.name !== token.name) {
+          if (top.node.type !== 'macro' || top.node.name !== name) {
             const expected =
               top.node.type === 'macro'
                 ? `{/${top.node.name}}`
@@ -204,8 +208,8 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         }
 
         // Handle branch macros (elseif/else, case/default, next)
-        if (BRANCH_PARENT[token.name]) {
-          const expectedParent = BRANCH_PARENT[token.name]!;
+        if (BRANCH_PARENT[name]) {
+          const expectedParent = BRANCH_PARENT[name]!;
           const topNode =
             stack.length > 0 ? stack[stack.length - 1]!.node : null;
           if (
@@ -229,16 +233,16 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         }
 
         // Block macro — push onto stack
-        if (BLOCK_MACROS.has(token.name)) {
+        if (BLOCK_MACROS.has(name)) {
           const node: MacroNode = {
             type: 'macro',
-            name: token.name,
+            name,
             rawArgs: token.rawArgs,
             children: [],
           };
 
           // Branching blocks: className/id goes on the first branch, not the node
-          if (BRANCHING_BLOCK_MACROS.has(token.name)) {
+          if (BRANCHING_BLOCK_MACROS.has(name)) {
             const firstBranch: Branch = {
               rawArgs: token.rawArgs,
               children: [],
@@ -259,7 +263,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         {
           const macroNode: MacroNode = {
             type: 'macro',
-            name: token.name,
+            name,
             rawArgs: token.rawArgs,
             children: [],
           };
