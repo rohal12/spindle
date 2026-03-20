@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
@@ -171,6 +172,36 @@ describe('macro components', () => {
       // Click the second button (item=2)
       (buttons[1] as HTMLElement).click();
       expect(useStoryStore.getState().variables.picked).toBe(2);
+    });
+
+    it('updates items when iterated array identity changes (#45)', () => {
+      useStoryStore.getState().setVariable('items', [
+        ['a', 'b', 'c'],
+        ['x', 'y'],
+      ]);
+      useStoryStore.getState().setVariable('selected', 0);
+      const container = document.createElement('div');
+      const passage = makePassage(
+        1,
+        'Test',
+        '{for @item of $items[$selected]}<span class="item">{@item}</span>{/for}',
+      );
+      act(() => {
+        render(<Passage passage={passage} />, container);
+      });
+      expect(container.querySelectorAll('.item').length).toBe(3);
+      expect(container.textContent).toContain('a');
+      expect(container.textContent).toContain('b');
+      expect(container.textContent).toContain('c');
+
+      // Switch to the second array
+      act(() => {
+        useStoryStore.getState().setVariable('selected', 1);
+      });
+      expect(container.querySelectorAll('.item').length).toBe(2);
+      expect(container.textContent).toContain('x');
+      expect(container.textContent).toContain('y');
+      expect(container.textContent).not.toContain('a');
     });
 
     it('nested for-loops scope @locals correctly with set', () => {
