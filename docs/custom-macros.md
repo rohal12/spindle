@@ -47,13 +47,14 @@ Usage: `{shout hello world}` displays **HELLO WORLD**.
 
 ## Block Macros (Children)
 
-If your macro has a closing tag, the content between the tags is available as `props.children`. Use `ctx.renderNodes()` to turn that content into displayable output:
+If your macro has a closing tag, the content between the tags is available as `props.children`. Add `block: true` to your config so the parser knows to expect a closing tag. Use `ctx.renderNodes()` to turn that content into displayable output:
 
 ```
 :: StoryInit
 {do}
   Story.defineMacro({
     name: "alert",
+    block: true,
     render: function(props, ctx) {
       return ctx.h("div", { class: "alert" },
         ctx.renderNodes(props.children || [])
@@ -62,6 +63,8 @@ If your macro has a closing tag, the content between the tags is available as `p
   });
 {/do}
 ```
+
+> **Note:** If you declare `subMacros`, `block` is inferred automatically — you don't need to set it. Use `block: false` to override this if you need sub-macros on a self-closing macro.
 
 Usage:
 
@@ -387,11 +390,12 @@ Usage:
 
 ### Feature Flags
 
-| Flag          | What it adds                                 | Turn it on when...                                    |
-| ------------- | -------------------------------------------- | ----------------------------------------------------- |
-| `interpolate` | `ctx.resolve(s)` — resolve variable refs     | Authors may use `{$var}` in class names or IDs        |
-| `merged`      | `ctx.evaluate(expr)` — evaluate expressions  | Your macro needs to read variables or run expressions |
-| `storeVar`    | `ctx.varName`, `ctx.value`, `ctx.setValue()` | Your macro is an input bound to a single `$variable`  |
+| Flag          | What it adds                                 | Turn it on when...                                         |
+| ------------- | -------------------------------------------- | ---------------------------------------------------------- |
+| `block`       | Closing-tag support (`{macro}...{/macro}`)   | Your macro wraps content (auto-set when `subMacros` given) |
+| `interpolate` | `ctx.resolve(s)` — resolve variable refs     | Authors may use `{$var}` in class names or IDs             |
+| `merged`      | `ctx.evaluate(expr)` — evaluate expressions  | Your macro needs to read variables or run expressions      |
+| `storeVar`    | `ctx.varName`, `ctx.value`, `ctx.setValue()` | Your macro is an input bound to a single `$variable`       |
 
 ### Variable Namespaces
 

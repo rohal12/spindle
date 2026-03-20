@@ -67,6 +67,10 @@ function boot() {
     }
   }
 
+  // Signal that Story API is ready and author JS has run.
+  // External scripts can register custom macros (including block macros) here.
+  document.dispatchEvent(new CustomEvent(':storystartup'));
+
   // Parse StoryVariables and validate all passages
   let defaults: Record<string, unknown> = {};
   const storyVarsPassage = storyData.passages.get('StoryVariables');
