@@ -1748,7 +1748,7 @@ describe('compiled story e2e', () => {
       await clickLink('Dialog API');
       await page.waitForSelector('[data-passage="Dialog API Tests"]');
 
-      await page.click('button:has-text("Macro dialog")');
+      await page.click('button:has-text("Open via macro")');
       await page.waitForSelector('.dialog-overlay');
 
       const closeBtn = await page.$('.dialog-close');
@@ -1763,7 +1763,7 @@ describe('compiled story e2e', () => {
       await clickLink('Dialog API');
       await page.waitForSelector('[data-passage="Dialog API Tests"]');
 
-      await page.click('button:has-text("Macro dialog noclose")');
+      await page.click('button:has-text("Open via macro (hidden close)")');
       await page.waitForSelector('.dialog-overlay');
 
       const closeBtn = await page.$('.dialog-close');

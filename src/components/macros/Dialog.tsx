@@ -8,8 +8,8 @@ defineMacro({
   render({ rawArgs, children = [] }, ctx) {
     const [open, setOpen] = ctx.hooks.useState(false);
 
-    const noclose = /\bnoclose\b/.test(rawArgs);
-    const labelRaw = rawArgs.replace(/\bnoclose\b/, '').trim();
+    const noclose = /\bnoclose\s*$/.test(rawArgs);
+    const labelRaw = rawArgs.replace(/\bnoclose\s*$/, '').trim();
     const label =
       ctx.resolve?.(labelRaw.replace(/^["']|["']$/g, '')) ?? labelRaw;
     const passageName = ctx
