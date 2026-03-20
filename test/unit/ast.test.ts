@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST, type ASTNode, type MacroNode } from '../../src/markup/ast';
+import {
+  buildAST,
+  registerBlockMacro,
+  unregisterBlockMacro,
+  type ASTNode,
+  type MacroNode,
+} from '../../src/markup/ast';
 
 function parse(input: string): ASTNode[] {
   return buildAST(tokenize(input));
@@ -517,6 +523,60 @@ describe('buildAST', () => {
       const repeat = ast[0] as MacroNode;
       expect(repeat.children).toHaveLength(2);
       expect((repeat.children[1] as MacroNode).name).toBe('stop');
+    });
+  });
+
+  describe('case-insensitive macro names', () => {
+    it('recognizes built-in block macros regardless of case', () => {
+      const ast = parse('{If $x}hello{/If}');
+      expect(ast).toHaveLength(1);
+      const node = ast[0] as MacroNode;
+      expect(node.type).toBe('macro');
+      expect(node.name).toBe('if');
+      expect(node.branches).toHaveLength(1);
+      expect(node.branches![0].children).toEqual([
+        { type: 'text', value: 'hello' },
+      ]);
+    });
+
+    it('recognizes custom block macros regardless of case', () => {
+      registerBlockMacro('choices');
+      try {
+        const ast = parse('{Choices}hello{/Choices}');
+        expect(ast).toHaveLength(1);
+        const node = ast[0] as MacroNode;
+        expect(node.type).toBe('macro');
+        expect(node.name).toBe('choices');
+        expect(node.children).toEqual([{ type: 'text', value: 'hello' }]);
+      } finally {
+        unregisterBlockMacro('choices');
+      }
+    });
+
+    it('matches closing tag case-insensitively', () => {
+      const ast = parse('{FOR @item of $list}item{/for}');
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('for');
+      expect(node.children).toEqual([{ type: 'text', value: 'item' }]);
+    });
+
+    it('matches branch macro parents case-insensitively', () => {
+      const ast = parse('{IF $a}A{elseif $b}B{ELSE}C{/if}');
+      const node = ast[0] as MacroNode;
+      expect(node.branches).toHaveLength(3);
+    });
+
+    it('lowercases macro name in AST nodes', () => {
+      const ast = parse('{SET $x = 5}');
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('set');
+    });
+
+    it('recognizes branching block macros regardless of case', () => {
+      const ast = parse('{Switch $x}{case 1}one{/Switch}');
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('switch');
+      expect(node.branches).toHaveLength(2);
     });
   });
 
