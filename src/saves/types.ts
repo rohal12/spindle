@@ -76,3 +76,13 @@ export function isSaveExport(value: unknown): value is SaveExport {
 
   return true;
 }
+
+export function isSavePayload(value: unknown): value is SavePayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.passage !== 'string') return false;
+  if (typeof obj.variables !== 'object' || obj.variables === null) return false;
+  if (!Array.isArray(obj.history)) return false;
+  if (typeof obj.historyIndex !== 'number') return false;
+  return true;
+}

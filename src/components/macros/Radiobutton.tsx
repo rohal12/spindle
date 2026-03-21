@@ -1,48 +1,30 @@
-import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 
-function parseArgs(rawArgs: string): {
-  varName: string;
-  value: string;
-  label: string;
-} {
-  // {radiobutton "$var" "value" "Label text"}
+function parseRadioArgs(rawArgs: string): { value: string; label: string } {
   const match = rawArgs.match(
-    /^\s*(["']?\$\w+["']?)\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
+    /^\s*["']?\$?\w+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
   );
   if (!match) {
-    // Try simpler: $var value label
-    const parts = rawArgs.trim().split(/\s+/);
-    return {
-      varName: (parts[0] ?? '').replace(/["']/g, ''),
-      value: parts[1] ?? '',
-      label: parts.slice(2).join(' '),
-    };
+    const parts = rawArgs.trim().split(/\s+/).slice(1);
+    return { value: parts[0] ?? '', label: parts.slice(1).join(' ') };
   }
-  return {
-    varName: match[1]!.replace(/["']/g, ''),
-    value: match[2]!,
-    label: match[3]!,
-  };
+  return { value: match[1]!, label: match[2]! };
 }
 
 defineMacro({
   name: 'radiobutton',
+  storeVar: true,
   render({ rawArgs }, ctx) {
-    const { varName, value: radioValue, label } = parseArgs(rawArgs);
-    const name = varName.startsWith('$') ? varName.slice(1) : varName;
-
-    const currentValue = useStoryStore((s) => s.variables[name]);
-    const setVariable = useStoryStore((s) => s.setVariable);
+    const { value: radioValue, label } = parseRadioArgs(rawArgs);
 
     ctx.useAction({
       type: 'radiobutton',
-      key: `$${name}:${radioValue}`,
+      key: `$${ctx.varName}:${radioValue}`,
       authorId: ctx.id,
       label: label || radioValue,
-      variable: name,
-      value: currentValue,
-      perform: () => setVariable(name, radioValue),
+      variable: ctx.varName,
+      value: ctx.value,
+      perform: () => ctx.setValue!(radioValue),
     });
 
     return (
@@ -52,9 +34,9 @@ defineMacro({
       >
         <input
           type="radio"
-          name={`radio-${name}`}
-          checked={currentValue === radioValue}
-          onChange={() => setVariable(name, radioValue)}
+          name={`radio-${ctx.varName}`}
+          checked={ctx.value === radioValue}
+          onChange={() => ctx.setValue!(radioValue)}
         />
         {label ? ` ${label}` : null}
       </label>

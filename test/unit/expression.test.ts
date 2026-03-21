@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { evaluate, execute } from '../../src/expression';
+import { executeMutation } from '../../src/execute-mutation';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -69,6 +70,24 @@ describe('evaluate', () => {
 
   it('returns undefined for missing @local', () => {
     expect(evaluate('@missing', {}, {}, {})).toBeUndefined();
+  });
+
+  it('does not transform underscore property access on objects', () => {
+    const vars: Record<string, unknown> = { obj: { _secret: 42 } };
+    expect(evaluate('$obj._secret', vars, {})).toBe(42);
+  });
+
+  it('does not transform underscore property access after bracket notation', () => {
+    const vars: Record<string, unknown> = { arr: [{ _id: 'abc' }] };
+    expect(evaluate('$arr[0]._id', vars, {})).toBe('abc');
+  });
+
+  it('still transforms standalone _temp variables', () => {
+    expect(evaluate('_count + 1', {}, { count: 9 })).toBe(10);
+  });
+
+  it('still transforms _temp after operators', () => {
+    expect(evaluate('1 + _x', {}, { x: 5 })).toBe(6);
   });
 });
 
@@ -309,5 +328,34 @@ describe('expression tracking functions', () => {
 
     expect(evaluate('hasRenderedAll("Start", "Room")', {}, {})).toBe(true);
     expect(evaluate('hasRenderedAll("Start", "Unknown")', {}, {})).toBe(false);
+  });
+});
+
+describe('executeMutation', () => {
+  beforeEach(() => {
+    useStoryStore.setState({
+      variables: {},
+      temporary: {},
+    });
+  });
+
+  it('detects deleted $variables', () => {
+    useStoryStore.getState().setVariable('foo', 'bar');
+    expect(useStoryStore.getState().variables.foo).toBe('bar');
+
+    executeMutation('delete $foo', {}, () => {});
+
+    expect(useStoryStore.getState().variables.foo).toBeUndefined();
+    expect('foo' in useStoryStore.getState().variables).toBe(false);
+  });
+
+  it('detects deleted _temporary variables', () => {
+    useStoryStore.getState().setTemporary('t', 123);
+    expect(useStoryStore.getState().temporary.t).toBe(123);
+
+    executeMutation('delete _t', {}, () => {});
+
+    expect(useStoryStore.getState().temporary.t).toBeUndefined();
+    expect('t' in useStoryStore.getState().temporary).toBe(false);
   });
 });

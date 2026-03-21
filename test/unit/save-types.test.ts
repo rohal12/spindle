@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSaveExport } from '../../src/saves/types';
+import { isSaveExport, isSavePayload } from '../../src/saves/types';
 
 function makeValidExport() {
   return {
@@ -160,5 +160,61 @@ describe('isSaveExport', () => {
     const data = makeValidExport();
     (data as any).save.payload.variables = 'string';
     expect(isSaveExport(data)).toBe(false);
+  });
+});
+
+describe('isSavePayload', () => {
+  it('returns true for valid payload', () => {
+    expect(
+      isSavePayload({
+        passage: 'Start',
+        variables: { health: 100 },
+        history: [{ passage: 'Start', variables: {}, timestamp: 1 }],
+        historyIndex: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for null', () => {
+    expect(isSavePayload(null)).toBe(false);
+  });
+
+  it('returns false for missing passage', () => {
+    expect(isSavePayload({ variables: {}, history: [], historyIndex: 0 })).toBe(
+      false,
+    );
+  });
+
+  it('returns false for non-array history', () => {
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: {},
+        history: 'bad',
+        historyIndex: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for non-number historyIndex', () => {
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: {},
+        history: [],
+        historyIndex: 'bad',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for null variables', () => {
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: null,
+        history: [],
+        historyIndex: 0,
+      }),
+    ).toBe(false);
   });
 });

@@ -28,9 +28,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
     render(_, ctx) {
       if (config.hidden?.()) return null;
 
-      const [dialogOpen, setDialogOpen] = config.dialog
-        ? useState(false)
-        : [false, undefined as never];
+      const [dialogOpen, setDialogOpen] = useState(false);
 
       const setup = config.setup?.() ?? { perform: () => {} };
       const { disabled } = setup;

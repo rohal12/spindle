@@ -29,4 +29,21 @@ export function executeMutation(
       scopeUpdate(key, localsClone[key]);
     }
   }
+
+  // Detect deleted keys
+  for (const key of Object.keys(state.variables)) {
+    if (!(key in vars)) {
+      state.deleteVariable(key);
+    }
+  }
+  for (const key of Object.keys(state.temporary)) {
+    if (!(key in temps)) {
+      state.deleteTemporary(key);
+    }
+  }
+  for (const key of Object.keys(mergedLocals)) {
+    if (!(key in localsClone)) {
+      scopeUpdate(key, undefined);
+    }
+  }
 }
