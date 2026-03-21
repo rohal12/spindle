@@ -25,8 +25,8 @@ import {
   addTrigger,
   removeTrigger,
   pushDialog,
-  clearDialogQueue,
   closeCurrentDialog,
+  closeAllOpenDialogs,
   isDialogShowing,
 } from './triggers';
 import type { WatchOptions } from './triggers';
@@ -316,8 +316,7 @@ function createStoryAPI(): StoryAPI {
     },
 
     closeAllDialogs(): void {
-      clearDialogQueue();
-      closeCurrentDialog();
+      closeAllOpenDialogs();
     },
 
     isDialogOpen(): boolean {

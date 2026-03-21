@@ -9,47 +9,58 @@ import {
 import type { QueuedDialog } from '../triggers';
 
 export function TriggerDialogHost() {
-  const [current, setCurrent] = useState<QueuedDialog | null>(null);
-  const currentRef = useRef(current);
-  currentRef.current = current;
+  const [stack, setStack] = useState<QueuedDialog[]>([]);
+  const stackRef = useRef(stack);
+  stackRef.current = stack;
 
-  const advance = useCallback(() => {
-    const next = shiftDialogQueue();
-    setCurrent(next ?? null);
+  const push = useCallback((item: QueuedDialog) => {
+    setStack((prev) => [...prev, item]);
   }, []);
 
   const handleClose = useCallback(() => {
-    setCurrent(null);
-    // Show next queued dialog after a tick
-    if (dialogQueueLength() > 0) {
-      requestAnimationFrame(advance);
-    }
-  }, [advance]);
+    setStack((prev) => prev.slice(0, -1));
+  }, []);
+
+  const handleCloseAll = useCallback(() => {
+    setStack([]);
+  }, []);
 
   useEffect(() => {
     return registerDialogHost({
       close: handleClose,
-      isOpen: () => currentRef.current !== null,
+      closeAll: handleCloseAll,
+      push,
+      isOpen: () => stackRef.current.length > 0,
     });
-  }, [handleClose]);
+  }, [handleClose, handleCloseAll, push]);
 
+  // Flush any dialogs that were queued before the host mounted
   useEffect(() => {
     return subscribeTriggerDialogs(() => {
-      setCurrent((prev) => {
-        if (prev !== null) return prev; // already showing one
-        return shiftDialogQueue() ?? null;
-      });
+      const items: QueuedDialog[] = [];
+      while (dialogQueueLength() > 0) {
+        const next = shiftDialogQueue();
+        if (next) items.push(next);
+      }
+      if (items.length > 0) {
+        setStack((prev) => [...prev, ...items]);
+      }
     });
   }, []);
 
-  if (!current) return null;
+  if (stack.length === 0) return null;
 
   return (
-    <PassageDialog
-      passageName={current.passageName}
-      panelClass={current.panelClass}
-      onClose={handleClose}
-      showCloseButton={current.showCloseButton}
-    />
+    <>
+      {stack.map((dialog, i) => (
+        <PassageDialog
+          key={`${dialog.passageName}-${i}`}
+          passageName={dialog.passageName}
+          panelClass={dialog.panelClass}
+          onClose={handleClose}
+          showCloseButton={dialog.showCloseButton}
+        />
+      ))}
+    </>
   );
 }

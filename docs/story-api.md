@@ -76,7 +76,7 @@ Remove a named watcher.
 
 ### `Story.openDialog(passageName, options?)`
 
-Open a dialog displaying the given passage. If a dialog is already open, the new one is queued and displayed after the current one closes.
+Open a dialog displaying the given passage. Dialogs stack — if a dialog is already open, the new one appears on top of it. Each stacked dialog gets its own overlay. Closing the top dialog reveals the one beneath.
 
 | Parameter                 | Type       | Description                                         |
 | ------------------------- | ---------- | --------------------------------------------------- |
@@ -95,7 +95,7 @@ Open a dialog displaying the given passage. If a dialog is already open, the new
 
 ### `Story.closeDialog()`
 
-Close the currently displayed dialog. If more dialogs are queued, the next one appears automatically.
+Close the topmost dialog. If other dialogs are stacked beneath it, the next one is revealed.
 
 ```
 {button "Done"}
@@ -105,7 +105,7 @@ Close the currently displayed dialog. If more dialogs are queued, the next one a
 
 ### `Story.closeAllDialogs()`
 
-Close the current dialog and clear the entire dialog queue.
+Close all open dialogs at once, clearing the entire stack.
 
 ```
 {do}Story.closeAllDialogs(){/do}
@@ -113,7 +113,7 @@ Close the current dialog and clear the entire dialog queue.
 
 ### `Story.isDialogOpen()`
 
-Returns `true` if a dialog is currently displayed.
+Returns `true` if any dialog is currently displayed.
 
 ```
 {do}

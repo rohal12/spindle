@@ -36,6 +36,8 @@ let dialogNotify: DialogCallback | null = null;
 
 interface DialogHostCallbacks {
   close: () => void;
+  closeAll: () => void;
+  push: (item: QueuedDialog) => void;
   isOpen: () => boolean;
 }
 let dialogHostCallbacks: DialogHostCallbacks | null = null;
@@ -153,7 +155,7 @@ export function resetTriggers(): void {
   triggers = [];
   dialogQueue = [];
   nextId = 0;
-  dialogHostCallbacks?.close();
+  dialogHostCallbacks?.closeAll();
 }
 
 export function subscribeTriggerDialogs(cb: () => void): () => void {
@@ -174,8 +176,12 @@ export function dialogQueueLength(): number {
 }
 
 export function pushDialog(item: QueuedDialog): void {
-  dialogQueue.push(item);
-  dialogNotify?.();
+  if (dialogHostCallbacks) {
+    dialogHostCallbacks.push(item);
+  } else {
+    dialogQueue.push(item);
+    dialogNotify?.();
+  }
 }
 
 export function clearDialogQueue(): void {
@@ -191,6 +197,11 @@ export function registerDialogHost(callbacks: DialogHostCallbacks): () => void {
 
 export function closeCurrentDialog(): void {
   dialogHostCallbacks?.close();
+}
+
+export function closeAllOpenDialogs(): void {
+  clearDialogQueue();
+  dialogHostCallbacks?.closeAll();
 }
 
 export function isDialogShowing(): boolean {
