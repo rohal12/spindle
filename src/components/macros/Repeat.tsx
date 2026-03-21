@@ -1,7 +1,5 @@
 import { createContext } from 'preact';
 import { parseDelay } from '../../utils/parse-delay';
-import { hasInterpolation, interpolate } from '../../interpolation';
-import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
@@ -10,17 +8,9 @@ export const RepeatContext = createContext<{ stop: () => void }>({
 
 defineMacro({
   name: 'repeat',
-  render({ rawArgs, children = [], className: rawClassName, id: rawId }, ctx) {
-    const { useState, useEffect, useCallback, useMemo } = ctx.hooks;
-
-    const [className, id] = useMemo(() => {
-      const resolveOnce = (s: string | undefined) => {
-        if (!s || !hasInterpolation(s)) return s;
-        const st = useStoryStore.getState();
-        return interpolate(s, st.variables, st.temporary, {});
-      };
-      return [resolveOnce(rawClassName), resolveOnce(rawId)];
-    }, [rawClassName, rawId]);
+  interpolate: true,
+  render({ rawArgs, children = [] }, ctx) {
+    const { useState, useEffect, useCallback } = ctx.hooks;
 
     const delay = parseDelay(rawArgs);
     const [count, setCount] = useState(0);
@@ -38,19 +28,17 @@ defineMacro({
 
     if (count === 0 && !stopped) return null;
 
-    const cls = className ? `macro-repeat ${className}` : undefined;
-
     const content = (
       <RepeatContext.Provider value={{ stop }}>
         <span key={count}>{ctx.renderNodes(children)}</span>
       </RepeatContext.Provider>
     );
 
-    if (cls || id)
+    if (ctx.className || ctx.id)
       return (
         <span
-          id={id}
-          class={cls}
+          id={ctx.id}
+          class={ctx.cls}
         >
           {content}
         </span>
