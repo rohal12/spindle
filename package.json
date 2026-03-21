@@ -23,14 +23,14 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/pkg/types/index.d.ts",
+      "types": "./types/index.d.ts",
       "import": "./dist/pkg/index.js"
     }
   },
   "files": [
     "dist/pkg/index.js",
     "dist/pkg/format.js",
-    "dist/pkg/types",
+    "types",
     "src"
   ],
   "scripts": {
