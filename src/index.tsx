@@ -108,7 +108,27 @@ function boot() {
     useStoryStore.getState().loadFromPayload(sessionPayload);
   }
 
-  // Register widgets from passages tagged "widget"
+  // Pass 1: Pre-scan all widget passages to discover block widgets.
+  // Register them as block macros BEFORE any tokenize/buildAST calls,
+  // so that widget bodies using other block widgets parse correctly
+  // regardless of passage order.
+  const blockWidgetPattern =
+    /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
+  for (const [, passage] of storyData.passages) {
+    if (passage.tags.includes('widget')) {
+      let match;
+      while ((match = blockWidgetPattern.exec(passage.content)) !== null) {
+        const name = match[1]!;
+        const body = match[2]!;
+        if (/\{@children\}/.test(body)) {
+          registerBlockMacro(name);
+        }
+      }
+      blockWidgetPattern.lastIndex = 0;
+    }
+  }
+
+  // Pass 2: Full parse and register widgets from passages tagged "widget"
   for (const [, passage] of storyData.passages) {
     if (passage.tags.includes('widget')) {
       const widgetTokens = tokenize(passage.content);

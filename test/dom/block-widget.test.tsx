@@ -186,6 +186,35 @@ describe('block widgets', () => {
     expect(isBlockWidget('plain')).toBe(false);
   });
 
+  it('block widget used inside another widget definition parses regardless of order', () => {
+    // Simulate the two-pass approach from index.tsx:
+    // Pass 1: pre-scan raw text to discover block widgets
+    const passageA =
+      '{widget "Section" @title}<section><h3>{@title}</h3>{@children}</section>{/widget}';
+    const passageB =
+      '{widget "Card" @name}{Section "Details"}{@name}{/Section}{/widget}';
+
+    // If we parse passage B first WITHOUT pre-scanning, Section isn't
+    // in BLOCK_MACROS and buildAST would fail on {/Section}.
+    // Pre-scan passageA to register Section as block macro first.
+    const pattern = /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
+    let m;
+    while ((m = pattern.exec(passageA)) !== null) {
+      if (/\{@children\}/.test(m[2]!)) {
+        registerBlockMacro(m[1]!);
+        registeredBlockMacros.push(m[1]!);
+      }
+    }
+
+    // Now parse B first (the problematic order), then A
+    defineWidget(passageB);
+    defineWidget(passageA);
+
+    const el = renderPassage('{Card "Alice"}');
+    expect(el.textContent).toContain('Details');
+    expect(el.textContent).toContain('Alice');
+  });
+
   it('renders @children inside {if} within widget body', () => {
     defineAndTrack(
       '{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}',
