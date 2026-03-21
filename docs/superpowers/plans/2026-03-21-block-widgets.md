@@ -14,22 +14,23 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/widgets/widget-registry.ts` | Modify | Add `isBlock` flag, `isBlockWidget()` helper, strip `@children` from params |
-| `src/widgets/ast-scanner.ts` | Create | `astContainsChildren()` — recursive scan for `@children` in AST nodes |
-| `src/markup/render.tsx` | Modify | Add `WidgetChildrenContext`, `ChildrenSlot` component, intercept `@children` in `renderSingleNode`, pass `node.children` in `renderMacro` |
-| `src/components/macros/WidgetInvocation.tsx` | Modify | Accept `invocationChildren`, wrap in `WidgetChildrenContext.Provider` |
-| `src/index.tsx` | Modify | Scan widget bodies, call `registerBlockMacro()` for block widgets |
-| `test/unit/widget-registry.test.ts` | Modify | Test `isBlock` flag, `isBlockWidget()`, `@children` param stripping |
-| `test/unit/ast-scanner.test.ts` | Create | Test `astContainsChildren()` for flat, nested, and absent cases |
-| `test/dom/block-widget.test.tsx` | Create | Integration tests for block widget rendering |
+| File                                         | Action | Responsibility                                                                                                                            |
+| -------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/widgets/widget-registry.ts`             | Modify | Add `isBlock` flag, `isBlockWidget()` helper, strip `@children` from params                                                               |
+| `src/widgets/ast-scanner.ts`                 | Create | `astContainsChildren()` — recursive scan for `@children` in AST nodes                                                                     |
+| `src/markup/render.tsx`                      | Modify | Add `WidgetChildrenContext`, `ChildrenSlot` component, intercept `@children` in `renderSingleNode`, pass `node.children` in `renderMacro` |
+| `src/components/macros/WidgetInvocation.tsx` | Modify | Accept `invocationChildren`, wrap in `WidgetChildrenContext.Provider`                                                                     |
+| `src/index.tsx`                              | Modify | Scan widget bodies, call `registerBlockMacro()` for block widgets                                                                         |
+| `test/unit/widget-registry.test.ts`          | Modify | Test `isBlock` flag, `isBlockWidget()`, `@children` param stripping                                                                       |
+| `test/unit/ast-scanner.test.ts`              | Create | Test `astContainsChildren()` for flat, nested, and absent cases                                                                           |
+| `test/dom/block-widget.test.tsx`             | Create | Integration tests for block widget rendering                                                                                              |
 
 ---
 
 ### Task 1: Widget Registry — `isBlock` flag and `isBlockWidget()` helper
 
 **Files:**
+
 - Modify: `src/widgets/widget-registry.ts`
 - Modify: `test/unit/widget-registry.test.ts`
 
@@ -103,7 +104,11 @@ export function registerWidget(
   isBlock = false,
 ): void {
   const filteredParams = params.filter((p) => p !== '@children');
-  widgets.set(name.toLowerCase(), { body: bodyAST, params: filteredParams, isBlock });
+  widgets.set(name.toLowerCase(), {
+    body: bodyAST,
+    params: filteredParams,
+    isBlock,
+  });
 }
 
 export function getWidget(name: string): WidgetEntry | undefined {
@@ -136,6 +141,7 @@ git commit -m "feat: add isBlock flag and isBlockWidget() to widget registry"
 ### Task 2: AST Scanner — `astContainsChildren()`
 
 **Files:**
+
 - Create: `src/widgets/ast-scanner.ts`
 - Create: `test/unit/ast-scanner.test.ts`
 
@@ -178,9 +184,7 @@ describe('astContainsChildren', () => {
         type: 'html',
         tag: 'div',
         attributes: {},
-        children: [
-          { type: 'variable', name: 'children', scope: 'local' },
-        ],
+        children: [{ type: 'variable', name: 'children', scope: 'local' }],
       },
     ];
     expect(astContainsChildren(nodes)).toBe(true);
@@ -196,9 +200,7 @@ describe('astContainsChildren', () => {
         branches: [
           {
             rawArgs: '$x > 0',
-            children: [
-              { type: 'variable', name: 'children', scope: 'local' },
-            ],
+            children: [{ type: 'variable', name: 'children', scope: 'local' }],
           },
         ],
       },
@@ -212,9 +214,7 @@ describe('astContainsChildren', () => {
         type: 'macro',
         name: 'for',
         rawArgs: '@item of $list',
-        children: [
-          { type: 'variable', name: 'children', scope: 'local' },
-        ],
+        children: [{ type: 'variable', name: 'children', scope: 'local' }],
       },
     ];
     expect(astContainsChildren(nodes)).toBe(true);
@@ -284,6 +284,7 @@ git commit -m "feat: add astContainsChildren() scanner for @children detection"
 ### Task 3: Boot-time Detection — Register block widgets at startup
 
 **Files:**
+
 - Modify: `src/index.tsx:110-129`
 
 - [ ] **Step 1: Update boot-time widget registration**
@@ -291,6 +292,7 @@ git commit -m "feat: add astContainsChildren() scanner for @children detection"
 In `src/index.tsx`, add imports and modify the widget registration loop:
 
 Add to imports:
+
 ```ts
 import { registerBlockMacro } from './markup/ast';
 import { astContainsChildren } from './widgets/ast-scanner';
@@ -311,8 +313,7 @@ for (const [, passage] of storyData.passages) {
         const params = tokens2
           .slice(1)
           .filter(
-            (t) =>
-              t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
+            (t) => t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
           );
         const children = node.children as ASTNode[];
         const isBlock = astContainsChildren(children);
@@ -348,6 +349,7 @@ git commit -m "feat: detect block widgets at boot and register as block macros"
 ### Task 4: WidgetChildrenContext, ChildrenSlot, and Renderer Changes
 
 **Files:**
+
 - Modify: `src/markup/render.tsx`
 
 - [ ] **Step 1: Add `WidgetChildrenContext` and `ChildrenSlot`**
@@ -416,6 +418,7 @@ if (widget) {
 ### Task 5: WidgetInvocation — Accept and provide invocation children
 
 **Files:**
+
 - Modify: `src/components/macros/WidgetInvocation.tsx`
 
 - [ ] **Step 1: Add `invocationChildren` prop and `WidgetChildrenContext` provider**
@@ -517,6 +520,7 @@ git commit -m "feat: add WidgetChildrenContext, ChildrenSlot, and invocation chi
 ### Task 6: Integration Tests — Block widget rendering
 
 **Files:**
+
 - Create: `test/dom/block-widget.test.tsx`
 
 - [ ] **Step 1: Write integration tests**
@@ -529,18 +533,22 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
-import { registerWidget, clearWidgets, isBlockWidget } from '../../src/widgets/widget-registry';
+import {
+  registerWidget,
+  clearWidgets,
+  isBlockWidget,
+} from '../../src/widgets/widget-registry';
 import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../src/markup/ast';
+import {
+  buildAST,
+  registerBlockMacro,
+  unregisterBlockMacro,
+} from '../../src/markup/ast';
 import { astContainsChildren } from '../../src/widgets/ast-scanner';
 import type { ASTNode } from '../../src/markup/ast';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
-function makePassage(
-  pid: number,
-  name: string,
-  content: string,
-): PassageData {
+function makePassage(pid: number, name: string, content: string): PassageData {
   return { pid, name, tags: [], metadata: {}, content };
 }
 
@@ -568,9 +576,11 @@ function defineWidget(markup: string): void {
     if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
       const parts = node.rawArgs.trim().split(/\s+/);
       const name = parts[0]!.replace(/["']/g, '');
-      const params = parts.slice(1).filter(
-        (t) => t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
-      );
+      const params = parts
+        .slice(1)
+        .filter(
+          (t) => t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
+        );
       const children = node.children as ASTNode[];
       const isBlock = astContainsChildren(children);
       registerWidget(name, children, params, isBlock);
@@ -608,7 +618,9 @@ describe('block widgets', () => {
   }
 
   it('renders invocation children at @children slot', () => {
-    defineAndTrack('{widget "Wrapper"}<div class="wrap">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Wrapper"}<div class="wrap">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Wrapper}inner content{/Wrapper}');
     const wrap = el.querySelector('.wrap');
     expect(wrap).not.toBeNull();
@@ -616,7 +628,9 @@ describe('block widgets', () => {
   });
 
   it('renders widget params alongside @children', () => {
-    defineAndTrack('{widget "Card" @title}<div class="card"><h2>{@title}</h2>{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Card" @title}<div class="card"><h2>{@title}</h2>{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Card "My Title"}card body{/Card}');
     const card = el.querySelector('.card');
     expect(card).not.toBeNull();
@@ -626,7 +640,9 @@ describe('block widgets', () => {
   });
 
   it('mirrors @children when referenced multiple times', () => {
-    defineAndTrack('{widget "Mirror"}<div class="a">{@children}</div><div class="b">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Mirror"}<div class="a">{@children}</div><div class="b">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Mirror}hello{/Mirror}');
     const a = el.querySelector('.a');
     const b = el.querySelector('.b');
@@ -635,7 +651,9 @@ describe('block widgets', () => {
   });
 
   it('renders nothing for @children when invocation body is empty', () => {
-    defineAndTrack('{widget "Empty"}<div class="box">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Empty"}<div class="box">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Empty}{/Empty}');
     const box = el.querySelector('.box');
     expect(box).not.toBeNull();
@@ -651,7 +669,9 @@ describe('block widgets', () => {
   });
 
   it('widget params shadow outer locals of the same name', () => {
-    defineAndTrack('{widget "Shadow" @val}<span class="inner">{@val}</span>{@children}{/widget}');
+    defineAndTrack(
+      '{widget "Shadow" @val}<span class="inner">{@val}</span>{@children}{/widget}',
+    );
     // The widget receives @val="widget-val", but we can't directly set outer @val
     // in this test — the key behavior is that the param takes precedence
     const el = renderPassage('{Shadow "widget-val"}body{/Shadow}');
@@ -665,7 +685,9 @@ describe('block widgets', () => {
     registerWidget('Inner', innerBody, []);
 
     // Define a block widget
-    defineAndTrack('{widget "Outer"}<div class="outer">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Outer"}<div class="outer">{@children}</div>{/widget}',
+    );
 
     // Invoke block widget with non-block widget inside
     const el = renderPassage('{Outer}{Inner}{/Outer}');
@@ -675,7 +697,9 @@ describe('block widgets', () => {
 
   it('nested block widgets work correctly', () => {
     defineAndTrack('{widget "Box"}<div class="box">{@children}</div>{/widget}');
-    defineAndTrack('{widget "Frame"}<div class="frame">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Frame"}<div class="frame">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Box}{Frame}deep content{/Frame}{/Box}');
     const box = el.querySelector('.box');
     const frame = box!.querySelector('.frame');
@@ -695,7 +719,9 @@ describe('block widgets', () => {
   });
 
   it('renders @children inside {if} within widget body', () => {
-    defineAndTrack('{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}');
+    defineAndTrack(
+      '{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}',
+    );
     const el = renderPassage('{Conditional true}content here{/Conditional}');
     const wrap = el.querySelector('.wrap');
     expect(wrap).not.toBeNull();

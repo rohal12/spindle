@@ -90,6 +90,7 @@ Reads from `WidgetChildrenContext` and renders the children via `renderNodes()`.
 ### 6. WidgetInvocation Changes (`src/components/macros/WidgetInvocation.tsx`)
 
 Accept `invocationChildren?: ASTNode[]`. Always wrap rendering in `<WidgetChildrenContext.Provider>`:
+
 - Block widgets: provide `invocationChildren` (the caller's block content)
 - Non-block widgets: provide `null` (clears context to prevent leakage from outer block widgets)
 
