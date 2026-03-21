@@ -318,6 +318,20 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('window.Story global', () => {
+    it('installStoryAPI sets window.Story with correct type', async () => {
+      const mod = await import('../../src/story-api');
+      mod.installStoryAPI();
+      // window.Story should be typed as StoryAPI (not any) via global declaration
+      expect(window.Story).toBeDefined();
+      expect(typeof window.Story.get).toBe('function');
+      expect(typeof window.Story.set).toBe('function');
+      expect(typeof window.Story.goto).toBe('function');
+      expect(typeof window.Story.back).toBe('function');
+      expect(typeof window.Story.defineMacro).toBe('function');
+    });
+  });
+
   describe('dialog API', () => {
     it('openDialog pushes to dialog queue', async () => {
       const { pushDialog, shiftDialogQueue, resetTriggers } =

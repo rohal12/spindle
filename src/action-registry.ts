@@ -53,6 +53,15 @@ export function registerAction(action: StoryAction): () => void {
   };
 }
 
+export function updateAction(action: StoryAction): () => void {
+  actions.set(action.id, action);
+  notify();
+  return () => {
+    actions.delete(action.id);
+    notify();
+  };
+}
+
 export function getActions(): StoryAction[] {
   return Array.from(actions.values());
 }

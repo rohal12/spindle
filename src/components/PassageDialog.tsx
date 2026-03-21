@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useMemo } from 'preact/hooks';
+import { useCallback, useMemo, useRef } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderNodes } from '../markup/render';
@@ -22,6 +22,11 @@ export function PassageDialog({
   onClose,
   showCloseButton = true,
 }: PassageDialogProps) {
+  // Stabilize onClose so DialogCloseContext value doesn't change identity
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const stableOnClose = useCallback(() => onCloseRef.current(), []);
+
   const storyData = useStoryStore((s) => s.storyData);
 
   const passage = passageName
@@ -48,14 +53,14 @@ export function PassageDialog({
 
   const handleBackdrop = (e: MouseEvent) => {
     if ((e.target as HTMLElement).classList.contains('dialog-overlay')) {
-      onClose();
+      stableOnClose();
     }
   };
 
   const cls = panelClass ? `dialog-panel ${panelClass}` : 'dialog-panel';
 
   return (
-    <DialogCloseContext.Provider value={onClose}>
+    <DialogCloseContext.Provider value={stableOnClose}>
       <div
         class="dialog-overlay"
         onClick={handleBackdrop}
@@ -64,7 +69,7 @@ export function PassageDialog({
           {showCloseButton && (
             <button
               class="dialog-close"
-              onClick={onClose}
+              onClick={stableOnClose}
             >
               ✕
             </button>

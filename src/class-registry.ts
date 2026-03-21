@@ -49,6 +49,24 @@ export function deepClone<T>(value: T): T {
       return arr;
     }
 
+    if (val instanceof Map) {
+      const copy = new Map();
+      seen.set(obj, copy);
+      for (const [k, v] of val) {
+        copy.set(clone(k), clone(v));
+      }
+      return copy;
+    }
+
+    if (val instanceof Set) {
+      const copy = new Set();
+      seen.set(obj, copy);
+      for (const v of val) {
+        copy.add(clone(v));
+      }
+      return copy;
+    }
+
     // Registered class instance
     const ctor = obj.constructor as Constructor;
     const name = ctorToName.get(ctor);
@@ -119,6 +137,18 @@ export function serialize<T>(value: T): T {
       return result;
     }
 
+    if (val instanceof Map) {
+      const entries = [...val].map(([k, v]) => [ser(k), ser(v)]);
+      seen.delete(obj);
+      return { [CLASS_TAG]: '__Map__', [DATA_TAG]: { entries } };
+    }
+
+    if (val instanceof Set) {
+      const entries = [...val].map((v) => ser(v));
+      seen.delete(obj);
+      return { [CLASS_TAG]: '__Set__', [DATA_TAG]: { entries } };
+    }
+
     // Registered class instance
     const ctor = obj.constructor as Constructor;
     const name = ctorToName.get(ctor);
@@ -166,6 +196,14 @@ export function deserialize<T>(value: T): T {
       }
       if (name === '__RegExp__') {
         return new RegExp(data.source as string, data.flags as string);
+      }
+      if (name === '__Map__') {
+        const entries = data.entries as [unknown, unknown][];
+        return new Map(entries.map(([k, v]) => [deser(k), deser(v)]));
+      }
+      if (name === '__Set__') {
+        const entries = data.entries as unknown[];
+        return new Set(entries.map((v) => deser(v)));
       }
 
       const ctor = registry.get(name);

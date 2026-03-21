@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   registerAction,
+  updateAction,
   getActions,
   getAction,
   clearActions,
@@ -92,6 +93,32 @@ describe('action-registry', () => {
       generateActionId('link', 'Forest');
       resetIdCounters();
       expect(generateActionId('link', 'Forest')).toBe('link:Forest');
+    });
+  });
+
+  describe('updateAction', () => {
+    it('updates an existing action with a single notify', () => {
+      let count = 0;
+      registerAction(makeAction({ id: 'a', label: 'first' }));
+      onActionsChanged(() => count++);
+      updateAction(makeAction({ id: 'a', label: 'second' }));
+      expect(count).toBe(1); // single notify, not 2 (delete+set)
+      expect(getAction('a')!.label).toBe('second');
+    });
+
+    it('registers new action if not already present', () => {
+      let count = 0;
+      onActionsChanged(() => count++);
+      updateAction(makeAction({ id: 'new', label: 'fresh' }));
+      expect(count).toBe(1);
+      expect(getAction('new')!.label).toBe('fresh');
+    });
+
+    it('returns an unregister function', () => {
+      const unsub = updateAction(makeAction({ id: 'a' }));
+      expect(getActions()).toHaveLength(1);
+      unsub();
+      expect(getActions()).toHaveLength(0);
     });
   });
 
