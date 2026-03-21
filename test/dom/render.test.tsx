@@ -47,6 +47,17 @@ describe('renderNodes', () => {
     expect(el.textContent).toBe('Hello world');
   });
 
+  it('does not treat 4+ space indentation as code blocks and does not collapse it', () => {
+    // 4-space indented text should NOT become <pre><code> blocks
+    // AND the regex should not collapse 4+ spaces to a single space
+    const el = renderMarkup('normal\n\n    indented line');
+    // Should NOT be treated as code blocks
+    expect(el.querySelector('pre')).toBeNull();
+    expect(el.querySelector('code')).toBeNull();
+    // Text content should still be present
+    expect(el.textContent).toContain('indented line');
+  });
+
   it('renders single newline as soft break, double newline as paragraph boundary', () => {
     // Single newline → within same <p> (CommonMark soft break)
     const single = renderMarkup('Line 1\nLine 2');

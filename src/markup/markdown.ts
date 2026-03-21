@@ -12,7 +12,11 @@ import {
 export function markdownToHtml(text: string): string {
   return micromark(text, {
     allowDangerousHtml: true,
-    extensions: [gfmTable(), gfmStrikethrough()],
+    extensions: [
+      gfmTable(),
+      gfmStrikethrough(),
+      { disable: { null: ['codeIndented'] } },
+    ],
     htmlExtensions: [gfmTableHtml(), gfmStrikethroughHtml()],
   });
 }

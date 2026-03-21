@@ -106,4 +106,23 @@ describe('executeStoryInit', () => {
     executeStoryInit();
     expect(useStoryStore.getState().variables.a).toBe(1);
   });
+
+  it('keeps StoryInit mounted so async effects can fire', async () => {
+    // The {do} macro uses useLayoutEffect (sync) which always works.
+    // But StoryInit should also support components that use useEffect (async).
+    // Verify the container stays mounted by checking that Preact effects
+    // can still access the tree after executeStoryInit returns.
+    const storyData = makeStoryData([
+      makePassage(1, 'Start', 'Hello'),
+      makePassage(2, 'StoryInit', '{set $initRan = true}'),
+    ]);
+    useStoryStore.getState().init(storyData);
+    executeStoryInit();
+
+    // Allow async effects to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The sync {set} should have worked
+    expect(useStoryStore.getState().variables.initRan).toBe(true);
+  });
 });

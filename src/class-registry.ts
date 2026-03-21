@@ -99,12 +99,18 @@ export function serialize<T>(value: T): T {
 
     if (val instanceof Date) {
       seen.delete(obj);
-      return val.toISOString();
+      return {
+        [CLASS_TAG]: '__Date__',
+        [DATA_TAG]: { iso: val.toISOString() },
+      };
     }
 
     if (val instanceof RegExp) {
       seen.delete(obj);
-      return val.toString();
+      return {
+        [CLASS_TAG]: '__RegExp__',
+        [DATA_TAG]: { source: val.source, flags: val.flags },
+      };
     }
 
     if (Array.isArray(val)) {
@@ -153,6 +159,15 @@ export function deserialize<T>(value: T): T {
     if (CLASS_TAG in obj && DATA_TAG in obj) {
       const name = obj[CLASS_TAG] as string;
       const data = obj[DATA_TAG] as Record<string, unknown>;
+
+      // Built-in types
+      if (name === '__Date__') {
+        return new Date(data.iso as string);
+      }
+      if (name === '__RegExp__') {
+        return new RegExp(data.source as string, data.flags as string);
+      }
+
       const ctor = registry.get(name);
       if (!ctor) {
         console.warn(

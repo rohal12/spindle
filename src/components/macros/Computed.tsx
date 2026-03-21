@@ -63,7 +63,6 @@ function computeAndApply(
   locals: Record<string, unknown>,
   rawArgs: string,
 ): void {
-  const state = useStoryStore.getState();
   let newValue: unknown;
   try {
     newValue = evaluate(expr, variables, temporary, locals);
@@ -75,8 +74,9 @@ function computeAndApply(
     return;
   }
 
-  const current = isTemp ? state.temporary[name] : state.variables[name];
+  const current = isTemp ? temporary[name] : variables[name];
   if (!valuesEqual(current, newValue)) {
+    const state = useStoryStore.getState();
     if (isTemp) state.setTemporary(name, newValue);
     else state.setVariable(name, newValue);
   }
@@ -106,13 +106,12 @@ defineMacro({
     const ran = ctx.hooks.useRef(false);
     if (!ran.current) {
       ran.current = true;
-      const state = useStoryStore.getState();
       computeAndApply(
         expr,
         name,
         isTemp,
-        state.variables,
-        state.temporary,
+        mergedVars,
+        mergedTemps,
         mergedLocals,
         rawArgs,
       );

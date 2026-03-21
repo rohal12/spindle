@@ -13,9 +13,12 @@ defineMacro({
   render({ rawArgs, children = [] }, ctx) {
     const { name, params } = parseWidgetDef(rawArgs);
 
+    const childrenKey = JSON.stringify(children);
+    const paramsKey = params.join(',');
+
     ctx.hooks.useLayoutEffect(() => {
       registerWidget(name, children, params);
-    }, []);
+    }, [name, childrenKey, paramsKey]);
 
     return null;
   },

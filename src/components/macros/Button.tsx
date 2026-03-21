@@ -1,9 +1,11 @@
 import { h, render } from 'preact';
+import { useContext } from 'preact/hooks';
 import { defineMacro } from '../../define-macro';
 import {
   renderNodes,
   LocalsUpdateContext,
   LocalsValuesContext,
+  NobrContext,
 } from '../../markup/render';
 
 defineMacro({
@@ -11,6 +13,7 @@ defineMacro({
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const label = ctx.resolve?.(rawArgs.replace(/^["']|["']$/g, '')) ?? rawArgs;
+    const nobr = useContext(NobrContext);
 
     const handleClick = () => {
       // Render children into a detached DOM node — all macro side effects
@@ -18,12 +21,16 @@ defineMacro({
       // Wrap with locals context so @local variables from for-loops are available.
       const container = document.createElement('div');
       const vnode = h(
-        LocalsUpdateContext.Provider,
-        { value: { update: ctx.update, getValues: ctx.getValues } },
+        NobrContext.Provider,
+        { value: nobr },
         h(
-          LocalsValuesContext.Provider,
-          { value: ctx.getValues() },
-          renderNodes(children),
+          LocalsUpdateContext.Provider,
+          { value: { update: ctx.update, getValues: ctx.getValues } },
+          h(
+            LocalsValuesContext.Provider,
+            { value: ctx.getValues() },
+            renderNodes(children),
+          ),
         ),
       );
       render(vnode, container);

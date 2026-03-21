@@ -170,6 +170,22 @@ describe('execute', () => {
     expect(evaluate('`costs $${$price}`', vars, {})).toBe('costs $5');
   });
 
+  it('handles string containing } brace inside template interpolation with variable after', () => {
+    // The inner loop should not break on } inside a string literal
+    const vars: Record<string, unknown> = { a: 'x', b: 'y' };
+    expect(evaluate('`${$a + "}" + $b}`', vars, {})).toBe('x}y');
+  });
+
+  it('handles nested template literals in interpolation', () => {
+    const vars: Record<string, unknown> = { x: 1, y: 2 };
+    expect(evaluate('`${`${$x}+${$y}`}`', vars, {})).toBe('1+2');
+  });
+
+  it('handles single-quoted } with variable after inside template interpolation', () => {
+    const vars: Record<string, unknown> = { val: 42 };
+    expect(evaluate("`${'}' + $val}`", vars, {})).toBe('}42');
+  });
+
   it('throws on syntax errors', () => {
     expect(() => execute('$x =', {}, {})).toThrow();
   });

@@ -10,6 +10,8 @@ defineMacro({
     const containerRef = useRef<HTMLSpanElement>(null);
     const [totalChars, setTotalChars] = useState(0);
     const [visibleChars, setVisibleChars] = useState(0);
+    const visibleCharsRef = useRef(0);
+    visibleCharsRef.current = visibleChars;
 
     useEffect(() => {
       if (containerRef.current) {
@@ -21,7 +23,7 @@ defineMacro({
     // Typewriter interval
     useEffect(() => {
       if (totalChars === 0) return;
-      if (visibleChars >= totalChars) return;
+      if (visibleCharsRef.current >= totalChars) return;
 
       const timer = setInterval(() => {
         setVisibleChars((c) => {

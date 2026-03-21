@@ -118,6 +118,57 @@ function transform(expr: string): string {
             } else if (ic === '\\' && i + 1 < expr.length) {
               inner += ic + expr.charAt(i + 1);
               i++;
+            } else if (ic === '"' || ic === "'") {
+              // Skip quoted strings — braces inside are not depth-relevant
+              inner += ic;
+              i++;
+              while (i < expr.length) {
+                const sc = expr.charAt(i);
+                if (sc === '\\' && i + 1 < expr.length) {
+                  inner += sc + expr.charAt(i + 1);
+                  i += 2;
+                } else if (sc === ic) {
+                  inner += sc;
+                  i++;
+                  break;
+                } else {
+                  inner += sc;
+                  i++;
+                }
+              }
+              continue; // skip the i++ at the end
+            } else if (ic === '`') {
+              // Nested template literal — consume entirely
+              inner += ic;
+              i++;
+              while (i < expr.length) {
+                const tc = expr.charAt(i);
+                if (tc === '\\' && i + 1 < expr.length) {
+                  inner += tc + expr.charAt(i + 1);
+                  i += 2;
+                } else if (tc === '$' && expr.charAt(i + 1) === '{') {
+                  // Nested interpolation — track brace depth
+                  inner += '${';
+                  i += 2;
+                  let nestedDepth = 1;
+                  while (i < expr.length && nestedDepth > 0) {
+                    const nc = expr.charAt(i);
+                    if (nc === '{') nestedDepth++;
+                    else if (nc === '}') nestedDepth--;
+                    if (nestedDepth > 0) inner += nc;
+                    i++;
+                  }
+                  inner += '}';
+                } else if (tc === '`') {
+                  inner += tc;
+                  i++;
+                  break;
+                } else {
+                  inner += tc;
+                  i++;
+                }
+              }
+              continue; // skip the i++ at the end
             } else {
               inner += ic;
             }

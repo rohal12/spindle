@@ -1,9 +1,11 @@
 import { h, render } from 'preact';
+import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import {
   renderNodes,
   LocalsUpdateContext,
   LocalsValuesContext,
+  NobrContext,
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 
@@ -32,15 +34,20 @@ function renderChildrenDetached(
   children: import('../../markup/ast').ASTNode[],
   getValues: () => Record<string, unknown>,
   update: (key: string, value: unknown) => void,
+  nobr: boolean,
 ) {
   const container = document.createElement('div');
   const vnode = h(
-    LocalsUpdateContext.Provider,
-    { value: { update, getValues } },
+    NobrContext.Provider,
+    { value: nobr },
     h(
-      LocalsValuesContext.Provider,
-      { value: getValues() },
-      renderNodes(children),
+      LocalsUpdateContext.Provider,
+      { value: { update, getValues } },
+      h(
+        LocalsValuesContext.Provider,
+        { value: getValues() },
+        renderNodes(children),
+      ),
     ),
   );
   render(vnode, container);
@@ -52,10 +59,11 @@ defineMacro({
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const { display, passage } = parseArgs(rawArgs);
+    const nobr = useContext(NobrContext);
 
     const handleClick = (e: Event) => {
       e.preventDefault();
-      renderChildrenDetached(children, ctx.getValues, ctx.update);
+      renderChildrenDetached(children, ctx.getValues, ctx.update, nobr);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }
@@ -68,7 +76,7 @@ defineMacro({
       label: display,
       target: passage ?? undefined,
       perform: () => {
-        renderChildrenDetached(children, ctx.getValues, ctx.update);
+        renderChildrenDetached(children, ctx.getValues, ctx.update, nobr);
         if (passage) {
           useStoryStore.getState().navigate(passage);
         }
