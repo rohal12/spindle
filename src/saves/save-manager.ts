@@ -5,6 +5,7 @@ import type {
   PlaythroughRecord,
   SaveExport,
 } from './types';
+import { isSavePayload } from './types';
 import {
   putSave,
   getSave,
@@ -322,7 +323,9 @@ export function loadSession(ifid: string): SavePayload | undefined {
   try {
     const raw = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${ifid}`);
     if (!raw) return undefined;
-    const payload: SavePayload = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    if (!isSavePayload(parsed)) return undefined;
+    const payload = parsed;
     payload.variables = deserialize(payload.variables);
     payload.history = payload.history.map((m) => ({
       ...m,
