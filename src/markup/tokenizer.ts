@@ -258,7 +258,7 @@ function parseHtmlAttributes(
 
     // Read attribute name
     const attrStart = j;
-    while (j < input.length && /[a-zA-Z0-9_-]/.test(input[j]!)) j++;
+    while (j < input.length && /[a-zA-Z0-9_\-:@]/.test(input[j]!)) j++;
     const attrName = input.slice(attrStart, j);
     if (!attrName) break;
 
@@ -269,7 +269,13 @@ function parseHtmlAttributes(
         const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
-        while (j < input.length && input[j] !== quote) j++;
+        let braceDepth = 0;
+        while (j < input.length) {
+          if (input[j] === '{') braceDepth++;
+          else if (input[j] === '}') braceDepth--;
+          else if (input[j] === quote && braceDepth <= 0) break;
+          j++;
+        }
         attributes[attrName] = input.slice(valStart, j);
         if (j < input.length) j++; // skip closing quote
       } else {
