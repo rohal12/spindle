@@ -382,6 +382,12 @@ function createStoryAPI(): StoryAPI {
   };
 }
 
+declare global {
+  interface Window {
+    Story: StoryAPI;
+  }
+}
+
 export function installStoryAPI(): void {
-  (window as any).Story = createStoryAPI();
+  window.Story = createStoryAPI();
 }
