@@ -647,6 +647,12 @@ describe('extended macro components', () => {
       expect(input.value).toBe('Maren');
     });
 
+    it('textbox reads nested value when variable is quoted', () => {
+      const el = renderPassage('{textbox "$pc.name" "Enter name"}');
+      const input = el.querySelector('input[type="text"]') as HTMLInputElement;
+      expect(input.value).toBe('Maren');
+    });
+
     it('textbox writes nested value via dot-path', () => {
       const el = renderPassage('{textbox $pc.name "Enter name"}');
       const input = el.querySelector('input[type="text"]') as HTMLInputElement;
