@@ -13,8 +13,9 @@ import {
   extractDefaults,
 } from './story-variables';
 import { tokenize } from './markup/tokenizer';
-import { buildAST } from './markup/ast';
+import { buildAST, registerBlockMacro } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
+import { astContainsChildren } from './widgets/ast-scanner';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
 import builtinCSS from './styles.css?inline';
@@ -122,7 +123,12 @@ function boot() {
               (t) =>
                 t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
             );
-          registerWidget(widgetName, node.children as ASTNode[], params);
+          const children = node.children as ASTNode[];
+          const isBlock = astContainsChildren(children);
+          registerWidget(widgetName, children, params, isBlock);
+          if (isBlock) {
+            registerBlockMacro(widgetName);
+          }
         }
       }
     }
