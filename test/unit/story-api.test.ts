@@ -334,7 +334,7 @@ describe('StoryAPI', () => {
 
   describe('dialog API', () => {
     it('openDialog pushes to dialog queue', async () => {
-      const { pushDialog, shiftDialogQueue, resetTriggers } =
+      const { shiftDialogQueue, resetTriggers } =
         await import('../../src/triggers');
       resetTriggers();
       Story.openDialog('Help');
@@ -373,6 +373,8 @@ describe('StoryAPI', () => {
       const closeFn = vi.fn();
       const cleanup = registerDialogHost({
         close: closeFn,
+        closeAll: vi.fn(),
+        push: vi.fn(),
         isOpen: () => true,
       });
       Story.closeDialog();
@@ -380,24 +382,19 @@ describe('StoryAPI', () => {
       cleanup();
     });
 
-    it('closeAllDialogs clears queue then closes', async () => {
-      const {
-        pushDialog,
-        dialogQueueLength,
-        registerDialogHost,
-        resetTriggers,
-      } = await import('../../src/triggers');
+    it('closeAllDialogs invokes closeAll on host', async () => {
+      const { registerDialogHost, resetTriggers } =
+        await import('../../src/triggers');
       resetTriggers();
-      const closeFn = vi.fn();
+      const closeAllFn = vi.fn();
       const cleanup = registerDialogHost({
-        close: closeFn,
+        close: vi.fn(),
+        closeAll: closeAllFn,
+        push: vi.fn(),
         isOpen: () => true,
       });
-      pushDialog({ passageName: 'A' });
-      pushDialog({ passageName: 'B' });
       Story.closeAllDialogs();
-      expect(dialogQueueLength()).toBe(0);
-      expect(closeFn).toHaveBeenCalledTimes(1);
+      expect(closeAllFn).toHaveBeenCalledTimes(1);
       cleanup();
     });
 
@@ -408,6 +405,8 @@ describe('StoryAPI', () => {
       expect(Story.isDialogOpen()).toBe(false);
       const cleanup = registerDialogHost({
         close: vi.fn(),
+        closeAll: vi.fn(),
+        push: vi.fn(),
         isOpen: () => true,
       });
       expect(Story.isDialogOpen()).toBe(true);

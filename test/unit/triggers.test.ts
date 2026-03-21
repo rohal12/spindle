@@ -92,6 +92,8 @@ describe('triggers dialog queue', () => {
       const closeFn = vi.fn();
       const cleanup = registerDialogHost({
         close: closeFn,
+        closeAll: vi.fn(),
+        push: vi.fn(),
         isOpen: () => true,
       });
       closeCurrentDialog();
@@ -102,6 +104,8 @@ describe('triggers dialog queue', () => {
     it('isDialogShowing invokes registered isOpen callback', () => {
       const cleanup = registerDialogHost({
         close: vi.fn(),
+        closeAll: vi.fn(),
+        push: vi.fn(),
         isOpen: () => true,
       });
       expect(isDialogShowing()).toBe(true);
@@ -116,6 +120,8 @@ describe('triggers dialog queue', () => {
       const closeFn = vi.fn();
       const cleanup = registerDialogHost({
         close: closeFn,
+        closeAll: vi.fn(),
+        push: vi.fn(),
         isOpen: () => true,
       });
       cleanup();
@@ -143,14 +149,16 @@ describe('triggers dialog queue', () => {
       expect(dialogQueueLength()).toBe(0);
     });
 
-    it('invokes close callback on reset', () => {
-      const closeFn = vi.fn();
+    it('invokes closeAll callback on reset', () => {
+      const closeAllFn = vi.fn();
       const cleanup = registerDialogHost({
-        close: closeFn,
+        close: vi.fn(),
+        closeAll: closeAllFn,
+        push: vi.fn(),
         isOpen: () => true,
       });
       resetTriggers();
-      expect(closeFn).toHaveBeenCalledTimes(1);
+      expect(closeAllFn).toHaveBeenCalledTimes(1);
       cleanup();
     });
   });
