@@ -1665,7 +1665,7 @@ describe('compiled story e2e', () => {
       await page.waitForSelector('.dialog-overlay', { state: 'detached' });
     });
 
-    it('Story.openDialog queues multiple dialogs', async () => {
+    it('Story.openDialog stacks multiple dialogs', async () => {
       await navigateFresh();
       await clickLink('Dialog API');
       await page.waitForSelector('[data-passage="Dialog API Tests"]');
@@ -1673,17 +1673,23 @@ describe('compiled story e2e', () => {
       await page.click('button:has-text("Open two dialogs")');
       await page.waitForSelector('.dialog-overlay');
 
-      // First dialog
-      const firstText = await page.textContent('.dialog-body');
-      expect(firstText).toContain('programmatic dialog');
+      // Both dialogs should be visible (stacked)
+      let overlays = await page.$$('.dialog-overlay');
+      expect(overlays.length).toBe(2);
 
-      // Close first — second should appear
-      await page.click('.dialog-close');
-      await page.waitForSelector('.dialog-overlay');
-      const secondText = await page.textContent('.dialog-body');
-      expect(secondText).toContain('second queued dialog');
+      // Topmost (last) dialog is the second one
+      const topText = await overlays[1]!.textContent();
+      expect(topText).toContain('second queued dialog');
 
-      // Close second
+      // Close top dialog — first should remain
+      const topClose = await overlays[1]!.$('.dialog-close');
+      await topClose!.click();
+      overlays = await page.$$('.dialog-overlay');
+      expect(overlays.length).toBe(1);
+      const remainingText = await page.textContent('.dialog-body');
+      expect(remainingText).toContain('programmatic dialog');
+
+      // Close last dialog
       await page.click('.dialog-close');
       await page.waitForSelector('.dialog-overlay', { state: 'detached' });
     });
