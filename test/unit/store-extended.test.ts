@@ -218,6 +218,37 @@ describe('store extended coverage', () => {
     });
   });
 
+  describe('loadFromPayload', () => {
+    it('clamps out-of-bounds historyIndex', () => {
+      const payload = {
+        passage: 'Start',
+        variables: {},
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: {}, timestamp: 2 },
+        ],
+        historyIndex: 999,
+      };
+      useStoryStore.getState().loadFromPayload(payload);
+      const state = useStoryStore.getState();
+      expect(state.historyIndex).toBeLessThanOrEqual(state.history.length - 1);
+      expect(state.historyIndex).toBeGreaterThanOrEqual(0);
+    });
+
+    it('clamps negative historyIndex', () => {
+      const payload = {
+        passage: 'Start',
+        variables: {},
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+        ],
+        historyIndex: -5,
+      };
+      useStoryStore.getState().loadFromPayload(payload);
+      expect(useStoryStore.getState().historyIndex).toBe(0);
+    });
+  });
+
   describe('trackRender', () => {
     it('increments render count for passage', () => {
       const initial = useStoryStore.getState().renderCounts['Start'] ?? 0;

@@ -608,7 +608,10 @@ export const useStoryStore = create<StoryState>()(
           timestamp: m.timestamp,
           prng: m.prng,
         }));
-        state.historyIndex = payload.historyIndex;
+        state.historyIndex = Math.max(
+          0,
+          Math.min(payload.historyIndex, state.history.length - 1),
+        );
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};
