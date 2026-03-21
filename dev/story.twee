@@ -47,6 +47,7 @@ $done_count = 0
 $ready_conditional = false
 $watchTest = 0
 $watchGold = 0
+$btnHtmlResult = ""
 
 
 :: StoryInit
@@ -103,7 +104,7 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[Dialog API->Dialog API Tests]] | [[SVG test->SVG Interop]]
 
-[[Nested HTML include->Nested HTML Include Test]]
+[[Nested HTML include->Nested HTML Include Test]] | [[Button HTML test->Button HTML Test]]
 
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
@@ -1257,3 +1258,12 @@ This is a programmatic dialog. It was opened via Story.openDialog().
 
 :: Dialog API Second
 This is the second queued dialog.
+
+:: Button HTML Test
+**Button with HTML block element inside:**
+
+{button}<div class="nav-item">Click me</div>{set $btnHtmlResult = "div-clicked"}{/button}
+
+Result: {$btnHtmlResult}
+
+[[Start]]

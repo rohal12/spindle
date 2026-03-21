@@ -116,6 +116,31 @@ describe('parseStoryData', () => {
     expect(data.passages.get('Start')!.tags).toEqual([]);
   });
 
+  it('preserves HTML tags in passage content when HTML-encoded', () => {
+    setDocumentHTML(`
+      <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
+        <tw-passagedata pid="1" name="Start" tags="">{button}&lt;div class=&quot;nav-item&quot;&gt;Click me&lt;/div&gt;{set $myVar = &quot;clicked&quot;}{/button}</tw-passagedata>
+      </tw-storydata>
+    `);
+    const data = parseStoryData();
+    expect(data.passages.get('Start')!.content).toBe(
+      '{button}<div class="nav-item">Click me</div>{set $myVar = "clicked"}{/button}',
+    );
+  });
+
+  it('preserves HTML tags in passage content when NOT HTML-encoded', () => {
+    setDocumentHTML(`
+      <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
+        <tw-passagedata pid="1" name="Start" tags="">{button}<div class="nav-item">Click me</div>{set $myVar = "clicked"}{/button}</tw-passagedata>
+      </tw-storydata>
+    `);
+    const data = parseStoryData();
+    // The <div> should be preserved as literal text for the tokenizer
+    expect(data.passages.get('Start')!.content).toBe(
+      '{button}<div class="nav-item">Click me</div>{set $myVar = "clicked"}{/button}',
+    );
+  });
+
   it('makes passages accessible by both name and pid', () => {
     setDocumentHTML(MINIMAL_STORY);
     const data = parseStoryData();
