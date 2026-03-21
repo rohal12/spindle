@@ -1,8 +1,9 @@
 /**
- * Reproduction test for issue #61:
- * Tokenizer fails with deeply nested HTML in PassageDialog + {include}
+ * E2E reproduction test for issue #61:
+ * Tokenizer fails with special characters in HTML attribute names
+ * and deeply nested HTML in PassageDialog + {include}.
  *
- * Requires dist/story.html to exist (run `bun run preview` first).
+ * Requires dist/story.html to exist (run `npm run preview` first).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -27,7 +28,7 @@ let baseUrl: string;
 
 beforeAll(async () => {
   if (!existsSync(storyPath)) {
-    throw new Error('dist/story.html not found. Run `bun run preview` first.');
+    throw new Error('dist/story.html not found. Run `npm run preview` first.');
   }
 
   server = createServer((req, res) => {
@@ -64,84 +65,96 @@ afterAll(async () => {
   server?.close();
 });
 
-async function navigateFresh() {
+async function navigateToTestPage() {
   await page.goto(`${baseUrl}/story.html`);
   await page.waitForSelector('[data-passage="Start"]');
+  await page.click('a.macro-link:has-text("Nested HTML include")');
+  await page.waitForSelector('[data-passage="Nested HTML Include Test"]');
 }
 
-async function clickLink(text: string) {
-  await page.click(`a.macro-link:has-text("${text}")`);
+async function openDialogAndCheck(
+  buttonText: string,
+  expectedContent: string[],
+) {
+  const testPage = await browser.newPage();
+
+  const pageErrors: string[] = [];
+  testPage.on('pageerror', (err) => pageErrors.push(err.message));
+
+  await testPage.goto(`${baseUrl}/story.html`);
+  await testPage.waitForSelector('[data-passage="Start"]');
+  await testPage.click('a.macro-link:has-text("Nested HTML include")');
+  await testPage.waitForSelector('[data-passage="Nested HTML Include Test"]');
+
+  await testPage.click(`button:has-text("${buttonText}")`);
+  await testPage.waitForSelector('.dialog-overlay', { timeout: 5000 });
+
+  // Check no error div in dialog
+  const errorDiv = await testPage.$('.dialog-body .error');
+  const errorText = errorDiv ? await errorDiv.textContent() : null;
+
+  // Check expected content rendered
+  const bodyText = await testPage.textContent('.dialog-body');
+
+  await testPage.close();
+
+  return { pageErrors, errorText, bodyText };
 }
 
-describe('issue #61: nested HTML + {include} in dialog', () => {
-  it('DialogSidebar opens individually without error', async () => {
-    await navigateFresh();
-    await clickLink('Nested HTML include');
-    await page.waitForSelector('[data-passage="Nested HTML Include Test"]');
-
-    // Collect console errors
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text());
-    });
-
-    await page.click('button:has-text("Open DialogSidebar alone")');
-    await page.waitForSelector('.dialog-overlay');
-
-    const dialogText = await page.textContent('.dialog-body');
-    expect(dialogText).toContain('Home');
-    expect(dialogText).toContain('Settings');
-    expect(dialogText).toContain('About');
-
-    await page.click('.dialog-close');
-    await page.waitForSelector('.dialog-overlay', { state: 'detached' });
-
-    expect(errors.filter((e) => e.includes('Unexpected closing'))).toHaveLength(
-      0,
+describe('issue #61: HTML attribute parsing in dialogs', () => {
+  it('DialogSidebar: deeply nested HTML renders without error', async () => {
+    const { pageErrors, errorText, bodyText } = await openDialogAndCheck(
+      'Open DialogSidebar alone',
+      ['Home', 'Settings', 'About'],
     );
-  });
 
-  it('DialogShell with {include} opens without "Unexpected closing" error', async () => {
-    // Use a fresh page to capture errors from the start
-    const testPage = await browser.newPage();
-
-    const pageErrors: string[] = [];
-    testPage.on('pageerror', (err) => {
-      pageErrors.push(err.message);
-    });
-
-    await testPage.goto(`${baseUrl}/story.html`);
-    await testPage.waitForSelector('[data-passage="Start"]');
-    await testPage.click('a.macro-link:has-text("Nested HTML include")');
-    await testPage.waitForSelector('[data-passage="Nested HTML Include Test"]');
-
-    await testPage.click('button:has-text("Open DialogShell")');
-
-    // Wait briefly for the dialog attempt
-    await testPage.waitForTimeout(2000);
-
-    // Check for uncaught errors
-    console.log('Page errors:', JSON.stringify(pageErrors));
-
-    // Check if dialog appeared or if there's an error
-    const overlay = await testPage.$('.dialog-overlay');
-    console.log('Dialog overlay found:', !!overlay);
-
-    if (overlay) {
-      const errorDiv = await overlay.$('.error');
-      if (errorDiv) {
-        console.log('Error div:', await errorDiv.textContent());
-      }
-      const bodyText = await testPage.textContent('.dialog-body');
-      console.log('Body text:', bodyText);
-    }
-
-    await testPage.close();
-
-    // Assertions
+    expect(errorText).toBeNull();
     expect(
       pageErrors.filter((e) => e.includes('Unexpected closing')),
     ).toHaveLength(0);
-    expect(overlay).not.toBeNull();
+    expect(bodyText).toContain('Home');
+    expect(bodyText).toContain('Settings');
+    expect(bodyText).toContain('About');
+  });
+
+  it('DialogShell: {include} with nested HTML renders without error', async () => {
+    const { pageErrors, errorText, bodyText } = await openDialogAndCheck(
+      'Open DialogShell',
+      ['Header', 'Home', 'Content here'],
+    );
+
+    expect(errorText).toBeNull();
+    expect(
+      pageErrors.filter((e) => e.includes('Unexpected closing')),
+    ).toHaveLength(0);
+    expect(bodyText).toContain('Header');
+    expect(bodyText).toContain('Home');
+    expect(bodyText).toContain('Content here');
+  });
+
+  it('AttrNames: colon/namespace in attribute names renders without error', async () => {
+    const { pageErrors, errorText, bodyText } = await openDialogAndCheck(
+      'Open AttrNames',
+      ['Namespaced attr'],
+    );
+
+    expect(errorText).toBeNull();
+    expect(
+      pageErrors.filter((e) => e.includes('Unexpected closing')),
+    ).toHaveLength(0);
+    expect(bodyText).toContain('Namespaced attr');
+  });
+
+  it('IfInAttr: {if} inside attribute value renders without error', async () => {
+    const { pageErrors, errorText, bodyText } = await openDialogAndCheck(
+      'Open IfInAttr',
+      ['Conditional class content'],
+    );
+
+    expect(errorText).toBeNull();
+    expect(
+      pageErrors.filter((e) => e.includes('Unexpected closing')),
+    ).toHaveLength(0);
+    expect(bodyText).toContain('Conditional class content');
   });
 });

@@ -135,6 +135,33 @@ describe('issue #61: deeply nested HTML with {include}', () => {
       const ast = parse(input);
       expect(ast).toHaveLength(1);
     });
+
+    it('parses {if} block macro inside double-quoted attribute value', () => {
+      const input =
+        '<div class="{if $active}highlighted{else}normal{/if}">content</div>';
+      const ast = parse(input);
+      expect(ast).toHaveLength(1);
+      expect((ast[0] as HtmlNode).tag).toBe('div');
+      expect((ast[0] as HtmlNode).attributes['class']).toBe(
+        '{if $active}highlighted{else}normal{/if}',
+      );
+    });
+
+    it('parses {if} with quoted expression inside attribute value', () => {
+      const input =
+        '<div class="{if $x == \\"foo\\"}active{/if}">content</div>';
+      const ast = parse(input);
+      expect(ast).toHaveLength(1);
+      expect((ast[0] as HtmlNode).tag).toBe('div');
+    });
+
+    it('parses nested braces with {if}/{else} inside attribute value', () => {
+      const input =
+        '<div class="{if $x == \\"foo\\"}active{else}inactive{/if}">content</div>';
+      const ast = parse(input);
+      expect(ast).toHaveLength(1);
+      expect((ast[0] as HtmlNode).tag).toBe('div');
+    });
   });
 
   describe('DOM rendering with {include}', () => {

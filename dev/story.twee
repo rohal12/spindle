@@ -103,6 +103,8 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[Dialog API->Dialog API Tests]] | [[SVG test->SVG Interop]]
 
+[[Nested HTML include->Nested HTML Include Test]]
+
 :: Hallway
 {set $visited_rooms = $visited_rooms + 1}
 The hallway stretches in both directions, lit by torches mounted on the stone walls.
@@ -1216,6 +1218,39 @@ You reached 100 gold! This passage was reached via a watch goto.
 {dialog "Open via macro (hidden close)" noclose}Dialog API Content{/dialog}
 
 [[Start]]
+
+:: Nested HTML Include Test
+### Nested HTML + Dialog Tests
+
+{button "Open DialogSidebar alone"}
+  {do}Story.openDialog("DialogSidebar");{/do}
+{/button}
+
+{button "Open DialogShell"}
+  {do}Story.openDialog("DialogShell");{/do}
+{/button}
+
+{button "Open AttrNames"}
+  {do}Story.openDialog("AttrNamesDialog");{/do}
+{/button}
+
+{button "Open IfInAttr"}
+  {do}Story.openDialog("IfInAttrDialog");{/do}
+{/button}
+
+[[Start]]
+
+:: DialogSidebar
+<div class="sidebar"><div class="nav"><div class="item">Home</div><div class="item">Settings</div><div class="item">About</div></div><div class="footer">v1.0</div></div>
+
+:: DialogShell
+<div class="shell"><div class="header">Header</div>{include "DialogSidebar"}<div class="content"><div class="inner">Content here</div></div></div>
+
+:: AttrNamesDialog
+<div xml:lang="en"><div class="inner">Namespaced attr</div></div>
+
+:: IfInAttrDialog
+<div class="{if $count == "zero"}highlighted{else}normal{/if}">Conditional class content</div>
 
 :: Dialog API Content
 This is a programmatic dialog. It was opened via Story.openDialog().
