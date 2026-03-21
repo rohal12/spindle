@@ -13,6 +13,7 @@ import { useInterpolate } from './hooks/use-interpolate';
 import { useMergedLocals } from './hooks/use-merged-locals';
 import {
   LocalsUpdateContext,
+  LocalsValuesContext,
   NobrContext,
   renderNodes as _renderNodes,
   renderInlineNodes,
@@ -107,10 +108,11 @@ export function defineMacro(config: MacroDefinition): void {
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
     const nobr = useContext(NobrContext);
-    const renderNodes = nobr
-      ? (nodes: ASTNode[], options?: { nobr?: boolean }) =>
-          _renderNodes(nodes, { nobr: true, ...options })
-      : _renderNodes;
+    const localsValues = useContext(LocalsValuesContext);
+    const renderNodes = (
+      nodes: ASTNode[],
+      options?: { nobr?: boolean; locals?: Record<string, unknown> },
+    ) => _renderNodes(nodes, { nobr, locals: localsValues, ...options });
     const ctx: MacroContext = {
       collectText,
       sourceLocation: currentSourceLocation,

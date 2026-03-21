@@ -82,7 +82,7 @@ function ForIteration({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children, nobr ? { nobr: true } : undefined)}
+        {renderNodes(children, { nobr, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );

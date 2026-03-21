@@ -204,6 +204,16 @@ describe('macro components', () => {
       expect(container.textContent).not.toContain('a');
     });
 
+    it('renders @local variable inside markdown code span', () => {
+      useStoryStore.getState().setVariable('items', [0, 1, 2]);
+      const el = renderPassage(
+        '{for @item, @i of $items}`item {@i}`\n{/for}',
+      );
+      expect(el.textContent).toContain('item 0');
+      expect(el.textContent).toContain('item 1');
+      expect(el.textContent).toContain('item 2');
+    });
+
     it('nested for-loops scope @locals correctly with set', () => {
       useStoryStore.getState().setVariable('outer', ['a', 'b']);
       useStoryStore.getState().setVariable('inner', [1, 2]);

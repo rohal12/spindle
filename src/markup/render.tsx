@@ -83,6 +83,7 @@ function convertDomNode(
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
+  const locals = useContext(LocalsValuesContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = resolve(v) ?? v;
@@ -91,7 +92,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     node.tag,
     attrs,
     node.children.length > 0
-      ? renderNodes(node.children, nobr ? { nobr: true } : undefined)
+      ? renderNodes(node.children, { nobr, locals })
       : undefined,
   );
 }
@@ -193,7 +194,10 @@ function hasUnclosedBacktick(s: string): boolean {
   return count % 2 === 1;
 }
 
-function getVariableTextValue(node: VariableNode): string {
+function getVariableTextValue(
+  node: VariableNode,
+  locals: Record<string, unknown>,
+): string {
   const state = useStoryStore.getState();
   const parts = node.name.split('.');
   const root = parts[0]!;
@@ -201,6 +205,7 @@ function getVariableTextValue(node: VariableNode): string {
   let value: unknown;
   if (node.scope === 'variable') value = state.variables[root];
   else if (node.scope === 'temporary') value = state.temporary[root];
+  else value = locals[root];
 
   for (let i = 1; i < parts.length; i++) {
     if (value == null || typeof value !== 'object') return '';
@@ -223,7 +228,7 @@ function getVariableTextValue(node: VariableNode): string {
  */
 export function renderNodes(
   nodes: ASTNode[],
-  options?: { nobr?: boolean },
+  options?: { nobr?: boolean; locals?: Record<string, unknown> },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
 
@@ -236,6 +241,7 @@ export function renderNodes(
   // Build combined markdown string with placeholders for non-text nodes
   const components: preact.ComponentChildren[] = [];
   let combined = '';
+  const locals = options?.locals ?? {};
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
@@ -243,7 +249,7 @@ export function renderNodes(
       combined += node.value.replace(/^[ \t]{4,}/gm, ' ');
     } else if (node.type === 'variable' && hasUnclosedBacktick(combined)) {
       // Inline variable value to avoid placeholder inside code span
-      combined += getVariableTextValue(node);
+      combined += getVariableTextValue(node, locals);
     } else {
       const phIdx = components.length;
       components.push(renderSingleNode(node, i));

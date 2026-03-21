@@ -100,7 +100,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, nobr ? { nobr: true } : undefined)}
+        {renderNodes(body, { nobr, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -116,7 +116,7 @@ export function WidgetInvocation({
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
   if (params.length === 0 || !rawArgs) {
-    return <>{renderNodes(body, nobr ? { nobr: true } : undefined)}</>;
+    return <>{renderNodes(body, { nobr, locals: parentValues })}</>;
   }
 
   const argExprs = splitArgs(rawArgs);
