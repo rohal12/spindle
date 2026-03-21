@@ -79,6 +79,80 @@ Arguments are evaluated as expressions, so you can pass variables, literals, or 
 
 Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
 
+## Block Widgets (Wrapping Content)
+
+Widgets can wrap body content using the special `{@children}` placeholder. When `{@children}` appears in a widget's body, the widget becomes a **block widget** — it must be invoked with a closing tag, and the content between the tags replaces `{@children}`.
+
+### Defining a Block Widget
+
+Use `{@children}` to mark where the wrapped content renders:
+
+```
+:: UIWidgets [widget]
+{widget "Card" @title}
+  <div class="card">
+    <h2>{@title}</h2>
+    {@children}
+  </div>
+{/widget}
+
+{widget "Alert" @type}
+  <div class="alert alert-{@type}">
+    {@children}
+  </div>
+{/widget}
+```
+
+### Using a Block Widget
+
+Invoke with a closing tag — the content between the tags becomes `{@children}`:
+
+```
+:: Start
+{Card "Character Stats"}
+  {StatLine "Health", $health, $max_health}
+  {StatLine "Mana", $mana, $max_mana}
+{/Card}
+
+{Alert "warning"}
+  You are running low on health!
+{/Alert}
+```
+
+### Multiple Slots
+
+If `{@children}` appears more than once in a widget body, the invocation content renders in each location (mirroring):
+
+```
+{widget "SplitView"}
+  <div class="preview">{@children}</div>
+  <div class="detail">{@children}</div>
+{/widget}
+```
+
+### Nesting
+
+Block widgets can be nested inside each other:
+
+```
+{Card "Inventory"}
+  {Alert "info"}
+    You have {$inventory.length} items.
+  {/Alert}
+{/Card}
+```
+
+### How Detection Works
+
+The presence of `{@children}` in the widget body is the signal — no extra syntax is needed in the definition header. Widgets without `{@children}` remain self-closing and work exactly as before.
+
+### Notes
+
+- `@children` is a reserved name and cannot be used as a widget parameter name.
+- Block widgets must always be invoked with a closing tag (e.g., `{Card "x"}{/Card}`).
+- Markdown is processed independently in the widget body and invocation children — markdown syntax cannot span across the `{@children}` boundary.
+- Invocation children inherit the widget's locals context, so they can access widget parameters like `{@title}`.
+
 ## How Widgets Work
 
 When you define a widget, its body is stored as an AST (parsed content). When you invoke it, that AST is rendered in place. This means:
