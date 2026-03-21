@@ -32,9 +32,7 @@ describe('astContainsChildren', () => {
         type: 'html',
         tag: 'div',
         attributes: {},
-        children: [
-          { type: 'variable', name: 'children', scope: 'local' },
-        ],
+        children: [{ type: 'variable', name: 'children', scope: 'local' }],
       },
     ];
     expect(astContainsChildren(nodes)).toBe(true);
@@ -50,9 +48,7 @@ describe('astContainsChildren', () => {
         branches: [
           {
             rawArgs: '$x > 0',
-            children: [
-              { type: 'variable', name: 'children', scope: 'local' },
-            ],
+            children: [{ type: 'variable', name: 'children', scope: 'local' }],
           },
         ],
       },
@@ -66,9 +62,7 @@ describe('astContainsChildren', () => {
         type: 'macro',
         name: 'for',
         rawArgs: '@item of $list',
-        children: [
-          { type: 'variable', name: 'children', scope: 'local' },
-        ],
+        children: [{ type: 'variable', name: 'children', scope: 'local' }],
       },
     ];
     expect(astContainsChildren(nodes)).toBe(true);

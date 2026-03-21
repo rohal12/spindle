@@ -3,18 +3,22 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
-import { registerWidget, clearWidgets, isBlockWidget } from '../../src/widgets/widget-registry';
+import {
+  registerWidget,
+  clearWidgets,
+  isBlockWidget,
+} from '../../src/widgets/widget-registry';
 import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST, registerBlockMacro, unregisterBlockMacro } from '../../src/markup/ast';
+import {
+  buildAST,
+  registerBlockMacro,
+  unregisterBlockMacro,
+} from '../../src/markup/ast';
 import { astContainsChildren } from '../../src/widgets/ast-scanner';
 import type { ASTNode } from '../../src/markup/ast';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
-function makePassage(
-  pid: number,
-  name: string,
-  content: string,
-): PassageData {
+function makePassage(pid: number, name: string, content: string): PassageData {
   return { pid, name, tags: [], metadata: {}, content };
 }
 
@@ -42,9 +46,11 @@ function defineWidget(markup: string): void {
     if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
       const parts = node.rawArgs.trim().split(/\s+/);
       const name = parts[0]!.replace(/["']/g, '');
-      const params = parts.slice(1).filter(
-        (t) => t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
-      );
+      const params = parts
+        .slice(1)
+        .filter(
+          (t) => t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
+        );
       const children = node.children as ASTNode[];
       const isBlock = astContainsChildren(children);
       registerWidget(name, children, params, isBlock);
@@ -82,7 +88,9 @@ describe('block widgets', () => {
   }
 
   it('renders invocation children at @children slot', () => {
-    defineAndTrack('{widget "Wrapper"}<div class="wrap">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Wrapper"}<div class="wrap">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Wrapper}inner content{/Wrapper}');
     const wrap = el.querySelector('.wrap');
     expect(wrap).not.toBeNull();
@@ -90,7 +98,9 @@ describe('block widgets', () => {
   });
 
   it('renders widget params alongside @children', () => {
-    defineAndTrack('{widget "Card" @title}<div class="card"><h2>{@title}</h2>{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Card" @title}<div class="card"><h2>{@title}</h2>{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Card "My Title"}card body{/Card}');
     const card = el.querySelector('.card');
     expect(card).not.toBeNull();
@@ -100,7 +110,9 @@ describe('block widgets', () => {
   });
 
   it('mirrors @children when referenced multiple times', () => {
-    defineAndTrack('{widget "Mirror"}<div class="a">{@children}</div><div class="b">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Mirror"}<div class="a">{@children}</div><div class="b">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Mirror}hello{/Mirror}');
     const a = el.querySelector('.a');
     const b = el.querySelector('.b');
@@ -109,7 +121,9 @@ describe('block widgets', () => {
   });
 
   it('renders nothing for @children when invocation body is empty', () => {
-    defineAndTrack('{widget "Empty"}<div class="box">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Empty"}<div class="box">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Empty}{/Empty}');
     const box = el.querySelector('.box');
     expect(box).not.toBeNull();
@@ -125,7 +139,9 @@ describe('block widgets', () => {
   });
 
   it('widget params shadow outer locals of the same name', () => {
-    defineAndTrack('{widget "Shadow" @val}<span class="inner">{@val}</span>{@children}{/widget}');
+    defineAndTrack(
+      '{widget "Shadow" @val}<span class="inner">{@val}</span>{@children}{/widget}',
+    );
     const el = renderPassage('{Shadow "widget-val"}body{/Shadow}');
     const inner = el.querySelector('.inner');
     expect(inner!.textContent).toContain('widget-val');
@@ -137,7 +153,9 @@ describe('block widgets', () => {
     registerWidget('Inner', innerBody, []);
 
     // Define a block widget
-    defineAndTrack('{widget "Outer"}<div class="outer">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Outer"}<div class="outer">{@children}</div>{/widget}',
+    );
 
     // Invoke block widget with non-block widget inside
     const el = renderPassage('{Outer}{Inner}{/Outer}');
@@ -147,7 +165,9 @@ describe('block widgets', () => {
 
   it('nested block widgets work correctly', () => {
     defineAndTrack('{widget "Box"}<div class="box">{@children}</div>{/widget}');
-    defineAndTrack('{widget "Frame"}<div class="frame">{@children}</div>{/widget}');
+    defineAndTrack(
+      '{widget "Frame"}<div class="frame">{@children}</div>{/widget}',
+    );
     const el = renderPassage('{Box}{Frame}deep content{/Frame}{/Box}');
     const box = el.querySelector('.box');
     const frame = box!.querySelector('.frame');
@@ -167,7 +187,9 @@ describe('block widgets', () => {
   });
 
   it('renders @children inside {if} within widget body', () => {
-    defineAndTrack('{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}');
+    defineAndTrack(
+      '{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}',
+    );
     const el = renderPassage('{Conditional true}content here{/Conditional}');
     const wrap = el.querySelector('.wrap');
     expect(wrap).not.toBeNull();

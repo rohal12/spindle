@@ -15,7 +15,11 @@ export function registerWidget(
   isBlock = false,
 ): void {
   const filteredParams = params.filter((p) => p !== '@children');
-  widgets.set(name.toLowerCase(), { body: bodyAST, params: filteredParams, isBlock });
+  widgets.set(name.toLowerCase(), {
+    body: bodyAST,
+    params: filteredParams,
+    isBlock,
+  });
 }
 
 export function getWidget(name: string): WidgetEntry | undefined {
