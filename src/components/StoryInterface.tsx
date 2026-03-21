@@ -23,7 +23,8 @@ export function StoryInterface() {
     } catch (err) {
       return (
         <span class="error">
-          Error in StoryInterface: {err instanceof Error ? err.message : String(err)}
+          Error in StoryInterface:{' '}
+          {err instanceof Error ? err.message : String(err)}
         </span>
       );
     }

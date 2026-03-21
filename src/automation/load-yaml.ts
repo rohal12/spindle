@@ -19,11 +19,15 @@ function validateStep(step: unknown, index: number): AutomationStep {
   }
 
   if (hasWait && typeof s.wait !== 'number') {
-    throw new Error(`Invalid automation step ${index + 1}: "wait" must be a number`);
+    throw new Error(
+      `Invalid automation step ${index + 1}: "wait" must be a number`,
+    );
   }
 
   if (hasSet && (typeof s.set !== 'object' || s.set === null)) {
-    throw new Error(`Invalid automation step ${index + 1}: "set" must be an object`);
+    throw new Error(
+      `Invalid automation step ${index + 1}: "set" must be an object`,
+    );
   }
 
   return s as AutomationStep;

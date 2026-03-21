@@ -15,6 +15,7 @@
 ### Task 1: Fix TEMP_RE regex false positive on property access [H1]
 
 **Files:**
+
 - Modify: `src/expression.ts:37`
 - Test: `test/unit/expression.test.ts`
 
@@ -50,10 +51,13 @@ Expected: First two tests FAIL (property access gets mis-transformed)
 - [ ] **Step 3: Fix TEMP_RE regex**
 
 In `src/expression.ts:37`, change:
+
 ```typescript
 const TEMP_RE = /\b_(\w+)/g;
 ```
+
 to:
+
 ```typescript
 const TEMP_RE = /(?<![.\w])_(\w+)/g;
 ```
@@ -81,6 +85,7 @@ git commit -m "fix: TEMP_RE regex no longer transforms underscore property acces
 ### Task 2: Fix executeMutation missing deleted variables [H2]
 
 **Files:**
+
 - Modify: `src/execute-mutation.ts`
 - Test: `test/unit/expression.test.ts` (add new describe block)
 
@@ -168,6 +173,7 @@ git commit -m "fix: executeMutation now detects deleted variables"
 ### Task 3: Memoize StoryInterface parsing [H3]
 
 **Files:**
+
 - Modify: `src/components/StoryInterface.tsx`
 
 **Problem:** `tokenize()` + `buildAST()` + `renderInlineNodes()` run on every render. Since `StoryInterface` subscribes to the store, every state change re-parses static markup.
@@ -226,6 +232,7 @@ git commit -m "fix: memoize StoryInterface markup parsing to avoid re-parse on e
 ### Task 4: Refactor Checkbox and Radiobutton to use storeVar [H4]
 
 **Files:**
+
 - Modify: `src/components/macros/Checkbox.tsx`
 - Modify: `src/components/macros/Radiobutton.tsx`
 - Test: `test/dom/macros.test.tsx` (verify existing tests still pass)
@@ -344,6 +351,7 @@ git commit -m "refactor: Checkbox and Radiobutton now use storeVar pattern"
 ### Task 5: Validate JSON.parse in loadSession [H5]
 
 **Files:**
+
 - Modify: `src/saves/types.ts` (add `isSavePayload` guard)
 - Modify: `src/saves/save-manager.ts:325`
 - Test: `test/unit/save-types.test.ts`
@@ -357,12 +365,14 @@ Add to `test/unit/save-types.test.ts`:
 ```typescript
 describe('isSavePayload', () => {
   it('returns true for valid payload', () => {
-    expect(isSavePayload({
-      passage: 'Start',
-      variables: { health: 100 },
-      history: [{ passage: 'Start', variables: {}, timestamp: 1 }],
-      historyIndex: 0,
-    })).toBe(true);
+    expect(
+      isSavePayload({
+        passage: 'Start',
+        variables: { health: 100 },
+        history: [{ passage: 'Start', variables: {}, timestamp: 1 }],
+        historyIndex: 0,
+      }),
+    ).toBe(true);
   });
 
   it('returns false for null', () => {
@@ -370,19 +380,42 @@ describe('isSavePayload', () => {
   });
 
   it('returns false for missing passage', () => {
-    expect(isSavePayload({ variables: {}, history: [], historyIndex: 0 })).toBe(false);
+    expect(isSavePayload({ variables: {}, history: [], historyIndex: 0 })).toBe(
+      false,
+    );
   });
 
   it('returns false for non-array history', () => {
-    expect(isSavePayload({ passage: 'X', variables: {}, history: 'bad', historyIndex: 0 })).toBe(false);
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: {},
+        history: 'bad',
+        historyIndex: 0,
+      }),
+    ).toBe(false);
   });
 
   it('returns false for non-number historyIndex', () => {
-    expect(isSavePayload({ passage: 'X', variables: {}, history: [], historyIndex: 'bad' })).toBe(false);
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: {},
+        history: [],
+        historyIndex: 'bad',
+      }),
+    ).toBe(false);
   });
 
   it('returns false for null variables', () => {
-    expect(isSavePayload({ passage: 'X', variables: null, history: [], historyIndex: 0 })).toBe(false);
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: null,
+        history: [],
+        historyIndex: 0,
+      }),
+    ).toBe(false);
   });
 });
 ```
@@ -446,6 +479,7 @@ git commit -m "fix: validate JSON.parse output in loadSession with isSavePayload
 ### Task 6: Validate automation YAML step shapes [H6]
 
 **Files:**
+
 - Modify: `src/automation/load-yaml.ts`
 - Test: `test/unit/automation-runner.test.ts` (add validation tests)
 
@@ -460,24 +494,29 @@ import { parseAutomationYaml } from '../../src/automation/load-yaml';
 
 describe('parseAutomationYaml', () => {
   it('parses valid script', () => {
-    const script = parseAutomationYaml('name: test\nsteps:\n  - action: click\n');
+    const script = parseAutomationYaml(
+      'name: test\nsteps:\n  - action: click\n',
+    );
     expect(script.name).toBe('test');
     expect(script.steps).toHaveLength(1);
   });
 
   it('rejects step with no recognized fields', () => {
-    expect(() => parseAutomationYaml('name: test\nsteps:\n  - bogus: true\n'))
-      .toThrow(/step 1/i);
+    expect(() =>
+      parseAutomationYaml('name: test\nsteps:\n  - bogus: true\n'),
+    ).toThrow(/step 1/i);
   });
 
   it('rejects step where wait is not a number', () => {
-    expect(() => parseAutomationYaml('name: test\nsteps:\n  - wait: "slow"\n'))
-      .toThrow(/step 1/i);
+    expect(() =>
+      parseAutomationYaml('name: test\nsteps:\n  - wait: "slow"\n'),
+    ).toThrow(/step 1/i);
   });
 
   it('rejects step where set is not an object', () => {
-    expect(() => parseAutomationYaml('name: test\nsteps:\n  - set: 42\n'))
-      .toThrow(/step 1/i);
+    expect(() =>
+      parseAutomationYaml('name: test\nsteps:\n  - set: 42\n'),
+    ).toThrow(/step 1/i);
   });
 });
 ```
@@ -508,11 +547,15 @@ function validateStep(step: unknown, index: number): AutomationStep {
   }
 
   if (hasWait && typeof s.wait !== 'number') {
-    throw new Error(`Invalid automation step ${index + 1}: "wait" must be a number`);
+    throw new Error(
+      `Invalid automation step ${index + 1}: "wait" must be a number`,
+    );
   }
 
   if (hasSet && (typeof s.set !== 'object' || s.set === null)) {
-    throw new Error(`Invalid automation step ${index + 1}: "set" must be an object`);
+    throw new Error(
+      `Invalid automation step ${index + 1}: "set" must be an object`,
+    );
   }
 
   return s as AutomationStep;
@@ -560,6 +603,7 @@ git commit -m "fix: validate automation YAML step shapes instead of double-cast"
 ### Task 7: Thread locals through renderNodes for @var in code spans [M1]
 
 **Files:**
+
 - Modify: `src/markup/render.tsx:196-211, 224-259`
 - Modify: `src/define-macro.ts:110-113`
 - Test: `test/dom/render.test.tsx`
@@ -592,6 +636,7 @@ Expected: FAIL — `@i` renders as empty string inside backtick code span
 In `src/markup/render.tsx`:
 
 1. Extend `renderNodes` options type:
+
 ```typescript
 export function renderNodes(
   nodes: ASTNode[],
@@ -600,6 +645,7 @@ export function renderNodes(
 ```
 
 2. Pass locals to `getVariableTextValue`:
+
 ```typescript
 const locals = options?.locals ?? {};
 // ... inside the loop:
@@ -607,6 +653,7 @@ combined += getVariableTextValue(node, locals);
 ```
 
 3. Update `getVariableTextValue` signature and add local scope:
+
 ```typescript
 function getVariableTextValue(
   node: VariableNode,
@@ -631,6 +678,7 @@ function getVariableTextValue(
 ```
 
 4. In `HtmlNodeRenderer`, pass locals from context:
+
 ```typescript
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
@@ -680,6 +728,7 @@ git commit -m "fix: thread locals through renderNodes so @var works in markdown 
 ### Task 8: Clamp historyIndex in loadFromPayload [M3]
 
 **Files:**
+
 - Modify: `src/store.ts:611`
 - Test: `test/unit/store-extended.test.ts`
 
@@ -711,9 +760,7 @@ describe('loadFromPayload', () => {
     const payload = {
       passage: 'Start',
       variables: {},
-      history: [
-        { passage: 'Start', variables: {}, timestamp: 1 },
-      ],
+      history: [{ passage: 'Start', variables: {}, timestamp: 1 }],
       historyIndex: -5,
     };
     useStoryStore.getState().loadFromPayload(payload);
@@ -730,10 +777,13 @@ Expected: FAIL — historyIndex is 999 / -5 respectively
 - [ ] **Step 3: Clamp historyIndex**
 
 In `src/store.ts`, line 611, change:
+
 ```typescript
 state.historyIndex = payload.historyIndex;
 ```
+
 to:
+
 ```typescript
 state.historyIndex = Math.max(
   0,
@@ -758,6 +808,7 @@ git commit -m "fix: clamp historyIndex bounds in loadFromPayload"
 ### Task 9: Fix conditional useState in MenubarButtons [M5]
 
 **Files:**
+
 - Modify: `src/components/macros/MenubarButtons.tsx:31-33`
 
 **Problem:** `config.dialog ? useState(false) : [false, undefined as never]` violates the Rules of Hooks. Always call `useState` unconditionally.
@@ -795,6 +846,7 @@ git commit -m "fix: unconditional useState in MenubarButtons (hook rules complia
 ### Task 10: Fix Repeat macro non-reactive interpolation [M6]
 
 **Files:**
+
 - Modify: `src/components/macros/Repeat.tsx:11-23`
 
 **Problem:** Repeat manually resolves className/id interpolation in a `useMemo` using `useStoryStore.getState()`. The resolved values never update when variables change. Adding `interpolate: true` to the defineMacro config lets the framework handle this reactively.
@@ -879,6 +931,7 @@ git commit -m "fix: Repeat macro uses interpolate flag for reactive className/id
 ### Task 11: Fix Cycle macro stale closure on rapid clicking [M7]
 
 **Files:**
+
 - Modify: `src/components/macros/Cycle.tsx:9-14`
 
 **Problem:** `handleClick` closes over `ctx.value` from the render snapshot. Rapid clicks before re-render read the same stale value, skipping options.
@@ -916,6 +969,7 @@ git commit -m "fix: Cycle macro reads current store value on click (stale closur
 ### Task 12: Document remaining known issues
 
 **Files:**
+
 - Create: `docs/TODO-known-issues.md`
 
 **Problem:** Remaining Medium and Low severity issues from the analysis need documentation.

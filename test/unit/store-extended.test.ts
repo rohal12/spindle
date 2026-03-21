@@ -239,9 +239,7 @@ describe('store extended coverage', () => {
       const payload = {
         passage: 'Start',
         variables: {},
-        history: [
-          { passage: 'Start', variables: {}, timestamp: 1 },
-        ],
+        history: [{ passage: 'Start', variables: {}, timestamp: 1 }],
         historyIndex: -5,
       };
       useStoryStore.getState().loadFromPayload(payload);

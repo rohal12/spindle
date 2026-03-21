@@ -206,9 +206,7 @@ describe('macro components', () => {
 
     it('renders @local variable inside markdown code span', () => {
       useStoryStore.getState().setVariable('items', [0, 1, 2]);
-      const el = renderPassage(
-        '{for @item, @i of $items}`item {@i}`\n{/for}',
-      );
+      const el = renderPassage('{for @item, @i of $items}`item {@i}`\n{/for}');
       expect(el.textContent).toContain('item 0');
       expect(el.textContent).toContain('item 1');
       expect(el.textContent).toContain('item 2');
