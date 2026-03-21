@@ -19,9 +19,24 @@ export interface StoryData {
 }
 
 /**
+ * Decode the HTML entities that browsers use when serializing innerHTML.
+ * &amp; is decoded last to avoid double-decoding (e.g. &amp;lt; → &lt;, not <).
+ */
+function decodeHtmlEntities(html: string): string {
+  return html
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
  * Parse <tw-storydata> and all <tw-passagedata> elements from the DOM.
- * The browser auto-decodes HTML entities when building the DOM, so
- * textContent gives us the original passage text.
+ *
+ * Uses innerHTML + entity decoding instead of textContent so that HTML
+ * tags inside passage markup (e.g. <div> inside {button}) are preserved
+ * regardless of whether the compiler HTML-encoded them.
  */
 export function parseStoryData(): StoryData {
   const storyEl = document.querySelector('tw-storydata');
@@ -52,7 +67,7 @@ export function parseStoryData(): StoryData {
     const tags = (el.getAttribute('tags') || '')
       .split(/\s+/)
       .filter((t) => t.length > 0);
-    const content = el.textContent || '';
+    const content = decodeHtmlEntities(el.innerHTML);
 
     const metadata: Record<string, string> = {};
     const skipAttrs = new Set(['pid', 'name', 'tags']);

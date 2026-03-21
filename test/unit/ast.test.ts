@@ -657,6 +657,45 @@ describe('buildAST', () => {
     });
   });
 
+  describe('issue #60: button with HTML block elements', () => {
+    it('parses {button} with <div> inside body', () => {
+      const ast = parse(
+        '{button}<div class="nav-item">Click me</div>{set $myVar = "clicked"}{/button}',
+      );
+      expect(ast).toHaveLength(1);
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('button');
+      expect(node.children).toHaveLength(2);
+      expect(node.children[0].type).toBe('html');
+      expect((node.children[0] as any).tag).toBe('div');
+      expect((node.children[1] as MacroNode).name).toBe('set');
+    });
+
+    it('parses {button} with nested divs', () => {
+      const ast = parse(
+        '{button}<div class="outer"><div class="inner">Content</div></div>{/button}',
+      );
+      expect(ast).toHaveLength(1);
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('button');
+      expect(node.children).toHaveLength(1);
+      const outer = node.children[0] as any;
+      expect(outer.tag).toBe('div');
+      expect(outer.children).toHaveLength(1);
+      expect(outer.children[0].tag).toBe('div');
+    });
+
+    it('parses {button} with text only (no HTML)', () => {
+      const ast = parse('{button}Click me{set $myVar = "clicked"}{/button}');
+      expect(ast).toHaveLength(1);
+      const node = ast[0] as MacroNode;
+      expect(node.name).toBe('button');
+      expect(node.children).toHaveLength(2);
+      expect(node.children[0].type).toBe('text');
+      expect((node.children[1] as MacroNode).name).toBe('set');
+    });
+  });
+
   describe('mixed content', () => {
     it('handles complete passage with macros and links', () => {
       const ast = parse('Hello {$name}! {set $seen = true}\n[[Next]]');
