@@ -221,6 +221,51 @@ describe('macro components', () => {
       );
       expect(useStoryStore.getState().variables.log).toBe('a1a2b1b2');
     });
+
+    it('inner for-loop reads outer @item correctly via parentValues', () => {
+      useStoryStore.getState().setVariable('groups', [
+        ['x', 'y'],
+        ['a', 'b'],
+      ]);
+      useStoryStore.getState().setVariable('result', '');
+      renderPassage(
+        '{for @group of $groups}{for @item of @group}{set $result = $result + @item}{/for}{/for}',
+      );
+      expect(useStoryStore.getState().variables.result).toBe('xyab');
+    });
+
+    it('inner for-loop displays @local set by outer for-loop body', async () => {
+      // The outer for-loop body sets @total via {set @total = ...}.
+      // The inner for-loop displays {@total} from its parent scope.
+      // With the bug, ForIteration captures parentValues in useState
+      // initializer and never picks up @total added after mount.
+      useStoryStore.getState().setVariable('inner', [1]);
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      await act(async () => {
+        render(
+          <Passage
+            passage={makePassage(
+              1,
+              'Test',
+              '{nobr}{for @item of [1]}{set @total = 100}{for @x of $inner}{@total}{/for}{/for}{/nobr}',
+            )}
+          />,
+          container,
+        );
+      });
+
+      // Allow Preact to process queued state updates
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      // After re-render, the inner for-loop should display @total = 100
+      expect(container.textContent).toContain('100');
+
+      document.body.removeChild(container);
+    });
   });
 
   describe('{do}', () => {

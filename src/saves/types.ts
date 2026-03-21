@@ -69,7 +69,8 @@ export function isSaveExport(value: unknown): value is SaveExport {
 
   const payload = save.payload as Record<string, unknown>;
   if (typeof payload.passage !== 'string') return false;
-  if (!Array.isArray(payload.history)) return false;
+  if (!Array.isArray(payload.history) || payload.history.length === 0)
+    return false;
   if (typeof payload.historyIndex !== 'number') return false;
   if (typeof payload.variables !== 'object' || payload.variables === null)
     return false;
@@ -82,7 +83,7 @@ export function isSavePayload(value: unknown): value is SavePayload {
   const obj = value as Record<string, unknown>;
   if (typeof obj.passage !== 'string') return false;
   if (typeof obj.variables !== 'object' || obj.variables === null) return false;
-  if (!Array.isArray(obj.history)) return false;
+  if (!Array.isArray(obj.history) || obj.history.length === 0) return false;
   if (typeof obj.historyIndex !== 'number') return false;
   return true;
 }

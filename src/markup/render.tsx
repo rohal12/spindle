@@ -259,7 +259,7 @@ export function renderNodes(
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
-      combined += node.value.replace(/^[ \t]{4,}/gm, ' ');
+      combined += node.value;
     } else if (node.type === 'variable' && hasUnclosedBacktick(combined)) {
       // Inline variable value to avoid placeholder inside code span
       combined += getVariableTextValue(node, locals);

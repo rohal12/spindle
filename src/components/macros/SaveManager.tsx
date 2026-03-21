@@ -88,6 +88,10 @@ export function SaveManagerContent() {
     statusTimer.current = window.setTimeout(() => setStatus(null), 3000);
   };
 
+  useEffect(() => {
+    return () => clearTimeout(statusTimer.current);
+  }, []);
+
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);

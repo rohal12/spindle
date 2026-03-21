@@ -295,4 +295,83 @@ describe('class-registry', () => {
       expect(restored.inv.count).toBe(3);
     });
   });
+
+  describe('Date round-trip', () => {
+    it('serialize → deserialize preserves Date instances', () => {
+      const date = new Date('2026-03-21T12:00:00.000Z');
+      const restored = deserialize(serialize({ d: date })) as { d: Date };
+
+      expect(restored.d instanceof Date).toBe(true);
+      expect(restored.d.getTime()).toBe(date.getTime());
+    });
+
+    it('Date survives JSON round-trip', () => {
+      const date = new Date('2026-01-15T08:30:00.000Z');
+      const json = JSON.stringify(serialize({ d: date }));
+      const restored = deserialize(JSON.parse(json)) as { d: Date };
+
+      expect(restored.d instanceof Date).toBe(true);
+      expect(restored.d.toISOString()).toBe('2026-01-15T08:30:00.000Z');
+    });
+
+    it('Date methods work after restore', () => {
+      const date = new Date('2026-06-15');
+      const restored = deserialize(serialize({ d: date })) as { d: Date };
+
+      expect(restored.d.getFullYear()).toBe(2026);
+      expect(restored.d.getMonth()).toBe(5); // June = 5
+    });
+  });
+
+  describe('RegExp round-trip', () => {
+    it('serialize → deserialize preserves RegExp instances', () => {
+      const regex = /hello/gi;
+      const restored = deserialize(serialize({ r: regex })) as { r: RegExp };
+
+      expect(restored.r instanceof RegExp).toBe(true);
+      expect(restored.r.source).toBe('hello');
+      expect(restored.r.flags).toBe('gi');
+    });
+
+    it('RegExp survives JSON round-trip', () => {
+      const regex = /^test\d+$/i;
+      const json = JSON.stringify(serialize({ r: regex }));
+      const restored = deserialize(JSON.parse(json)) as { r: RegExp };
+
+      expect(restored.r instanceof RegExp).toBe(true);
+      expect(restored.r.test('test123')).toBe(true);
+      expect(restored.r.test('nope')).toBe(false);
+    });
+
+    it('RegExp methods work after restore', () => {
+      const regex = /(\w+)@(\w+)/;
+      const restored = deserialize(serialize({ r: regex })) as { r: RegExp };
+
+      const match = restored.r.exec('user@host');
+      expect(match).not.toBeNull();
+      expect(match![1]).toBe('user');
+      expect(match![2]).toBe('host');
+    });
+  });
+
+  describe('mixed Date/RegExp with classes', () => {
+    it('serialize → deserialize preserves all types in nested structures', () => {
+      registerClass('Player', Player);
+      const state = {
+        player: new Player({ name: 'Hero' }),
+        createdAt: new Date('2026-01-01'),
+        pattern: /quest/i,
+        items: [new Date('2026-02-01'), /item\d/g],
+      };
+
+      const json = JSON.stringify(serialize(state));
+      const restored = deserialize(JSON.parse(json)) as typeof state;
+
+      expect(restored.player instanceof Player).toBe(true);
+      expect(restored.createdAt instanceof Date).toBe(true);
+      expect(restored.pattern instanceof RegExp).toBe(true);
+      expect(restored.items[0] instanceof Date).toBe(true);
+      expect(restored.items[1] instanceof RegExp).toBe(true);
+    });
+  });
 });

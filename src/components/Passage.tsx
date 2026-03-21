@@ -37,7 +37,8 @@ export function Passage({ passage, dataTransition }: PassageProps) {
       return (
         <div class="error">
           Error parsing passage &ldquo;{passage.name}&rdquo;
-          {sourceLocationOf(passage)}: {(err as Error).message}
+          {sourceLocationOf(passage)}:{' '}
+          {err instanceof Error ? err.message : String(err)}
         </div>
       );
     }

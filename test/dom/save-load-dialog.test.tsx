@@ -763,4 +763,44 @@ describe('SaveManagerContent', () => {
       vi.restoreAllMocks();
     });
   });
+
+  describe('status timeout cleanup', () => {
+    it('clears status timeout on unmount', async () => {
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      // Create a save to trigger showStatus
+      const payload = makePayload();
+      await createSave(IFID, useStoryStore.getState().playthroughId!, payload);
+      await flush();
+
+      // Switch to save mode and create new save to trigger status message
+      const saveBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(async () => saveBtn.click());
+      await flush();
+
+      const newSaveBtn = container.querySelector(
+        '.save-slot-new',
+      ) as HTMLElement;
+      if (newSaveBtn) {
+        await act(async () => newSaveBtn.click());
+        await flush();
+      }
+
+      // Record clearTimeout call count before unmount
+      const callsBefore = clearSpy.mock.calls.length;
+
+      // Unmount the component
+      render(null, container);
+
+      // clearTimeout should have been called at least once more on unmount
+      expect(clearSpy.mock.calls.length).toBeGreaterThan(callsBefore);
+
+      clearSpy.mockRestore();
+    });
+  });
 });

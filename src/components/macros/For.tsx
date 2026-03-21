@@ -62,18 +62,19 @@ function ForIteration({
   initialValues: Record<string, unknown>;
   children: ASTNode[];
 }) {
-  const [localState, setLocalState] = useState<Record<string, unknown>>(() => ({
-    ...parentValues,
-    ...ownKeys,
-    ...initialValues,
-  }));
+  const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
+    () => ({ ...initialValues }),
+  );
+
+  // Recomputed every render — picks up new parentValues/ownKeys from parent
+  const localState = { ...parentValues, ...ownKeys, ...localMutations };
 
   const valuesRef = useRef(localState);
   valuesRef.current = localState;
 
   const getValues = useCallback(() => valuesRef.current, []);
   const update = useCallback((key: string, value: unknown) => {
-    setLocalState((prev) => ({ ...prev, [key]: value }));
+    setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 

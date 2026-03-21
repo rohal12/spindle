@@ -245,6 +245,25 @@ describe('store extended coverage', () => {
       useStoryStore.getState().loadFromPayload(payload);
       expect(useStoryStore.getState().historyIndex).toBe(0);
     });
+
+    it('rejects payload with empty history array (no-op)', () => {
+      // Set up known good state first
+      useStoryStore.getState().setVariable('hp', 100);
+      const originalPassage = useStoryStore.getState().currentPassage;
+
+      const payload = {
+        passage: 'Nonexistent',
+        variables: {},
+        history: [],
+        historyIndex: 0,
+      };
+
+      useStoryStore.getState().loadFromPayload(payload);
+
+      // State should be unchanged — the empty payload was rejected
+      expect(useStoryStore.getState().currentPassage).toBe(originalPassage);
+      expect(useStoryStore.getState().variables.hp).toBe(100);
+    });
   });
 
   describe('trackRender', () => {

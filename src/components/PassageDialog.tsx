@@ -38,7 +38,11 @@ export function PassageDialog({
       const ast = buildAST(tokens);
       return renderNodes(ast);
     } catch (err) {
-      return <div class="error">Error in dialog: {(err as Error).message}</div>;
+      return (
+        <div class="error">
+          Error in dialog: {err instanceof Error ? err.message : String(err)}
+        </div>
+      );
     }
   }, [markup]);
 

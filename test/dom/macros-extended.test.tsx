@@ -542,4 +542,13 @@ describe('extended macro components', () => {
       expect(btn.textContent).toBe('Open');
     });
   });
+
+  describe('{type}', () => {
+    it('renders with macro-type class', () => {
+      const el = renderPassage('{type 10ms}Hello{/type}');
+      const typeEl = el.querySelector('.macro-type');
+      expect(typeEl).not.toBeNull();
+      expect(typeEl!.textContent).toContain('Hello');
+    });
+  });
 });

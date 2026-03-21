@@ -576,6 +576,10 @@ export const useStoryStore = create<StoryState>()(
     },
 
     loadFromPayload: (payload: SavePayload) => {
+      if (payload.history.length === 0) {
+        console.warn('loadFromPayload: rejecting payload with empty history');
+        return;
+      }
       // Convert full snapshots to patch entries
       const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
         string,

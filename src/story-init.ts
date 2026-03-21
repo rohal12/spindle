@@ -19,12 +19,16 @@ export function executeStoryInit() {
     const tokens = tokenize(storyInit.content);
     const ast = buildAST(tokens);
 
+    // Mount into a persistent hidden container. We intentionally do NOT
+    // unmount — this lets async effects (useEffect, setTimeout, etc.)
+    // inside StoryInit macros fire through the normal Preact pipeline.
     const container = document.createElement('div');
+    container.style.display = 'none';
+    document.body.appendChild(container);
     render(
       h(() => renderNodes(ast) as any, null),
       container,
     );
-    render(null, container);
   }
 
   // Register SaveTitle passage if it exists

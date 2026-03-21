@@ -161,6 +161,12 @@ describe('isSaveExport', () => {
     (data as any).save.payload.variables = 'string';
     expect(isSaveExport(data)).toBe(false);
   });
+
+  it('returns false for empty payload.history', () => {
+    const data = makeValidExport();
+    (data as any).save.payload.history = [];
+    expect(isSaveExport(data)).toBe(false);
+  });
 });
 
 describe('isSavePayload', () => {
@@ -212,6 +218,17 @@ describe('isSavePayload', () => {
       isSavePayload({
         passage: 'X',
         variables: null,
+        history: [],
+        historyIndex: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for empty history array', () => {
+    expect(
+      isSavePayload({
+        passage: 'X',
+        variables: { hp: 100 },
         history: [],
         historyIndex: 0,
       }),
