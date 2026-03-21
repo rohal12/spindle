@@ -258,7 +258,7 @@ function parseHtmlAttributes(
 
     // Read attribute name
     const attrStart = j;
-    while (j < input.length && /[a-zA-Z0-9_-]/.test(input[j]!)) j++;
+    while (j < input.length && /[a-zA-Z0-9_\-:@]/.test(input[j]!)) j++;
     const attrName = input.slice(attrStart, j);
     if (!attrName) break;
 
