@@ -52,6 +52,7 @@ export interface MacroContext {
   varName?: string;
   value?: unknown;
   setValue?: (value: unknown) => void;
+  getValue?: () => unknown;
   evaluate?: (expr: string) => unknown;
   collectText: typeof collectText;
   sourceLocation: typeof currentSourceLocation;
@@ -92,6 +93,33 @@ const sharedHooks = {
   useMemo,
   useContext,
 };
+
+/** Traverse a dot-path on an object, returning the nested value. */
+function getByPath(obj: Record<string, unknown>, segments: string[]): unknown {
+  let current: unknown = obj;
+  for (const seg of segments) {
+    if (current == null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[seg];
+  }
+  return current;
+}
+
+/** Set a nested value by dot-path segments on an (Immer draft) object. */
+function setByPath(
+  obj: Record<string, unknown>,
+  segments: string[],
+  value: unknown,
+): void {
+  let target: Record<string, unknown> = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    if (target[seg] == null || typeof target[seg] !== 'object') {
+      target[seg] = {};
+    }
+    target = target[seg] as Record<string, unknown>;
+  }
+  target[segments[segments.length - 1]!] = value;
+}
 
 export function defineMacro(config: MacroDefinition): void {
   function Wrapper(props: MacroProps) {
@@ -146,11 +174,21 @@ export function defineMacro(config: MacroDefinition): void {
 
     if (config.storeVar) {
       const firstToken = props.rawArgs.trim().split(/[\s"']+/)[0] ?? '';
-      const varName = firstToken.replace(/["']/g, '').replace(/^\$/, '');
-      ctx.varName = varName;
-      ctx.value = useStoryStore((s) => s.variables[varName]);
-      const setVariable = useStoryStore((s) => s.setVariable);
-      ctx.setValue = (value: unknown) => setVariable(varName, value);
+      const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
+      const segments = varExpr.split('.');
+      ctx.varName = varExpr;
+      ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
+      ctx.getValue = () =>
+        getByPath(useStoryStore.getState().variables, segments);
+      ctx.setValue = (value: unknown) => {
+        useStoryStore.setState((state) => {
+          setByPath(
+            state.variables as Record<string, unknown>,
+            segments,
+            value,
+          );
+        });
+      };
     }
 
     return config.render(props, ctx);

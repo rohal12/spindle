@@ -1,4 +1,3 @@
-import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
@@ -9,7 +8,7 @@ defineMacro({
 
     const handleClick = () => {
       if (options.length === 0) return;
-      const current = useStoryStore.getState().variables[ctx.varName!];
+      const current = ctx.getValue!();
       const currentIndex = options.indexOf(String(current));
       const nextIndex = (currentIndex + 1) % options.length;
       ctx.setValue!(options[nextIndex]);

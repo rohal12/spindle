@@ -1,7 +1,7 @@
 import { defineMacro } from '../../define-macro';
 
 function parseLabel(rawArgs: string): string {
-  const match = rawArgs.match(/^\s*["']?\$?\w+["']?\s+["']?(.+?)["']?\s*$/);
+  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+["']?(.+?)["']?\s*$/);
   return match?.[1] ?? '';
 }
 
