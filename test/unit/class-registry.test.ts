@@ -354,6 +354,103 @@ describe('class-registry', () => {
     });
   });
 
+  describe('Map support', () => {
+    it('deepClone preserves Map instances and entries', () => {
+      const map = new Map<string, number>([
+        ['a', 1],
+        ['b', 2],
+      ]);
+      const cloned = deepClone(map);
+
+      expect(cloned).not.toBe(map);
+      expect(cloned instanceof Map).toBe(true);
+      expect(cloned.size).toBe(2);
+      expect(cloned.get('a')).toBe(1);
+      expect(cloned.get('b')).toBe(2);
+    });
+
+    it('deepClone deep-clones Map values', () => {
+      const inner = { x: 1 };
+      const map = new Map([['key', inner]]);
+      const cloned = deepClone(map);
+
+      expect(cloned.get('key')).toEqual(inner);
+      expect(cloned.get('key')).not.toBe(inner);
+    });
+
+    it('serialize → deserialize round-trips Map', () => {
+      const map = new Map([
+        ['a', 1],
+        ['b', 2],
+      ]);
+      const restored = deserialize(serialize({ m: map })) as {
+        m: Map<string, number>;
+      };
+
+      expect(restored.m instanceof Map).toBe(true);
+      expect(restored.m.size).toBe(2);
+      expect(restored.m.get('a')).toBe(1);
+    });
+
+    it('Map survives JSON round-trip', () => {
+      const map = new Map([
+        ['x', 10],
+        ['y', 20],
+      ]);
+      const json = JSON.stringify(serialize({ m: map }));
+      const restored = deserialize(JSON.parse(json)) as {
+        m: Map<string, number>;
+      };
+
+      expect(restored.m instanceof Map).toBe(true);
+      expect(restored.m.get('x')).toBe(10);
+      expect(restored.m.get('y')).toBe(20);
+    });
+  });
+
+  describe('Set support', () => {
+    it('deepClone preserves Set instances and entries', () => {
+      const set = new Set([1, 2, 3]);
+      const cloned = deepClone(set);
+
+      expect(cloned).not.toBe(set);
+      expect(cloned instanceof Set).toBe(true);
+      expect(cloned.size).toBe(3);
+      expect(cloned.has(1)).toBe(true);
+      expect(cloned.has(3)).toBe(true);
+    });
+
+    it('deepClone deep-clones Set values', () => {
+      const inner = { x: 1 };
+      const set = new Set([inner]);
+      const cloned = deepClone(set);
+
+      const clonedItem = [...cloned][0];
+      expect(clonedItem).toEqual(inner);
+      expect(clonedItem).not.toBe(inner);
+    });
+
+    it('serialize → deserialize round-trips Set', () => {
+      const set = new Set(['a', 'b', 'c']);
+      const restored = deserialize(serialize({ s: set })) as { s: Set<string> };
+
+      expect(restored.s instanceof Set).toBe(true);
+      expect(restored.s.size).toBe(3);
+      expect(restored.s.has('a')).toBe(true);
+    });
+
+    it('Set survives JSON round-trip', () => {
+      const set = new Set([10, 20, 30]);
+      const json = JSON.stringify(serialize({ s: set }));
+      const restored = deserialize(JSON.parse(json)) as { s: Set<number> };
+
+      expect(restored.s instanceof Set).toBe(true);
+      expect(restored.s.has(10)).toBe(true);
+      expect(restored.s.has(20)).toBe(true);
+      expect(restored.s.size).toBe(3);
+    });
+  });
+
   describe('mixed Date/RegExp with classes', () => {
     it('serialize → deserialize preserves all types in nested structures', () => {
       registerClass('Player', Player);

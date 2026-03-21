@@ -21,6 +21,8 @@ export interface UseActionOptions {
 
 export function useAction(opts: UseActionOptions): string {
   const idRef = useRef<string>('');
+  const performRef = useRef(opts.perform);
+  performRef.current = opts.perform;
 
   // Generate ID only once on first call
   if (!idRef.current) {
@@ -34,7 +36,7 @@ export function useAction(opts: UseActionOptions): string {
       id,
       type: opts.type,
       label: opts.label,
-      perform: opts.perform,
+      perform: (...args) => performRef.current(...args),
     };
     if (opts.target !== undefined) action.target = opts.target;
     if (opts.variable !== undefined) action.variable = opts.variable;
@@ -43,7 +45,16 @@ export function useAction(opts: UseActionOptions): string {
     if (opts.disabled !== undefined) action.disabled = opts.disabled;
 
     return registerAction(action);
-  });
+  }, [
+    id,
+    opts.type,
+    opts.label,
+    opts.target,
+    opts.variable,
+    opts.disabled,
+    opts.value,
+    JSON.stringify(opts.options),
+  ]);
 
   return id;
 }

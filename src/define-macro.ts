@@ -130,7 +130,11 @@ export function defineMacro(config: MacroDefinition): void {
       mutate: (code: string) => executeMutation(code, getValues(), update),
       update,
       getValues,
-      wrap: undefined as any,
+      wrap: (content: ComponentChildren): VNode<any> => {
+        if (className || id)
+          return h('span', { id, class: className }, content);
+        return h(Fragment, null, content);
+      },
     };
 
     if (config.merged) {
@@ -148,12 +152,6 @@ export function defineMacro(config: MacroDefinition): void {
       const setVariable = useStoryStore((s) => s.setVariable);
       ctx.setValue = (value: unknown) => setVariable(varName, value);
     }
-
-    ctx.wrap = (content: ComponentChildren): VNode<any> => {
-      if (ctx.className || ctx.id)
-        return h('span', { id: ctx.id, class: ctx.className }, content);
-      return h(Fragment, null, content);
-    };
 
     return config.render(props, ctx);
   }

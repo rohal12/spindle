@@ -323,6 +323,14 @@ export function execute(
 /**
  * Convenience: evaluate using store state directly.
  */
+/** Clear the compiled expression cache. Useful for testing and HMR. */
+export function clearExpressionCache(): void {
+  fnCache.clear();
+  cachedFns = null;
+  cachedVisitCounts = null;
+  cachedRenderCounts = null;
+}
+
 export function evaluateWithState(expr: string, state: StoryState): unknown {
   return evaluate(expr, state.variables, state.temporary, {});
 }

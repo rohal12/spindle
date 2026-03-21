@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { evaluate, execute } from '../../src/expression';
+import { evaluate, execute, clearExpressionCache } from '../../src/expression';
 import { executeMutation } from '../../src/execute-mutation';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
@@ -344,6 +344,20 @@ describe('expression tracking functions', () => {
 
     expect(evaluate('hasRenderedAll("Start", "Room")', {}, {})).toBe(true);
     expect(evaluate('hasRenderedAll("Start", "Unknown")', {}, {})).toBe(false);
+  });
+});
+
+describe('clearExpressionCache', () => {
+  it('is a callable function', () => {
+    expect(typeof clearExpressionCache).toBe('function');
+  });
+
+  it('can be called without errors after evaluating expressions', () => {
+    evaluate('1 + 2', {}, {});
+    evaluate('3 + 4', {}, {});
+    clearExpressionCache();
+    // After clearing, expressions should still evaluate correctly (recompiled)
+    expect(evaluate('1 + 2', {}, {})).toBe(3);
   });
 });
 

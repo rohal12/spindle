@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render } from 'preact';
+import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
@@ -10,6 +10,7 @@ import {
   getActions,
 } from '../../src/action-registry';
 import { clearWidgets } from '../../src/widgets/widget-registry';
+import { PassageDialog } from '../../src/components/PassageDialog';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 function makePassage(
@@ -226,6 +227,18 @@ describe('extended macro components', () => {
       useStoryStore.getState().setTemporary('temp', 'val');
       renderPassage('{unset _temp}');
       expect(useStoryStore.getState().temporary.temp).toBeUndefined();
+    });
+
+    it('unsets a @local variable inside a for loop', async () => {
+      useStoryStore.getState().setVariable('items', ['hello']);
+      let el: HTMLElement;
+      act(() => {
+        el = renderPassage(
+          '{for @item of $items}{unset @item}{print @item === undefined ? "gone" : @item}{/for}',
+        );
+      });
+      // After act(), the re-render from the state update should have completed
+      expect(el!.textContent).toContain('gone');
     });
   });
 
@@ -549,6 +562,75 @@ describe('extended macro components', () => {
       const typeEl = el.querySelector('.macro-type');
       expect(typeEl).not.toBeNull();
       expect(typeEl!.textContent).toContain('Hello');
+    });
+  });
+
+  describe('PassageDialog', () => {
+    it('onClose callback is invoked when close button is clicked', () => {
+      let closed = false;
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          h(PassageDialog, {
+            fallbackMarkup: 'test content',
+            onClose: () => {
+              closed = true;
+            },
+            showCloseButton: true,
+          }),
+          container,
+        );
+      });
+      const closeBtn = container.querySelector(
+        '.dialog-close',
+      ) as HTMLButtonElement;
+      expect(closeBtn).not.toBeNull();
+      act(() => {
+        closeBtn.click();
+      });
+      expect(closed).toBe(true);
+    });
+
+    it('onClose callback reflects latest reference after re-render', () => {
+      let callCount = 0;
+      const container = document.createElement('div');
+
+      // First render with one callback
+      act(() => {
+        render(
+          h(PassageDialog, {
+            fallbackMarkup: 'test',
+            onClose: () => {
+              callCount = 1;
+            },
+            showCloseButton: true,
+          }),
+          container,
+        );
+      });
+
+      // Re-render with a different callback (simulates parent re-render)
+      act(() => {
+        render(
+          h(PassageDialog, {
+            fallbackMarkup: 'test',
+            onClose: () => {
+              callCount = 2;
+            },
+            showCloseButton: true,
+          }),
+          container,
+        );
+      });
+
+      // Click close — should invoke the LATEST callback, not a stale one
+      const closeBtn = container.querySelector(
+        '.dialog-close',
+      ) as HTMLButtonElement;
+      act(() => {
+        closeBtn.click();
+      });
+      expect(callCount).toBe(2);
     });
   });
 });
