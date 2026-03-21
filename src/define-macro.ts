@@ -173,7 +173,8 @@ export function defineMacro(config: MacroDefinition): void {
     }
 
     if (config.storeVar) {
-      const firstToken = props.rawArgs.trim().split(/[\s"']+/)[0] ?? '';
+      const firstToken =
+        props.rawArgs.trim().split(/\s+/)[0]?.replace(/["']/g, '') ?? '';
       const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
       const segments = varExpr.split('.');
       ctx.varName = varExpr;
