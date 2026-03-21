@@ -70,6 +70,24 @@ describe('evaluate', () => {
   it('returns undefined for missing @local', () => {
     expect(evaluate('@missing', {}, {}, {})).toBeUndefined();
   });
+
+  it('does not transform underscore property access on objects', () => {
+    const vars: Record<string, unknown> = { obj: { _secret: 42 } };
+    expect(evaluate('$obj._secret', vars, {})).toBe(42);
+  });
+
+  it('does not transform underscore property access after bracket notation', () => {
+    const vars: Record<string, unknown> = { arr: [{ _id: 'abc' }] };
+    expect(evaluate('$arr[0]._id', vars, {})).toBe('abc');
+  });
+
+  it('still transforms standalone _temp variables', () => {
+    expect(evaluate('_count + 1', {}, { count: 9 })).toBe(10);
+  });
+
+  it('still transforms _temp after operators', () => {
+    expect(evaluate('1 + _x', {}, { x: 5 })).toBe(6);
+  });
 });
 
 describe('execute', () => {

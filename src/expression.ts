@@ -34,7 +34,7 @@ const fnCache = new Map<string, CompiledExpression>();
  * but authors already have full JS access so this is acceptable).
  */
 const VAR_RE = /\$(\w+)/g;
-const TEMP_RE = /\b_(\w+)/g;
+const TEMP_RE = /(?<![.\w])_(\w+)/g;
 const LOCAL_RE = /@(\w+)/g;
 
 function transformSegment(segment: string): string {
