@@ -633,4 +633,80 @@ describe('extended macro components', () => {
       expect(callCount).toBe(2);
     });
   });
+
+  describe('storeVar dot-path support', () => {
+    beforeEach(() => {
+      useStoryStore
+        .getState()
+        .setVariable('pc', { name: 'Maren', stats: { str: 10 } });
+    });
+
+    it('textbox reads nested value via dot-path', () => {
+      const el = renderPassage('{textbox $pc.name "Enter name"}');
+      const input = el.querySelector('input[type="text"]') as HTMLInputElement;
+      expect(input.value).toBe('Maren');
+    });
+
+    it('textbox writes nested value via dot-path', () => {
+      const el = renderPassage('{textbox $pc.name "Enter name"}');
+      const input = el.querySelector('input[type="text"]') as HTMLInputElement;
+      act(() => {
+        const event = new Event('input', { bubbles: true });
+        Object.defineProperty(event, 'target', { value: { value: 'Zara' } });
+        input.dispatchEvent(event);
+      });
+      const pc = useStoryStore.getState().variables.pc as Record<
+        string,
+        unknown
+      >;
+      expect(pc.name).toBe('Zara');
+      // Other properties should be preserved
+      expect((pc.stats as Record<string, unknown>).str).toBe(10);
+    });
+
+    it('numberbox reads nested value via dot-path', () => {
+      const el = renderPassage('{numberbox $pc.stats.str}');
+      const input = el.querySelector(
+        'input[type="number"]',
+      ) as HTMLInputElement;
+      expect(input.value).toBe('10');
+    });
+
+    it('checkbox reads nested boolean via dot-path', () => {
+      useStoryStore.getState().setVariable('settings', { darkMode: true });
+      const el = renderPassage('{checkbox $settings.darkMode "Dark mode"}');
+      const input = el.querySelector(
+        'input[type="checkbox"]',
+      ) as HTMLInputElement;
+      expect(input.checked).toBe(true);
+    });
+
+    it('radiobutton reads nested value via dot-path', () => {
+      const el = renderPassage('{radiobutton $pc.name "Maren" "Maren"}');
+      const input = el.querySelector('input[type="radio"]') as HTMLInputElement;
+      expect(input.checked).toBe(true);
+    });
+
+    it('listbox reads nested value via dot-path', () => {
+      const el = renderPassage(
+        '{listbox $pc.name}{option Maren}{option Zara}{/listbox}',
+      );
+      const select = el.querySelector('select') as HTMLSelectElement;
+      expect(select.value).toBe('Maren');
+    });
+
+    it('cycle reads and writes nested value via dot-path', () => {
+      const el = renderPassage(
+        '{cycle $pc.name}{option Maren}{option Zara}{/cycle}',
+      );
+      const btn = el.querySelector('button.macro-cycle') as HTMLElement;
+      expect(btn.textContent).toBe('Maren');
+      btn.click();
+      const pc = useStoryStore.getState().variables.pc as Record<
+        string,
+        unknown
+      >;
+      expect(pc.name).toBe('Zara');
+    });
+  });
 });

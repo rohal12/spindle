@@ -2,7 +2,7 @@ import { defineMacro } from '../../define-macro';
 
 function parseRadioArgs(rawArgs: string): { value: string; label: string } {
   const match = rawArgs.match(
-    /^\s*["']?\$?\w+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
+    /^\s*["']?\$?[\w.]+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
   );
   if (!match) {
     const parts = rawArgs.trim().split(/\s+/).slice(1);
