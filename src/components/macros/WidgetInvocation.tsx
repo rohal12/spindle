@@ -9,6 +9,7 @@ import {
   LocalsValuesContext,
   LocalsUpdateContext,
   NobrContext,
+  WidgetChildrenContext,
   renderNodes,
 } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
@@ -19,6 +20,7 @@ interface WidgetInvocationProps {
   body: ASTNode[];
   params: string[];
   rawArgs?: string;
+  invocationChildren?: ASTNode[];
 }
 
 /**
@@ -110,13 +112,20 @@ export function WidgetInvocation({
   body,
   params,
   rawArgs,
+  invocationChildren,
 }: WidgetInvocationProps) {
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
   const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
 
+  const childrenValue = invocationChildren?.length ? invocationChildren : null;
+
   if (params.length === 0 || !rawArgs) {
-    return <>{renderNodes(body, { nobr, locals: parentValues })}</>;
+    return (
+      <WidgetChildrenContext.Provider value={childrenValue}>
+        {renderNodes(body, { nobr, locals: parentValues })}
+      </WidgetChildrenContext.Provider>
+    );
   }
 
   const argExprs = splitArgs(rawArgs);
@@ -137,10 +146,12 @@ export function WidgetInvocation({
   }
 
   return (
-    <WidgetBody
-      body={body}
-      parentValues={parentValues}
-      ownKeys={ownKeys}
-    />
+    <WidgetChildrenContext.Provider value={childrenValue}>
+      <WidgetBody
+        body={body}
+        parentValues={parentValues}
+        ownKeys={ownKeys}
+      />
+    </WidgetChildrenContext.Provider>
   );
 }

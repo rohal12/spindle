@@ -23,6 +23,7 @@ const defaultUpdater: LocalsUpdater = {
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
+export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -97,6 +98,14 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   );
 }
 
+function ChildrenSlot() {
+  const childrenAST = useContext(WidgetChildrenContext);
+  const nobr = useContext(NobrContext);
+  const locals = useContext(LocalsValuesContext);
+  if (!childrenAST || childrenAST.length === 0) return null;
+  return <>{renderNodes(childrenAST, { nobr, locals })}</>;
+}
+
 function renderMacro(node: MacroNode, key: number) {
   if (isSubMacro(node.name)) return null;
 
@@ -108,6 +117,7 @@ function renderMacro(node: MacroNode, key: number) {
         body={widget.body}
         params={widget.params}
         rawArgs={node.rawArgs}
+        invocationChildren={node.children}
       />
     );
   }
@@ -148,6 +158,9 @@ function renderSingleNode(
       return node.value;
 
     case 'variable':
+      if (node.scope === 'local' && node.name === 'children') {
+        return <ChildrenSlot key={key} />;
+      }
       return (
         <VarDisplay
           key={key}

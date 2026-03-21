@@ -3,6 +3,7 @@ import {
   registerWidget,
   getWidget,
   clearWidgets,
+  isBlockWidget,
 } from '../../src/widgets/widget-registry';
 import type { ASTNode } from '../../src/markup/ast';
 
@@ -51,5 +52,39 @@ describe('widget-registry', () => {
     clearWidgets();
     expect(getWidget('a')).toBeUndefined();
     expect(getWidget('b')).toBeUndefined();
+  });
+
+  it('stores isBlock flag as true when provided', () => {
+    const body: ASTNode[] = [{ type: 'text', value: 'block widget' }];
+    registerWidget('myblock', body, [], true);
+    expect(getWidget('myblock')?.isBlock).toBe(true);
+  });
+
+  it('isBlock defaults to false when not provided', () => {
+    const body: ASTNode[] = [{ type: 'text', value: 'inline widget' }];
+    registerWidget('myinline', body, []);
+    expect(getWidget('myinline')?.isBlock).toBe(false);
+  });
+
+  it('isBlockWidget() returns true for block widgets (case-insensitive)', () => {
+    registerWidget('BlockCard', [{ type: 'text', value: 'test' }], [], true);
+    expect(isBlockWidget('BlockCard')).toBe(true);
+    expect(isBlockWidget('blockcard')).toBe(true);
+    expect(isBlockWidget('BLOCKCARD')).toBe(true);
+  });
+
+  it('isBlockWidget() returns false for non-block widgets', () => {
+    registerWidget('InlineBtn', [{ type: 'text', value: 'test' }], [], false);
+    expect(isBlockWidget('InlineBtn')).toBe(false);
+  });
+
+  it('isBlockWidget() returns false for unregistered widgets', () => {
+    expect(isBlockWidget('doesNotExist')).toBe(false);
+  });
+
+  it('strips @children from params list', () => {
+    const body: ASTNode[] = [{ type: 'text', value: 'test' }];
+    registerWidget('card', body, ['$title', '@children', '$class'], true);
+    expect(getWidget('card')?.params).toEqual(['$title', '$class']);
   });
 });
