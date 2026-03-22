@@ -25,11 +25,17 @@
     ".": {
       "types": "./types/index.d.ts",
       "import": "./dist/pkg/index.js"
+    },
+    "./tooling": {
+      "types": "./types/tooling.d.ts",
+      "import": "./dist/pkg/tooling.js"
     }
   },
   "files": [
     "dist/pkg/index.js",
     "dist/pkg/format.js",
+    "dist/pkg/tooling.js",
+    "dist/pkg/macro-registry.json",
     "types",
     "src"
   ],
