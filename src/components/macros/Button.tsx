@@ -10,6 +10,7 @@ import {
 
 defineMacro({
   name: 'button',
+  block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const label = ctx.resolve?.(rawArgs.replace(/^["']|["']$/g, '')) ?? rawArgs;

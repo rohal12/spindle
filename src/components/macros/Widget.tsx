@@ -10,6 +10,7 @@ function parseWidgetDef(rawArgs: string): { name: string; params: string[] } {
 
 defineMacro({
   name: 'widget',
+  block: true,
   render({ rawArgs, children = [] }, ctx) {
     const { name, params } = parseWidgetDef(rawArgs);
 

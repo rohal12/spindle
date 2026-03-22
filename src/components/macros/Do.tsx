@@ -2,6 +2,7 @@ import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'do',
+  block: true,
   render({ children = [] }, ctx) {
     const code = ctx.collectText(children);
 

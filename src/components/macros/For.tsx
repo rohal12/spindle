@@ -91,6 +91,7 @@ function ForIteration({
 
 defineMacro({
   name: 'for',
+  block: true,
   interpolate: true,
   merged: true,
   render({ rawArgs, children = [] }, ctx) {
