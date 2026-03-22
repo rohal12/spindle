@@ -62,19 +62,26 @@ Widgets can accept arguments, making them more flexible. Declare parameter names
 {/widget}
 ```
 
-Pass arguments as comma-separated expressions when invoking the widget:
+Pass arguments when invoking the widget. Adjacent quoted strings can be separated by spaces:
 
 ```
 :: Start
-{StatLine "Health", $health, $max_health}
-{StatLine "Mana", $mana, $max_mana}
-{StatLine "XP", $xp, $xp_needed}
+{StatLine "Health" $health $max_health}
+{StatLine "Mana" $mana $max_mana}
+{StatLine "XP" $xp $xp_needed}
 ```
 
-Arguments are evaluated as expressions, so you can pass variables, literals, or computed values:
+Comma-separated arguments also work and are required when arguments contain operators or other expressions:
 
 ```
 {StatLine "Damage", $strength * 2, 100}
+```
+
+When all arguments are quoted string literals, you can omit the commas entirely:
+
+```
+{choice "Go to the mines" "mining-bay"}
+{choice "Rest at the inn" "inn" "1 AP"}
 ```
 
 Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
