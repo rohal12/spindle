@@ -62,3 +62,17 @@ copyFileSync(
 );
 
 console.log('Built dist/pkg/ (npm package)');
+
+// Copy tooling entry point
+copyFileSync(
+  resolve(projectRoot, 'pkg/tooling.js'),
+  resolve(pkgDir, 'tooling.js'),
+);
+
+// Copy tooling type declarations
+copyFileSync(
+  resolve(projectRoot, 'pkg/types/tooling.d.ts'),
+  resolve(pkgTypesDir, 'tooling.d.ts'),
+);
+
+console.log('Copied tooling entry point to dist/pkg/');

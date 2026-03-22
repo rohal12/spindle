@@ -40,7 +40,7 @@
     "src"
   ],
   "scripts": {
-    "build": "vite build && bun run scripts/build-format.ts",
+    "build": "vite build && bun run scripts/build-format.ts && bun run scripts/dump-macro-registry.ts",
     "compile": "bun run scripts/compile-story.ts",
     "preview": "bun run build && bun run compile",
     "test": "vitest run",
