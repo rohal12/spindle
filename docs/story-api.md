@@ -174,13 +174,14 @@ Set a one-shot transition for the next navigation only. Consumed automatically w
 {/do}
 ```
 
-### `Story.save(slot?)`
+### `Story.save(slot?, custom?)`
 
-Perform a quick save. When `slot` is provided, saves to a named slot instead of the default autosave slot.
+Perform a save. When `slot` is provided, saves to a named slot instead of the default autosave slot. Pass `custom` to attach metadata that can be retrieved later via `getSaveInfo()`.
 
 ```javascript
-Story.save(); // save to default slot
-Story.save('my-slot'); // save to named slot
+Story.save(); // default slot
+Story.save('my-slot'); // named slot
+Story.save('day-3', { day: 3, phase: 'morning' }); // with custom metadata
 ```
 
 ### `Story.load(slot?)`
@@ -199,6 +200,42 @@ Returns `true` if a save exists for the given slot. Checks actual storage (persi
 ```javascript
 Story.hasSave(); // check default slot
 Story.hasSave('my-slot'); // check named slot
+```
+
+### `Story.getSaveInfo(slot?)`
+
+Returns a `Promise<SaveInfo | null>` with metadata for the given save slot.
+
+```javascript
+const info = await Story.getSaveInfo('my-slot');
+if (info) {
+  console.log(info.title); // "Room - 3:42 PM"
+  console.log(info.passage); // "Room"
+  console.log(info.updatedAt); // "2026-03-22T15:42:00.000Z"
+  console.log(info.custom); // { day: 3, phase: "morning" }
+}
+```
+
+The `SaveInfo` object contains: `slot`, `title`, `passage`, `createdAt`, `updatedAt`, `custom`.
+
+### `Story.listSaves()`
+
+Returns a `Promise<SaveInfo[]>` listing all known saves (default + named slots).
+
+```javascript
+const saves = await Story.listSaves();
+for (const save of saves) {
+  console.log(`${save.slot || 'autosave'}: ${save.title}`);
+}
+```
+
+### `Story.deleteSave(slot?)`
+
+Delete a save by slot name. Omit `slot` to delete the default autosave.
+
+```javascript
+Story.deleteSave(); // delete default save
+Story.deleteSave('my-slot'); // delete named slot
 ```
 
 ### `Story.defineMacro(config)`

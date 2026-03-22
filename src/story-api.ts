@@ -1,7 +1,7 @@
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
 import { settings } from './settings';
-import type { SavePayload } from './saves/types';
+import type { SavePayload, SaveInfo } from './saves/types';
 import { setTitleGenerator } from './saves/save-manager';
 import { registerClass } from './class-registry';
 import { defineMacro } from './define-macro';
@@ -48,9 +48,12 @@ export interface StoryAPI {
   back(): void;
   forward(): void;
   restart(): void;
-  save(slot?: string): void;
+  save(slot?: string, custom?: Record<string, unknown>): void;
   load(slot?: string): void;
   hasSave(slot?: string): boolean;
+  getSaveInfo(slot?: string): Promise<SaveInfo | null>;
+  listSaves(): Promise<SaveInfo[]>;
+  deleteSave(slot?: string): void;
   visited(name?: string): number;
   hasVisited(name?: string): boolean;
   hasVisitedAny(...names: string[]): boolean;
@@ -137,8 +140,8 @@ function createStoryAPI(): StoryAPI {
       useStoryStore.getState().restart();
     },
 
-    save(slot?: string): void {
-      useStoryStore.getState().save(slot);
+    save(slot?: string, custom?: Record<string, unknown>): void {
+      useStoryStore.getState().save(slot, custom);
     },
 
     load(slot?: string): void {
@@ -147,6 +150,18 @@ function createStoryAPI(): StoryAPI {
 
     hasSave(slot?: string): boolean {
       return useStoryStore.getState().hasSave(slot);
+    },
+
+    getSaveInfo(slot?: string): Promise<SaveInfo | null> {
+      return useStoryStore.getState().getSaveInfo(slot);
+    },
+
+    listSaves(): Promise<SaveInfo[]> {
+      return useStoryStore.getState().listSaves();
+    },
+
+    deleteSave(slot?: string): void {
+      useStoryStore.getState().deleteSave(slot);
     },
 
     visited(name?: string): number {
