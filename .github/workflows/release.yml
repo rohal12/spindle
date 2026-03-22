@@ -50,11 +50,15 @@ jobs:
           CURRENT_VERSION=${LATEST_TAG#v}
 
           # Determine bump type from commits since last tag
+          # Major: "BREAKING CHANGE:" footer at start of line, or "type!:" in subject
+          # Minor: "feat:" or "feat(scope):" in subject
+          # Patch: everything else
           BUMP="patch"
-          COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=%B 2>/dev/null || git log --pretty=%B)
-          if echo "$COMMITS" | grep -qiE 'BREAKING CHANGE'; then
+          BODIES=$(git log "${LATEST_TAG}..HEAD" --pretty=%B 2>/dev/null || git log --pretty=%B)
+          SUBJECTS=$(git log "${LATEST_TAG}..HEAD" --pretty=%s 2>/dev/null || git log --pretty=%s)
+          if echo "$BODIES" | grep -qE '^BREAKING CHANGE: ' || echo "$SUBJECTS" | grep -qE '^[a-z]+(\(.+\))?!: '; then
             BUMP="major"
-          elif echo "$COMMITS" | grep -qE '^feat(\(|:|!)'; then
+          elif echo "$SUBJECTS" | grep -qE '^feat(\(|:)'; then
             BUMP="minor"
           fi
 
