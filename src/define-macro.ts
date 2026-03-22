@@ -27,8 +27,12 @@ import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
 import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
-import { registerMacro, registerSubMacro } from './registry';
-import type { MacroProps } from './registry';
+import {
+  registerMacro,
+  registerSubMacro,
+  registerMacroMetadata,
+} from './registry';
+import type { MacroProps, ParameterDef } from './registry';
 import { registerBlockMacro } from './markup/ast';
 
 export function macroClass(type: string, className?: string): string {
@@ -81,6 +85,8 @@ export interface MacroDefinition {
   interpolate?: boolean;
   merged?: boolean;
   storeVar?: boolean;
+  description?: string;
+  parameters?: ParameterDef[];
   render: (props: MacroProps, ctx: MacroContext) => VNode | null;
 }
 
@@ -121,7 +127,10 @@ function setByPath(
   target[segments[segments.length - 1]!] = value;
 }
 
-export function defineMacro(config: MacroDefinition): void {
+export function defineMacro(
+  config: MacroDefinition,
+  source: 'builtin' | 'user' = 'builtin',
+): void {
   function Wrapper(props: MacroProps) {
     // className/id resolved first (interpolate may transform them)
     let className = props.className;
@@ -196,13 +205,27 @@ export function defineMacro(config: MacroDefinition): void {
   }
 
   registerMacro(config.name, Wrapper);
+
+  // Store metadata for tooling API
+  const isBlock =
+    config.block === true ||
+    (config.block !== false && (config.subMacros?.length ?? 0) > 0);
+  registerMacroMetadata(config.name, {
+    name: config.name,
+    block: isBlock,
+    subMacros: config.subMacros ?? [],
+    storeVar: config.storeVar,
+    interpolate: config.interpolate,
+    merged: config.merged,
+    description: config.description,
+    parameters: config.parameters,
+    source,
+  });
+
   if (config.subMacros) {
     for (const sub of config.subMacros) registerSubMacro(sub);
   }
-  if (
-    config.block === true ||
-    (config.block !== false && config.subMacros && config.subMacros.length > 0)
-  ) {
+  if (isBlock) {
     registerBlockMacro(config.name);
   }
 }

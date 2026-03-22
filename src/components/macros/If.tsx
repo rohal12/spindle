@@ -4,6 +4,7 @@ import type { Branch } from '../../markup/ast';
 
 defineMacro({
   name: 'if',
+  block: true,
   interpolate: true,
   merged: true,
   render({ branches = [] }, ctx) {

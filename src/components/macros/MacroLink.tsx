@@ -56,6 +56,7 @@ function renderChildrenDetached(
 
 defineMacro({
   name: 'link',
+  block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const { display, passage } = parseArgs(rawArgs);

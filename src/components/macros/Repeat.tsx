@@ -8,6 +8,7 @@ export const RepeatContext = createContext<{ stop: () => void }>({
 
 defineMacro({
   name: 'repeat',
+  block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const { useState, useEffect, useCallback } = ctx.hooks;

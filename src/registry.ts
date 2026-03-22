@@ -31,3 +31,38 @@ export function registerSubMacro(name: string): void {
 export function isSubMacro(name: string): boolean {
   return subMacros.has(name.toLowerCase());
 }
+
+export interface ParameterDef {
+  name: string;
+  required?: boolean;
+  description?: string;
+}
+
+export interface MacroMetadata {
+  name: string;
+  block: boolean;
+  subMacros: string[];
+  storeVar?: boolean;
+  interpolate?: boolean;
+  merged?: boolean;
+  source: 'builtin' | 'user';
+  description?: string;
+  parameters?: ParameterDef[];
+}
+
+const metadataRegistry = new Map<string, MacroMetadata>();
+
+export function registerMacroMetadata(
+  name: string,
+  metadata: MacroMetadata,
+): void {
+  metadataRegistry.set(name.toLowerCase(), metadata);
+}
+
+export function getMacroRegistry(): MacroMetadata[] {
+  return Array.from(metadataRegistry.values());
+}
+
+export function clearMetadataRegistry(): void {
+  metadataRegistry.clear();
+}
