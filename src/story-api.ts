@@ -6,6 +6,8 @@ import { setTitleGenerator } from './saves/save-manager';
 import { registerClass } from './class-registry';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
+import { getMacroRegistry as _getMacroRegistry } from './registry';
+import type { MacroMetadata } from './registry';
 import {
   getActions,
   getAction,
@@ -33,6 +35,7 @@ import type { WatchOptions } from './triggers';
 import type { TransitionConfig } from './transition';
 
 export type { StoryAction };
+export type { MacroMetadata };
 
 type NavigateCallback = (to: string, from: string) => void;
 type ActionsChangedCallback = () => void;
@@ -69,6 +72,7 @@ export interface StoryAPI {
   readonly settings: typeof settings;
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
   defineMacro(config: MacroDefinition): void;
+  getMacroRegistry(): MacroMetadata[];
   readonly saves: {
     setTitleGenerator(fn: (payload: SavePayload) => string): void;
   };
@@ -229,7 +233,11 @@ function createStoryAPI(): StoryAPI {
     },
 
     defineMacro(config: MacroDefinition): void {
-      defineMacro(config);
+      defineMacro(config, 'user');
+    },
+
+    getMacroRegistry(): MacroMetadata[] {
+      return _getMacroRegistry();
     },
 
     saves: {

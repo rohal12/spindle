@@ -332,6 +332,30 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('getMacroRegistry', () => {
+    it('is available on the Story API', () => {
+      expect(typeof Story.getMacroRegistry).toBe('function');
+    });
+
+    it('returns metadata for registered macros', () => {
+      const registry = Story.getMacroRegistry();
+      expect(Array.isArray(registry)).toBe(true);
+      // Builtins are registered via vitest setupFiles
+      expect(registry.length).toBeGreaterThan(0);
+      const setMacro = registry.find((m: any) => m.name === 'set');
+      expect(setMacro).toBeDefined();
+      expect(setMacro.source).toBe('builtin');
+    });
+
+    it('marks user-defined macros with source user', () => {
+      Story.defineMacro({ name: 'user-test-macro', render: () => null });
+      const registry = Story.getMacroRegistry();
+      const userMacro = registry.find((m: any) => m.name === 'user-test-macro');
+      expect(userMacro).toBeDefined();
+      expect(userMacro.source).toBe('user');
+    });
+  });
+
   describe('dialog API', () => {
     it('openDialog pushes to dialog queue', async () => {
       const { shiftDialogQueue, resetTriggers } =
