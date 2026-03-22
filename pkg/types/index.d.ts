@@ -103,6 +103,25 @@ export interface Passage {
 }
 
 /**
+ * Metadata about a save slot, returned by `getSaveInfo()` and `listSaves()`.
+ * @see {@link ../../src/saves/types.ts} for the implementation.
+ */
+export interface SaveInfo {
+  /** Slot name (empty string for the default autosave slot). */
+  slot: string;
+  /** Save title (generated or custom). */
+  title: string;
+  /** Passage name at the time of saving. */
+  passage: string;
+  /** ISO 8601 timestamp when the save was first created. */
+  createdAt: string;
+  /** ISO 8601 timestamp when the save was last updated. */
+  updatedAt: string;
+  /** Custom metadata passed when saving. */
+  custom: Record<string, unknown>;
+}
+
+/**
  * The main Story API available as `window.Story` at runtime.
  * Provides access to variables, navigation, save/load, and visit tracking.
  * @see {@link ../../src/story-api.ts} for the implementation.
@@ -128,14 +147,23 @@ export interface StoryAPI {
   /** Restart the story from the beginning. */
   restart(): void;
 
-  /** Save the current state (quick save). */
-  save(slot?: string): void;
+  /** Save the current state. Pass `slot` for a named save, `custom` for metadata. */
+  save(slot?: string, custom?: Record<string, unknown>): void;
 
   /** Load a saved state (quick load). */
   load(slot?: string): void;
 
   /** Check whether a save exists. */
   hasSave(slot?: string): boolean;
+
+  /** Get metadata for a specific save slot. Returns null if no save exists. */
+  getSaveInfo(slot?: string): Promise<SaveInfo | null>;
+
+  /** List metadata for all known save slots. */
+  listSaves(): Promise<SaveInfo[]>;
+
+  /** Delete a save by slot name. */
+  deleteSave(slot?: string): void;
 
   /** Return the number of times a passage has been visited. */
   visited(name: string): number;

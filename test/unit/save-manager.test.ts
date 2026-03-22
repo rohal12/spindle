@@ -13,6 +13,9 @@ import {
   hasQuickSave,
   loadQuickSave,
   populateKnownSaves,
+  getSlotSaveInfo,
+  listSlotSaves,
+  deleteSlotSave,
   exportSave,
   importSave,
   setTitleGenerator,
@@ -618,6 +621,146 @@ describe('save-manager', () => {
       const saves = await populateKnownSaves(freshIfid);
       expect(saves['']).toBe(true);
       expect(saves['my-slot']).toBe(true);
+    });
+  });
+
+  describe('getSlotSaveInfo', () => {
+    it('returns null when no save exists', async () => {
+      const freshIfid = 'info-none-' + Date.now();
+      const info = await getSlotSaveInfo(freshIfid, 'missing');
+      expect(info).toBeNull();
+    });
+
+    it('returns metadata for default autosave', async () => {
+      const freshIfid = 'info-default-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'Room' }));
+
+      const info = await getSlotSaveInfo(freshIfid);
+      expect(info).not.toBeNull();
+      expect(info!.slot).toBe('');
+      expect(info!.passage).toBe('Room');
+      expect(info!.title).toContain('Room');
+      expect(info!.createdAt).toBeTruthy();
+      expect(info!.updatedAt).toBeTruthy();
+    });
+
+    it('returns metadata for named slot', async () => {
+      const freshIfid = 'info-slot-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(
+        freshIfid,
+        ptId,
+        makePayload({ passage: 'Hall' }),
+        'my-slot',
+      );
+
+      const info = await getSlotSaveInfo(freshIfid, 'my-slot');
+      expect(info).not.toBeNull();
+      expect(info!.slot).toBe('my-slot');
+      expect(info!.passage).toBe('Hall');
+    });
+
+    it('returns custom metadata', async () => {
+      const freshIfid = 'info-custom-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'slot-1', {
+        day: 3,
+        phase: 'morning',
+      });
+
+      const info = await getSlotSaveInfo(freshIfid, 'slot-1');
+      expect(info!.custom.day).toBe(3);
+      expect(info!.custom.phase).toBe('morning');
+    });
+  });
+
+  describe('listSlotSaves', () => {
+    it('returns empty array when no saves exist', async () => {
+      const freshIfid = 'list-empty-' + Date.now();
+      const saves = await listSlotSaves(freshIfid);
+      expect(saves).toHaveLength(0);
+    });
+
+    it('lists default and named saves', async () => {
+      const freshIfid = 'list-all-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'Start' }));
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'A' }), 'slot-a');
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'B' }), 'slot-b');
+
+      const saves = await listSlotSaves(freshIfid);
+      expect(saves).toHaveLength(3);
+
+      const slots = saves.map((s) => s.slot).sort();
+      expect(slots).toEqual(['', 'slot-a', 'slot-b']);
+    });
+  });
+
+  describe('deleteSlotSave', () => {
+    it('deletes a named slot save', async () => {
+      const freshIfid = 'delete-slot-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'to-delete');
+
+      expect(await hasQuickSave(freshIfid, 'to-delete')).toBe(true);
+      await deleteSlotSave(freshIfid, 'to-delete');
+      expect(await hasQuickSave(freshIfid, 'to-delete')).toBe(false);
+    });
+
+    it('deletes default autosave', async () => {
+      const freshIfid = 'delete-default-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload());
+
+      expect(await hasQuickSave(freshIfid)).toBe(true);
+      await deleteSlotSave(freshIfid);
+      expect(await hasQuickSave(freshIfid)).toBe(false);
+    });
+
+    it('removes slot from populateKnownSaves after deletion', async () => {
+      const freshIfid = 'delete-populate-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'temp-slot');
+
+      let known = await populateKnownSaves(freshIfid);
+      expect(known['temp-slot']).toBe(true);
+
+      await deleteSlotSave(freshIfid, 'temp-slot');
+
+      known = await populateKnownSaves(freshIfid);
+      expect('temp-slot' in known).toBe(false);
+    });
+
+    it('is a no-op for nonexistent slot', async () => {
+      const freshIfid = 'delete-noop-' + Date.now();
+      await deleteSlotSave(freshIfid, 'nonexistent'); // should not throw
+    });
+  });
+
+  describe('quickSave with custom metadata', () => {
+    it('stores custom metadata on new save', async () => {
+      const freshIfid = 'custom-new-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      const record = await quickSave(freshIfid, ptId, makePayload(), 'slot-1', {
+        chapter: 5,
+      });
+      expect(record.meta.custom.chapter).toBe(5);
+    });
+
+    it('merges custom metadata on overwrite', async () => {
+      const freshIfid = 'custom-merge-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'slot-1', { a: 1 });
+      const updated = await quickSave(
+        freshIfid,
+        ptId,
+        makePayload(),
+        'slot-1',
+        { b: 2 },
+      );
+      expect(updated.meta.custom.a).toBe(1);
+      expect(updated.meta.custom.b).toBe(2);
     });
   });
 

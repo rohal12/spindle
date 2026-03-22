@@ -41,6 +41,16 @@ export interface PlaythroughRecord {
   label: string;
 }
 
+/** Public-facing save metadata for the Story API. */
+export interface SaveInfo {
+  slot: string;
+  title: string;
+  passage: string;
+  createdAt: string;
+  updatedAt: string;
+  custom: Record<string, unknown>;
+}
+
 export interface SaveExport {
   version: 1;
   ifid: string;

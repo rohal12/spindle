@@ -8,7 +8,7 @@ import {
 } from 'immer';
 import type { StoryData } from './parser';
 import type { TransitionConfig } from './transition';
-import type { SavePayload, SaveHistoryMoment } from './saves/types';
+import type { SavePayload, SaveHistoryMoment, SaveInfo } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { resetTriggers } from './triggers';
 import {
@@ -18,6 +18,9 @@ import {
   quickSave,
   loadQuickSave,
   populateKnownSaves,
+  getSlotSaveInfo,
+  listSlotSaves,
+  deleteSlotSave,
   saveSession,
   clearSession,
 } from './saves/save-manager';
@@ -222,9 +225,12 @@ export interface StoryState {
   deleteTemporary: (name: string) => void;
   trackRender: (passageName: string) => void;
   restart: () => void;
-  save: (slot?: string) => void;
+  save: (slot?: string, custom?: Record<string, unknown>) => void;
   load: (slot?: string) => void;
   hasSave: (slot?: string) => boolean;
+  getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
+  listSaves: () => Promise<SaveInfo[]>;
+  deleteSave: (slot?: string) => void;
   getSavePayload: () => SavePayload;
   loadFromPayload: (payload: SavePayload) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
@@ -496,7 +502,7 @@ export const useStoryStore = create<StoryState>()(
         );
     },
 
-    save: (slot?: string) => {
+    save: (slot?: string, custom?: Record<string, unknown>) => {
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
@@ -505,7 +511,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.saveError = null;
       });
-      quickSave(storyData.ifid, playthroughId, payload, slot)
+      quickSave(storyData.ifid, playthroughId, payload, slot, custom)
         .then(() => {
           set((state) => {
             state.knownSaves = {
@@ -548,6 +554,35 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, knownSaves } = get();
       if (!storyData) return false;
       return (slot ?? '') in knownSaves;
+    },
+
+    getSaveInfo: async (slot?: string): Promise<SaveInfo | null> => {
+      const { storyData } = get();
+      if (!storyData) return null;
+      return getSlotSaveInfo(storyData.ifid, slot);
+    },
+
+    listSaves: async (): Promise<SaveInfo[]> => {
+      const { storyData } = get();
+      if (!storyData) return [];
+      return listSlotSaves(storyData.ifid);
+    },
+
+    deleteSave: (slot?: string) => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      deleteSlotSave(storyData.ifid, slot)
+        .then(() => {
+          set((state) => {
+            const key = slot ?? '';
+            const { [key]: _, ...rest } = state.knownSaves;
+            state.knownSaves = rest as Record<string, true>;
+          });
+        })
+        .catch((err) => {
+          console.error('spindle: failed to delete save', err);
+        });
     },
 
     getSavePayload: (): SavePayload => {

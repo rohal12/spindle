@@ -2,6 +2,7 @@ import type {
   SavePayload,
   SaveMeta,
   SaveRecord,
+  SaveInfo,
   PlaythroughRecord,
   SaveExport,
 } from './types';
@@ -134,6 +135,7 @@ export async function createSave(
 export async function overwriteSave(
   saveId: string,
   payload: SavePayload,
+  custom?: Record<string, unknown>,
 ): Promise<SaveRecord | undefined> {
   const existing = await getSave(saveId);
   if (!existing) return undefined;
@@ -149,6 +151,9 @@ export async function overwriteSave(
       ...existing.meta,
       updatedAt: new Date().toISOString(),
       passage: payload.passage,
+      ...(custom != null
+        ? { custom: { ...existing.meta.custom, ...custom } }
+        : {}),
     },
     payload: serializedPayload,
   };
@@ -275,12 +280,13 @@ export async function quickSave(
   playthroughId: string,
   payload: SavePayload,
   slot?: string,
+  custom?: Record<string, unknown>,
 ): Promise<SaveRecord> {
   const metaKey = slotMetaKey(ifid, slot);
   const existingId = await getMeta<string>(metaKey);
 
   if (existingId) {
-    const updated = await overwriteSave(existingId, payload);
+    const updated = await overwriteSave(existingId, payload, custom);
     if (updated) return updated;
   }
 
@@ -288,6 +294,7 @@ export async function quickSave(
   const record = await createSave(ifid, playthroughId, payload, {
     isAutosave: !slot,
     ...(slot != null ? { slot } : {}),
+    ...custom,
   });
   await setMeta(metaKey, record.meta.id);
 
@@ -348,6 +355,73 @@ export async function populateKnownSaves(
   }
 
   return result;
+}
+
+/**
+ * Get metadata for a specific save slot.
+ * Returns null if no save exists for that slot.
+ */
+export async function getSlotSaveInfo(
+  ifid: string,
+  slot?: string,
+): Promise<SaveInfo | null> {
+  const metaKey = slotMetaKey(ifid, slot);
+  const existingId = await getMeta<string>(metaKey);
+  if (!existingId) return null;
+  const record = await getSave(existingId);
+  if (!record) return null;
+  return {
+    slot: slot ?? '',
+    title: record.meta.title,
+    passage: record.meta.passage,
+    createdAt: record.meta.createdAt,
+    updatedAt: record.meta.updatedAt,
+    custom: record.meta.custom ?? {},
+  };
+}
+
+/**
+ * List metadata for all known save slots (default + named).
+ */
+export async function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
+  const result: SaveInfo[] = [];
+
+  // Check default autosave
+  const defaultInfo = await getSlotSaveInfo(ifid);
+  if (defaultInfo) result.push(defaultInfo);
+
+  // Check named slots from the index
+  const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+  const slots = (await getMeta<string[]>(indexKey)) ?? [];
+  for (const slot of slots) {
+    const info = await getSlotSaveInfo(ifid, slot);
+    if (info) result.push(info);
+  }
+
+  return result;
+}
+
+/**
+ * Delete a save by slot name. Removes from slot index if named.
+ */
+export async function deleteSlotSave(
+  ifid: string,
+  slot?: string,
+): Promise<void> {
+  const metaKey = slotMetaKey(ifid, slot);
+  const existingId = await getMeta<string>(metaKey);
+  if (!existingId) return;
+
+  await idbDeleteSave(existingId);
+  await setMeta(metaKey, undefined);
+
+  // Remove from slot index if named
+  if (slot != null) {
+    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+    const existing = (await getMeta<string[]>(indexKey)) ?? [];
+    const updated = existing.filter((s) => s !== slot);
+    await setMeta(indexKey, updated);
+  }
 }
 
 // --- Session Persistence (survives F5, cleared on tab close) ---
