@@ -49,6 +49,47 @@ describe('splitArgs', () => {
     expect(splitArgs('"a"   "b"')).toEqual(['"a"', '"b"']);
   });
 
+  // ── Space-separated mixed-type arguments ─────────────────────────
+
+  it('splits variable and quoted string', () => {
+    expect(splitArgs('$x "bar"')).toEqual(['$x', '"bar"']);
+  });
+
+  it('splits two variables', () => {
+    expect(splitArgs('$x $y')).toEqual(['$x', '$y']);
+  });
+
+  it('splits variable and number', () => {
+    expect(splitArgs('$x 42')).toEqual(['$x', '42']);
+  });
+
+  it('splits variable and boolean', () => {
+    expect(splitArgs('$x true')).toEqual(['$x', 'true']);
+  });
+
+  it('splits temp variable and local variable', () => {
+    expect(splitArgs('_temp @local')).toEqual(['_temp', '@local']);
+  });
+
+  it('splits with grouped expression', () => {
+    expect(splitArgs('($x + 1) "label"')).toEqual(['($x + 1)', '"label"']);
+  });
+
+  it('splits with negation', () => {
+    expect(splitArgs('!$flag "label"')).toEqual(['!$flag', '"label"']);
+  });
+
+  it('splits variable with property access and quoted string', () => {
+    expect(splitArgs('$obj.field "label"')).toEqual(['$obj.field', '"label"']);
+  });
+
+  it('keeps method call with spaces inside string arg intact', () => {
+    expect(splitArgs('$obj.method("a b") "label"')).toEqual([
+      '$obj.method("a b")',
+      '"label"',
+    ]);
+  });
+
   // ── Fallback cases (should NOT split) ─────────────────────────────
 
   it('returns single expression when no commas and not all quoted', () => {
@@ -57,11 +98,6 @@ describe('splitArgs', () => {
 
   it('returns single quoted string as-is', () => {
     expect(splitArgs('"hello"')).toEqual(['"hello"']);
-  });
-
-  it('does not split when non-quote token is present', () => {
-    // $x "bar" is ambiguous — requires commas
-    expect(splitArgs('$x "bar"')).toEqual(['$x "bar"']);
   });
 
   it('does not split expression with operator between strings', () => {
