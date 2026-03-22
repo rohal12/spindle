@@ -258,16 +258,25 @@ export async function getSavesGrouped(
   return result;
 }
 
-// --- Quick Save ---
+// --- Quick Save / Slot Save ---
 
 const AUTOSAVE_KEY_PREFIX = 'autosave.';
+const SLOT_KEY_PREFIX = 'slot.';
+const SLOT_INDEX_KEY_PREFIX = 'slotIndex.';
+
+function slotMetaKey(ifid: string, slot?: string): string {
+  return slot != null
+    ? `${SLOT_KEY_PREFIX}${slot}.${ifid}`
+    : `${AUTOSAVE_KEY_PREFIX}${ifid}`;
+}
 
 export async function quickSave(
   ifid: string,
   playthroughId: string,
   payload: SavePayload,
+  slot?: string,
 ): Promise<SaveRecord> {
-  const metaKey = `${AUTOSAVE_KEY_PREFIX}${ifid}`;
+  const metaKey = slotMetaKey(ifid, slot);
   const existingId = await getMeta<string>(metaKey);
 
   if (existingId) {
@@ -275,16 +284,30 @@ export async function quickSave(
     if (updated) return updated;
   }
 
-  // Create new autosave
+  // Create new save
   const record = await createSave(ifid, playthroughId, payload, {
-    isAutosave: true,
+    isAutosave: !slot,
+    ...(slot != null ? { slot } : {}),
   });
   await setMeta(metaKey, record.meta.id);
+
+  // Track named slots in the index
+  if (slot != null) {
+    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+    const existing = (await getMeta<string[]>(indexKey)) ?? [];
+    if (!existing.includes(slot)) {
+      await setMeta(indexKey, [...existing, slot]);
+    }
+  }
+
   return record;
 }
 
-export async function hasQuickSave(ifid: string): Promise<boolean> {
-  const metaKey = `${AUTOSAVE_KEY_PREFIX}${ifid}`;
+export async function hasQuickSave(
+  ifid: string,
+  slot?: string,
+): Promise<boolean> {
+  const metaKey = slotMetaKey(ifid, slot);
   const existingId = await getMeta<string>(metaKey);
   if (!existingId) return false;
   const record = await getSave(existingId);
@@ -293,11 +316,38 @@ export async function hasQuickSave(ifid: string): Promise<boolean> {
 
 export async function loadQuickSave(
   ifid: string,
+  slot?: string,
 ): Promise<SavePayload | undefined> {
-  const metaKey = `${AUTOSAVE_KEY_PREFIX}${ifid}`;
+  const metaKey = slotMetaKey(ifid, slot);
   const existingId = await getMeta<string>(metaKey);
   if (!existingId) return undefined;
   return loadSave(existingId);
+}
+
+/**
+ * Check IDB for all known saves and return a map of slot keys to true.
+ * The default (autosave) slot uses empty string as key.
+ */
+export async function populateKnownSaves(
+  ifid: string,
+): Promise<Record<string, true>> {
+  const result: Record<string, true> = {};
+
+  // Check default autosave
+  if (await hasQuickSave(ifid)) {
+    result[''] = true;
+  }
+
+  // Check named slots from the index
+  const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+  const slots = (await getMeta<string[]>(indexKey)) ?? [];
+  for (const slot of slots) {
+    if (await hasQuickSave(ifid, slot)) {
+      result[slot] = true;
+    }
+  }
+
+  return result;
 }
 
 // --- Session Persistence (survives F5, cleared on tab close) ---

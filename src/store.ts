@@ -17,6 +17,7 @@ import {
   getCurrentPlaythroughId,
   quickSave,
   loadQuickSave,
+  populateKnownSaves,
   saveSession,
   clearSession,
 } from './saves/save-manager';
@@ -198,7 +199,7 @@ export interface StoryState {
   historyIndex: number;
   visitCounts: Record<string, number>;
   renderCounts: Record<string, number>;
-  saveVersion: number;
+  knownSaves: Record<string, true>;
   playthroughId: string;
   maxHistory: number;
   saveError: string | null;
@@ -243,7 +244,7 @@ export const useStoryStore = create<StoryState>()(
     historyIndex: -1,
     visitCounts: {},
     renderCounts: {},
-    saveVersion: 0,
+    knownSaves: {},
     playthroughId: '',
     maxHistory: 40,
     saveError: null,
@@ -305,6 +306,14 @@ export const useStoryStore = create<StoryState>()(
             const newId = await startNewPlaythrough(ifid);
             set((state) => {
               state.playthroughId = newId;
+            });
+          }
+
+          // Populate knownSaves from IDB so hasSave() works after reload
+          const saves = await populateKnownSaves(ifid);
+          if (Object.keys(saves).length > 0) {
+            set((state) => {
+              state.knownSaves = saves;
             });
           }
         })
@@ -487,7 +496,7 @@ export const useStoryStore = create<StoryState>()(
         );
     },
 
-    save: () => {
+    save: (slot?: string) => {
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
@@ -496,14 +505,17 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.saveError = null;
       });
-      quickSave(storyData.ifid, playthroughId, payload)
+      quickSave(storyData.ifid, playthroughId, payload, slot)
         .then(() => {
           set((state) => {
-            state.saveVersion++;
+            state.knownSaves = {
+              ...state.knownSaves,
+              [slot ?? '']: true,
+            };
           });
         })
         .catch((err) => {
-          console.error('spindle: failed to quick save', err);
+          console.error('spindle: failed to save', err);
           set((state) => {
             state.saveError =
               err instanceof Error ? err.message : 'Failed to save';
@@ -511,20 +523,20 @@ export const useStoryStore = create<StoryState>()(
         });
     },
 
-    load: () => {
+    load: (slot?: string) => {
       const { storyData } = get();
       if (!storyData) return;
 
       set((state) => {
         state.loadError = null;
       });
-      loadQuickSave(storyData.ifid)
+      loadQuickSave(storyData.ifid, slot)
         .then((payload) => {
           if (!payload) return;
           get().loadFromPayload(payload);
         })
         .catch((err) => {
-          console.error('spindle: failed to load quick save', err);
+          console.error('spindle: failed to load save', err);
           set((state) => {
             state.loadError =
               err instanceof Error ? err.message : 'Failed to load';
@@ -532,11 +544,10 @@ export const useStoryStore = create<StoryState>()(
         });
     },
 
-    hasSave: () => {
-      // Synchronous: return true if a save has been made this session
-      const { storyData, saveVersion } = get();
+    hasSave: (slot?: string) => {
+      const { storyData, knownSaves } = get();
       if (!storyData) return false;
-      return saveVersion > 0;
+      return (slot ?? '') in knownSaves;
     },
 
     getSavePayload: (): SavePayload => {

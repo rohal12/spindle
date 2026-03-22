@@ -66,9 +66,16 @@ describe('store extended coverage', () => {
       expect(useStoryStore.getState().hasSave()).toBe(false);
     });
 
-    it('hasSave returns true when saveVersion > 0', () => {
-      useStoryStore.setState({ saveVersion: 1 });
+    it('hasSave returns true when knownSaves has default slot', () => {
+      useStoryStore.setState({ knownSaves: { '': true } });
       expect(useStoryStore.getState().hasSave()).toBe(true);
+    });
+
+    it('hasSave with slot returns true only for that slot', () => {
+      useStoryStore.setState({ knownSaves: { 'slot-1': true } });
+      expect(useStoryStore.getState().hasSave('slot-1')).toBe(true);
+      expect(useStoryStore.getState().hasSave('slot-2')).toBe(false);
+      expect(useStoryStore.getState().hasSave()).toBe(false);
     });
   });
 
