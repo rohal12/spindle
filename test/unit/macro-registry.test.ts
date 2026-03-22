@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
   registerMacroMetadata,
   getMacroRegistry,
@@ -6,6 +6,12 @@ import {
 } from '../../src/registry';
 import type { MacroMetadata } from '../../src/registry';
 import { defineMacro } from '../../src/define-macro';
+
+// Capture the initial builtin registry snapshot before any test clears it.
+// setupFiles has already registered all builtins by the time this module runs.
+const builtinSnapshot: MacroMetadata[] = getMacroRegistry().map((m) => ({
+  ...m,
+}));
 
 describe('macro metadata registry', () => {
   beforeEach(() => {
@@ -159,5 +165,78 @@ describe('defineMacro stores metadata', () => {
     defineMacro({ name: 'test-user', render: () => null }, 'user');
     const meta = getMacroRegistry().find((m) => m.name === 'test-user');
     expect(meta!.source).toBe('user');
+  });
+});
+
+describe('builtin macros have metadata', () => {
+  // NOTE: do NOT call clearMetadataRegistry() here — we want builtins.
+  // Restore from the snapshot captured at module load time (before any
+  // beforeEach in the earlier describe blocks cleared the registry).
+  beforeAll(() => {
+    clearMetadataRegistry();
+    for (const meta of builtinSnapshot) {
+      registerMacroMetadata(meta.name, meta);
+    }
+  });
+
+  it('all expected builtins are present', () => {
+    const registry = getMacroRegistry();
+    const names = registry.map((m) => m.name);
+    expect(names).toContain('set');
+    expect(names).toContain('if');
+    expect(names).toContain('for');
+    expect(names).toContain('button');
+    expect(names).toContain('switch');
+    expect(names).toContain('textbox');
+    expect(names).toContain('widget');
+  });
+
+  it('block macros are marked as block', () => {
+    const registry = getMacroRegistry();
+    const ifMacro = registry.find((m) => m.name === 'if');
+    expect(ifMacro!.block).toBe(true);
+    const forMacro = registry.find((m) => m.name === 'for');
+    expect(forMacro!.block).toBe(true);
+  });
+
+  it('non-block macros are not marked as block', () => {
+    const registry = getMacroRegistry();
+    const setMacro = registry.find((m) => m.name === 'set');
+    expect(setMacro!.block).toBe(false);
+  });
+
+  it('switch has correct subMacros', () => {
+    const registry = getMacroRegistry();
+    const switchMacro = registry.find((m) => m.name === 'switch');
+    expect(switchMacro!.subMacros).toEqual(['case', 'default']);
+  });
+
+  it('all builtins have source builtin', () => {
+    const registry = getMacroRegistry();
+    const builtinNames = [
+      'set',
+      'if',
+      'for',
+      'button',
+      'switch',
+      'textbox',
+      'widget',
+    ];
+    for (const name of builtinNames) {
+      const macro = registry.find((m) => m.name === name);
+      expect(macro!.source, `${name} should have source 'builtin'`).toBe(
+        'builtin',
+      );
+    }
+  });
+
+  it('feature flags are preserved', () => {
+    const registry = getMacroRegistry();
+    const ifMacro = registry.find((m) => m.name === 'if');
+    expect(ifMacro!.interpolate).toBe(true);
+    expect(ifMacro!.merged).toBe(true);
+
+    const textboxMacro = registry.find((m) => m.name === 'textbox');
+    expect(textboxMacro!.storeVar).toBe(true);
   });
 });
