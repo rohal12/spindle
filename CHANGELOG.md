@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Space-separated quoted strings as widget arguments: `{choice "Label" "target"}` now works as an alternative to comma separation (`{choice "Label", "target"}`). Applies when all arguments are adjacent quoted string literals — expressions with variables or operators still require commas ([#103](https://github.com/rohal12/spindle/issues/103))
 - Block widgets: widgets can now wrap body content using `{@children}` as a rendering placeholder. Define a block widget with `{@children}` in its body, then invoke it with `{WidgetName args}...body...{/WidgetName}`. Supports multiple `{@children}` slots (mirroring), nested block widgets, and full locals propagation.
 - `:storystartup` DOM event dispatched after Story API installation and author JS execution, but before first render — enables external scripts to register custom macros (including block macros) in time for passage parsing
 - `block` flag on `Story.defineMacro()` to declare custom block macros that accept `{macro}...{/macro}` children; inferred automatically when `subMacros` is provided

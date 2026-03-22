@@ -24,13 +24,53 @@ interface WidgetInvocationProps {
 }
 
 /**
- * Split rawArgs by commas, respecting parentheses, brackets, braces, and strings.
+ * Try to split a raw string into adjacent quoted string literals separated by
+ * whitespace. Returns the individual quoted strings if the entire input is
+ * consumed, or `null` if any non-quote/non-whitespace content is found.
  */
-function splitArgs(raw: string): string[] {
+function trySplitAdjacentQuotes(raw: string): string[] | null {
+  const args: string[] = [];
+  let i = 0;
+
+  while (i < raw.length) {
+    // skip whitespace between quoted strings
+    while (i < raw.length && /\s/.test(raw[i]!)) i++;
+    if (i >= raw.length) break;
+
+    const quote = raw[i]!;
+    if (quote !== '"' && quote !== "'") return null;
+
+    // consume the quoted string
+    let str = quote;
+    i++;
+    while (i < raw.length) {
+      const ch = raw[i]!;
+      str += ch;
+      i++;
+      if (ch === quote && raw[i - 2] !== '\\') break;
+    }
+
+    // must be properly closed
+    if (str.length < 2 || str[str.length - 1] !== quote) return null;
+
+    args.push(str);
+  }
+
+  // only use this path when there are 2+ adjacent quoted strings
+  return args.length > 1 ? args : null;
+}
+
+/**
+ * Split rawArgs by commas, respecting parentheses, brackets, braces, and
+ * strings. When no top-level commas are present, also supports adjacent quoted
+ * string literals separated by whitespace (e.g. `"Label" "target"`).
+ */
+export function splitArgs(raw: string): string[] {
   const args: string[] = [];
   let current = '';
   let depth = 0;
   let inString: string | null = null;
+  let hasComma = false;
 
   for (let i = 0; i < raw.length; i++) {
     const ch = raw[i]!;
@@ -60,6 +100,7 @@ function splitArgs(raw: string): string[] {
     }
 
     if (ch === ',' && depth === 0) {
+      hasComma = true;
       args.push(current.trim());
       current = '';
       continue;
@@ -70,6 +111,14 @@ function splitArgs(raw: string): string[] {
 
   const last = current.trim();
   if (last) args.push(last);
+
+  // If no commas were found and we got a single expression, try splitting
+  // it as adjacent quoted string literals (e.g. "Label" "target").
+  if (!hasComma && args.length === 1) {
+    const quoted = trySplitAdjacentQuotes(args[0]!);
+    if (quoted) return quoted;
+  }
+
   return args;
 }
 
