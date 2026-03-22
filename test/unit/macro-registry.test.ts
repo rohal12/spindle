@@ -5,6 +5,7 @@ import {
   clearMetadataRegistry,
 } from '../../src/registry';
 import type { MacroMetadata } from '../../src/registry';
+import { defineMacro } from '../../src/define-macro';
 
 describe('macro metadata registry', () => {
   beforeEach(() => {
@@ -94,5 +95,69 @@ describe('macro metadata registry', () => {
     expect(getMacroRegistry()).toHaveLength(2);
     clearMetadataRegistry();
     expect(getMacroRegistry()).toHaveLength(0);
+  });
+});
+
+describe('defineMacro stores metadata', () => {
+  beforeEach(() => {
+    clearMetadataRegistry();
+  });
+
+  it('stores basic metadata from defineMacro config', () => {
+    defineMacro({
+      name: 'test-basic',
+      render: () => null,
+    });
+    const all = getMacroRegistry();
+    const meta = all.find((m) => m.name === 'test-basic');
+    expect(meta).toBeDefined();
+    expect(meta!.block).toBe(false);
+    expect(meta!.subMacros).toEqual([]);
+    expect(meta!.source).toBe('builtin');
+  });
+
+  it('stores feature flags from config', () => {
+    defineMacro({
+      name: 'test-flags',
+      block: true,
+      subMacros: ['child-a', 'child-b'],
+      interpolate: true,
+      merged: true,
+      storeVar: true,
+      render: () => null,
+    });
+    const meta = getMacroRegistry().find((m) => m.name === 'test-flags');
+    expect(meta).toBeDefined();
+    expect(meta!.block).toBe(true);
+    expect(meta!.subMacros).toEqual(['child-a', 'child-b']);
+    expect(meta!.interpolate).toBe(true);
+    expect(meta!.merged).toBe(true);
+    expect(meta!.storeVar).toBe(true);
+  });
+
+  it('stores description and parameters', () => {
+    defineMacro({
+      name: 'test-docs',
+      description: 'A documented macro',
+      parameters: [{ name: 'value', required: true, description: 'The value' }],
+      render: () => null,
+    });
+    const meta = getMacroRegistry().find((m) => m.name === 'test-docs');
+    expect(meta!.description).toBe('A documented macro');
+    expect(meta!.parameters).toEqual([
+      { name: 'value', required: true, description: 'The value' },
+    ]);
+  });
+
+  it('defaults source to builtin', () => {
+    defineMacro({ name: 'test-src', render: () => null });
+    const meta = getMacroRegistry().find((m) => m.name === 'test-src');
+    expect(meta!.source).toBe('builtin');
+  });
+
+  it('accepts explicit source parameter', () => {
+    defineMacro({ name: 'test-user', render: () => null }, 'user');
+    const meta = getMacroRegistry().find((m) => m.name === 'test-user');
+    expect(meta!.source).toBe('user');
   });
 });
