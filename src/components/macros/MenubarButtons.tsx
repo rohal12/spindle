@@ -119,7 +119,7 @@ defineMenubarAction({
   setup: () => {
     const load = useStoryStore((s) => s.load);
     const hasSave = useStoryStore((s) => s.hasSave);
-    useStoryStore((s) => s.saveVersion);
+    useStoryStore((s) => s.knownSaves);
     return { perform: () => load(), disabled: !hasSave() };
   },
 });

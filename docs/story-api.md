@@ -174,17 +174,32 @@ Set a one-shot transition for the next navigation only. Consumed automatically w
 {/do}
 ```
 
-### `Story.save()`
+### `Story.save(slot?)`
 
-Perform a quick save.
+Perform a quick save. When `slot` is provided, saves to a named slot instead of the default autosave slot.
 
-### `Story.load()`
+```javascript
+Story.save(); // save to default slot
+Story.save('my-slot'); // save to named slot
+```
 
-Load the quick save.
+### `Story.load(slot?)`
 
-### `Story.hasSave()`
+Load a saved game. When `slot` is provided, loads from the named slot.
 
-Returns `true` if a quick save exists for the current session.
+```javascript
+Story.load(); // load from default slot
+Story.load('my-slot'); // load from named slot
+```
+
+### `Story.hasSave(slot?)`
+
+Returns `true` if a save exists for the given slot. Checks actual storage (persists across page reloads).
+
+```javascript
+Story.hasSave(); // check default slot
+Story.hasSave('my-slot'); // check named slot
+```
 
 ### `Story.defineMacro(config)`
 

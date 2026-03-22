@@ -12,6 +12,7 @@ import {
   quickSave,
   hasQuickSave,
   loadQuickSave,
+  populateKnownSaves,
   exportSave,
   importSave,
   setTitleGenerator,
@@ -497,6 +498,126 @@ describe('save-manager', () => {
       const loaded2 = await loadSave(imported2.meta.id);
       expect(loaded1).toBeDefined();
       expect(loaded2).toBeDefined();
+    });
+  });
+
+  describe('named slot saves', () => {
+    it('quickSave with slot saves to a named slot', async () => {
+      const freshIfid = 'slot-test-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      const record = await quickSave(
+        freshIfid,
+        ptId,
+        makePayload({ passage: 'Room' }),
+        'my-slot',
+      );
+      expect(record.meta.ifid).toBe(freshIfid);
+
+      const loaded = await loadQuickSave(freshIfid, 'my-slot');
+      expect(loaded).toBeDefined();
+      expect(loaded!.passage).toBe('Room');
+    });
+
+    it('hasQuickSave with slot checks the named slot', async () => {
+      const freshIfid = 'slot-has-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      expect(await hasQuickSave(freshIfid, 'my-slot')).toBe(false);
+      await quickSave(freshIfid, ptId, makePayload(), 'my-slot');
+      expect(await hasQuickSave(freshIfid, 'my-slot')).toBe(true);
+      expect(await hasQuickSave(freshIfid, 'other-slot')).toBe(false);
+      expect(await hasQuickSave(freshIfid)).toBe(false);
+    });
+
+    it('named slot and default slot are independent', async () => {
+      const freshIfid = 'slot-independent-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'Start' }));
+      await quickSave(
+        freshIfid,
+        ptId,
+        makePayload({ passage: 'Room' }),
+        'slot-1',
+      );
+
+      const defaultSave = await loadQuickSave(freshIfid);
+      const slotSave = await loadQuickSave(freshIfid, 'slot-1');
+
+      expect(defaultSave!.passage).toBe('Start');
+      expect(slotSave!.passage).toBe('Room');
+    });
+
+    it('multiple named slots are independent', async () => {
+      const freshIfid = 'slot-multi-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'A' }), 'slot-1');
+      await quickSave(freshIfid, ptId, makePayload({ passage: 'B' }), 'slot-2');
+
+      expect((await loadQuickSave(freshIfid, 'slot-1'))!.passage).toBe('A');
+      expect((await loadQuickSave(freshIfid, 'slot-2'))!.passage).toBe('B');
+    });
+
+    it('quickSave with slot overwrites same slot', async () => {
+      const freshIfid = 'slot-overwrite-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await quickSave(
+        freshIfid,
+        ptId,
+        makePayload({ passage: 'Old' }),
+        'my-slot',
+      );
+      await quickSave(
+        freshIfid,
+        ptId,
+        makePayload({ passage: 'New' }),
+        'my-slot',
+      );
+
+      const loaded = await loadQuickSave(freshIfid, 'my-slot');
+      expect(loaded!.passage).toBe('New');
+    });
+  });
+
+  describe('populateKnownSaves', () => {
+    it('returns empty when no saves exist', async () => {
+      const freshIfid = 'populate-empty-' + Date.now();
+      const saves = await populateKnownSaves(freshIfid);
+      expect(Object.keys(saves)).toHaveLength(0);
+    });
+
+    it('detects default autosave', async () => {
+      const freshIfid = 'populate-default-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload());
+
+      const saves = await populateKnownSaves(freshIfid);
+      expect(saves['']).toBe(true);
+    });
+
+    it('detects named slot saves', async () => {
+      const freshIfid = 'populate-slots-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'slot-a');
+      await quickSave(freshIfid, ptId, makePayload(), 'slot-b');
+
+      const saves = await populateKnownSaves(freshIfid);
+      expect(saves['slot-a']).toBe(true);
+      expect(saves['slot-b']).toBe(true);
+      expect('' in saves).toBe(false);
+    });
+
+    it('detects both default and named saves', async () => {
+      const freshIfid = 'populate-both-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload());
+      await quickSave(freshIfid, ptId, makePayload(), 'my-slot');
+
+      const saves = await populateKnownSaves(freshIfid);
+      expect(saves['']).toBe(true);
+      expect(saves['my-slot']).toBe(true);
     });
   });
 
