@@ -355,6 +355,38 @@ Usage:
 {.danger#reset confirm $health = 100; $gold = 0}Reset all stats{/confirm}
 ```
 
+## Tooling Metadata
+
+You can add optional metadata to your macro definition to help LSP servers, linters, and documentation generators understand your macro:
+
+```
+:: StoryInit
+{do}
+  Story.defineMacro({
+    name: "damage",
+    description: "Apply damage to a character variable",
+    parameters: [
+      { name: "target", required: true, description: "The $variable to modify" },
+      { name: "amount", required: true, description: "Damage amount (expression)" }
+    ],
+    merged: true,
+    render: function(props, ctx) {
+      // ...
+    }
+  });
+{/do}
+```
+
+| Property                   | Type       | Description                                    |
+| -------------------------- | ---------- | ---------------------------------------------- |
+| `description`              | `string?`  | Human-readable description shown in hover docs |
+| `parameters`               | `array?`   | Array of parameter definitions                 |
+| `parameters[].name`        | `string`   | Parameter name                                 |
+| `parameters[].required`    | `boolean?` | Whether the parameter is required              |
+| `parameters[].description` | `string?`  | Human-readable description of the parameter    |
+
+This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point. See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
+
 ## Reference
 
 ### Props
