@@ -1,8 +1,21 @@
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
 import { settings } from './settings';
-import type { SavePayload, SaveInfo } from './saves/types';
-import { setTitleGenerator } from './saves/save-manager';
+import type {
+  SavePayload,
+  SaveInfo,
+  StorageInfo,
+  StorageQuota,
+} from './saves/types';
+import {
+  setTitleGenerator,
+  getStorageInfo as _getStorageInfo,
+  clearGameData as _clearGameData,
+  clearAllData as _clearAllData,
+  deletePlaythroughData,
+  populateKnownSaves,
+} from './saves/save-manager';
+import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
@@ -71,6 +84,14 @@ export interface StoryAPI {
   defineMacro(config: MacroDefinition): void;
   readonly saves: {
     setTitleGenerator(fn: (payload: SavePayload) => string): void;
+  };
+  readonly storage: {
+    getInfo(): Promise<StorageInfo>;
+    getQuota(): Promise<StorageQuota>;
+    clearGameData(): Promise<void>;
+    clearAllData(): Promise<void>;
+    deletePlaythrough(playthroughId: string): Promise<void>;
+    readonly backend: 'indexeddb' | 'localstorage' | 'memory';
   };
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
@@ -235,6 +256,68 @@ function createStoryAPI(): StoryAPI {
     saves: {
       setTitleGenerator(fn: (payload: SavePayload) => string): void {
         setTitleGenerator(fn);
+      },
+    },
+
+    storage: {
+      async getInfo(): Promise<StorageInfo> {
+        const ifid = useStoryStore.getState().storyData?.ifid;
+        if (!ifid)
+          return {
+            saveCount: 0,
+            playthroughCount: 0,
+            totalBytes: 0,
+            backend: getBackendType(),
+          };
+        return _getStorageInfo(ifid);
+      },
+
+      async getQuota(): Promise<StorageQuota> {
+        if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+          try {
+            const est = await navigator.storage.estimate();
+            return {
+              usage: est.usage ?? 0,
+              quota: est.quota ?? 0,
+              estimateSupported: true,
+            };
+          } catch {
+            // fall through
+          }
+        }
+        return { usage: 0, quota: 0, estimateSupported: false };
+      },
+
+      async clearGameData(): Promise<void> {
+        const ifid = useStoryStore.getState().storyData?.ifid;
+        if (!ifid) return;
+        await _clearGameData(ifid);
+        useStoryStore.setState((state) => {
+          state.knownSaves = {};
+        });
+        useStoryStore.getState().restart();
+      },
+
+      async clearAllData(): Promise<void> {
+        await _clearAllData();
+        useStoryStore.setState((state) => {
+          state.knownSaves = {};
+        });
+        useStoryStore.getState().restart();
+      },
+
+      async deletePlaythrough(playthroughId: string): Promise<void> {
+        const { storyData } = useStoryStore.getState();
+        if (!storyData) return;
+        await deletePlaythroughData(storyData.ifid, playthroughId);
+        const known = await populateKnownSaves(storyData.ifid);
+        useStoryStore.setState((state) => {
+          state.knownSaves = known;
+        });
+      },
+
+      get backend() {
+        return getBackendType();
       },
     },
 

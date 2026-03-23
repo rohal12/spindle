@@ -557,3 +557,11 @@ export async function getBackend(): Promise<StorageBackend> {
 export function resetBackend(): void {
   _backend = null;
 }
+
+/**
+ * Synchronous accessor for the current backend type.
+ * Returns 'memory' if the backend hasn't been detected yet.
+ */
+export function getBackendType(): 'indexeddb' | 'localstorage' | 'memory' {
+  return _backend?.type ?? 'memory';
+}
