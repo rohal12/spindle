@@ -23,6 +23,9 @@ import {
   deleteSlotSave,
   saveSession,
   clearSession,
+  clearGameData as smClearGameData,
+  clearAllData as smClearAllData,
+  deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
 import { deepClone, serialize, deserialize } from './class-registry';
 import {
@@ -231,6 +234,9 @@ export interface StoryState {
   getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
   listSaves: () => Promise<SaveInfo[]>;
   deleteSave: (slot?: string) => void;
+  clearGameData: () => void;
+  clearAllData: () => void;
+  deletePlaythrough: (playthroughId: string) => void;
   getSavePayload: () => SavePayload;
   loadFromPayload: (payload: SavePayload) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
@@ -582,6 +588,54 @@ export const useStoryStore = create<StoryState>()(
         })
         .catch((err) => {
           console.error('spindle: failed to delete save', err);
+        });
+    },
+
+    clearGameData: () => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      smClearGameData(storyData.ifid)
+        .then(() => {
+          set((state) => {
+            state.knownSaves = {};
+          });
+          get().restart();
+        })
+        .catch((err) => {
+          console.error('spindle: failed to clear game data', err);
+        });
+    },
+
+    clearAllData: () => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      smClearAllData()
+        .then(() => {
+          set((state) => {
+            state.knownSaves = {};
+          });
+          get().restart();
+        })
+        .catch((err) => {
+          console.error('spindle: failed to clear all data', err);
+        });
+    },
+
+    deletePlaythrough: (playthroughId: string) => {
+      const { storyData } = get();
+      if (!storyData) return;
+
+      smDeletePlaythroughData(storyData.ifid, playthroughId)
+        .then(async () => {
+          const known = await populateKnownSaves(storyData.ifid);
+          set((state) => {
+            state.knownSaves = known;
+          });
+        })
+        .catch((err) => {
+          console.error('spindle: failed to delete playthrough', err);
         });
     },
 

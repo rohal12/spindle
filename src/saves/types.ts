@@ -27,6 +27,7 @@ export interface SaveMeta {
   title: string;
   passage: string;
   custom: Record<string, unknown>;
+  estimatedBytes?: number;
 }
 
 export interface SaveRecord {
@@ -96,4 +97,50 @@ export function isSavePayload(value: unknown): value is SavePayload {
   if (!Array.isArray(obj.history) || obj.history.length === 0) return false;
   if (typeof obj.historyIndex !== 'number') return false;
   return true;
+}
+
+/** Estimated byte size of a serialized save payload. */
+export function estimatePayloadBytes(payload: SavePayload): number {
+  return JSON.stringify(payload).length;
+}
+
+export interface StorageInfo {
+  saveCount: number;
+  playthroughCount: number;
+  /** Estimated total bytes across all saves. */
+  totalBytes: number;
+  backend: 'indexeddb' | 'localstorage' | 'memory';
+}
+
+export interface StorageQuota {
+  usage: number;
+  quota: number;
+  /** false if navigator.storage.estimate() is unsupported. */
+  estimateSupported: boolean;
+}
+
+/** Abstract storage backend for saves, playthroughs, and metadata. */
+export interface StorageBackend {
+  putSave(record: SaveRecord): Promise<void>;
+  getSave(id: string): Promise<SaveRecord | undefined>;
+  deleteSave(id: string): Promise<void>;
+  getSavesByIfid(ifid: string): Promise<SaveRecord[]>;
+  deleteSavesByIfid(ifid: string): Promise<void>;
+  deleteSavesByPlaythrough(playthroughId: string): Promise<string[]>;
+
+  putPlaythrough(record: PlaythroughRecord): Promise<void>;
+  getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]>;
+  deletePlaythroughsByIfid(ifid: string): Promise<void>;
+  deletePlaythroughById(id: string): Promise<void>;
+
+  getMeta<T = unknown>(key: string): Promise<T | undefined>;
+  setMeta(key: string, value: unknown): Promise<void>;
+  deleteMeta(key: string): Promise<void>;
+  deleteMetaByPrefix(prefix: string): Promise<void>;
+  deleteMetaByIfid(ifid: string): Promise<void>;
+  getAllMetaKeys(): Promise<string[]>;
+
+  destroy(): Promise<void>;
+
+  readonly type: 'indexeddb' | 'localstorage' | 'memory';
 }

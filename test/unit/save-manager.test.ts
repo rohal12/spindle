@@ -20,6 +20,9 @@ import {
   importSave,
   setTitleGenerator,
   setSaveTitlePassage,
+  getStorageInfo,
+  clearGameData,
+  deletePlaythroughData,
 } from '../../src/saves/save-manager';
 import type { SavePayload } from '../../src/saves/types';
 
@@ -807,6 +810,50 @@ describe('save-manager', () => {
       const record = await createSave(IFID, playthroughId, makePayload());
       expect(record.meta.title).toContain('Start');
       setTitleGenerator(null as any); // reset
+    });
+  });
+
+  describe('getStorageInfo', () => {
+    it('returns counts and estimated bytes', async () => {
+      const ifid = 'info-test-' + Date.now();
+      const ptId = await startNewPlaythrough(ifid);
+      await createSave(ifid, ptId, makePayload());
+      await createSave(ifid, ptId, makePayload({ passage: 'Room' }));
+
+      const info = await getStorageInfo(ifid);
+      expect(info.saveCount).toBe(2);
+      expect(info.playthroughCount).toBeGreaterThanOrEqual(1);
+      expect(info.totalBytes).toBeGreaterThan(0);
+      expect(info.backend).toBe('memory');
+    });
+  });
+
+  describe('clearGameData', () => {
+    it('removes all saves, playthroughs, and meta for an IFID', async () => {
+      const ifid = 'clear-test-' + Date.now();
+      const ptId = await startNewPlaythrough(ifid);
+      await createSave(ifid, ptId, makePayload());
+
+      await clearGameData(ifid);
+
+      const info = await getStorageInfo(ifid);
+      expect(info.saveCount).toBe(0);
+      expect(info.playthroughCount).toBe(0);
+    });
+  });
+
+  describe('deletePlaythroughData', () => {
+    it('removes saves and playthrough for a specific playthrough', async () => {
+      const ifid = 'delpt-test-' + Date.now();
+      const pt1 = await startNewPlaythrough(ifid);
+      const pt2 = await startNewPlaythrough(ifid);
+      await createSave(ifid, pt1, makePayload());
+      await createSave(ifid, pt2, makePayload({ passage: 'Room' }));
+
+      await deletePlaythroughData(ifid, pt1);
+
+      const info = await getStorageInfo(ifid);
+      expect(info.saveCount).toBe(1); // Only pt2's save remains
     });
   });
 });

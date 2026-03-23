@@ -5,18 +5,10 @@ import type {
   SaveInfo,
   PlaythroughRecord,
   SaveExport,
+  StorageInfo,
 } from './types';
 import { isSavePayload } from './types';
-import {
-  putSave,
-  getSave,
-  deleteSave as idbDeleteSave,
-  getSavesByIfid,
-  putPlaythrough,
-  getPlaythroughsByIfid,
-  getMeta,
-  setMeta,
-} from './idb';
+import { getBackend, resetBackend } from './storage';
 import { deepClone, serialize, deserialize } from '../class-registry';
 
 type TitleGenerator = (payload: SavePayload) => string;
@@ -79,7 +71,8 @@ export async function initSaveSystem(): Promise<void> {
 // --- Playthroughs ---
 
 export async function startNewPlaythrough(ifid: string): Promise<string> {
-  const existing = await getPlaythroughsByIfid(ifid);
+  const backend = await getBackend();
+  const existing = await backend.getPlaythroughsByIfid(ifid);
   const num = existing.length + 1;
 
   const id = crypto.randomUUID();
@@ -90,15 +83,15 @@ export async function startNewPlaythrough(ifid: string): Promise<string> {
     label: `Playthrough ${num}`,
   };
 
-  await putPlaythrough(record);
-  await setMeta(`currentPlaythroughId.${ifid}`, id);
+  await backend.putPlaythrough(record);
+  await backend.setMeta(`currentPlaythroughId.${ifid}`, id);
   return id;
 }
 
 export async function getCurrentPlaythroughId(
   ifid: string,
 ): Promise<string | undefined> {
-  return getMeta<string>(`currentPlaythroughId.${ifid}`);
+  return (await getBackend()).getMeta<string>(`currentPlaythroughId.${ifid}`);
 }
 
 // --- Save CRUD ---
@@ -128,7 +121,8 @@ export async function createSave(
     variables: serialize(m.variables),
   }));
   const record: SaveRecord = { meta, payload: serializedPayload };
-  await putSave(record);
+  record.meta.estimatedBytes = JSON.stringify(serializedPayload).length;
+  await (await getBackend()).putSave(record);
   return record;
 }
 
@@ -137,7 +131,8 @@ export async function overwriteSave(
   payload: SavePayload,
   custom?: Record<string, unknown>,
 ): Promise<SaveRecord | undefined> {
-  const existing = await getSave(saveId);
+  const backend = await getBackend();
+  const existing = await backend.getSave(saveId);
   if (!existing) return undefined;
 
   const serializedPayload = deepClone(payload);
@@ -157,14 +152,15 @@ export async function overwriteSave(
     },
     payload: serializedPayload,
   };
-  await putSave(updated);
+  updated.meta.estimatedBytes = JSON.stringify(serializedPayload).length;
+  await backend.putSave(updated);
   return updated;
 }
 
 export async function loadSave(
   saveId: string,
 ): Promise<SavePayload | undefined> {
-  const record = await getSave(saveId);
+  const record = await (await getBackend()).getSave(saveId);
   if (!record) return undefined;
   const payload = record.payload;
   payload.variables = deserialize(payload.variables);
@@ -176,14 +172,15 @@ export async function loadSave(
 }
 
 export async function deleteSaveById(saveId: string): Promise<void> {
-  await idbDeleteSave(saveId);
+  await (await getBackend()).deleteSave(saveId);
 }
 
 export async function renameSave(
   saveId: string,
   newTitle: string,
 ): Promise<void> {
-  const record = await getSave(saveId);
+  const backend = await getBackend();
+  const record = await backend.getSave(saveId);
   if (!record) return;
   const updated: SaveRecord = {
     ...record,
@@ -193,7 +190,7 @@ export async function renameSave(
       updatedAt: new Date().toISOString(),
     },
   };
-  await putSave(updated);
+  await backend.putSave(updated);
 }
 
 // --- Grouped Retrieval ---
@@ -206,9 +203,10 @@ export interface PlaythroughGroup {
 export async function getSavesGrouped(
   ifid: string,
 ): Promise<PlaythroughGroup[]> {
+  const backend = await getBackend();
   const [allSaves, allPlaythroughs] = await Promise.all([
-    getSavesByIfid(ifid),
-    getPlaythroughsByIfid(ifid),
+    backend.getSavesByIfid(ifid),
+    backend.getPlaythroughsByIfid(ifid),
   ]);
 
   const ptMap = new Map<string, PlaythroughRecord>();
@@ -282,8 +280,9 @@ export async function quickSave(
   slot?: string,
   custom?: Record<string, unknown>,
 ): Promise<SaveRecord> {
+  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await getMeta<string>(metaKey);
+  const existingId = await backend.getMeta<string>(metaKey);
 
   if (existingId) {
     const updated = await overwriteSave(existingId, payload, custom);
@@ -296,14 +295,14 @@ export async function quickSave(
     ...(slot != null ? { slot } : {}),
     ...custom,
   });
-  await setMeta(metaKey, record.meta.id);
+  await backend.setMeta(metaKey, record.meta.id);
 
   // Track named slots in the index
   if (slot != null) {
     const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-    const existing = (await getMeta<string[]>(indexKey)) ?? [];
+    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
     if (!existing.includes(slot)) {
-      await setMeta(indexKey, [...existing, slot]);
+      await backend.setMeta(indexKey, [...existing, slot]);
     }
   }
 
@@ -314,10 +313,11 @@ export async function hasQuickSave(
   ifid: string,
   slot?: string,
 ): Promise<boolean> {
+  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await getMeta<string>(metaKey);
+  const existingId = await backend.getMeta<string>(metaKey);
   if (!existingId) return false;
-  const record = await getSave(existingId);
+  const record = await backend.getSave(existingId);
   return record !== undefined;
 }
 
@@ -326,13 +326,13 @@ export async function loadQuickSave(
   slot?: string,
 ): Promise<SavePayload | undefined> {
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await getMeta<string>(metaKey);
+  const existingId = await (await getBackend()).getMeta<string>(metaKey);
   if (!existingId) return undefined;
   return loadSave(existingId);
 }
 
 /**
- * Check IDB for all known saves and return a map of slot keys to true.
+ * Check storage for all known saves and return a map of slot keys to true.
  * The default (autosave) slot uses empty string as key.
  */
 export async function populateKnownSaves(
@@ -347,7 +347,7 @@ export async function populateKnownSaves(
 
   // Check named slots from the index
   const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-  const slots = (await getMeta<string[]>(indexKey)) ?? [];
+  const slots = (await (await getBackend()).getMeta<string[]>(indexKey)) ?? [];
   for (const slot of slots) {
     if (await hasQuickSave(ifid, slot)) {
       result[slot] = true;
@@ -365,10 +365,11 @@ export async function getSlotSaveInfo(
   ifid: string,
   slot?: string,
 ): Promise<SaveInfo | null> {
+  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await getMeta<string>(metaKey);
+  const existingId = await backend.getMeta<string>(metaKey);
   if (!existingId) return null;
-  const record = await getSave(existingId);
+  const record = await backend.getSave(existingId);
   if (!record) return null;
   return {
     slot: slot ?? '',
@@ -392,7 +393,7 @@ export async function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
 
   // Check named slots from the index
   const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-  const slots = (await getMeta<string[]>(indexKey)) ?? [];
+  const slots = (await (await getBackend()).getMeta<string[]>(indexKey)) ?? [];
   for (const slot of slots) {
     const info = await getSlotSaveInfo(ifid, slot);
     if (info) result.push(info);
@@ -408,19 +409,20 @@ export async function deleteSlotSave(
   ifid: string,
   slot?: string,
 ): Promise<void> {
+  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await getMeta<string>(metaKey);
+  const existingId = await backend.getMeta<string>(metaKey);
   if (!existingId) return;
 
-  await idbDeleteSave(existingId);
-  await setMeta(metaKey, undefined);
+  await backend.deleteSave(existingId);
+  await backend.deleteMeta(metaKey);
 
   // Remove from slot index if named
   if (slot != null) {
     const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-    const existing = (await getMeta<string[]>(indexKey)) ?? [];
+    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
     const updated = existing.filter((s) => s !== slot);
-    await setMeta(indexKey, updated);
+    await backend.setMeta(indexKey, updated);
   }
 }
 
@@ -474,7 +476,7 @@ export function clearSession(ifid: string): void {
 export async function exportSave(
   saveId: string,
 ): Promise<SaveExport | undefined> {
-  const record = await getSave(saveId);
+  const record = await (await getBackend()).getSave(saveId);
   if (!record) return undefined;
 
   return {
@@ -498,13 +500,15 @@ export async function importSave(
     );
   }
 
+  const backend = await getBackend();
+
   // Re-assign a new ID to avoid collisions
   const record = deepClone(data.save);
   record.meta.id = crypto.randomUUID();
   record.meta.updatedAt = new Date().toISOString();
 
   // Ensure the playthrough exists
-  const playthroughs = await getPlaythroughsByIfid(ifid);
+  const playthroughs = await backend.getPlaythroughsByIfid(ifid);
   const ptExists = playthroughs.some((p) => p.id === record.meta.playthroughId);
   if (!ptExists) {
     // Create an "Imported" playthrough
@@ -514,9 +518,89 @@ export async function importSave(
       createdAt: record.meta.createdAt,
       label: 'Imported',
     };
-    await putPlaythrough(pt);
+    await backend.putPlaythrough(pt);
   }
 
-  await putSave(record);
+  await backend.putSave(record);
   return record;
+}
+
+// --- Storage Management ---
+
+export async function getStorageInfo(ifid: string): Promise<StorageInfo> {
+  const backend = await getBackend();
+  const saves = await backend.getSavesByIfid(ifid);
+  const playthroughs = await backend.getPlaythroughsByIfid(ifid);
+
+  let totalBytes = 0;
+  for (const save of saves) {
+    if (save.meta.estimatedBytes != null) {
+      totalBytes += save.meta.estimatedBytes;
+    } else {
+      // Lazy backfill for saves created before estimatedBytes was added
+      const bytes = JSON.stringify(save.payload).length;
+      save.meta.estimatedBytes = bytes;
+      await backend.putSave(save);
+      totalBytes += bytes;
+    }
+  }
+
+  return {
+    saveCount: saves.length,
+    playthroughCount: playthroughs.length,
+    totalBytes,
+    backend: backend.type,
+  };
+}
+
+export async function clearGameData(ifid: string): Promise<void> {
+  const backend = await getBackend();
+  await backend.deleteSavesByIfid(ifid);
+  await backend.deletePlaythroughsByIfid(ifid);
+  await backend.deleteMetaByIfid(ifid);
+  clearSession(ifid);
+}
+
+export async function clearAllData(): Promise<void> {
+  const backend = await getBackend();
+  await backend.destroy();
+  resetBackend();
+
+  // Clear all Spindle session keys from sessionStorage
+  if (typeof sessionStorage !== 'undefined') {
+    const toRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith('spindle.session.')) toRemove.push(key);
+    }
+    for (const key of toRemove) sessionStorage.removeItem(key);
+  }
+}
+
+export async function deletePlaythroughData(
+  ifid: string,
+  playthroughId: string,
+): Promise<void> {
+  const backend = await getBackend();
+  const deletedSaveIds = await backend.deleteSavesByPlaythrough(playthroughId);
+  await backend.deletePlaythroughById(playthroughId);
+
+  // Clean up slot/autosave meta keys pointing to deleted saves
+  const deletedSet = new Set(deletedSaveIds);
+  const allKeys = await backend.getAllMetaKeys();
+  for (const key of allKeys) {
+    if (key.startsWith('slot.') || key.startsWith('autosave.')) {
+      const value = await backend.getMeta<string>(key);
+      if (value && deletedSet.has(value)) {
+        await backend.deleteMeta(key);
+      }
+    }
+  }
+
+  // Clear currentPlaythroughId if it was this one
+  const currentPtKey = `currentPlaythroughId.${ifid}`;
+  const currentPt = await backend.getMeta<string>(currentPtKey);
+  if (currentPt === playthroughId) {
+    await backend.deleteMeta(currentPtKey);
+  }
 }
