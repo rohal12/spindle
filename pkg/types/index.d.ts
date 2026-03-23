@@ -122,6 +122,32 @@ export interface SaveInfo {
 }
 
 /**
+ * Typed parameter definition for macro tooling metadata.
+ * Macro authors can provide these to help LSP servers, linters, and documentation generators.
+ */
+export interface ParameterDef {
+  name: string;
+  required?: boolean;
+  description?: string;
+}
+
+/**
+ * Metadata about a registered macro, used by tooling (LSP, linters, doc generators).
+ * Available at runtime via `Story.getMacroRegistry()` or via the `@rohal12/spindle/tooling` entry point.
+ */
+export interface MacroMetadata {
+  name: string;
+  block: boolean;
+  subMacros: string[];
+  storeVar?: boolean;
+  interpolate?: boolean;
+  merged?: boolean;
+  source: 'builtin' | 'user';
+  description?: string;
+  parameters?: ParameterDef[];
+}
+
+/**
  * The main Story API available as `window.Story` at runtime.
  * Provides access to variables, navigation, save/load, and visit tracking.
  * @see {@link ../../src/story-api.ts} for the implementation.
@@ -209,4 +235,7 @@ export interface StoryAPI {
     /** Set a custom function to generate save titles. */
     setTitleGenerator(fn: (payload: SavePayload) => string): void;
   };
+
+  /** Return metadata for all registered macros (built-in and user-defined). */
+  getMacroRegistry(): MacroMetadata[];
 }

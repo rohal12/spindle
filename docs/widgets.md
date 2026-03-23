@@ -62,16 +62,17 @@ Widgets can accept arguments, making them more flexible. Declare parameter names
 {/widget}
 ```
 
-Pass arguments as comma-separated expressions when invoking the widget:
+Pass arguments when invoking the widget. Arguments that are standalone values — quoted strings, variables, numbers, booleans — can be separated by spaces:
 
 ```
 :: Start
-{StatLine "Health", $health, $max_health}
-{StatLine "Mana", $mana, $max_mana}
-{StatLine "XP", $xp, $xp_needed}
+{StatLine "Health" $health $max_health}
+{StatLine "Mana" $mana $max_mana}
+{choice "Go to the mines" "mining-bay"}
+{Portrait $pcPortrait "PC"}
 ```
 
-Arguments are evaluated as expressions, so you can pass variables, literals, or computed values:
+Comma-separated arguments also work and are required when arguments contain operators or other expressions:
 
 ```
 {StatLine "Damage", $strength * 2, 100}

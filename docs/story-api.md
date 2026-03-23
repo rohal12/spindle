@@ -250,6 +250,8 @@ Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
 | `merged`      | `boolean?`  | Provide `ctx.merged` variable 3-tuple + `ctx.evaluate()`                       |
 | `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()`            |
 | `subMacros`   | `string[]?` | Register sub-macro names for branching                                         |
+| `description` | `string?`   | Optional description for tooling (LSP hover, doc generation)                   |
+| `parameters`  | `array?`    | Optional parameter definitions for tooling (see below)                         |
 | `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function                          |
 
 ```
@@ -264,6 +266,31 @@ Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
 ```
 
 The `ctx` object provides `h`, `renderNodes`, `renderInlineNodes`, `collectText`, `sourceLocation`, `hooks`, and any values from the enabled feature flags. The `render` function runs inside a Preact component and can call hooks via `ctx.hooks`.
+
+### `Story.getMacroRegistry()`
+
+Returns an array of metadata objects describing all registered macros (built-in and user-defined). Useful for tooling, debugging, and introspection.
+
+```javascript
+var macros = Story.getMacroRegistry();
+macros.forEach(function (m) {
+  console.log(m.name, m.block ? 'block' : 'inline', m.source);
+});
+```
+
+Each metadata object has these properties:
+
+| Property      | Type                          | Description                                               |
+| ------------- | ----------------------------- | --------------------------------------------------------- |
+| `name`        | `string`                      | Macro name                                                |
+| `block`       | `boolean`                     | Whether the macro accepts children (`{macro}...{/macro}`) |
+| `subMacros`   | `string[]`                    | Registered sub-macro names (e.g. `['case', 'default']`)   |
+| `storeVar`    | `boolean \| undefined`        | Whether the macro binds to a `$variable`                  |
+| `interpolate` | `boolean \| undefined`        | Whether variable interpolation is enabled                 |
+| `merged`      | `boolean \| undefined`        | Whether `ctx.evaluate()` is available                     |
+| `source`      | `'builtin' \| 'user'`         | Whether the macro is built-in or user-defined             |
+| `description` | `string \| undefined`         | Optional description (set by macro author for tooling)    |
+| `parameters`  | `ParameterDef[] \| undefined` | Optional parameter definitions for tooling                |
 
 ### `Story.registerClass(name, constructor)`
 

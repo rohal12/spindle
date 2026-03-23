@@ -491,7 +491,7 @@ Define a reusable content block. Optionally declare parameters after the name.
 {/widget}
 ```
 
-Invoke with arguments: `{StatLine "Health", $health, 100}`. See [Widgets](widgets.md).
+Invoke with arguments: `{StatLine "Health" $health 100}`. Standalone values (quoted strings, variables, numbers) can be space-separated. Commas are required when arguments contain operators: `{StatLine "Damage", $str * 2, 100}`. See [Widgets](widgets.md).
 
 ## Watchers
 

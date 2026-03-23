@@ -24,9 +24,39 @@ interface WidgetInvocationProps {
 }
 
 /**
- * Split rawArgs by commas, respecting parentheses, brackets, braces, and strings.
+ * Check whether a whitespace-delimited token looks like a standalone value
+ * (not an operator or partial expression).
  */
-function splitArgs(raw: string): string[] {
+function isStandaloneValue(token: string): boolean {
+  const first = token[0]!;
+  // Quoted string
+  if (first === '"' || first === "'" || first === '`') return true;
+  // Variable ($var, _var, @var)
+  if (first === '$' || first === '_' || first === '@') return true;
+  // Number literal
+  if (/\d/.test(first)) return true;
+  // Signed number (-1, +2)
+  if (
+    (first === '-' || first === '+') &&
+    token.length > 1 &&
+    /\d/.test(token[1]!)
+  )
+    return true;
+  // Grouped expression or collection literal
+  if (first === '(' || first === '[' || first === '{') return true;
+  // Boolean / null / undefined
+  if (/^(true|false|null|undefined)$/.test(token)) return true;
+  // Negation (!$flag, !true)
+  if (first === '!' && token.length > 1) return true;
+  return false;
+}
+
+/**
+ * Try to split a raw string on whitespace at depth 0 (respecting quotes,
+ * parentheses, brackets, and braces). Each resulting token must pass
+ * `isStandaloneValue()` or the split is rejected and `null` is returned.
+ */
+function trySplitOnWhitespace(raw: string): string[] | null {
   const args: string[] = [];
   let current = '';
   let depth = 0;
@@ -59,7 +89,71 @@ function splitArgs(raw: string): string[] {
       continue;
     }
 
+    if (/\s/.test(ch) && depth === 0) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current) args.push(current);
+
+  // Need 2+ tokens
+  if (args.length < 2) return null;
+
+  // Every token must be a standalone value (not an operator)
+  for (const arg of args) {
+    if (!isStandaloneValue(arg)) return null;
+  }
+
+  return args;
+}
+
+/**
+ * Split rawArgs by commas, respecting parentheses, brackets, braces, and
+ * strings. When no top-level commas are present, also supports adjacent quoted
+ * string literals separated by whitespace (e.g. `"Label" "target"`).
+ */
+export function splitArgs(raw: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let depth = 0;
+  let inString: string | null = null;
+  let hasComma = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+
+    if (inString) {
+      current += ch;
+      if (ch === inString && raw[i - 1] !== '\\') inString = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ')' || ch === ']' || ch === '}') {
+      depth--;
+      current += ch;
+      continue;
+    }
+
     if (ch === ',' && depth === 0) {
+      hasComma = true;
       args.push(current.trim());
       current = '';
       continue;
@@ -70,6 +164,14 @@ function splitArgs(raw: string): string[] {
 
   const last = current.trim();
   if (last) args.push(last);
+
+  // If no commas were found and we got a single expression, try splitting
+  // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
+  if (!hasComma && args.length === 1) {
+    const split = trySplitOnWhitespace(args[0]!);
+    if (split) return split;
+  }
+
   return args;
 }
 

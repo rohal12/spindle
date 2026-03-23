@@ -3,6 +3,7 @@ import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'type',
+  block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
     const { useState, useEffect, useRef } = ctx.hooks;

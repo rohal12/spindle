@@ -2,6 +2,7 @@ import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'cycle',
+  block: true,
   storeVar: true,
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
