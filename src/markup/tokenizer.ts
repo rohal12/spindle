@@ -604,23 +604,11 @@ export function tokenize(input: string): Token[] {
       // Read tag name (letters, digits, hyphens for custom elements)
       const tagStart = j;
       while (j < input.length && /[a-zA-Z0-9-]/.test(input[j]!)) j++;
-      const tag = input.slice(tagStart, j).toLowerCase();
+      const tag = input.slice(tagStart, j);
+      const tagLower = tag.toLowerCase();
 
       // Valid tag name must start with a letter
       if (tag && VALID_TAG_START.test(tag[0]!)) {
-        // SVG is its own world — treat <svg>…</svg> as opaque text
-        // so the markdown pipeline handles it with proper namespace.
-        if (tag === 'svg' && !isClose) {
-          const closeTag = '</svg>';
-          const closeIdx = input.indexOf(closeTag, j);
-          if (closeIdx !== -1) {
-            const end = closeIdx + closeTag.length;
-            // Leave the entire <svg>…</svg> block as text
-            i = end;
-            continue;
-          }
-        }
-
         if (isClose) {
           // Closing tag: skip whitespace, expect >
           while (j < input.length && /\s/.test(input[j]!)) j++;
@@ -645,7 +633,7 @@ export function tokenize(input: string): Token[] {
           const parsed = parseHtmlAttributes(input, j);
           j = parsed.endIdx;
 
-          let isSelfClose = HTML_VOID_TAGS.has(tag);
+          let isSelfClose = HTML_VOID_TAGS.has(tagLower);
           if (input[j] === '/') {
             isSelfClose = true;
             j++;
