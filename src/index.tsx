@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { App } from './components/App';
 import { parseStoryData } from './parser';
-import { useStoryStore } from './store';
+import { useStoryStore, fireStoryInit } from './store';
 import { installStoryAPI } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
@@ -101,13 +101,15 @@ function boot() {
 
   // Execute StoryInit passage if it exists
   executeStoryInit();
-  useStoryStore.getState().bumpInitCount();
 
   // Restore session state if the page was refreshed
   const sessionPayload = loadSession(storyData.ifid);
   if (sessionPayload) {
     useStoryStore.getState().loadFromPayload(sessionPayload);
   }
+
+  // Fire storyinit after all state is settled (defaults + StoryInit + session)
+  fireStoryInit();
 
   // Pass 1: Pre-scan all widget passages to discover block widgets.
   // Register them as block macros BEFORE any tokenize/buildAST calls,

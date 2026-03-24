@@ -236,26 +236,7 @@ describe('StoryAPI', () => {
   });
 
   describe('on(storyinit)', () => {
-    it('fires callback on restart via initCount', () => {
-      const cb = vi.fn();
-      let prevCount = useStoryStore.getState().initCount;
-      const unsub = useStoryStore.subscribe((state) => {
-        if (state.initCount !== prevCount) {
-          prevCount = state.initCount;
-          cb();
-        }
-      });
-
-      useStoryStore.getState().navigate('Room');
-      expect(cb).not.toHaveBeenCalled();
-
-      useStoryStore.getState().restart();
-      // restart() calls bumpInitCount internally
-      expect(cb).toHaveBeenCalledTimes(1);
-      unsub();
-    });
-
-    it('fires callback via Story.on API', () => {
+    it('fires callback via Story.on API on restart', () => {
       const cb = vi.fn();
       const unsub = Story.on('storyinit', cb);
 
@@ -276,6 +257,30 @@ describe('StoryAPI', () => {
       useStoryStore.getState().restart();
       expect(cb).toHaveBeenCalledTimes(3);
       unsub();
+    });
+
+    it('Story.set() calls inside callback persist after restart', () => {
+      const unsub = Story.on('storyinit', () => {
+        useStoryStore
+          .getState()
+          .setVariable('npcList', [{ id: 'voss' }, { id: 'kira' }]);
+      });
+
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().restart();
+
+      const vars = useStoryStore.getState().variables;
+      expect(vars.npcList).toEqual([{ id: 'voss' }, { id: 'kira' }]);
+      unsub();
+    });
+
+    it('unsubscribe stops future callbacks', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('storyinit', cb);
+      unsub();
+
+      useStoryStore.getState().restart();
+      expect(cb).not.toHaveBeenCalled();
     });
   });
 

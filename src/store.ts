@@ -177,6 +177,26 @@ function resetModuleState(base: Record<string, unknown>): void {
 }
 
 // ---------------------------------------------------------------------------
+// storyinit callbacks (direct invocation — avoids Zustand subscription issues)
+// ---------------------------------------------------------------------------
+
+type StoryInitListener = () => void;
+let storyInitListeners: StoryInitListener[] = [];
+
+/** Register a callback to run after StoryInit completes (boot + every restart). */
+export function onStoryInit(cb: StoryInitListener): () => void {
+  storyInitListeners.push(cb);
+  return () => {
+    storyInitListeners = storyInitListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Fire all storyinit listeners. Called after all state resets are complete. */
+export function fireStoryInit(): void {
+  for (const cb of storyInitListeners) cb();
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -207,7 +227,6 @@ export interface StoryState {
   renderCounts: Record<string, number>;
   knownSaves: Record<string, true>;
   playthroughId: string;
-  initCount: number;
   maxHistory: number;
   saveError: string | null;
   loadError: string | null;
@@ -215,7 +234,6 @@ export interface StoryState {
   nextTransition: TransitionConfig | null;
   nobr: boolean;
 
-  bumpInitCount: () => void;
   setMaxHistory: (limit: number) => void;
   init: (
     storyData: StoryData,
@@ -260,19 +278,12 @@ export const useStoryStore = create<StoryState>()(
     renderCounts: {},
     knownSaves: {},
     playthroughId: '',
-    initCount: 0,
     maxHistory: 40,
     saveError: null,
     loadError: null,
     transitionConfig: null,
     nextTransition: null,
     nobr: false,
-
-    bumpInitCount: () => {
-      set((state) => {
-        state.initCount++;
-      });
-    },
 
     setMaxHistory: (limit: number) => {
       set((state) => {
@@ -503,8 +514,8 @@ export const useStoryStore = create<StoryState>()(
 
       lastNavigationVars = get().variables;
       executeStoryInit();
-      get().bumpInitCount();
       clearSession(storyData.ifid);
+      fireStoryInit();
 
       // Start a new playthrough on restart
       startNewPlaythrough(storyData.ifid)
