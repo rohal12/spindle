@@ -1,4 +1,4 @@
-import { useStoryStore } from './store';
+import { useStoryStore, onStoryInit } from './store';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -359,13 +359,7 @@ function createStoryAPI(): StoryAPI {
       }
 
       if (event === 'storyinit') {
-        let prevCount = useStoryStore.getState().initCount;
-        return useStoryStore.subscribe((state) => {
-          if (state.initCount !== prevCount) {
-            prevCount = state.initCount;
-            (callback as StoryInitCallback)();
-          }
-        });
+        return onStoryInit(callback as StoryInitCallback);
       }
 
       if (event === 'actionsChanged') {
