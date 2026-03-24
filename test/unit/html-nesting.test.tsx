@@ -43,6 +43,54 @@ const shellContent =
 const sidebarContent =
   '<div class="sidebar"><div class="nav"><div class="item">Home</div><div class="item">Settings</div><div class="item">About</div></div><div class="footer">v1.0</div></div>';
 
+describe('issue #109: <button> elements should not be HTML-escaped', () => {
+  it('tokenizes <button> as an HtmlNode', () => {
+    const ast = parse('<button>Click me</button>');
+    expect(ast).toHaveLength(1);
+    expect((ast[0] as HtmlNode).type).toBe('html');
+    expect((ast[0] as HtmlNode).tag).toBe('button');
+  });
+
+  it('tokenizes <button> with attributes', () => {
+    const ast = parse('<button class="action" disabled>Go</button>');
+    expect(ast).toHaveLength(1);
+    expect((ast[0] as HtmlNode).tag).toBe('button');
+    expect((ast[0] as HtmlNode).attributes['class']).toBe('action');
+  });
+
+  it('renders <button> inside {for} loop in nobr context', () => {
+    const storyData = makeStoryData([
+      makePassage(
+        1,
+        'Start',
+        '{for @item of $items}<button>{@item.name}</button>{/for}',
+        ['nobr'],
+      ),
+    ]);
+    useStoryStore.getState().init(storyData);
+    useStoryStore.setState({ nobr: true });
+    useStoryStore
+      .getState()
+      .setVariable('items', [{ name: 'Test' }, { name: 'Other' }]);
+
+    const passage = useStoryStore.getState().storyData!.passages.get('Start')!;
+    const container = document.createElement('div');
+    render(
+      <NobrContext.Provider value={true}>
+        <Passage passage={passage} />
+      </NobrContext.Provider>,
+      container,
+    );
+
+    const buttons = container.querySelectorAll('button');
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].textContent).toBe('Test');
+    expect(buttons[1].textContent).toBe('Other');
+    // Ensure no escaped HTML
+    expect(container.innerHTML).not.toContain('&lt;button');
+  });
+});
+
 describe('issue #61: deeply nested HTML with {include}', () => {
   describe('tokenize + buildAST (unit level)', () => {
     it('parses DialogShell passage', () => {

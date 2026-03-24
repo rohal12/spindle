@@ -53,68 +53,8 @@ export type Token =
   | VariableToken
   | HtmlToken;
 
-const HTML_TAGS = new Set([
-  'a',
-  'article',
-  'aside',
-  'b',
-  'blockquote',
-  'br',
-  'caption',
-  'code',
-  'col',
-  'colgroup',
-  'dd',
-  'del',
-  'details',
-  'dfn',
-  'div',
-  'dl',
-  'dt',
-  'em',
-  'figcaption',
-  'figure',
-  'footer',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'header',
-  'hr',
-  'i',
-  'img',
-  'ins',
-  'kbd',
-  'li',
-  'main',
-  'mark',
-  'nav',
-  'ol',
-  'p',
-  'pre',
-  'q',
-  's',
-  'samp',
-  'section',
-  'small',
-  'span',
-  'strong',
-  'sub',
-  'summary',
-  'sup',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'tr',
-  'u',
-  'ul',
-  'wbr',
-]);
+/** Tag name must start with a letter (covers standard and custom elements). */
+const VALID_TAG_START = /[a-zA-Z]/;
 
 const HTML_VOID_TAGS = new Set(['br', 'col', 'hr', 'img', 'wbr']);
 
@@ -661,13 +601,26 @@ export function tokenize(input: string): Token[] {
       const isClose = input[j] === '/';
       if (isClose) j++;
 
-      // Read tag name
+      // Read tag name (letters, digits, hyphens for custom elements)
       const tagStart = j;
-      while (j < input.length && /[a-zA-Z0-9]/.test(input[j]!)) j++;
+      while (j < input.length && /[a-zA-Z0-9-]/.test(input[j]!)) j++;
       const tag = input.slice(tagStart, j).toLowerCase();
 
-      // Only handle known HTML tags
-      if (tag && HTML_TAGS.has(tag)) {
+      // Valid tag name must start with a letter
+      if (tag && VALID_TAG_START.test(tag[0]!)) {
+        // SVG is its own world — treat <svg>…</svg> as opaque text
+        // so the markdown pipeline handles it with proper namespace.
+        if (tag === 'svg' && !isClose) {
+          const closeTag = '</svg>';
+          const closeIdx = input.indexOf(closeTag, j);
+          if (closeIdx !== -1) {
+            const end = closeIdx + closeTag.length;
+            // Leave the entire <svg>…</svg> block as text
+            i = end;
+            continue;
+          }
+        }
+
         if (isClose) {
           // Closing tag: skip whitespace, expect >
           while (j < input.length && /\s/.test(input[j]!)) j++;
