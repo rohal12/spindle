@@ -152,7 +152,10 @@ export function buildAST(tokens: Token[]): ASTNode[] {
           }
 
           const top = stack[stack.length - 1]!;
-          if (top.node.type !== 'html' || top.node.tag !== token.tag) {
+          if (
+            top.node.type !== 'html' ||
+            top.node.tag.toLowerCase() !== token.tag.toLowerCase()
+          ) {
             const expected =
               top.node.type === 'html'
                 ? `</${top.node.tag}>`

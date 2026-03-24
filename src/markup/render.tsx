@@ -23,6 +23,7 @@ const defaultUpdater: LocalsUpdater = {
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
+export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
@@ -85,16 +86,25 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
+  const inSvg = useContext(SvgContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = resolve(v) ?? v;
   }
-  return h(
-    node.tag,
-    attrs,
+  const isSvgRoot = node.tag.toLowerCase() === 'svg';
+  // Inside SVG, skip markdown processing — markdown wraps content in <p> tags
+  // which break the SVG namespace and produce zero-dimension elements.
+  const children =
     node.children.length > 0
-      ? renderNodes(node.children, { nobr, locals })
-      : undefined,
+      ? inSvg || isSvgRoot
+        ? renderInlineNodes(node.children)
+        : renderNodes(node.children, { nobr, locals })
+      : undefined;
+  const element = h(node.tag, attrs, children);
+  return isSvgRoot ? (
+    <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
+  ) : (
+    element
   );
 }
 

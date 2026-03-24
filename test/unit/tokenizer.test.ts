@@ -850,6 +850,72 @@ describe('tokenize', () => {
     });
   });
 
+  describe('svg tags', () => {
+    it('tokenizes single-line <svg> as html tokens', () => {
+      const tokens = tokenize('<svg><circle r="5"/></svg>');
+      expect(tokens).toEqual([
+        {
+          type: 'html',
+          tag: 'svg',
+          attributes: {},
+          isClose: false,
+          isSelfClose: false,
+          start: 0,
+          end: 5,
+        },
+        {
+          type: 'html',
+          tag: 'circle',
+          attributes: { r: '5' },
+          isClose: false,
+          isSelfClose: true,
+          start: 5,
+          end: 20,
+        },
+        {
+          type: 'html',
+          tag: 'svg',
+          attributes: {},
+          isClose: true,
+          isSelfClose: false,
+          start: 20,
+          end: 26,
+        },
+      ]);
+    });
+
+    it('tokenizes multi-line <svg> as html tokens', () => {
+      const input =
+        '<svg\n  class="icon">\n  <rect width="10" height="10"/>\n</svg>';
+      const tokens = tokenize(input);
+      expect(tokens.map((t) => t.type)).toEqual([
+        'html',
+        'text',
+        'html',
+        'text',
+        'html',
+      ]);
+      expect((tokens[0] as any).tag).toBe('svg');
+      expect((tokens[0] as any).attributes).toEqual({ class: 'icon' });
+      expect((tokens[2] as any).tag).toBe('rect');
+      expect((tokens[4] as any).tag).toBe('svg');
+      expect((tokens[4] as any).isClose).toBe(true);
+    });
+
+    it('tokenizes <svg> nested inside other html', () => {
+      const tokens = tokenize('<div><svg><circle r="5"/></svg></div>');
+      expect(tokens.map((t) => t.type)).toEqual([
+        'html',
+        'html',
+        'html',
+        'html',
+        'html',
+      ]);
+      const tags = tokens.map((t) => (t as any).tag);
+      expect(tags).toEqual(['div', 'svg', 'circle', 'svg', 'div']);
+    });
+  });
+
   describe('mixed content', () => {
     it('handles text, variables, links, and macros together', () => {
       const input = 'Hello {$name}! {set $seen = true}Go to [[Next]]';

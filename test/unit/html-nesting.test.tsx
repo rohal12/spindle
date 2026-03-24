@@ -91,6 +91,54 @@ describe('issue #109: <button> elements should not be HTML-escaped', () => {
   });
 });
 
+describe('issue #113: SVG with multi-line tags renders as escaped plaintext', () => {
+  it('parses multi-line <svg> into HtmlNode tree', () => {
+    const input =
+      '<svg\n  class="icon">\n  <rect width="10" height="10"/>\n</svg>';
+    const ast = parse(input);
+    expect(ast).toHaveLength(1);
+    expect((ast[0] as HtmlNode).type).toBe('html');
+    expect((ast[0] as HtmlNode).tag).toBe('svg');
+    expect((ast[0] as HtmlNode).attributes['class']).toBe('icon');
+  });
+
+  it('parses <svg> nested inside <div>', () => {
+    const input = '<div><svg><circle r="5"/></svg></div>';
+    const ast = parse(input);
+    expect(ast).toHaveLength(1);
+    const div = ast[0] as HtmlNode;
+    expect(div.tag).toBe('div');
+    const svg = div.children.find(
+      (c) => c.type === 'html' && c.tag === 'svg',
+    ) as HtmlNode;
+    expect(svg).toBeDefined();
+    expect(svg.tag).toBe('svg');
+  });
+
+  it('renders multi-line <svg> as DOM element, not escaped text', () => {
+    const storyData = makeStoryData([
+      makePassage(
+        1,
+        'Start',
+        '<div><svg\n  class="icon">\n  <circle r="5"/>\n</svg></div>',
+      ),
+    ]);
+    useStoryStore.getState().init(storyData);
+
+    const passage = useStoryStore.getState().storyData!.passages.get('Start')!;
+    const container = document.createElement('div');
+    render(<Passage passage={passage} />, container);
+
+    const svg = container.querySelector('svg');
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute('class')).toBe('icon');
+    expect(svg!.querySelector('circle')).not.toBeNull();
+    // Must not contain escaped HTML
+    expect(container.innerHTML).not.toContain('&lt;svg');
+    expect(container.innerHTML).not.toContain('&lt;circle');
+  });
+});
+
 describe('issue #61: deeply nested HTML with {include}', () => {
   describe('tokenize + buildAST (unit level)', () => {
     it('parses DialogShell passage', () => {

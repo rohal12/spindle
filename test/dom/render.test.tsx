@@ -431,7 +431,7 @@ describe('renderNodes', () => {
   });
 
   describe('SVG rendering', () => {
-    it('creates specialized SVG element types, not generic SVGElement', () => {
+    it('creates SVG elements in the correct namespace', () => {
       const el = renderMarkup(
         '<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">' +
           '<defs>' +
@@ -443,9 +443,26 @@ describe('renderNodes', () => {
           '<line x1="10" y1="100" x2="190" y2="100" stroke="url(#test-grad)" stroke-width="4"/>' +
           '</svg>',
       );
+      const svg = el.querySelector('svg');
+      expect(svg).not.toBeNull();
+      expect(svg!.namespaceURI).toBe('http://www.w3.org/2000/svg');
       const grad = el.querySelector('#test-grad');
       expect(grad).not.toBeNull();
-      expect(grad!.constructor.name).toBe('SVGLinearGradientElement');
+      expect(grad!.tagName).toBe('linearGradient');
+    });
+
+    it('renders multi-line SVG without escaping', () => {
+      const el = renderMarkup(
+        '<svg\n  width="100"\n  height="100">\n  <circle cx="50" cy="50" r="40"/>\n</svg>',
+      );
+      const svg = el.querySelector('svg');
+      expect(svg).not.toBeNull();
+      expect(svg!.getAttribute('width')).toBe('100');
+      const circle = el.querySelector('circle');
+      expect(circle).not.toBeNull();
+      expect(circle!.getAttribute('r')).toBe('40');
+      // Must not contain escaped HTML
+      expect(el.innerHTML).not.toContain('&lt;svg');
     });
   });
 });
