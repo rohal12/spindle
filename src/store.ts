@@ -207,6 +207,7 @@ export interface StoryState {
   renderCounts: Record<string, number>;
   knownSaves: Record<string, true>;
   playthroughId: string;
+  initCount: number;
   maxHistory: number;
   saveError: string | null;
   loadError: string | null;
@@ -214,6 +215,7 @@ export interface StoryState {
   nextTransition: TransitionConfig | null;
   nobr: boolean;
 
+  bumpInitCount: () => void;
   setMaxHistory: (limit: number) => void;
   init: (
     storyData: StoryData,
@@ -258,12 +260,19 @@ export const useStoryStore = create<StoryState>()(
     renderCounts: {},
     knownSaves: {},
     playthroughId: '',
+    initCount: 0,
     maxHistory: 40,
     saveError: null,
     loadError: null,
     transitionConfig: null,
     nextTransition: null,
     nobr: false,
+
+    bumpInitCount: () => {
+      set((state) => {
+        state.initCount++;
+      });
+    },
 
     setMaxHistory: (limit: number) => {
       set((state) => {
@@ -494,6 +503,7 @@ export const useStoryStore = create<StoryState>()(
 
       lastNavigationVars = get().variables;
       executeStoryInit();
+      get().bumpInitCount();
       clearSession(storyData.ifid);
 
       // Start a new playthrough on restart

@@ -51,6 +51,7 @@ export type { StoryAction };
 export type { MacroMetadata };
 
 type NavigateCallback = (to: string, from: string) => void;
+type StoryInitCallback = () => void;
 type ActionsChangedCallback = () => void;
 type VariableChangedCallback = (
   changed: Record<string, { from: unknown; to: unknown }>,
@@ -100,6 +101,7 @@ export interface StoryAPI {
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
   on(event: 'navigate', callback: NavigateCallback): () => void;
+  on(event: 'storyinit', callback: StoryInitCallback): () => void;
   on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
   on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
   waitForActions(): Promise<StoryAction[]>;
@@ -352,6 +354,16 @@ function createStoryAPI(): StoryAPI {
             const from = prev;
             prev = state.currentPassage;
             (callback as NavigateCallback)(state.currentPassage, from);
+          }
+        });
+      }
+
+      if (event === 'storyinit') {
+        let prevCount = useStoryStore.getState().initCount;
+        return useStoryStore.subscribe((state) => {
+          if (state.initCount !== prevCount) {
+            prevCount = state.initCount;
+            (callback as StoryInitCallback)();
           }
         });
       }

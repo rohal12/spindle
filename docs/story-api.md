@@ -486,6 +486,11 @@ Story.on('actionsChanged', function () {
   console.log('Actions:', Story.getActions().length);
 });
 
+// Story initialization (fires on boot and after every restart)
+Story.on('storyinit', function () {
+  console.log('Story initialized — re-sync external state here');
+});
+
 // Variable changes
 Story.on('variableChanged', function (changed) {
   // changed = { health: { from: 100, to: 90 }, ... }

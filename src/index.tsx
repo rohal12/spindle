@@ -101,6 +101,7 @@ function boot() {
 
   // Execute StoryInit passage if it exists
   executeStoryInit();
+  useStoryStore.getState().bumpInitCount();
 
   // Restore session state if the page was refreshed
   const sessionPayload = loadSession(storyData.ifid);

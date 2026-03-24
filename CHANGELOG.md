@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Story.on('storyinit', callback)` event that fires after `StoryInit` completes — on initial boot and after every `restart()` call (including `Story.storage.clearGameData()` and `Story.storage.clearAllData()`). Allows external state engines to reliably re-sync after a restart. ([#115](https://github.com/rohal12/spindle/issues/115))
 - Tooling API: `Story.getMacroRegistry()` returns metadata for all registered macros (built-in and user-defined) — name, block status, sub-macros, feature flags, source origin, and optional description/parameters
 - `@rohal12/spindle/tooling` entry point for Node.js/LSP use — lightweight `defineMacro()` shim that captures metadata without Preact, pre-loaded with builtin metadata from build-time JSON
 - Optional `description` and `parameters` fields on `defineMacro()` config for tooling hints (LSP hover docs, completions, parameter info)

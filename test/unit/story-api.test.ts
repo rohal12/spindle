@@ -235,6 +235,50 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('on(storyinit)', () => {
+    it('fires callback on restart via initCount', () => {
+      const cb = vi.fn();
+      let prevCount = useStoryStore.getState().initCount;
+      const unsub = useStoryStore.subscribe((state) => {
+        if (state.initCount !== prevCount) {
+          prevCount = state.initCount;
+          cb();
+        }
+      });
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).not.toHaveBeenCalled();
+
+      useStoryStore.getState().restart();
+      // restart() calls bumpInitCount internally
+      expect(cb).toHaveBeenCalledTimes(1);
+      unsub();
+    });
+
+    it('fires callback via Story.on API', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('storyinit', cb);
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).not.toHaveBeenCalled();
+
+      useStoryStore.getState().restart();
+      expect(cb).toHaveBeenCalledTimes(1);
+      unsub();
+    });
+
+    it('fires on every restart', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('storyinit', cb);
+
+      useStoryStore.getState().restart();
+      useStoryStore.getState().restart();
+      useStoryStore.getState().restart();
+      expect(cb).toHaveBeenCalledTimes(3);
+      unsub();
+    });
+  });
+
   describe('on(unknown event)', () => {
     it('throws for unknown event', () => {
       expect(() => {
