@@ -36,6 +36,15 @@ export interface VariableToken {
   end: number;
 }
 
+export interface ExpressionToken {
+  type: 'expression';
+  expression: string;
+  className?: string;
+  id?: string;
+  start: number;
+  end: number;
+}
+
 export interface HtmlToken {
   type: 'html';
   tag: string;
@@ -51,6 +60,7 @@ export type Token =
   | LinkToken
   | MacroToken
   | VariableToken
+  | ExpressionToken
   | HtmlToken;
 
 /** Tag name must start with a letter (covers standard and custom elements). */
@@ -234,6 +244,20 @@ function parseHtmlAttributes(
 }
 
 /**
+ * Scan for the balanced closing } starting at position i (just past the {).
+ * Returns the index of the closing } or -1 if unbalanced.
+ */
+function scanBalancedBrace(input: string, i: number): number {
+  let depth = 1;
+  while (i < input.length && depth > 0) {
+    if (input[i] === '{') depth++;
+    else if (input[i] === '}') depth--;
+    if (depth > 0) i++;
+  }
+  return depth === 0 ? i : -1;
+}
+
+/**
  * Single-pass tokenizer for Twine passage content.
  * Recognizes: [[links]], {$variable}, {_temporary}, {macroName args}
  */
@@ -341,7 +365,7 @@ export function tokenize(input: string): Token[] {
         const charAfter = input[afterSelectors];
 
         if (charAfter === '$') {
-          // {.class#id $variable.field}
+          // {.class#id $variable.field} or {.class $expr[...]}
           i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /[\w.]/.test(input[i]!)) i++;
@@ -362,14 +386,31 @@ export function tokenize(input: string): Token[] {
             textStart = i;
             continue;
           }
-          // Not valid — treat as text
+          // Complex expression — scan for balanced closing }
+          const closeIdx$ = scanBalancedBrace(input, nameStart);
+          if (closeIdx$ !== -1) {
+            const expression = input.slice(afterSelectors, closeIdx$);
+            i = closeIdx$ + 1;
+            const token: ExpressionToken = {
+              type: 'expression',
+              expression,
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Unbalanced — treat as text
           i = start + 1;
           textStart = start;
           continue;
         }
 
         if (charAfter === '_') {
-          // {.class#id _temporary.field}
+          // {.class#id _temporary.field} or {.class _expr[...]}
           i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /[\w.]/.test(input[i]!)) i++;
@@ -390,14 +431,31 @@ export function tokenize(input: string): Token[] {
             textStart = i;
             continue;
           }
-          // Not valid — treat as text
+          // Complex expression — scan for balanced closing }
+          const closeIdx_ = scanBalancedBrace(input, nameStart);
+          if (closeIdx_ !== -1) {
+            const expression = input.slice(afterSelectors, closeIdx_);
+            i = closeIdx_ + 1;
+            const token: ExpressionToken = {
+              type: 'expression',
+              expression,
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Unbalanced — treat as text
           i = start + 1;
           textStart = start;
           continue;
         }
 
         if (charAfter === '@') {
-          // {.class#id @local.field}
+          // {.class#id @local.field} or {.class @expr[...]}
           i = afterSelectors + 1;
           const nameStart = i;
           while (i < input.length && /[\w.]/.test(input[i]!)) i++;
@@ -418,7 +476,24 @@ export function tokenize(input: string): Token[] {
             textStart = i;
             continue;
           }
-          // Not valid — treat as text
+          // Complex expression — scan for balanced closing }
+          const closeIdx_at = scanBalancedBrace(input, nameStart);
+          if (closeIdx_at !== -1) {
+            const expression = input.slice(afterSelectors, closeIdx_at);
+            i = closeIdx_at + 1;
+            const token: ExpressionToken = {
+              type: 'expression',
+              expression,
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Unbalanced — treat as text
           i = start + 1;
           textStart = start;
           continue;
@@ -468,7 +543,7 @@ export function tokenize(input: string): Token[] {
         continue;
       }
 
-      // {$variable} or {$variable.field.subfield}
+      // {$variable} or {$variable.field.subfield} or {$expr[...]}
       if (nextChar === '$') {
         flushText(i);
         i += 2;
@@ -488,13 +563,27 @@ export function tokenize(input: string): Token[] {
           textStart = i;
           continue;
         }
-        // Not a valid variable token — treat as text
+        // Complex expression — scan for balanced closing }
+        const closeIdx = scanBalancedBrace(input, nameStart);
+        if (closeIdx !== -1) {
+          const expression = input.slice(start + 1, closeIdx);
+          i = closeIdx + 1;
+          tokens.push({
+            type: 'expression',
+            expression,
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Unbalanced — treat as text
         i = start + 1;
         textStart = start;
         continue;
       }
 
-      // {_temporary.field}
+      // {_temporary.field} or {_expr[...]}
       if (nextChar === '_') {
         flushText(i);
         i += 2;
@@ -514,13 +603,27 @@ export function tokenize(input: string): Token[] {
           textStart = i;
           continue;
         }
-        // Not a valid temporary token — treat as text
+        // Complex expression — scan for balanced closing }
+        const closeIdx = scanBalancedBrace(input, nameStart);
+        if (closeIdx !== -1) {
+          const expression = input.slice(start + 1, closeIdx);
+          i = closeIdx + 1;
+          tokens.push({
+            type: 'expression',
+            expression,
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Unbalanced — treat as text
         i = start + 1;
         textStart = start;
         continue;
       }
 
-      // {@local.field}
+      // {@local.field} or {@expr[...]}
       if (nextChar === '@') {
         flushText(i);
         i += 2;
@@ -540,7 +643,21 @@ export function tokenize(input: string): Token[] {
           textStart = i;
           continue;
         }
-        // Not a valid local token — treat as text
+        // Complex expression — scan for balanced closing }
+        const closeIdx = scanBalancedBrace(input, nameStart);
+        if (closeIdx !== -1) {
+          const expression = input.slice(start + 1, closeIdx);
+          i = closeIdx + 1;
+          tokens.push({
+            type: 'expression',
+            expression,
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Unbalanced — treat as text
         i = start + 1;
         textStart = start;
         continue;

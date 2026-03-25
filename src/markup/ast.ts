@@ -13,6 +13,13 @@ export interface VariableNode {
   id?: string;
 }
 
+export interface ExpressionNode {
+  type: 'expression';
+  expression: string;
+  className?: string;
+  id?: string;
+}
+
 export interface Branch {
   rawArgs: string;
   className?: string;
@@ -37,7 +44,12 @@ export interface HtmlNode {
   children: ASTNode[];
 }
 
-export type ASTNode = TextNode | VariableNode | MacroNode | HtmlNode;
+export type ASTNode =
+  | TextNode
+  | VariableNode
+  | ExpressionNode
+  | MacroNode
+  | HtmlNode;
 
 /** Macros that require a closing tag and can contain children */
 const BLOCK_MACROS = new Set([
@@ -128,6 +140,17 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         if (token.className) varNode.className = token.className;
         if (token.id) varNode.id = token.id;
         current().push(varNode);
+        break;
+      }
+
+      case 'expression': {
+        const exprNode: ExpressionNode = {
+          type: 'expression',
+          expression: token.expression,
+        };
+        if (token.className) exprNode.className = token.className;
+        if (token.id) exprNode.id = token.id;
+        current().push(exprNode);
         break;
       }
 
