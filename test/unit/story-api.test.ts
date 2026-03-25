@@ -46,6 +46,8 @@ describe('StoryAPI', () => {
     // Dynamically import to get a fresh API
     const mod = await import('../../src/story-api');
     mod.installStoryAPI();
+    // Reset module-level promise state between tests
+    (mod as any)._resetReadyState?.();
     Story = (globalThis as any).window?.Story ?? (globalThis as any).Story;
     // If installStoryAPI sets on window but we're in node, grab it directly
     if (!Story) {
@@ -484,6 +486,64 @@ describe('StoryAPI', () => {
       });
       expect(Story.isDialogOpen()).toBe(true);
       cleanup();
+    });
+  });
+
+  describe('deferRender / ready', () => {
+    beforeEach(async () => {
+      // Reset module-level promise state between tests
+      const mod = await import('../../src/story-api');
+      (mod as any)._resetReadyState?.();
+    });
+
+    it('deferRender() sets store.renderDeferred to true', () => {
+      Story.deferRender();
+      expect(useStoryStore.getState().renderDeferred).toBe(true);
+    });
+
+    it('ready() clears store.renderDeferred', () => {
+      Story.deferRender();
+      Story.ready();
+      expect(useStoryStore.getState().renderDeferred).toBe(false);
+    });
+
+    it('ready() without prior deferRender() is a no-op', () => {
+      Story.ready(); // should not throw
+      expect(useStoryStore.getState().renderDeferred).toBe(false);
+    });
+
+    it('deferRender() creates a promise that ready() resolves', async () => {
+      Story.deferRender();
+      const { getReadyPromise } = await import('../../src/story-api');
+      const promise = getReadyPromise();
+      expect(promise).toBeInstanceOf(Promise);
+
+      let resolved = false;
+      promise!.then(() => {
+        resolved = true;
+      });
+
+      Story.ready();
+      await promise;
+      expect(resolved).toBe(true);
+    });
+
+    it('getReadyPromise() returns null when not deferred', async () => {
+      const { getReadyPromise } = await import('../../src/story-api');
+      expect(getReadyPromise()).toBeNull();
+    });
+
+    it('deferRender() replaces previous promise on repeated calls', async () => {
+      const { getReadyPromise } = await import('../../src/story-api');
+      Story.deferRender();
+      const first = getReadyPromise();
+      Story.deferRender();
+      const second = getReadyPromise();
+      expect(first).not.toBe(second);
+
+      // Resolve the current one; first is orphaned (harmless — no refs held)
+      Story.ready();
+      await second;
     });
   });
 });
