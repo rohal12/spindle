@@ -1,6 +1,7 @@
 import { createContext } from 'preact';
 import { useContext } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
+import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
 import { getWidget } from '../widgets/widget-registry';
 import { getMacro, isSubMacro } from '../registry';
@@ -176,6 +177,16 @@ function renderSingleNode(
           key={key}
           name={node.name}
           scope={node.scope}
+          className={node.className}
+          id={node.id}
+        />
+      );
+
+    case 'expression':
+      return (
+        <ExprDisplay
+          key={key}
+          expression={node.expression}
           className={node.className}
           id={node.id}
         />

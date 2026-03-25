@@ -916,6 +916,118 @@ describe('tokenize', () => {
     });
   });
 
+  describe('expression tokens', () => {
+    it('parses bracket access {$arr[$i]} as expression token', () => {
+      const tokens = tokenize('{$arr[$i]}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '$arr[$i]',
+          start: 0,
+          end: 10,
+        },
+      ]);
+    });
+
+    it('parses nested bracket access {@p.labels[@p.level]}', () => {
+      const tokens = tokenize('{@p.labels[@p.level]}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '@p.labels[@p.level]',
+          start: 0,
+          end: 21,
+        },
+      ]);
+    });
+
+    it('parses expression with nullish coalescing', () => {
+      const tokens = tokenize('{@p.labels[@p.level] ?? @p.level}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '@p.labels[@p.level] ?? @p.level',
+          start: 0,
+          end: 33,
+        },
+      ]);
+    });
+
+    it('parses expression with ternary', () => {
+      const tokens = tokenize('{$x != null ? $x : 0}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '$x != null ? $x : 0',
+          start: 0,
+          end: 21,
+        },
+      ]);
+    });
+
+    it('parses _temporary bracket access as expression', () => {
+      const tokens = tokenize('{_actions[$i].name}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '_actions[$i].name',
+          start: 0,
+          end: 19,
+        },
+      ]);
+    });
+
+    it('keeps simple {$var} as variable token (regression)', () => {
+      const tokens = tokenize('{$health}');
+      expect(tokens[0]).toMatchObject({ type: 'variable', name: 'health' });
+    });
+
+    it('keeps simple {$var.path} as variable token (regression)', () => {
+      const tokens = tokenize('{$player.name}');
+      expect(tokens[0]).toMatchObject({
+        type: 'variable',
+        name: 'player.name',
+      });
+    });
+
+    it('handles expression token in surrounding text', () => {
+      const tokens = tokenize('Level: {@p.labels[@p.level]} ok');
+      expect(tokens).toHaveLength(3);
+      expect(tokens[0]).toMatchObject({ type: 'text', value: 'Level: ' });
+      expect(tokens[1]).toMatchObject({
+        type: 'expression',
+        expression: '@p.labels[@p.level]',
+      });
+      expect(tokens[2]).toMatchObject({ type: 'text', value: ' ok' });
+    });
+
+    it('parses {.class $expr[...]} with selector prefix as expression', () => {
+      const tokens = tokenize('{.highlight $arr[$i]}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '$arr[$i]',
+          className: 'highlight',
+          start: 0,
+          end: 21,
+        },
+      ]);
+    });
+
+    it('parses {#id @expr[...]} with id prefix as expression', () => {
+      const tokens = tokenize('{#val @map[@key]}');
+      expect(tokens).toEqual([
+        {
+          type: 'expression',
+          expression: '@map[@key]',
+          id: 'val',
+          start: 0,
+          end: 17,
+        },
+      ]);
+    });
+  });
+
   describe('mixed content', () => {
     it('handles text, variables, links, and macros together', () => {
       const input = 'Hello {$name}! {set $seen = true}Go to [[Next]]';

@@ -1,5 +1,7 @@
-const INTERP_RE = /\{(\$[\w.]+|_[\w.]+|@[\w.]+)\}/g;
-const INTERP_TEST = /\{[\$_@][\w.]+\}/;
+import { evaluate } from './expression';
+
+/** Detects any {…} block that starts with a sigil ($, _, @). */
+const INTERP_TEST = /\{[\$_@]\w/;
 
 export function hasInterpolation(s: string): boolean {
   return INTERP_TEST.test(s);
@@ -14,31 +16,107 @@ function resolveDotPath(root: unknown, parts: string[]): unknown {
   return value;
 }
 
+/**
+ * Evaluate an expression string and return its stringified result.
+ * Uses the full expression evaluator from expression.ts.
+ */
+export function interpolateExpression(
+  expr: string,
+  variables: Record<string, unknown>,
+  temporary: Record<string, unknown>,
+  locals: Record<string, unknown>,
+): string {
+  const value = evaluate(expr, variables, temporary, locals);
+  return value == null ? '' : String(value);
+}
+
+function resolveSimple(
+  ref: string,
+  variables: Record<string, unknown>,
+  temporary: Record<string, unknown>,
+  locals: Record<string, unknown>,
+): string {
+  const prefix = ref[0]!;
+  const path = ref.slice(1);
+  const parts = path.split('.');
+  const root = parts[0]!;
+
+  let value: unknown;
+  if (prefix === '$') {
+    value = variables[root];
+  } else if (prefix === '_') {
+    value = temporary[root];
+  } else {
+    value = locals[root];
+  }
+
+  if (parts.length > 1) {
+    value = resolveDotPath(value, parts);
+  }
+
+  return value == null ? '' : String(value);
+}
+
 export function interpolate(
   template: string,
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
 ): string {
-  return template.replace(INTERP_RE, (_match, ref: string) => {
-    const prefix = ref[0]!;
-    const path = ref.slice(1);
-    const parts = path.split('.');
-    const root = parts[0]!;
+  // Manual scan: process {…} blocks containing sigils.
+  // Simple dot-path refs use the fast resolver; everything else falls back
+  // to the full expression evaluator.
+  let result = '';
+  let i = 0;
 
-    let value: unknown;
-    if (prefix === '$') {
-      value = variables[root];
-    } else if (prefix === '_') {
-      value = temporary[root];
+  while (i < template.length) {
+    if (template[i] !== '{') {
+      // Accumulate plain text
+      const nextBrace = template.indexOf('{', i);
+      if (nextBrace === -1) {
+        result += template.slice(i);
+        break;
+      }
+      result += template.slice(i, nextBrace);
+      i = nextBrace;
+      continue;
+    }
+
+    // Found { — check if it starts a sigil expression
+    i++; // skip {
+
+    const sigil = template[i];
+    if (sigil !== '$' && sigil !== '_' && sigil !== '@') {
+      // Not an interpolation — emit the { as text
+      result += '{';
+      continue;
+    }
+
+    // Scan for balanced closing }
+    let depth = 1;
+    let j = i;
+    while (j < template.length && depth > 0) {
+      j++;
+      if (template[j] === '{') depth++;
+      else if (template[j] === '}') depth--;
+    }
+
+    if (depth !== 0) {
+      // Unbalanced — emit as text
+      result += '{';
+      continue;
+    }
+
+    const inner = template.slice(i, j);
+    i = j + 1; // skip past closing }
+
+    // Try simple dot-path match first
+    if (/^[\$_@][\w.]+$/.test(inner)) {
+      result += resolveSimple(inner, variables, temporary, locals);
     } else {
-      value = locals[root];
+      result += interpolateExpression(inner, variables, temporary, locals);
     }
+  }
 
-    if (parts.length > 1) {
-      value = resolveDotPath(value, parts);
-    }
-
-    return value == null ? '' : String(value);
-  });
+  return result;
 }

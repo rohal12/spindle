@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { hasInterpolation, interpolate } from '../../src/interpolation';
+import {
+  hasInterpolation,
+  interpolate,
+  interpolateExpression,
+} from '../../src/interpolation';
 
 describe('hasInterpolation', () => {
   it('returns false for plain text', () => {
@@ -74,5 +78,87 @@ describe('interpolate', () => {
 
   it('handles null/undefined nested paths gracefully', () => {
     expect(interpolate('{$a.b.c}', { a: null }, {}, {})).toBe('');
+  });
+
+  it('resolves bracket access {$arr[$i]} via expression evaluator', () => {
+    expect(
+      interpolate('val-{$arr[$i]}', { arr: ['a', 'b', 'c'], i: 1 }, {}, {}),
+    ).toBe('val-b');
+  });
+
+  it('resolves bracket access with @locals', () => {
+    expect(
+      interpolate(
+        '{@labels[@level]}',
+        {},
+        {},
+        { labels: { high: 'HIGH' }, level: 'high' },
+      ),
+    ).toBe('HIGH');
+  });
+
+  it('resolves nullish coalescing in interpolation', () => {
+    expect(
+      interpolate(
+        '{$map[$key] ?? "default"}',
+        { map: {}, key: 'missing' },
+        {},
+        {},
+      ),
+    ).toBe('default');
+  });
+
+  it('resolves ternary in interpolation', () => {
+    expect(interpolate('{$x != null ? $x : 0}', { x: null }, {}, {})).toBe('0');
+  });
+
+  it('mixes simple and complex interpolations', () => {
+    expect(
+      interpolate(
+        '{$name}: {$scores[$i]}',
+        { name: 'Hero', scores: [10, 20, 30], i: 2 },
+        {},
+        {},
+      ),
+    ).toBe('Hero: 30');
+  });
+});
+
+describe('hasInterpolation — complex expressions', () => {
+  it('detects bracket access {$arr[$i]}', () => {
+    expect(hasInterpolation('{$arr[$i]}')).toBe(true);
+  });
+
+  it('detects nullish coalescing with sigils', () => {
+    expect(hasInterpolation('{@a ?? @b}')).toBe(true);
+  });
+
+  it('detects ternary with sigils', () => {
+    expect(hasInterpolation('{$x != null ? $x : 0}')).toBe(true);
+  });
+
+  it('still returns false for plain text', () => {
+    expect(hasInterpolation('no sigils here')).toBe(false);
+  });
+
+  it('still returns false for {notavar}', () => {
+    expect(hasInterpolation('{notavar}')).toBe(false);
+  });
+});
+
+describe('interpolateExpression', () => {
+  it('evaluates a complex expression and returns string', () => {
+    expect(
+      interpolateExpression(
+        '@labels[@level]',
+        {},
+        {},
+        { labels: { high: 'HIGH' }, level: 'high' },
+      ),
+    ).toBe('HIGH');
+  });
+
+  it('returns empty string for null/undefined result', () => {
+    expect(interpolateExpression('$missing', {}, {}, {})).toBe('');
   });
 });
