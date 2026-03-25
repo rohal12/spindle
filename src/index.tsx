@@ -2,7 +2,7 @@ import { render } from 'preact';
 import { App } from './components/App';
 import { parseStoryData } from './parser';
 import { useStoryStore, fireStoryInit } from './store';
-import { installStoryAPI } from './story-api';
+import { installStoryAPI, getReadyPromise } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
 import { checkTriggers, reinitTriggerState } from './triggers';
@@ -200,7 +200,14 @@ function boot() {
 
   render(<App />, root);
 
-  document.dispatchEvent(new CustomEvent(':storyready'));
+  const pending = getReadyPromise();
+  if (pending) {
+    pending.then(() => {
+      document.dispatchEvent(new CustomEvent(':storyready'));
+    });
+  } else {
+    document.dispatchEvent(new CustomEvent(':storyready'));
+  }
 }
 
 if (document.readyState === 'loading') {

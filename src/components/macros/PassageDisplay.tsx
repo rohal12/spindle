@@ -71,6 +71,7 @@ defineMacro({
   render(_props, ctx) {
     const currentPassage = useStoryStore((s) => s.currentPassage);
     const storyData = useStoryStore((s) => s.storyData);
+    const renderDeferred = useStoryStore((s) => s.renderDeferred);
 
     // Render-gating: displayedPassage controls which passage is visually shown.
     // The store updates immediately, but the visual swap is deferred by the
@@ -245,12 +246,14 @@ defineMacro({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPassage]);
 
-    // Resolve the passage to display (or show nothing during outgoing phase)
-    const passage = displayedPassage
-      ? storyData?.passages.get(displayedPassage)
-      : null;
+    // When render is deferred, show StoryLoading passage or nothing
+    const effectivePassage = renderDeferred
+      ? (storyData?.passages.get('StoryLoading') ?? null)
+      : displayedPassage
+        ? storyData?.passages.get(displayedPassage)
+        : null;
 
-    if (!passage && displayedPassage) {
+    if (!effectivePassage && displayedPassage && !renderDeferred) {
       return (
         <div class="error">
           Error: Passage &ldquo;{displayedPassage}&rdquo; not found.
@@ -265,7 +268,7 @@ defineMacro({
         id={ctx.id ?? 'story'}
         class={ctx.className ?? 'story'}
       >
-        {readyPassage && (
+        {!renderDeferred && readyPassage && (
           <div
             key={`ready-${currentPassage}`}
             hidden
@@ -277,11 +280,11 @@ defineMacro({
           class="passage-container"
           ref={containerRef}
         >
-          {passage && (
+          {effectivePassage && (
             <Passage
-              passage={passage}
-              key={displayedPassage}
-              dataTransition={resolvedTypeRef.current}
+              passage={effectivePassage}
+              key={renderDeferred ? 'loading' : displayedPassage}
+              dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
             />
           )}
         </div>

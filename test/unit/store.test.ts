@@ -51,6 +51,7 @@ describe('useStoryStore', () => {
       renderCounts: {},
       transitionConfig: null,
       nextTransition: null,
+      renderDeferred: false,
     });
   });
 
@@ -836,6 +837,38 @@ describe('useStoryStore', () => {
       useStoryStore.getState().goBack();
       // Should reset since moment[0] has no prng
       expect(isPRNGEnabled()).toBe(false);
+    });
+  });
+
+  describe('renderDeferred', () => {
+    it('defaults to false', () => {
+      expect(useStoryStore.getState().renderDeferred).toBe(false);
+    });
+
+    it('deferRender() sets renderDeferred to true', () => {
+      useStoryStore.getState().deferRender();
+      expect(useStoryStore.getState().renderDeferred).toBe(true);
+    });
+
+    it('clearDeferredRender() sets renderDeferred to false', () => {
+      useStoryStore.getState().deferRender();
+      useStoryStore.getState().clearDeferredRender();
+      expect(useStoryStore.getState().renderDeferred).toBe(false);
+    });
+
+    it('deferRender() is idempotent', () => {
+      useStoryStore.getState().deferRender();
+      useStoryStore.getState().deferRender();
+      expect(useStoryStore.getState().renderDeferred).toBe(true);
+    });
+
+    it('restart() resets renderDeferred to false', () => {
+      const story = makeStoryData([makePassage(1, 'Start', '')]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().deferRender();
+      expect(useStoryStore.getState().renderDeferred).toBe(true);
+      useStoryStore.getState().restart();
+      expect(useStoryStore.getState().renderDeferred).toBe(false);
     });
   });
 });

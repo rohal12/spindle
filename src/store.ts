@@ -41,6 +41,7 @@ const SPECIAL_PASSAGES = new Set([
   'StoryInit',
   'StoryInterface',
   'StoryVariables',
+  'StoryLoading',
   'SaveTitle',
   'PassageReady',
   'PassageHeader',
@@ -233,6 +234,7 @@ export interface StoryState {
   transitionConfig: TransitionConfig | null;
   nextTransition: TransitionConfig | null;
   nobr: boolean;
+  renderDeferred: boolean;
 
   setMaxHistory: (limit: number) => void;
   init: (
@@ -263,6 +265,8 @@ export interface StoryState {
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
   consumeNextTransition: () => TransitionConfig | null;
+  deferRender: () => void;
+  clearDeferredRender: () => void;
 }
 
 export const useStoryStore = create<StoryState>()(
@@ -284,6 +288,7 @@ export const useStoryStore = create<StoryState>()(
     transitionConfig: null,
     nextTransition: null,
     nobr: false,
+    renderDeferred: false,
 
     setMaxHistory: (limit: number) => {
       set((state) => {
@@ -510,6 +515,7 @@ export const useStoryStore = create<StoryState>()(
         state.historyIndex = 0;
         state.visitCounts = { [startPassage.name]: 1 };
         state.renderCounts = { [startPassage.name]: 1 };
+        state.renderDeferred = false;
       });
 
       lastNavigationVars = get().variables;
@@ -775,6 +781,18 @@ export const useStoryStore = create<StoryState>()(
         });
       }
       return current;
+    },
+
+    deferRender: () => {
+      set((state) => {
+        state.renderDeferred = true;
+      });
+    },
+
+    clearDeferredRender: () => {
+      set((state) => {
+        state.renderDeferred = false;
+      });
     },
   })),
 );

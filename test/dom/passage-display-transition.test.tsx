@@ -193,6 +193,88 @@ describe('PassageDisplay transition state machine', () => {
     expect(error!.textContent).toContain('NonExistent');
   });
 
+  describe('deferred render', () => {
+    it('shows StoryLoading passage content when renderDeferred is true', () => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Start content'),
+        makePassage(2, 'StoryLoading', 'Loading, please wait...'),
+      ]);
+      useStoryStore.getState().init(storyData);
+      useStoryStore.getState().deferRender();
+
+      renderPassageMacro(container);
+
+      expect(container.textContent).toContain('Loading, please wait...');
+      expect(container.textContent).not.toContain('Start content');
+    });
+
+    it('shows empty content when renderDeferred is true and no StoryLoading passage', () => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Start content'),
+      ]);
+      useStoryStore.getState().init(storyData);
+      useStoryStore.getState().deferRender();
+
+      renderPassageMacro(container);
+
+      expect(container.textContent).not.toContain('Start content');
+    });
+
+    it('shows current passage after clearDeferredRender', () => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Start content'),
+        makePassage(2, 'StoryLoading', 'Loading...'),
+      ]);
+      useStoryStore.getState().init(storyData);
+      useStoryStore.getState().deferRender();
+
+      renderPassageMacro(container);
+      expect(container.textContent).toContain('Loading...');
+
+      act(() => {
+        useStoryStore.getState().clearDeferredRender();
+      });
+
+      expect(container.textContent).toContain('Start content');
+      expect(container.textContent).not.toContain('Loading...');
+    });
+
+    it('navigation during deferred render updates store but display stays on StoryLoading', () => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Start content'),
+        makePassage(2, 'Room', 'Room content'),
+        makePassage(3, 'StoryLoading', 'Loading...'),
+      ]);
+      useStoryStore.getState().init(storyData);
+      useStoryStore.getState().deferRender();
+
+      renderPassageMacro(container);
+      expect(container.textContent).toContain('Loading...');
+
+      // Navigate while deferred
+      act(() => {
+        useStoryStore.getState().navigate('Room');
+      });
+
+      // Store updated but display still shows loading
+      expect(useStoryStore.getState().currentPassage).toBe('Room');
+      expect(container.textContent).toContain('Loading...');
+      expect(container.textContent).not.toContain('Room content');
+
+      // Clear deferred → shows the navigated-to passage
+      act(() => {
+        useStoryStore.getState().clearDeferredRender();
+      });
+
+      // Advance timers to complete any transition
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(container.textContent).toContain('Room content');
+    });
+  });
+
   it('uses transition:none tag correctly after first load', () => {
     const storyData = makeStoryData([
       makePassage(1, 'Start', 'Start'),

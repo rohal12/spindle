@@ -50,6 +50,24 @@ import type { TransitionConfig } from './transition';
 export type { StoryAction };
 export type { MacroMetadata };
 
+// Deferred-render promise lifecycle.
+// deferRender() creates a promise; ready() resolves it.
+// index.tsx reads getReadyPromise() AFTER render(), which is after both
+// author JS and storyinit have run, so it always gets the final promise.
+let readyResolve: (() => void) | null = null;
+let readyPromise: Promise<void> | null = null;
+
+/** Returns the current deferred-render promise, or null if not deferred. */
+export function getReadyPromise(): Promise<void> | null {
+  return readyPromise;
+}
+
+/** Test-only: reset module-level promise state. */
+export function _resetReadyState(): void {
+  readyResolve = null;
+  readyPromise = null;
+}
+
 type NavigateCallback = (to: string, from: string) => void;
 type StoryInitCallback = () => void;
 type ActionsChangedCallback = () => void;
@@ -121,6 +139,8 @@ export interface StoryAPI {
   setCSS(enabled: boolean): void;
   setTransition(config: TransitionConfig | null): void;
   setNextTransition(config: TransitionConfig | null): void;
+  deferRender(): void;
+  ready(): void;
   random(): number;
   randomInt(min: number, max: number): number;
   readonly config: {
@@ -450,6 +470,21 @@ function createStoryAPI(): StoryAPI {
 
     setNextTransition(config: TransitionConfig | null): void {
       useStoryStore.getState().setNextTransition(config);
+    },
+
+    deferRender(): void {
+      useStoryStore.getState().deferRender();
+      readyPromise = new Promise<void>((resolve) => {
+        readyResolve = resolve;
+      });
+    },
+
+    ready(): void {
+      if (!readyResolve) return;
+      useStoryStore.getState().clearDeferredRender();
+      readyResolve();
+      readyResolve = null;
+      readyPromise = null;
     },
 
     random(): number {
