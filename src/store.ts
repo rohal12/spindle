@@ -10,6 +10,7 @@ import type { StoryData } from './parser';
 import type { TransitionConfig } from './transition';
 import type { SavePayload, SaveHistoryMoment, SaveInfo } from './saves/types';
 import { executeStoryInit } from './story-init';
+import { emit } from './event-emitter';
 import { resetTriggers } from './triggers';
 import {
   initSaveSystem,
@@ -210,45 +211,6 @@ function cleanupRuntimeHandlers(): void {
 export function _resetRuntimePhase(): void {
   runtimeUnsubs = [];
   inRuntimePhase = false;
-}
-
-// ---------------------------------------------------------------------------
-// storyinit callbacks (direct invocation — avoids Zustand subscription issues)
-// ---------------------------------------------------------------------------
-
-type StoryInitListener = () => void;
-let storyInitListeners: StoryInitListener[] = [];
-
-/** Register a callback to run after StoryInit completes (boot + every restart). */
-export function onStoryInit(cb: StoryInitListener): () => void {
-  storyInitListeners.push(cb);
-  return () => {
-    storyInitListeners = storyInitListeners.filter((l) => l !== cb);
-  };
-}
-
-/** Fire all storyinit listeners. Called after all state resets are complete. */
-export function fireStoryInit(): void {
-  for (const cb of storyInitListeners) cb();
-}
-
-// ---------------------------------------------------------------------------
-// beforerestart callbacks
-// ---------------------------------------------------------------------------
-
-type BeforeRestartListener = () => void;
-let beforeRestartListeners: BeforeRestartListener[] = [];
-
-/** Register a callback to run before restart resets any state. */
-export function onBeforeRestart(cb: BeforeRestartListener): () => void {
-  beforeRestartListeners.push(cb);
-  return () => {
-    beforeRestartListeners = beforeRestartListeners.filter((l) => l !== cb);
-  };
-}
-
-function fireBeforeRestart(): void {
-  for (const cb of beforeRestartListeners) cb();
 }
 
 // ---------------------------------------------------------------------------
@@ -557,7 +519,7 @@ export const useStoryStore = create<StoryState>()(
         state.renderDeferred = false;
       });
 
-      fireBeforeRestart();
+      emit('beforerestart');
 
       const keepDeferred = get().renderDeferred;
 
@@ -594,7 +556,7 @@ export const useStoryStore = create<StoryState>()(
 
       executeStoryInit();
       clearSession(storyData.ifid);
-      fireStoryInit();
+      emit('storyinit');
 
       // Start a new playthrough on restart
       startNewPlaythrough(storyData.ifid)

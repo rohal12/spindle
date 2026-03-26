@@ -2,12 +2,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   useStoryStore,
-  onBeforeRestart,
-  onStoryInit,
   trackRuntimeUnsub,
   enterRuntimePhase,
   _resetRuntimePhase,
 } from '../../src/store';
+import { on as emitterOn } from '../../src/event-emitter';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
@@ -881,7 +880,7 @@ describe('useStoryStore', () => {
     it('restart() preserves renderDeferred if set during beforerestart', () => {
       const story = makeStoryData([makePassage(1, 'Start', '')]);
       useStoryStore.getState().init(story);
-      const unsub = onBeforeRestart(() => {
+      const unsub = emitterOn('beforerestart', () => {
         useStoryStore.getState().deferRender();
       });
       useStoryStore.getState().restart();

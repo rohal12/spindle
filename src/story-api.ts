@@ -1,9 +1,5 @@
-import {
-  useStoryStore,
-  onStoryInit,
-  onBeforeRestart,
-  trackRuntimeUnsub,
-} from './store';
+import { useStoryStore, trackRuntimeUnsub } from './store';
+import { on as emitterOn } from './event-emitter';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -388,13 +384,16 @@ function createStoryAPI(): StoryAPI {
       }
 
       if (event === 'beforerestart') {
-        const unsub = onBeforeRestart(callback as BeforeRestartCallback);
+        const unsub = emitterOn(
+          'beforerestart',
+          callback as BeforeRestartCallback,
+        );
         trackRuntimeUnsub(unsub);
         return unsub;
       }
 
       if (event === 'storyinit') {
-        const unsub = onStoryInit(callback as StoryInitCallback);
+        const unsub = emitterOn('storyinit', callback as StoryInitCallback);
         trackRuntimeUnsub(unsub);
         return unsub;
       }
