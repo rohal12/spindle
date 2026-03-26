@@ -198,6 +198,25 @@ export function fireStoryInit(): void {
 }
 
 // ---------------------------------------------------------------------------
+// beforerestart callbacks
+// ---------------------------------------------------------------------------
+
+type BeforeRestartListener = () => void;
+let beforeRestartListeners: BeforeRestartListener[] = [];
+
+/** Register a callback to run before restart resets any state. */
+export function onBeforeRestart(cb: BeforeRestartListener): () => void {
+  beforeRestartListeners.push(cb);
+  return () => {
+    beforeRestartListeners = beforeRestartListeners.filter((l) => l !== cb);
+  };
+}
+
+function fireBeforeRestart(): void {
+  for (const cb of beforeRestartListeners) cb();
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -497,6 +516,7 @@ export const useStoryStore = create<StoryState>()(
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) return;
 
+      fireBeforeRestart();
       resetPRNG();
       resetTriggers();
       const initialVars = deepClone(variableDefaults);

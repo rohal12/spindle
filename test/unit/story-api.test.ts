@@ -286,6 +286,72 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('on(beforerestart)', () => {
+    it('fires callback before variables are reset', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('beforerestart', cb);
+
+      useStoryStore.getState().setVariable('health', 30);
+      useStoryStore.getState().navigate('Room');
+
+      useStoryStore.getState().restart();
+
+      expect(cb).toHaveBeenCalledTimes(1);
+      unsub();
+    });
+
+    it('fires before storyinit', () => {
+      const order: string[] = [];
+      const unsubBefore = Story.on('beforerestart', () => {
+        order.push('beforerestart');
+      });
+      const unsubInit = Story.on('storyinit', () => {
+        order.push('storyinit');
+      });
+
+      useStoryStore.getState().restart();
+
+      expect(order).toEqual(['beforerestart', 'storyinit']);
+      unsubBefore();
+      unsubInit();
+    });
+
+    it('can read pre-restart variables inside callback', () => {
+      useStoryStore.getState().setVariable('health', 42);
+      useStoryStore.getState().navigate('Room');
+
+      let capturedHealth: unknown;
+      const unsub = Story.on('beforerestart', () => {
+        capturedHealth = useStoryStore.getState().variables.health;
+      });
+
+      useStoryStore.getState().restart();
+
+      expect(capturedHealth).toBe(42);
+      unsub();
+    });
+
+    it('fires on every restart', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('beforerestart', cb);
+
+      useStoryStore.getState().restart();
+      useStoryStore.getState().restart();
+      useStoryStore.getState().restart();
+      expect(cb).toHaveBeenCalledTimes(3);
+      unsub();
+    });
+
+    it('unsubscribe stops future callbacks', () => {
+      const cb = vi.fn();
+      const unsub = Story.on('beforerestart', cb);
+      unsub();
+
+      useStoryStore.getState().restart();
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
   describe('on(unknown event)', () => {
     it('throws for unknown event', () => {
       expect(() => {

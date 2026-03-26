@@ -1,4 +1,4 @@
-import { useStoryStore, onStoryInit } from './store';
+import { useStoryStore, onStoryInit, onBeforeRestart } from './store';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -70,6 +70,7 @@ export function _resetReadyState(): void {
 
 type NavigateCallback = (to: string, from: string) => void;
 type StoryInitCallback = () => void;
+type BeforeRestartCallback = () => void;
 type ActionsChangedCallback = () => void;
 type VariableChangedCallback = (
   changed: Record<string, { from: unknown; to: unknown }>,
@@ -119,6 +120,7 @@ export interface StoryAPI {
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
   on(event: 'navigate', callback: NavigateCallback): () => void;
+  on(event: 'beforerestart', callback: BeforeRestartCallback): () => void;
   on(event: 'storyinit', callback: StoryInitCallback): () => void;
   on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
   on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
@@ -376,6 +378,10 @@ function createStoryAPI(): StoryAPI {
             (callback as NavigateCallback)(state.currentPassage, from);
           }
         });
+      }
+
+      if (event === 'beforerestart') {
+        return onBeforeRestart(callback as BeforeRestartCallback);
       }
 
       if (event === 'storyinit') {
