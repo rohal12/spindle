@@ -27,7 +27,7 @@ let inRuntimePhase = false;
 
 ### New exports from `store.ts`
 
-- `trackRuntimeUnsub(unsub: () => void)` — pushes onto the cleanup list (only call when `inRuntimePhase` is true)
+- `trackRuntimeUnsub(unsub: () => void)` — if in runtime phase, pushes onto the cleanup list; no-op otherwise
 - `enterRuntimePhase()` — sets the flag to true
 
 Cleanup logic stays internal to `restart()`.
@@ -38,9 +38,7 @@ After obtaining the unsub function for any event type (`navigate`, `beforerestar
 
 ```typescript
 const unsub = /* existing registration */;
-if (inRuntimePhase) {
-  trackRuntimeUnsub(unsub);
-}
+trackRuntimeUnsub(unsub); // no-op if still in startup phase
 return unsub;
 ```
 
