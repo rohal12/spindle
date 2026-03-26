@@ -1010,4 +1010,146 @@ describe('useStoryStore', () => {
       expect(cb).toHaveBeenCalledWith(undefined, undefined);
     });
   });
+
+  describe('navigate hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforenavigate before state change', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let passageDuringHook: string | null = null;
+      emitterOn('beforenavigate', () => {
+        passageDuringHook = useStoryStore.getState().currentPassage;
+      });
+
+      useStoryStore.getState().navigate('Room');
+      expect(passageDuringHook).toBe('Start');
+    });
+
+    it('beforenavigate receives target passage name', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).toHaveBeenCalledWith('Room');
+    });
+
+    it('emits afternavigate after state change', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let passageDuringHook: string | null = null;
+      emitterOn('afternavigate', () => {
+        passageDuringHook = useStoryStore.getState().currentPassage;
+      });
+
+      useStoryStore.getState().navigate('Room');
+      expect(passageDuringHook).toBe('Room');
+    });
+
+    it('afternavigate receives (to, from)', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+    });
+
+    it('hooks fire on goBack()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+
+      const beforeCb = vi.fn();
+      const afterCb = vi.fn();
+      emitterOn('beforenavigate', beforeCb);
+      emitterOn('afternavigate', afterCb);
+
+      useStoryStore.getState().goBack();
+      expect(beforeCb).toHaveBeenCalledWith('Start');
+      expect(afterCb).toHaveBeenCalledWith('Start', 'Room');
+    });
+
+    it('hooks fire on goForward()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().goBack();
+
+      const beforeCb = vi.fn();
+      const afterCb = vi.fn();
+      emitterOn('beforenavigate', beforeCb);
+      emitterOn('afternavigate', afterCb);
+
+      useStoryStore.getState().goForward();
+      expect(beforeCb).toHaveBeenCalledWith('Room');
+      expect(afterCb).toHaveBeenCalledWith('Room', 'Start');
+    });
+
+    it('hooks do NOT fire on loadFromPayload()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: {},
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: {}, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('no hooks fire for invalid passage', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().navigate('Nonexistent');
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -391,6 +391,9 @@ export const useStoryStore = create<StoryState>()(
         return;
       }
 
+      const previousPassage = get().currentPassage;
+      emit('beforenavigate', passageName);
+
       // Compute variable delta before Immer set()
       const patchEntry = computeVarPatches(lastNavigationVars, currVars);
 
@@ -431,11 +434,17 @@ export const useStoryStore = create<StoryState>()(
 
       lastNavigationVars = get().variables;
       persistSession(get);
+
+      emit('afternavigate', passageName, previousPassage);
     },
 
     goBack: () => {
       const { historyIndex, variables } = get();
       if (historyIndex <= 0) return;
+
+      const previousPassage = get().currentPassage;
+      const targetPassage = get().history[historyIndex - 1]!.passage;
+      emit('beforenavigate', targetPassage);
 
       // Apply inverse transition: moment historyIndex → historyIndex−1
       const restoredVars = deepClone(
@@ -452,11 +461,17 @@ export const useStoryStore = create<StoryState>()(
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
+
+      emit('afternavigate', targetPassage, previousPassage);
     },
 
     goForward: () => {
       const { historyIndex, history: hist, variables } = get();
       if (historyIndex >= hist.length - 1) return;
+
+      const previousPassage = get().currentPassage;
+      const targetPassage = hist[historyIndex + 1]!.passage;
+      emit('beforenavigate', targetPassage);
 
       // Apply forward transition: moment historyIndex → historyIndex+1
       const restoredVars = deepClone(
@@ -473,6 +488,8 @@ export const useStoryStore = create<StoryState>()(
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
+
+      emit('afternavigate', targetPassage, previousPassage);
     },
 
     setVariable: (name: string, value: unknown) => {

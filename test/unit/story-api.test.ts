@@ -195,7 +195,7 @@ describe('StoryAPI', () => {
   });
 
   describe('on(afternavigate)', () => {
-    it.skip('fires callback when passage changes via navigate', () => {
+    it('fires callback when passage changes via navigate', () => {
       // Enabled in Task 7 when navigate() emits afternavigate
       const cb = vi.fn();
       const unsub = Story.on('afternavigate', cb);
