@@ -1,5 +1,10 @@
 import { useStoryStore, trackRuntimeUnsub } from './store';
-import { on as emitterOn, emit } from './event-emitter';
+import {
+  on as emitterOn,
+  emit,
+  type StoryEvent,
+  type StoryEventCallback,
+} from './event-emitter';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -134,7 +139,10 @@ export interface StoryAPI {
   };
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
-  on(event: string, callback: (...args: any[]) => void): () => void;
+  on<E extends StoryEvent>(
+    event: E,
+    callback: StoryEventCallback<E>,
+  ): () => void;
   waitForActions(): Promise<StoryAction[]>;
   watch(
     condition: string,
@@ -379,11 +387,14 @@ function createStoryAPI(): StoryAPI {
       action.perform(value);
     },
 
-    on(event: string, callback: (...args: any[]) => void): () => void {
+    on<E extends StoryEvent>(
+      event: E,
+      callback: StoryEventCallback<E>,
+    ): () => void {
       if (event === 'variableChanged') {
         ensureVariableChangedSubscription();
       }
-      const unsub = emitterOn(event as any, callback as any);
+      const unsub = emitterOn(event, callback);
       trackRuntimeUnsub(unsub);
       return unsub;
     },
