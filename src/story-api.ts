@@ -1,4 +1,9 @@
-import { useStoryStore, onStoryInit, onBeforeRestart } from './store';
+import {
+  useStoryStore,
+  onStoryInit,
+  onBeforeRestart,
+  trackRuntimeUnsub,
+} from './store';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -371,30 +376,38 @@ function createStoryAPI(): StoryAPI {
     on(event: string, callback: (...args: any[]) => void): () => void {
       if (event === 'navigate') {
         let prev = useStoryStore.getState().currentPassage;
-        return useStoryStore.subscribe((state) => {
+        const unsub = useStoryStore.subscribe((state) => {
           if (state.currentPassage !== prev) {
             const from = prev;
             prev = state.currentPassage;
             (callback as NavigateCallback)(state.currentPassage, from);
           }
         });
+        trackRuntimeUnsub(unsub);
+        return unsub;
       }
 
       if (event === 'beforerestart') {
-        return onBeforeRestart(callback as BeforeRestartCallback);
+        const unsub = onBeforeRestart(callback as BeforeRestartCallback);
+        trackRuntimeUnsub(unsub);
+        return unsub;
       }
 
       if (event === 'storyinit') {
-        return onStoryInit(callback as StoryInitCallback);
+        const unsub = onStoryInit(callback as StoryInitCallback);
+        trackRuntimeUnsub(unsub);
+        return unsub;
       }
 
       if (event === 'actionsChanged') {
-        return onActionsChanged(callback as ActionsChangedCallback);
+        const unsub = onActionsChanged(callback as ActionsChangedCallback);
+        trackRuntimeUnsub(unsub);
+        return unsub;
       }
 
       if (event === 'variableChanged') {
         let prevVars = { ...useStoryStore.getState().variables };
-        return useStoryStore.subscribe((state) => {
+        const unsub = useStoryStore.subscribe((state) => {
           const changed: Record<string, { from: unknown; to: unknown }> = {};
           let hasChanges = false;
           const allKeys = new Set([
@@ -412,6 +425,8 @@ function createStoryAPI(): StoryAPI {
             (callback as VariableChangedCallback)(changed);
           }
         });
+        trackRuntimeUnsub(unsub);
+        return unsub;
       }
 
       throw new Error(`spindle: Unknown event "${event}".`);

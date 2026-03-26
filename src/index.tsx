@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { App } from './components/App';
 import { parseStoryData } from './parser';
-import { useStoryStore, fireStoryInit } from './store';
+import { useStoryStore, fireStoryInit, enterRuntimePhase } from './store';
 import { installStoryAPI, getReadyPromise } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
@@ -98,6 +98,9 @@ function boot() {
   defaults = extractDefaults(schema);
 
   useStoryStore.getState().init(storyData, defaults);
+
+  // Enter runtime phase — handlers registered from here on are cleaned on restart
+  enterRuntimePhase();
 
   // Execute StoryInit passage if it exists
   executeStoryInit();

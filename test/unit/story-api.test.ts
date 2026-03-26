@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useStoryStore } from '../../src/store';
+import {
+  useStoryStore,
+  enterRuntimePhase,
+  _resetRuntimePhase,
+} from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 import {
   clearActions,
@@ -34,6 +38,7 @@ let Story: any;
 
 describe('StoryAPI', () => {
   beforeEach(async () => {
+    _resetRuntimePhase();
     clearActions();
     resetIdCounters();
     const storyData = makeStoryData([
@@ -610,6 +615,93 @@ describe('StoryAPI', () => {
       // Resolve the current one; first is orphaned (harmless — no refs held)
       Story.ready();
       await second;
+    });
+  });
+
+  describe('runtime handler auto-cleanup', () => {
+    beforeEach(() => {
+      _resetRuntimePhase();
+    });
+
+    it('navigate handler registered during runtime is cleaned on restart', () => {
+      enterRuntimePhase();
+
+      const cb = vi.fn();
+      Story.on('navigate', cb);
+
+      // Navigate to verify handler works
+      Story.goto('Room');
+      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+
+      cb.mockClear();
+
+      // Restart cleans the handler
+      Story.restart();
+
+      // Navigate again — handler should NOT fire
+      Story.goto('Room');
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('beforerestart handler fires during the restart that cleans it', () => {
+      enterRuntimePhase();
+
+      const cb = vi.fn();
+      Story.on('beforerestart', cb);
+
+      Story.restart();
+      // Should have fired once during this restart
+      expect(cb).toHaveBeenCalledOnce();
+
+      cb.mockClear();
+
+      // Second restart — handler was cleaned, should NOT fire
+      Story.restart();
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('no duplicate handlers after multiple restart cycles', () => {
+      const calls: string[] = [];
+
+      // Simulate what a host boot() does: register on storyinit
+      // BEFORE entering runtime phase (host boot runs during startup)
+      Story.on('storyinit', () => {
+        // Inside storyinit, we're in runtime phase (restart calls enterRuntimePhase)
+        Story.on('navigate', () => {
+          calls.push('nav');
+        });
+      });
+
+      enterRuntimePhase();
+
+      // First restart: storyinit fires, registers one navigate handler
+      Story.restart();
+      Story.goto('Room');
+      expect(calls).toEqual(['nav']);
+
+      calls.length = 0;
+
+      // Second restart: old navigate handler cleaned, storyinit registers a new one
+      Story.restart();
+      Story.goto('Room');
+      expect(calls).toEqual(['nav']); // still exactly one, not two
+    });
+
+    it('manual unsub still works and double-call is safe', () => {
+      enterRuntimePhase();
+
+      const cb = vi.fn();
+      const unsub = Story.on('navigate', cb);
+
+      // Manually unsub
+      unsub();
+
+      // Navigate — should not fire
+      Story.goto('Room');
+      expect(cb).not.toHaveBeenCalled();
+
+      // Restart — the stale entry in runtimeUnsubs is a no-op
+      expect(() => Story.restart()).not.toThrow();
     });
   });
 });
