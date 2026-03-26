@@ -22,12 +22,7 @@ import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
-import {
-  getActions,
-  getAction,
-  onActionsChanged,
-  type StoryAction,
-} from './action-registry';
+import { getActions, getAction, type StoryAction } from './action-registry';
 import {
   initPRNG,
   isPRNGEnabled,
@@ -399,7 +394,10 @@ function createStoryAPI(): StoryAPI {
       }
 
       if (event === 'actionsChanged') {
-        const unsub = onActionsChanged(callback as ActionsChangedCallback);
+        const unsub = emitterOn(
+          'actionsChanged',
+          callback as ActionsChangedCallback,
+        );
         trackRuntimeUnsub(unsub);
         return unsub;
       }
