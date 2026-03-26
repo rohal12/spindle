@@ -194,16 +194,11 @@ describe('StoryAPI', () => {
     });
   });
 
-  describe('on(navigate)', () => {
-    it('fires callback when passage changes', () => {
+  describe('on(afternavigate)', () => {
+    it.skip('fires callback when passage changes via navigate', () => {
+      // Enabled in Task 7 when navigate() emits afternavigate
       const cb = vi.fn();
-      let prev = useStoryStore.getState().currentPassage;
-      const unsub = useStoryStore.subscribe((state) => {
-        if (state.currentPassage !== prev) {
-          cb(state.currentPassage, prev);
-          prev = state.currentPassage;
-        }
-      });
+      const unsub = Story.on('afternavigate', cb);
 
       useStoryStore.getState().navigate('Room');
       expect(cb).toHaveBeenCalledWith('Room', 'Start');
@@ -343,14 +338,15 @@ describe('StoryAPI', () => {
 
   describe('on(unknown event)', () => {
     it('throws for unknown event', () => {
-      expect(() => {
-        const event = 'badEvent';
-        if (
-          !['navigate', 'actionsChanged', 'variableChanged'].includes(event)
-        ) {
-          throw new Error(`spindle: Unknown event "${event}".`);
-        }
-      }).toThrow('Unknown event');
+      expect(() => Story.on('badEvent', () => {})).toThrow(
+        'spindle: Unknown event "badEvent"',
+      );
+    });
+
+    it('throws for removed navigate event', () => {
+      expect(() => Story.on('navigate', () => {})).toThrow(
+        'spindle: Unknown event "navigate"',
+      );
     });
   });
 
@@ -607,23 +603,20 @@ describe('StoryAPI', () => {
       _resetRuntimePhase();
     });
 
-    it('navigate handler registered during runtime is cleaned on restart', () => {
+    it('beforerestart handler registered during runtime is cleaned on restart', () => {
       enterRuntimePhase();
 
       const cb = vi.fn();
-      Story.on('navigate', cb);
+      Story.on('beforerestart', cb);
 
-      // Navigate to verify handler works
-      Story.goto('Room');
-      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+      // First restart: handler fires (beforerestart fires before cleanup)
+      Story.restart();
+      expect(cb).toHaveBeenCalledTimes(1);
 
       cb.mockClear();
 
-      // Restart cleans the handler
+      // Second restart: handler was cleaned, should NOT fire
       Story.restart();
-
-      // Navigate again — handler should NOT fire
-      Story.goto('Room');
       expect(cb).not.toHaveBeenCalled();
     });
 
@@ -651,40 +644,40 @@ describe('StoryAPI', () => {
       // BEFORE entering runtime phase (host boot runs during startup)
       Story.on('storyinit', () => {
         // Inside storyinit, we're in runtime phase (restart calls enterRuntimePhase)
-        Story.on('navigate', () => {
-          calls.push('nav');
+        Story.on('beforerestart', () => {
+          calls.push('before');
         });
       });
 
       enterRuntimePhase();
 
-      // First restart: storyinit fires, registers one navigate handler
+      // First restart: storyinit fires, registers one beforerestart handler
       Story.restart();
-      Story.goto('Room');
-      expect(calls).toEqual(['nav']);
+      // Second restart: beforerestart fires once (one handler), then cleaned, storyinit re-registers
+      Story.restart();
+      expect(calls).toEqual(['before']);
 
       calls.length = 0;
 
-      // Second restart: old navigate handler cleaned, storyinit registers a new one
+      // Third restart: still exactly one handler, not accumulating duplicates
       Story.restart();
-      Story.goto('Room');
-      expect(calls).toEqual(['nav']); // still exactly one, not two
+      expect(calls).toEqual(['before']); // still exactly one, not two
     });
 
     it('manual unsub still works and double-call is safe', () => {
       enterRuntimePhase();
 
       const cb = vi.fn();
-      const unsub = Story.on('navigate', cb);
+      const unsub = Story.on('storyinit', cb);
 
       // Manually unsub
       unsub();
 
-      // Navigate — should not fire
-      Story.goto('Room');
+      // Restart — handler should not fire
+      Story.restart();
       expect(cb).not.toHaveBeenCalled();
 
-      // Restart — the stale entry in runtimeUnsubs is a no-op
+      // Second restart — the stale entry in runtimeUnsubs is a no-op
       expect(() => Story.restart()).not.toThrow();
     });
   });

@@ -91,14 +91,6 @@ function ensureVariableChangedSubscription(): void {
   });
 }
 
-type NavigateCallback = (to: string, from: string) => void;
-type StoryInitCallback = () => void;
-type BeforeRestartCallback = () => void;
-type ActionsChangedCallback = () => void;
-type VariableChangedCallback = (
-  changed: Record<string, { from: unknown; to: unknown }>,
-) => void;
-
 export interface StoryAPI {
   get(name: string): unknown;
   set(name: string, value: unknown): void;
@@ -142,11 +134,7 @@ export interface StoryAPI {
   };
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
-  on(event: 'navigate', callback: NavigateCallback): () => void;
-  on(event: 'beforerestart', callback: BeforeRestartCallback): () => void;
-  on(event: 'storyinit', callback: StoryInitCallback): () => void;
-  on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
-  on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
+  on(event: string, callback: (...args: any[]) => void): () => void;
   waitForActions(): Promise<StoryAction[]>;
   watch(
     condition: string,
@@ -392,54 +380,12 @@ function createStoryAPI(): StoryAPI {
     },
 
     on(event: string, callback: (...args: any[]) => void): () => void {
-      if (event === 'navigate') {
-        let prev = useStoryStore.getState().currentPassage;
-        const unsub = useStoryStore.subscribe((state) => {
-          if (state.currentPassage !== prev) {
-            const from = prev;
-            prev = state.currentPassage;
-            (callback as NavigateCallback)(state.currentPassage, from);
-          }
-        });
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'beforerestart') {
-        const unsub = emitterOn(
-          'beforerestart',
-          callback as BeforeRestartCallback,
-        );
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'storyinit') {
-        const unsub = emitterOn('storyinit', callback as StoryInitCallback);
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'actionsChanged') {
-        const unsub = emitterOn(
-          'actionsChanged',
-          callback as ActionsChangedCallback,
-        );
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
       if (event === 'variableChanged') {
         ensureVariableChangedSubscription();
-        const unsub = emitterOn(
-          'variableChanged',
-          callback as VariableChangedCallback,
-        );
-        trackRuntimeUnsub(unsub);
-        return unsub;
       }
-
-      throw new Error(`spindle: Unknown event "${event}".`);
+      const unsub = emitterOn(event as any, callback as any);
+      trackRuntimeUnsub(unsub);
+      return unsub;
     },
 
     waitForActions(): Promise<StoryAction[]> {
