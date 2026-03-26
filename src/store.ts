@@ -10,6 +10,7 @@ import type { StoryData } from './parser';
 import type { TransitionConfig } from './transition';
 import type { SavePayload, SaveHistoryMoment, SaveInfo } from './saves/types';
 import { executeStoryInit } from './story-init';
+import { emit } from './event-emitter';
 import { resetTriggers } from './triggers';
 import {
   initSaveSystem,
@@ -213,45 +214,6 @@ export function _resetRuntimePhase(): void {
 }
 
 // ---------------------------------------------------------------------------
-// storyinit callbacks (direct invocation — avoids Zustand subscription issues)
-// ---------------------------------------------------------------------------
-
-type StoryInitListener = () => void;
-let storyInitListeners: StoryInitListener[] = [];
-
-/** Register a callback to run after StoryInit completes (boot + every restart). */
-export function onStoryInit(cb: StoryInitListener): () => void {
-  storyInitListeners.push(cb);
-  return () => {
-    storyInitListeners = storyInitListeners.filter((l) => l !== cb);
-  };
-}
-
-/** Fire all storyinit listeners. Called after all state resets are complete. */
-export function fireStoryInit(): void {
-  for (const cb of storyInitListeners) cb();
-}
-
-// ---------------------------------------------------------------------------
-// beforerestart callbacks
-// ---------------------------------------------------------------------------
-
-type BeforeRestartListener = () => void;
-let beforeRestartListeners: BeforeRestartListener[] = [];
-
-/** Register a callback to run before restart resets any state. */
-export function onBeforeRestart(cb: BeforeRestartListener): () => void {
-  beforeRestartListeners.push(cb);
-  return () => {
-    beforeRestartListeners = beforeRestartListeners.filter((l) => l !== cb);
-  };
-}
-
-function fireBeforeRestart(): void {
-  for (const cb of beforeRestartListeners) cb();
-}
-
-// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -429,6 +391,9 @@ export const useStoryStore = create<StoryState>()(
         return;
       }
 
+      const previousPassage = get().currentPassage;
+      emit('beforenavigate', passageName);
+
       // Compute variable delta before Immer set()
       const patchEntry = computeVarPatches(lastNavigationVars, currVars);
 
@@ -469,11 +434,17 @@ export const useStoryStore = create<StoryState>()(
 
       lastNavigationVars = get().variables;
       persistSession(get);
+
+      emit('afternavigate', passageName, previousPassage);
     },
 
     goBack: () => {
       const { historyIndex, variables } = get();
       if (historyIndex <= 0) return;
+
+      const previousPassage = get().currentPassage;
+      const targetPassage = get().history[historyIndex - 1]!.passage;
+      emit('beforenavigate', targetPassage);
 
       // Apply inverse transition: moment historyIndex → historyIndex−1
       const restoredVars = deepClone(
@@ -490,11 +461,17 @@ export const useStoryStore = create<StoryState>()(
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
+
+      emit('afternavigate', targetPassage, previousPassage);
     },
 
     goForward: () => {
       const { historyIndex, history: hist, variables } = get();
       if (historyIndex >= hist.length - 1) return;
+
+      const previousPassage = get().currentPassage;
+      const targetPassage = hist[historyIndex + 1]!.passage;
+      emit('beforenavigate', targetPassage);
 
       // Apply forward transition: moment historyIndex → historyIndex+1
       const restoredVars = deepClone(
@@ -511,6 +488,8 @@ export const useStoryStore = create<StoryState>()(
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
+
+      emit('afternavigate', targetPassage, previousPassage);
     },
 
     setVariable: (name: string, value: unknown) => {
@@ -557,7 +536,7 @@ export const useStoryStore = create<StoryState>()(
         state.renderDeferred = false;
       });
 
-      fireBeforeRestart();
+      emit('beforerestart');
 
       const keepDeferred = get().renderDeferred;
 
@@ -594,7 +573,7 @@ export const useStoryStore = create<StoryState>()(
 
       executeStoryInit();
       clearSession(storyData.ifid);
-      fireStoryInit();
+      emit('storyinit');
 
       // Start a new playthrough on restart
       startNewPlaythrough(storyData.ifid)
@@ -612,6 +591,8 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
+      emit('beforesave', slot, custom);
+
       const payload = get().getSavePayload();
 
       set((state) => {
@@ -625,6 +606,7 @@ export const useStoryStore = create<StoryState>()(
               [slot ?? '']: true,
             };
           });
+          emit('aftersave', slot);
         })
         .catch((err) => {
           console.error('spindle: failed to save', err);
@@ -780,6 +762,9 @@ export const useStoryStore = create<StoryState>()(
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
+
+      emit('beforeload', undefined);
+
       // Convert full snapshots to patch entries
       const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
         string,
@@ -828,6 +813,8 @@ export const useStoryStore = create<StoryState>()(
       } else {
         resetPRNG();
       }
+
+      emit('afterload', undefined);
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {

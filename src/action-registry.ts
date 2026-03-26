@@ -1,3 +1,5 @@
+import { emit } from './event-emitter';
+
 export type ActionType =
   | 'link'
   | 'button'
@@ -28,7 +30,6 @@ export interface StoryAction {
 }
 
 const actions = new Map<string, StoryAction>();
-const listeners = new Set<() => void>();
 const idCounters = new Map<string, number>();
 
 export function generateActionId(
@@ -79,15 +80,6 @@ export function resetIdCounters(): void {
   idCounters.clear();
 }
 
-export function onActionsChanged(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-
 function notify(): void {
-  for (const fn of listeners) {
-    fn();
-  }
+  emit('actionsChanged');
 }
