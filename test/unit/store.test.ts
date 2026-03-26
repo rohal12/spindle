@@ -891,6 +891,7 @@ describe('useStoryStore', () => {
 
   describe('runtime handler cleanup', () => {
     beforeEach(() => {
+      resetEmitter();
       _resetRuntimePhase();
       useStoryStore.setState({
         storyData: null,
@@ -964,6 +965,50 @@ describe('useStoryStore', () => {
 
       useStoryStore.getState().restart();
       expect(unsub).toHaveBeenCalledOnce();
+    });
+
+    it('runtime-registered hook unsubs are called on restart', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      enterRuntimePhase();
+
+      const cb = vi.fn();
+      const unsub = emitterOn('beforesave', cb);
+      trackRuntimeUnsub(unsub);
+
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      useStoryStore.getState().restart();
+
+      cb.mockClear();
+      useStoryStore.getState().save('test');
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('startup-registered hooks survive restart', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      // Register BEFORE entering runtime phase
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      enterRuntimePhase();
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      useStoryStore.getState().restart();
+
+      cb.mockClear();
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
     });
   });
 
