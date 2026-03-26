@@ -17,7 +17,11 @@ export interface LocalsUpdater {
 }
 
 const defaultUpdater: LocalsUpdater = {
-  update: () => {},
+  update: (key: string) => {
+    throw new Error(
+      `Cannot set @${key} — local variables require a {for}, widget, {link}, or {button} scope`,
+    );
+  },
   getValues: () => ({}),
 };
 

@@ -51,6 +51,13 @@ describe('macro components', () => {
       expect(state.variables.a).toBe(1);
       expect(state.variables.b).toBe(2);
     });
+
+    it('shows error when setting @local outside a locals context', () => {
+      const el = renderPassage('{set @foo = 42}');
+      const error = el.querySelector('.error');
+      expect(error).not.toBeNull();
+      expect(error!.textContent).toMatch(/@foo/);
+    });
   });
 
   describe('{$var} display', () => {
