@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useStoryStore } from '../../src/store';
+import { useStoryStore, onBeforeRestart } from '../../src/store';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
@@ -869,6 +869,17 @@ describe('useStoryStore', () => {
       expect(useStoryStore.getState().renderDeferred).toBe(true);
       useStoryStore.getState().restart();
       expect(useStoryStore.getState().renderDeferred).toBe(false);
+    });
+
+    it('restart() preserves renderDeferred if set during beforerestart', () => {
+      const story = makeStoryData([makePassage(1, 'Start', '')]);
+      useStoryStore.getState().init(story);
+      const unsub = onBeforeRestart(() => {
+        useStoryStore.getState().deferRender();
+      });
+      useStoryStore.getState().restart();
+      expect(useStoryStore.getState().renderDeferred).toBe(true);
+      unsub();
     });
   });
 });

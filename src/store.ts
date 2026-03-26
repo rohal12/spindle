@@ -516,7 +516,16 @@ export const useStoryStore = create<StoryState>()(
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) return;
 
+      // Reset renderDeferred before firing beforerestart so we can detect
+      // if a handler called deferRender() during the callback.
+      set((state) => {
+        state.renderDeferred = false;
+      });
+
       fireBeforeRestart();
+
+      const keepDeferred = get().renderDeferred;
+
       resetPRNG();
       resetTriggers();
       const initialVars = deepClone(variableDefaults);
@@ -535,7 +544,9 @@ export const useStoryStore = create<StoryState>()(
         state.historyIndex = 0;
         state.visitCounts = { [startPassage.name]: 1 };
         state.renderCounts = { [startPassage.name]: 1 };
-        state.renderDeferred = false;
+        if (!keepDeferred) {
+          state.renderDeferred = false;
+        }
       });
 
       lastNavigationVars = get().variables;
