@@ -1,9 +1,10 @@
+import { useStoryStore, trackRuntimeUnsub } from './store';
 import {
-  useStoryStore,
-  onStoryInit,
-  onBeforeRestart,
-  trackRuntimeUnsub,
-} from './store';
+  on as emitterOn,
+  emit,
+  type StoryEvent,
+  type StoryEventCallback,
+} from './event-emitter';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -26,12 +27,7 @@ import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
-import {
-  getActions,
-  getAction,
-  onActionsChanged,
-  type StoryAction,
-} from './action-registry';
+import { getActions, getAction, type StoryAction } from './action-registry';
 import {
   initPRNG,
   isPRNGEnabled,
@@ -73,13 +69,32 @@ export function _resetReadyState(): void {
   readyPromise = null;
 }
 
-type NavigateCallback = (to: string, from: string) => void;
-type StoryInitCallback = () => void;
-type BeforeRestartCallback = () => void;
-type ActionsChangedCallback = () => void;
-type VariableChangedCallback = (
-  changed: Record<string, { from: unknown; to: unknown }>,
-) => void;
+/** Lazily created shared Zustand subscription for variableChanged. */
+let variableChangedSubActive = false;
+
+function ensureVariableChangedSubscription(): void {
+  if (variableChangedSubActive) return;
+  variableChangedSubActive = true;
+  let prevVars = { ...useStoryStore.getState().variables };
+  useStoryStore.subscribe((state) => {
+    const changed: Record<string, { from: unknown; to: unknown }> = {};
+    let hasChanges = false;
+    const allKeys = new Set([
+      ...Object.keys(prevVars),
+      ...Object.keys(state.variables),
+    ]);
+    for (const key of allKeys) {
+      if (state.variables[key] !== prevVars[key]) {
+        changed[key] = { from: prevVars[key], to: state.variables[key] };
+        hasChanges = true;
+      }
+    }
+    prevVars = { ...state.variables };
+    if (hasChanges) {
+      emit('variableChanged', changed);
+    }
+  });
+}
 
 export interface StoryAPI {
   get(name: string): unknown;
@@ -124,11 +139,10 @@ export interface StoryAPI {
   };
   getActions(): StoryAction[];
   performAction(id: string, value?: unknown): void;
-  on(event: 'navigate', callback: NavigateCallback): () => void;
-  on(event: 'beforerestart', callback: BeforeRestartCallback): () => void;
-  on(event: 'storyinit', callback: StoryInitCallback): () => void;
-  on(event: 'actionsChanged', callback: ActionsChangedCallback): () => void;
-  on(event: 'variableChanged', callback: VariableChangedCallback): () => void;
+  on<E extends StoryEvent>(
+    event: E,
+    callback: StoryEventCallback<E>,
+  ): () => void;
   waitForActions(): Promise<StoryAction[]>;
   watch(
     condition: string,
@@ -373,63 +387,16 @@ function createStoryAPI(): StoryAPI {
       action.perform(value);
     },
 
-    on(event: string, callback: (...args: any[]) => void): () => void {
-      if (event === 'navigate') {
-        let prev = useStoryStore.getState().currentPassage;
-        const unsub = useStoryStore.subscribe((state) => {
-          if (state.currentPassage !== prev) {
-            const from = prev;
-            prev = state.currentPassage;
-            (callback as NavigateCallback)(state.currentPassage, from);
-          }
-        });
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'beforerestart') {
-        const unsub = onBeforeRestart(callback as BeforeRestartCallback);
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'storyinit') {
-        const unsub = onStoryInit(callback as StoryInitCallback);
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
-      if (event === 'actionsChanged') {
-        const unsub = onActionsChanged(callback as ActionsChangedCallback);
-        trackRuntimeUnsub(unsub);
-        return unsub;
-      }
-
+    on<E extends StoryEvent>(
+      event: E,
+      callback: StoryEventCallback<E>,
+    ): () => void {
       if (event === 'variableChanged') {
-        let prevVars = { ...useStoryStore.getState().variables };
-        const unsub = useStoryStore.subscribe((state) => {
-          const changed: Record<string, { from: unknown; to: unknown }> = {};
-          let hasChanges = false;
-          const allKeys = new Set([
-            ...Object.keys(prevVars),
-            ...Object.keys(state.variables),
-          ]);
-          for (const key of allKeys) {
-            if (state.variables[key] !== prevVars[key]) {
-              changed[key] = { from: prevVars[key], to: state.variables[key] };
-              hasChanges = true;
-            }
-          }
-          prevVars = { ...state.variables };
-          if (hasChanges) {
-            (callback as VariableChangedCallback)(changed);
-          }
-        });
-        trackRuntimeUnsub(unsub);
-        return unsub;
+        ensureVariableChangedSubscription();
       }
-
-      throw new Error(`spindle: Unknown event "${event}".`);
+      const unsub = emitterOn(event, callback);
+      trackRuntimeUnsub(unsub);
+      return unsub;
     },
 
     waitForActions(): Promise<StoryAction[]> {

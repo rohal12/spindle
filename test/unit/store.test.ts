@@ -2,12 +2,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   useStoryStore,
-  onBeforeRestart,
-  onStoryInit,
   trackRuntimeUnsub,
   enterRuntimePhase,
   _resetRuntimePhase,
 } from '../../src/store';
+import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
@@ -881,7 +880,7 @@ describe('useStoryStore', () => {
     it('restart() preserves renderDeferred if set during beforerestart', () => {
       const story = makeStoryData([makePassage(1, 'Start', '')]);
       useStoryStore.getState().init(story);
-      const unsub = onBeforeRestart(() => {
+      const unsub = emitterOn('beforerestart', () => {
         useStoryStore.getState().deferRender();
       });
       useStoryStore.getState().restart();
@@ -892,6 +891,7 @@ describe('useStoryStore', () => {
 
   describe('runtime handler cleanup', () => {
     beforeEach(() => {
+      resetEmitter();
       _resetRuntimePhase();
       useStoryStore.setState({
         storyData: null,
@@ -965,6 +965,296 @@ describe('useStoryStore', () => {
 
       useStoryStore.getState().restart();
       expect(unsub).toHaveBeenCalledOnce();
+    });
+
+    it('runtime-registered hook unsubs are called on restart', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      enterRuntimePhase();
+
+      const cb = vi.fn();
+      const unsub = emitterOn('beforesave', cb);
+      trackRuntimeUnsub(unsub);
+
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      useStoryStore.getState().restart();
+
+      cb.mockClear();
+      useStoryStore.getState().save('test');
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('startup-registered hooks survive restart', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      // Register BEFORE entering runtime phase
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      enterRuntimePhase();
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      useStoryStore.getState().restart();
+
+      cb.mockClear();
+      useStoryStore.getState().save('test');
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('save hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforesave before getSavePayload()', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      let capturedVars: Record<string, unknown> | null = null;
+      emitterOn('beforesave', () => {
+        // Inject a variable — it should appear in the saved payload
+        useStoryStore.getState().setVariable('injected', 42);
+        capturedVars = { ...useStoryStore.getState().variables };
+      });
+
+      useStoryStore.getState().save('test-slot');
+      expect(capturedVars).toEqual({ injected: 42 });
+    });
+
+    it('beforesave receives slot and custom args', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      useStoryStore.getState().save('slot-1', { meta: true });
+      expect(cb).toHaveBeenCalledWith('slot-1', { meta: true });
+    });
+
+    it('beforesave receives undefined for default slot', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      useStoryStore.getState().save();
+      expect(cb).toHaveBeenCalledWith(undefined, undefined);
+    });
+  });
+
+  describe('navigate hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforenavigate before state change', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let passageDuringHook: string | null = null;
+      emitterOn('beforenavigate', () => {
+        passageDuringHook = useStoryStore.getState().currentPassage;
+      });
+
+      useStoryStore.getState().navigate('Room');
+      expect(passageDuringHook).toBe('Start');
+    });
+
+    it('beforenavigate receives target passage name', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).toHaveBeenCalledWith('Room');
+    });
+
+    it('emits afternavigate after state change', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let passageDuringHook: string | null = null;
+      emitterOn('afternavigate', () => {
+        passageDuringHook = useStoryStore.getState().currentPassage;
+      });
+
+      useStoryStore.getState().navigate('Room');
+      expect(passageDuringHook).toBe('Room');
+    });
+
+    it('afternavigate receives (to, from)', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().navigate('Room');
+      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+    });
+
+    it('hooks fire on goBack()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+
+      const beforeCb = vi.fn();
+      const afterCb = vi.fn();
+      emitterOn('beforenavigate', beforeCb);
+      emitterOn('afternavigate', afterCb);
+
+      useStoryStore.getState().goBack();
+      expect(beforeCb).toHaveBeenCalledWith('Start');
+      expect(afterCb).toHaveBeenCalledWith('Start', 'Room');
+    });
+
+    it('hooks fire on goForward()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().navigate('Room');
+      useStoryStore.getState().goBack();
+
+      const beforeCb = vi.fn();
+      const afterCb = vi.fn();
+      emitterOn('beforenavigate', beforeCb);
+      emitterOn('afternavigate', afterCb);
+
+      useStoryStore.getState().goForward();
+      expect(beforeCb).toHaveBeenCalledWith('Room');
+      expect(afterCb).toHaveBeenCalledWith('Room', 'Start');
+    });
+
+    it('hooks do NOT fire on loadFromPayload()', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: {},
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: {}, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('no hooks fire for invalid passage', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforenavigate', cb);
+      emitterOn('afternavigate', cb);
+
+      useStoryStore.getState().navigate('Nonexistent');
+      expect(cb).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('load hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforeload/afterload around loadFromPayload', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const order: string[] = [];
+      emitterOn('beforeload', () => order.push('beforeload'));
+      emitterOn('afterload', () => order.push('afterload'));
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: { gold: 100 },
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: { gold: 100 }, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(order).toEqual(['beforeload', 'afterload']);
+    });
+
+    it('afterload fires after state is restored', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let restoredGold: unknown = null;
+      emitterOn('afterload', () => {
+        restoredGold = useStoryStore.getState().variables.gold;
+      });
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: { gold: 100 },
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: { gold: 100 }, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(restoredGold).toBe(100);
     });
   });
 });

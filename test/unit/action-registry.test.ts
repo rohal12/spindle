@@ -7,9 +7,9 @@ import {
   clearActions,
   resetIdCounters,
   generateActionId,
-  onActionsChanged,
   type StoryAction,
 } from '../../src/action-registry';
+import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
 
 function makeAction(overrides: Partial<StoryAction> = {}): StoryAction {
   return {
@@ -25,6 +25,7 @@ describe('action-registry', () => {
   beforeEach(() => {
     clearActions();
     resetIdCounters();
+    resetEmitter();
   });
 
   describe('registerAction / getActions / getAction', () => {
@@ -100,7 +101,7 @@ describe('action-registry', () => {
     it('updates an existing action with a single notify', () => {
       let count = 0;
       registerAction(makeAction({ id: 'a', label: 'first' }));
-      onActionsChanged(() => count++);
+      emitterOn('actionsChanged', () => count++);
       updateAction(makeAction({ id: 'a', label: 'second' }));
       expect(count).toBe(1); // single notify, not 2 (delete+set)
       expect(getAction('a')!.label).toBe('second');
@@ -108,7 +109,7 @@ describe('action-registry', () => {
 
     it('registers new action if not already present', () => {
       let count = 0;
-      onActionsChanged(() => count++);
+      emitterOn('actionsChanged', () => count++);
       updateAction(makeAction({ id: 'new', label: 'fresh' }));
       expect(count).toBe(1);
       expect(getAction('new')!.label).toBe('fresh');
@@ -122,10 +123,10 @@ describe('action-registry', () => {
     });
   });
 
-  describe('onActionsChanged', () => {
+  describe('actionsChanged event', () => {
     it('notifies listeners on register', () => {
       let count = 0;
-      onActionsChanged(() => count++);
+      emitterOn('actionsChanged', () => count++);
       registerAction(makeAction({ id: 'a' }));
       expect(count).toBe(1);
     });
@@ -133,7 +134,7 @@ describe('action-registry', () => {
     it('notifies listeners on unregister', () => {
       let count = 0;
       const unsub = registerAction(makeAction({ id: 'a' }));
-      onActionsChanged(() => count++);
+      emitterOn('actionsChanged', () => count++);
       unsub();
       expect(count).toBe(1);
     });
@@ -141,14 +142,14 @@ describe('action-registry', () => {
     it('notifies listeners on clear', () => {
       let count = 0;
       registerAction(makeAction({ id: 'a' }));
-      onActionsChanged(() => count++);
+      emitterOn('actionsChanged', () => count++);
       clearActions();
       expect(count).toBe(1);
     });
 
     it('stops notifying after unsubscribe', () => {
       let count = 0;
-      const unsub = onActionsChanged(() => count++);
+      const unsub = emitterOn('actionsChanged', () => count++);
       registerAction(makeAction({ id: 'a' }));
       expect(count).toBe(1);
       unsub();
