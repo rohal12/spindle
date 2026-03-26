@@ -56,8 +56,9 @@ jobs:
           BUMP="patch"
           BODIES=$(git log "${LATEST_TAG}..HEAD" --pretty=%B 2>/dev/null || git log --pretty=%B)
           SUBJECTS=$(git log "${LATEST_TAG}..HEAD" --pretty=%s 2>/dev/null || git log --pretty=%s)
+          # BREAKING CHANGE is treated as minor while in 0.x (pre-1.0 beta)
           if echo "$BODIES" | grep -qE '^BREAKING CHANGE: ' || echo "$SUBJECTS" | grep -qE '^[a-z]+(\(.+\))?!: '; then
-            BUMP="major"
+            BUMP="minor"
           elif echo "$SUBJECTS" | grep -qE '^feat(\(|:)'; then
             BUMP="minor"
           fi
