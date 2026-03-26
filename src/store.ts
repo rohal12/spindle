@@ -762,6 +762,9 @@ export const useStoryStore = create<StoryState>()(
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
+
+      emit('beforeload', undefined);
+
       // Convert full snapshots to patch entries
       const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
         string,
@@ -810,6 +813,8 @@ export const useStoryStore = create<StoryState>()(
       } else {
         resetPRNG();
       }
+
+      emit('afterload', undefined);
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {

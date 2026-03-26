@@ -1152,4 +1152,64 @@ describe('useStoryStore', () => {
       expect(cb).not.toHaveBeenCalled();
     });
   });
+
+  describe('load hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforeload/afterload around loadFromPayload', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      const order: string[] = [];
+      emitterOn('beforeload', () => order.push('beforeload'));
+      emitterOn('afterload', () => order.push('afterload'));
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: { gold: 100 },
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: { gold: 100 }, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(order).toEqual(['beforeload', 'afterload']);
+    });
+
+    it('afterload fires after state is restored', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'Room'),
+      ]);
+      useStoryStore.getState().init(story);
+
+      let restoredGold: unknown = null;
+      emitterOn('afterload', () => {
+        restoredGold = useStoryStore.getState().variables.gold;
+      });
+
+      useStoryStore.getState().loadFromPayload({
+        passage: 'Room',
+        variables: { gold: 100 },
+        history: [
+          { passage: 'Start', variables: {}, timestamp: 1 },
+          { passage: 'Room', variables: { gold: 100 }, timestamp: 2 },
+        ],
+        historyIndex: 1,
+        visitCounts: { Start: 1, Room: 1 },
+        renderCounts: { Start: 1, Room: 1 },
+      });
+
+      expect(restoredGold).toBe(100);
+    });
+  });
 });
