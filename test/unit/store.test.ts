@@ -6,7 +6,7 @@ import {
   enterRuntimePhase,
   _resetRuntimePhase,
 } from '../../src/store';
-import { on as emitterOn } from '../../src/event-emitter';
+import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
@@ -964,6 +964,50 @@ describe('useStoryStore', () => {
 
       useStoryStore.getState().restart();
       expect(unsub).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('save hooks', () => {
+    beforeEach(() => {
+      resetEmitter();
+      _resetRuntimePhase();
+    });
+
+    it('emits beforesave before getSavePayload()', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      let capturedVars: Record<string, unknown> | null = null;
+      emitterOn('beforesave', () => {
+        // Inject a variable — it should appear in the saved payload
+        useStoryStore.getState().setVariable('injected', 42);
+        capturedVars = { ...useStoryStore.getState().variables };
+      });
+
+      useStoryStore.getState().save('test-slot');
+      expect(capturedVars).toEqual({ injected: 42 });
+    });
+
+    it('beforesave receives slot and custom args', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      useStoryStore.getState().save('slot-1', { meta: true });
+      expect(cb).toHaveBeenCalledWith('slot-1', { meta: true });
+    });
+
+    it('beforesave receives undefined for default slot', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      const cb = vi.fn();
+      emitterOn('beforesave', cb);
+
+      useStoryStore.getState().save();
+      expect(cb).toHaveBeenCalledWith(undefined, undefined);
     });
   });
 });

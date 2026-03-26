@@ -574,6 +574,8 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
+      emit('beforesave', slot, custom);
+
       const payload = get().getSavePayload();
 
       set((state) => {
@@ -587,6 +589,7 @@ export const useStoryStore = create<StoryState>()(
               [slot ?? '']: true,
             };
           });
+          emit('aftersave', slot);
         })
         .catch((err) => {
           console.error('spindle: failed to save', err);
