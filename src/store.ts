@@ -178,6 +178,41 @@ function resetModuleState(base: Record<string, unknown>): void {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime handler cleanup (auto-unsub on restart)
+// ---------------------------------------------------------------------------
+
+let runtimeUnsubs: Array<() => void> = [];
+let inRuntimePhase = false;
+
+/**
+ * Track an unsubscribe function for automatic cleanup on restart.
+ * No-op if called during the startup phase (before enterRuntimePhase).
+ */
+export function trackRuntimeUnsub(unsub: () => void): void {
+  if (inRuntimePhase) {
+    runtimeUnsubs.push(unsub);
+  }
+}
+
+/** Mark the start of the runtime phase. Called before executeStoryInit(). */
+export function enterRuntimePhase(): void {
+  inRuntimePhase = true;
+}
+
+/** Call all tracked unsubs and reset the runtime phase. */
+function cleanupRuntimeHandlers(): void {
+  for (const unsub of runtimeUnsubs) unsub();
+  runtimeUnsubs = [];
+  inRuntimePhase = false;
+}
+
+/** Test-only: reset runtime phase state between tests. */
+export function _resetRuntimePhase(): void {
+  runtimeUnsubs = [];
+  inRuntimePhase = false;
+}
+
+// ---------------------------------------------------------------------------
 // storyinit callbacks (direct invocation — avoids Zustand subscription issues)
 // ---------------------------------------------------------------------------
 
@@ -526,6 +561,9 @@ export const useStoryStore = create<StoryState>()(
 
       const keepDeferred = get().renderDeferred;
 
+      // Clean up all runtime-phase handlers (after beforerestart has fired)
+      cleanupRuntimeHandlers();
+
       resetPRNG();
       resetTriggers();
       const initialVars = deepClone(variableDefaults);
@@ -550,6 +588,10 @@ export const useStoryStore = create<StoryState>()(
       });
 
       lastNavigationVars = get().variables;
+
+      // Re-enter runtime phase before StoryInit so new handlers are tracked
+      enterRuntimePhase();
+
       executeStoryInit();
       clearSession(storyData.ifid);
       fireStoryInit();

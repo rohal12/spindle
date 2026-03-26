@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
-import { useStoryStore, onBeforeRestart } from '../../src/store';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  useStoryStore,
+  onBeforeRestart,
+  onStoryInit,
+  trackRuntimeUnsub,
+  enterRuntimePhase,
+  _resetRuntimePhase,
+} from '../../src/store';
 import { executeStoryInit } from '../../src/story-init';
 import type { StoryData, Passage } from '../../src/parser';
 import { registerClass, clearRegistry } from '../../src/class-registry';
@@ -880,6 +887,84 @@ describe('useStoryStore', () => {
       useStoryStore.getState().restart();
       expect(useStoryStore.getState().renderDeferred).toBe(true);
       unsub();
+    });
+  });
+
+  describe('runtime handler cleanup', () => {
+    beforeEach(() => {
+      _resetRuntimePhase();
+      useStoryStore.setState({
+        storyData: null,
+        currentPassage: '',
+        variables: {},
+        variableDefaults: {},
+        temporary: {},
+        history: [],
+        historyIndex: -1,
+        visitCounts: {},
+        renderCounts: {},
+        transitionConfig: null,
+        nextTransition: null,
+        renderDeferred: false,
+      });
+    });
+
+    it('trackRuntimeUnsub is a no-op before enterRuntimePhase', () => {
+      const unsub = vi.fn();
+      trackRuntimeUnsub(unsub);
+
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+      useStoryStore.getState().restart();
+
+      expect(unsub).not.toHaveBeenCalled();
+    });
+
+    it('calls tracked unsubs on restart after enterRuntimePhase', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      enterRuntimePhase();
+
+      const unsub = vi.fn();
+      trackRuntimeUnsub(unsub);
+
+      useStoryStore.getState().restart();
+
+      expect(unsub).toHaveBeenCalledOnce();
+    });
+
+    it('does not call startup-phase unsubs on restart', () => {
+      const startupUnsub = vi.fn();
+      trackRuntimeUnsub(startupUnsub);
+
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      enterRuntimePhase();
+
+      const runtimeUnsub = vi.fn();
+      trackRuntimeUnsub(runtimeUnsub);
+
+      useStoryStore.getState().restart();
+
+      expect(startupUnsub).not.toHaveBeenCalled();
+      expect(runtimeUnsub).toHaveBeenCalledOnce();
+    });
+
+    it('clears tracked unsubs after restart so they are not called again', () => {
+      const story = makeStoryData([makePassage(1, 'Start')]);
+      useStoryStore.getState().init(story);
+
+      enterRuntimePhase();
+      const unsub = vi.fn();
+      trackRuntimeUnsub(unsub);
+
+      useStoryStore.getState().restart();
+      expect(unsub).toHaveBeenCalledOnce();
+
+      useStoryStore.getState().restart();
+      expect(unsub).toHaveBeenCalledOnce();
     });
   });
 });
