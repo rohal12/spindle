@@ -1,5 +1,5 @@
 import { useStoryStore, trackRuntimeUnsub } from './store';
-import { on as emitterOn } from './event-emitter';
+import { on as emitterOn, emit } from './event-emitter';
 import type { Passage } from './parser';
 import { settings } from './settings';
 import type {
@@ -62,6 +62,33 @@ export function getReadyPromise(): Promise<void> | null {
 export function _resetReadyState(): void {
   readyResolve = null;
   readyPromise = null;
+}
+
+/** Lazily created shared Zustand subscription for variableChanged. */
+let variableChangedSubActive = false;
+
+function ensureVariableChangedSubscription(): void {
+  if (variableChangedSubActive) return;
+  variableChangedSubActive = true;
+  let prevVars = { ...useStoryStore.getState().variables };
+  useStoryStore.subscribe((state) => {
+    const changed: Record<string, { from: unknown; to: unknown }> = {};
+    let hasChanges = false;
+    const allKeys = new Set([
+      ...Object.keys(prevVars),
+      ...Object.keys(state.variables),
+    ]);
+    for (const key of allKeys) {
+      if (state.variables[key] !== prevVars[key]) {
+        changed[key] = { from: prevVars[key], to: state.variables[key] };
+        hasChanges = true;
+      }
+    }
+    prevVars = { ...state.variables };
+    if (hasChanges) {
+      emit('variableChanged', changed);
+    }
+  });
 }
 
 type NavigateCallback = (to: string, from: string) => void;
@@ -403,25 +430,11 @@ function createStoryAPI(): StoryAPI {
       }
 
       if (event === 'variableChanged') {
-        let prevVars = { ...useStoryStore.getState().variables };
-        const unsub = useStoryStore.subscribe((state) => {
-          const changed: Record<string, { from: unknown; to: unknown }> = {};
-          let hasChanges = false;
-          const allKeys = new Set([
-            ...Object.keys(prevVars),
-            ...Object.keys(state.variables),
-          ]);
-          for (const key of allKeys) {
-            if (state.variables[key] !== prevVars[key]) {
-              changed[key] = { from: prevVars[key], to: state.variables[key] };
-              hasChanges = true;
-            }
-          }
-          prevVars = { ...state.variables };
-          if (hasChanges) {
-            (callback as VariableChangedCallback)(changed);
-          }
-        });
+        ensureVariableChangedSubscription();
+        const unsub = emitterOn(
+          'variableChanged',
+          callback as VariableChangedCallback,
+        );
         trackRuntimeUnsub(unsub);
         return unsub;
       }

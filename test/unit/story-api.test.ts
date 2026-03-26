@@ -214,23 +214,7 @@ describe('StoryAPI', () => {
   describe('on(variableChanged)', () => {
     it('fires callback when variables change', () => {
       const cb = vi.fn();
-      let prevVars = { ...useStoryStore.getState().variables };
-      const unsub = useStoryStore.subscribe((state) => {
-        const changed: Record<string, { from: unknown; to: unknown }> = {};
-        let hasChanges = false;
-        const allKeys = new Set([
-          ...Object.keys(prevVars),
-          ...Object.keys(state.variables),
-        ]);
-        for (const key of allKeys) {
-          if (state.variables[key] !== prevVars[key]) {
-            changed[key] = { from: prevVars[key], to: state.variables[key] };
-            hasChanges = true;
-          }
-        }
-        prevVars = { ...state.variables };
-        if (hasChanges) cb(changed);
-      });
+      const unsub = Story.on('variableChanged', cb);
 
       useStoryStore.getState().setVariable('gold', 50);
       expect(cb).toHaveBeenCalledWith(
