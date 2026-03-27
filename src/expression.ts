@@ -339,11 +339,5 @@ export function clearExpressionCache(): void {
 }
 
 export function evaluateWithState(expr: string, state: StoryState): unknown {
-  return evaluate(
-    expr,
-    state.variables,
-    state.temporary,
-    {},
-    (state as any).transient ?? {},
-  );
+  return evaluate(expr, state.variables, state.temporary, {}, state.transient);
 }

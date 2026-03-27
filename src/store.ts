@@ -42,6 +42,7 @@ const SPECIAL_PASSAGES = new Set([
   'StoryInit',
   'StoryInterface',
   'StoryVariables',
+  'StoryTransients',
   'StoryLoading',
   'SaveTitle',
   'PassageReady',
@@ -237,6 +238,8 @@ export interface StoryState {
   currentPassage: string;
   variables: Record<string, unknown>;
   variableDefaults: Record<string, unknown>;
+  transient: Record<string, unknown>;
+  transientDefaults: Record<string, unknown>;
   temporary: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
@@ -256,6 +259,7 @@ export interface StoryState {
   init: (
     storyData: StoryData,
     variableDefaults?: Record<string, unknown>,
+    transientDefaults?: Record<string, unknown>,
   ) => void;
   navigate: (passageName: string) => void;
   goBack: () => void;
@@ -264,6 +268,8 @@ export interface StoryState {
   setTemporary: (name: string, value: unknown) => void;
   deleteVariable: (name: string) => void;
   deleteTemporary: (name: string) => void;
+  setTransient: (name: string, value: unknown) => void;
+  deleteTransient: (name: string) => void;
   trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string, custom?: Record<string, unknown>) => void;
@@ -291,6 +297,8 @@ export const useStoryStore = create<StoryState>()(
     currentPassage: '',
     variables: {},
     variableDefaults: {},
+    transient: {},
+    transientDefaults: {},
     temporary: {},
     history: [],
     historyIndex: -1,
@@ -315,6 +323,7 @@ export const useStoryStore = create<StoryState>()(
     init: (
       storyData: StoryData,
       variableDefaults: Record<string, unknown> = {},
+      transientDefaults: Record<string, unknown> = {},
     ) => {
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) {
@@ -331,6 +340,8 @@ export const useStoryStore = create<StoryState>()(
         state.currentPassage = startPassage.name;
         state.variables = initialVars;
         state.variableDefaults = variableDefaults;
+        state.transient = deepClone(transientDefaults);
+        state.transientDefaults = transientDefaults;
         state.temporary = {};
         state.history = [
           {
@@ -516,6 +527,18 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
+    setTransient: (name: string, value: unknown) => {
+      set((state) => {
+        state.transient[name] = value;
+      });
+    },
+
+    deleteTransient: (name: string) => {
+      set((state) => {
+        delete state.transient[name];
+      });
+    },
+
     trackRender: (passageName: string) => {
       set((state) => {
         state.renderCounts[passageName] =
@@ -524,7 +547,7 @@ export const useStoryStore = create<StoryState>()(
     },
 
     restart: () => {
-      const { storyData, variableDefaults } = get();
+      const { storyData, variableDefaults, transientDefaults } = get();
       if (!storyData) return;
 
       const startPassage = storyData.passagesById.get(storyData.startNode);
@@ -551,6 +574,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.currentPassage = startPassage.name;
         state.variables = initialVars;
+        state.transient = deepClone(transientDefaults);
         state.temporary = {};
         state.history = [
           {
@@ -804,6 +828,7 @@ export const useStoryStore = create<StoryState>()(
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};
+        state.transient = deepClone(get().transientDefaults);
       });
 
       lastNavigationVars = get().variables;
