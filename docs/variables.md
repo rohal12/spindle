@@ -1,6 +1,6 @@
 # Variables
 
-Spindle has three kinds of variables: **story variables** that persist across passages, **temporary variables** that reset on each navigation, and **local variables** that are scoped to a block (for-loop or widget body).
+Spindle has four kinds of variables: **story variables** that persist across passages, **temporary variables** that reset on each navigation, **local variables** that are scoped to a block (for-loop or widget body), and **transient variables** that are reactive but excluded from persistence.
 
 ## Story Variables
 
@@ -26,6 +26,51 @@ Temporary variables start with `_` and are cleared whenever the player navigates
 Display them with `{_temp}` or `{print _temp}`.
 
 Use temporary variables for intermediate calculations that don't need to persist.
+
+## Transient Variables
+
+Transient variables start with `%` and persist across passage navigation like story variables, but are **excluded from all persistence** — history snapshots, save payloads, and session storage. They are ideal for large derived state that is fully re-derivable from an external engine.
+
+```
+{set %npcList = [...]}
+{set %dashboardData = { revenue: 1000 }}
+```
+
+Display them with `{%npcList}` or `{print %npcList}`.
+
+Transient variables are reactive — changes trigger Preact rerenders just like `$` variables. But unlike `$` variables, they don't bloat history snapshots or save files.
+
+### When to use transient variables
+
+- **Derived display state** projected from an external engine (NPC lists, stat sheets, economy dashboards)
+- **UI state** that doesn't need to survive a save/load cycle (panel open/closed, scroll position)
+- **Large data** that would cause excessive history growth if stored as `$` variables
+
+### The `StoryTransients` Passage
+
+Declare transient variables and their defaults in a special passage named `StoryTransients`:
+
+```
+:: StoryTransients
+%npcList = []
+%agents = {}
+%economy_summary = {}
+```
+
+These defaults are applied on `init()` and `restart()`, and after loading a save (since transient data is not saved).
+
+The `StoryTransients` passage is optional. Variable names must be unique across `$` and `%` scopes.
+
+### Lifecycle
+
+| Event             | Behavior                                           |
+| ----------------- | -------------------------------------------------- |
+| Navigation        | Persists (unlike `_temporary`)                     |
+| Back / Forward    | Stays at current value (not restored from history) |
+| Restart           | Reset to defaults                                  |
+| Save              | Excluded                                           |
+| Load              | Reset to defaults                                  |
+| Page refresh (F5) | Reset to defaults                                  |
 
 ## The `StoryVariables` Passage
 
@@ -106,7 +151,7 @@ Then use methods and getters in your passages:
 
 ## Expressions
 
-Anywhere Spindle expects a value (conditions in `{if}`, values in `{set}`, arguments to `{print}`), you write JavaScript expressions with `$var`, `_var`, and `@var` placeholders:
+Anywhere Spindle expects a value (conditions in `{if}`, values in `{set}`, arguments to `{print}`), you write JavaScript expressions with `$var`, `_var`, `@var`, and `%var` placeholders:
 
 ```
 {if $health > 0 && $character.alive}
@@ -121,10 +166,11 @@ Before evaluation, the expression system transforms:
 - `$varName` into a reference to the story variable `varName`
 - `_tempName` into a reference to the temporary variable `tempName`
 - `@localName` into a reference to the block-scoped local `localName`
+- `%transName` into a reference to the transient variable `transName`
 
 Standard JavaScript operators and built-in functions (`Math`, `Array` methods, string methods) all work.
 
-Variable sigils inside string literals are preserved as-is. This means `$`, `_`, and `@` inside quoted strings won't be transformed:
+Variable sigils inside string literals are preserved as-is. This means `$`, `_`, `@`, and `%` inside quoted strings won't be transformed:
 
 ```
 {set $greeting = "Hello, " + $name}

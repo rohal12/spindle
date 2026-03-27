@@ -25,6 +25,26 @@ Set one or more story variables.
 {/do}
 ```
 
+#### Transient variables
+
+Prefix variable names with `%` to read/write transient variables:
+
+```
+{do}
+  Story.set("%npcList", [...]);
+  Story.set({ "%agents": {...}, health: 100 });
+  var agents = Story.get("%agents");
+{/do}
+```
+
+Transient variables fire `variableChanged` events with `%`-prefixed keys:
+
+```
+Story.on("variableChanged", function(changed) {
+  // changed = { "%npcList": { from: [...], to: [...] }, health: { from: 90, to: 100 } }
+});
+```
+
 ### `Story.goto(passageName)`
 
 Navigate to a passage.

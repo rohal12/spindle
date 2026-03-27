@@ -24,11 +24,12 @@ All four forms navigate to `Target` when clicked. The first form uses the passag
 
 ## Variable Display
 
-Inline a variable's value using `{$name}` or `{_name}`:
+Inline a variable's value using `{$name}`, `{_name}`, or `{%name}`:
 
 ```
 Your health is {$health}.
 Temporary result: {_result}.
+NPC count: {%npcList.length}.
 ```
 
 Dot notation accesses nested fields:
@@ -113,7 +114,7 @@ Void tags (`br`, `col`, `hr`, `img`, `wbr`) are self-closing. All other tags req
 </div>
 ```
 
-Variable references (`{$var}`, `{_var}`, `{@var}`) inside HTML attributes are interpolated at render time:
+Variable references (`{$var}`, `{_var}`, `{@var}`, `{%var}`) inside HTML attributes are interpolated at render time:
 
 ```
 {set $color = "red"}

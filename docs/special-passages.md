@@ -38,6 +38,21 @@ When this passage exists, Spindle validates every `$variable` reference in your 
 
 See [Variables](variables.md) for details.
 
+## `StoryTransients`
+
+Declares transient variables with their default values. Each line must follow `%name = expression`:
+
+```
+:: StoryTransients
+%npcList = []
+%agents = {}
+%economy_summary = {}
+```
+
+Transient variables are reactive but excluded from all persistence (history, saves, session storage). They reset to defaults on restart and load.
+
+Variable names must be unique across `StoryVariables` and `StoryTransients`. See [Variables](variables.md) for details.
+
 ## `StoryInterface`
 
 Controls the entire page layout. When this passage exists, its content replaces the default UI — including the menubar and passage display area. Use the `{passage}` macro to place the current passage within your custom layout.
