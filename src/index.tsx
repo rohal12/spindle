@@ -88,6 +88,27 @@ function boot() {
   const schema = parseStoryVariables(storyVarsPassage.content);
   const errors = validatePassages(storyData.passages, schema);
 
+  // Parse StoryTransients (optional — no error if missing)
+  let transientDefaults: Record<string, unknown> = {};
+  const storyTransientsPassage = storyData.passages.get('StoryTransients');
+  if (storyTransientsPassage) {
+    const transientSchema = parseStoryVariables(
+      storyTransientsPassage.content,
+      '%',
+    );
+
+    // Check for cross-scope name collisions
+    for (const name of transientSchema.keys()) {
+      if (schema.has(name)) {
+        errors.push(
+          `StoryTransients: Variable "${name}" is already declared in StoryVariables. Names must be unique across scopes.`,
+        );
+      }
+    }
+
+    transientDefaults = extractDefaults(transientSchema);
+  }
+
   if (errors.length > 0) {
     const root = document.getElementById('root');
     if (root) renderErrors(root, errors);
@@ -98,7 +119,7 @@ function boot() {
 
   defaults = extractDefaults(schema);
 
-  useStoryStore.getState().init(storyData, defaults);
+  useStoryStore.getState().init(storyData, defaults, transientDefaults);
 
   // Enter runtime phase — handlers registered from here on are cleaned on restart
   enterRuntimePhase();
