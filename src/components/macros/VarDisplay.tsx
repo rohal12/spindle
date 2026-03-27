@@ -5,7 +5,7 @@ import { useInterpolate } from '../../hooks/use-interpolate';
 
 interface VarDisplayProps {
   name: string;
-  scope: 'variable' | 'temporary' | 'local';
+  scope: 'variable' | 'temporary' | 'local' | 'transient';
   className?: string;
   id?: string;
 }
@@ -22,7 +22,9 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
       ? s.variables[root]
       : scope === 'temporary'
         ? s.temporary[root]
-        : undefined,
+        : scope === 'transient'
+          ? s.transient[root]
+          : undefined,
   );
 
   let value: unknown;

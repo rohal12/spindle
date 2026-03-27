@@ -8,7 +8,7 @@ export interface TextNode {
 export interface VariableNode {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary' | 'local';
+  scope: 'variable' | 'temporary' | 'local' | 'transient';
   className?: string;
   id?: string;
 }

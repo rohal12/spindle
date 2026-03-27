@@ -29,7 +29,7 @@ export interface MacroToken {
 export interface VariableToken {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary' | 'local';
+  scope: 'variable' | 'temporary' | 'local' | 'transient';
   className?: string;
   id?: string;
   start: number;
@@ -499,6 +499,51 @@ export function tokenize(input: string): Token[] {
           continue;
         }
 
+        if (charAfter === '%') {
+          // {.class#id %transient.field} or {.class %expr[...]}
+          i = afterSelectors + 1;
+          const nameStart = i;
+          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
+          const name = input.slice(nameStart, i);
+
+          if (input[i] === '}') {
+            i++; // skip }
+            const token: VariableToken = {
+              type: 'variable',
+              name,
+              scope: 'transient',
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Complex expression — scan for balanced closing }
+          const closeIdx_pct = scanBalancedBrace(input, nameStart);
+          if (closeIdx_pct !== -1) {
+            const expression = input.slice(afterSelectors, closeIdx_pct);
+            i = closeIdx_pct + 1;
+            const token: ExpressionToken = {
+              type: 'expression',
+              expression,
+              start,
+              end: i,
+            };
+            if (className) token.className = className;
+            if (id) token.id = id;
+            tokens.push(token);
+            textStart = i;
+            continue;
+          }
+          // Unbalanced — treat as text
+          i = start + 1;
+          textStart = start;
+          continue;
+        }
+
         if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
           // {.class#id macroName args}
           i = afterSelectors;
@@ -637,6 +682,46 @@ export function tokenize(input: string): Token[] {
             type: 'variable',
             name,
             scope: 'local',
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Complex expression — scan for balanced closing }
+        const closeIdx = scanBalancedBrace(input, nameStart);
+        if (closeIdx !== -1) {
+          const expression = input.slice(start + 1, closeIdx);
+          i = closeIdx + 1;
+          tokens.push({
+            type: 'expression',
+            expression,
+            start,
+            end: i,
+          });
+          textStart = i;
+          continue;
+        }
+        // Unbalanced — treat as text
+        i = start + 1;
+        textStart = start;
+        continue;
+      }
+
+      // {%transient.field} or {%expr[...]}
+      if (nextChar === '%') {
+        flushText(i);
+        i += 2;
+        const nameStart = i;
+        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
+        const name = input.slice(nameStart, i);
+
+        if (input[i] === '}') {
+          i++; // skip }
+          tokens.push({
+            type: 'variable',
+            name,
+            scope: 'transient',
             start,
             end: i,
           });
