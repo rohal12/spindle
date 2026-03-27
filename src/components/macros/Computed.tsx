@@ -61,11 +61,12 @@ function computeAndApply(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
+  transient: Record<string, unknown>,
   rawArgs: string,
 ): void {
   let newValue: unknown;
   try {
-    newValue = evaluate(expr, variables, temporary, locals);
+    newValue = evaluate(expr, variables, temporary, locals, transient);
   } catch (err) {
     console.error(
       `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
@@ -86,7 +87,7 @@ defineMacro({
   name: 'computed',
   merged: true,
   render({ rawArgs }, ctx) {
-    const [mergedVars, mergedTemps, mergedLocals] = ctx.merged!;
+    const [mergedVars, mergedTemps, mergedLocals, mergedTrans] = ctx.merged!;
 
     let target: string;
     let expr: string;
@@ -113,6 +114,7 @@ defineMacro({
         mergedVars,
         mergedTemps,
         mergedLocals,
+        mergedTrans,
         rawArgs,
       );
     }
@@ -125,9 +127,10 @@ defineMacro({
         mergedVars,
         mergedTemps,
         mergedLocals,
+        mergedTrans,
         rawArgs,
       );
-    }, [mergedVars, mergedTemps, mergedLocals]);
+    }, [mergedVars, mergedTemps, mergedLocals, mergedTrans]);
 
     return null;
   },

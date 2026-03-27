@@ -45,7 +45,13 @@ let dialogHostCallbacks: DialogHostCallbacks | null = null;
 function evalCondition(condition: string): boolean {
   const state = useStoryStore.getState();
   try {
-    return !!evaluate(condition, state.variables, state.temporary);
+    return !!evaluate(
+      condition,
+      state.variables,
+      state.temporary,
+      {},
+      state.transient,
+    );
   } catch {
     return false;
   }

@@ -23,30 +23,34 @@ type CompiledExpression = (
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
   __fns: ExpressionFns,
+  transient: Record<string, unknown>,
 ) => unknown;
 
 const FN_CACHE_MAX = 500;
 const fnCache = new Map<string, CompiledExpression>();
 
 /**
- * Transform expression: $var → variables["var"], _var → temporary["var"]
- * Only transforms when $ or _ appears as a word boundary (not inside strings naively,
+ * Transform expression: $var → variables["var"], _var → temporary["var"],
+ * @var → locals["var"], %var → transient["var"]
+ * Only transforms when sigils appear as a word boundary (not inside strings naively,
  * but authors already have full JS access so this is acceptable).
  */
 const VAR_RE = /\$(\w+)/g;
 const TEMP_RE = /(?<![.\w])_(\w+)/g;
 const LOCAL_RE = /@(\w+)/g;
+const TRANS_RE = /(?<!\w)%(\w+)/g;
 
 function transformSegment(segment: string): string {
   return segment
     .replace(VAR_RE, 'variables["$1"]')
     .replace(TEMP_RE, 'temporary["$1"]')
-    .replace(LOCAL_RE, 'locals["$1"]');
+    .replace(LOCAL_RE, 'locals["$1"]')
+    .replace(TRANS_RE, 'transient["$1"]');
 }
 
 /**
  * String-aware expression transformer. Walks the expression character by
- * character so that variable sigils ($, _, @) inside string literals are
+ * character so that variable sigils ($, _, @, %) inside string literals are
  * left untouched while code — including expressions inside template-literal
  * `${…}` interpolations — is transformed.
  */
@@ -215,6 +219,7 @@ function getOrCompile(key: string, body: string): CompiledExpression {
     'temporary',
     'locals',
     '__fns',
+    'transient',
     preamble + body,
   ) as CompiledExpression;
   fnCache.set(key, fn);
@@ -298,11 +303,12 @@ export function evaluate(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown> = {},
+  transient: Record<string, unknown> = {},
 ): unknown {
   const transformed = transform(expr);
   const body = `return (${transformed});`;
   const fn = getOrCompile(body, body);
-  return fn(variables, temporary, locals, buildExpressionFns());
+  return fn(variables, temporary, locals, buildExpressionFns(), transient);
 }
 
 /**
@@ -314,10 +320,11 @@ export function execute(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown> = {},
+  transient: Record<string, unknown> = {},
 ): void {
   const transformed = transform(code);
   const fn = getOrCompile('exec:' + transformed, transformed);
-  fn(variables, temporary, locals, buildExpressionFns());
+  fn(variables, temporary, locals, buildExpressionFns(), transient);
 }
 
 /**
@@ -332,5 +339,5 @@ export function clearExpressionCache(): void {
 }
 
 export function evaluateWithState(expr: string, state: StoryState): unknown {
-  return evaluate(expr, state.variables, state.temporary, {});
+  return evaluate(expr, state.variables, state.temporary, {}, state.transient);
 }

@@ -52,6 +52,7 @@ export interface MacroContext {
     Record<string, unknown>,
     Record<string, unknown>,
     Record<string, unknown>,
+    Record<string, unknown>,
   ];
   varName?: string;
   value?: unknown;
@@ -178,12 +179,21 @@ export function defineMacro(
       ctx.merged = useMergedLocals();
       const merged = ctx.merged;
       ctx.evaluate = (expr: string) =>
-        evaluate(expr, merged[0], merged[1], merged[2]);
+        evaluate(expr, merged[0], merged[1], merged[2], merged[3]);
     }
 
     if (config.storeVar) {
       const firstToken =
         props.rawArgs.trim().split(/\s+/)[0]?.replace(/["']/g, '') ?? '';
+
+      if (firstToken.startsWith('%')) {
+        return h(
+          'span',
+          { class: 'error' },
+          `{${config.name}}: transient variables (%${firstToken.slice(1)}) cannot be bound to input macros`,
+        );
+      }
+
       const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
       const segments = varExpr.split('.');
       ctx.varName = varExpr;

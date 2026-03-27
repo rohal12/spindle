@@ -243,6 +243,7 @@ function getVariableTextValue(
   let value: unknown;
   if (node.scope === 'variable') value = state.variables[root];
   else if (node.scope === 'temporary') value = state.temporary[root];
+  else if (node.scope === 'transient') value = state.transient[root];
   else value = locals[root];
 
   for (let i = 1; i < parts.length; i++) {

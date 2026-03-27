@@ -12,7 +12,10 @@ export interface VariableSchema extends FieldSchema {
   default: unknown;
 }
 
-const DECLARATION_RE = /^\$(\w+)\s*=\s*(.+)$/;
+function declarationRegex(sigil: string): RegExp {
+  const escaped = sigil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
+}
 const VAR_REF_RE = /\$(\w+(?:\.\w+)*)/g;
 const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
 
@@ -32,20 +35,23 @@ function inferSchema(value: unknown): FieldSchema {
   const jsType = typeof value;
   if (!VALID_VAR_TYPES.has(jsType)) {
     throw new Error(
-      `StoryVariables: Unsupported type "${jsType}" for value ${String(value)}. Expected number, string, boolean, array, or object.`,
+      `Unsupported type "${jsType}" for value ${String(value)}. Expected number, string, boolean, array, or object.`,
     );
   }
   return { type: jsType as VarType };
 }
 
 /**
- * Parse a StoryVariables passage content into a schema map.
- * Each line: `$varName = expression`
+ * Parse a StoryVariables or StoryTransients passage content into a schema map.
+ * Each line: `$varName = expression` (or `%varName = expression` for transients)
  */
 export function parseStoryVariables(
   content: string,
+  sigil: '$' | '%' = '$',
 ): Map<string, VariableSchema> {
   const schema = new Map<string, VariableSchema>();
+  const DECLARATION_RE = declarationRegex(sigil);
+  const passageName = sigil === '%' ? 'StoryTransients' : 'StoryVariables';
 
   for (const rawLine of content.split('\n')) {
     const line = rawLine.trim();
@@ -54,7 +60,7 @@ export function parseStoryVariables(
     const match = line.match(DECLARATION_RE);
     if (!match) {
       throw new Error(
-        `StoryVariables: Invalid declaration: "${line}". Expected: $name = value`,
+        `${passageName}: Invalid declaration: "${line}". Expected: ${sigil}name = value`,
       );
     }
 
@@ -64,11 +70,18 @@ export function parseStoryVariables(
       value = new Function('return (' + expr + ')')();
     } catch (err) {
       throw new Error(
-        `StoryVariables: Failed to evaluate "$${name} = ${expr}": ${err instanceof Error ? err.message : err}`,
+        `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${err instanceof Error ? err.message : err}`,
       );
     }
 
-    const fieldSchema = inferSchema(value);
+    let fieldSchema: FieldSchema;
+    try {
+      fieldSchema = inferSchema(value);
+    } catch (err) {
+      throw new Error(
+        `${passageName}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
     schema.set(name, { ...fieldSchema, name, default: value });
   }
 
@@ -146,8 +159,8 @@ export function validatePassages(
   const errors: string[] = [];
 
   for (const [name, passage] of passages) {
-    // Don't validate the StoryVariables passage itself
-    if (name === 'StoryVariables') continue;
+    // Don't validate the StoryVariables/StoryTransients passages themselves
+    if (name === 'StoryVariables' || name === 'StoryTransients') continue;
 
     const forLocals = extractForLocals(passage.content);
 

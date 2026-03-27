@@ -32,7 +32,8 @@ function isStandaloneValue(token: string): boolean {
   // Quoted string
   if (first === '"' || first === "'" || first === '`') return true;
   // Variable ($var, _var, @var)
-  if (first === '$' || first === '_' || first === '@') return true;
+  if (first === '$' || first === '_' || first === '@' || first === '%')
+    return true;
   // Number literal
   if (/\d/.test(first)) return true;
   // Signed number (-1, +2)
@@ -218,7 +219,8 @@ export function WidgetInvocation({
 }: WidgetInvocationProps) {
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
-  const [mergedVars, mergedTemps, mergedLocals] = useMergedLocals();
+  const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
+    useMergedLocals();
 
   const childrenValue = invocationChildren?.length ? invocationChildren : null;
 
@@ -239,7 +241,13 @@ export function WidgetInvocation({
     let value: unknown;
     if (expr !== undefined) {
       try {
-        value = evaluate(expr, mergedVars, mergedTemps, mergedLocals);
+        value = evaluate(
+          expr,
+          mergedVars,
+          mergedTemps,
+          mergedLocals,
+          mergedTrans,
+        );
       } catch {
         value = undefined;
       }

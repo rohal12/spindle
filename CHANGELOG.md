@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Transient variables (`%var`): reactive Zustand-backed variables that are excluded from all persistence (history snapshots, save payloads, session storage). Declared in a `StoryTransients` passage with `%name = value` syntax. Ideal for large derived state projected from external engines. Accessible via `{%var}` in passages, `{set %var = expr}`, and `Story.set('%var', value)` / `Story.get('%var')` in the API. ([#137](https://github.com/rohal12/spindle/issues/137))
 - `Story.on('storyinit', callback)` event that fires after `StoryInit` completes — on initial boot and after every `restart()` call (including `Story.storage.clearGameData()` and `Story.storage.clearAllData()`). Allows external state engines to reliably re-sync after a restart. ([#115](https://github.com/rohal12/spindle/issues/115))
 - Tooling API: `Story.getMacroRegistry()` returns metadata for all registered macros (built-in and user-defined) — name, block status, sub-macros, feature flags, source origin, and optional description/parameters
 - `@rohal12/spindle/tooling` entry point for Node.js/LSP use — lightweight `defineMacro()` shim that captures metadata without Preact, pre-loaded with builtin metadata from build-time JSON

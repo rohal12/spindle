@@ -294,6 +294,7 @@ export interface MacroContext {
     Record<string, unknown>,
     Record<string, unknown>,
     Record<string, unknown>,
+    Record<string, unknown>,
   ];
   varName?: string;
   value?: unknown;
@@ -364,12 +365,20 @@ export interface SaveInfo {
  * @see {@link ../../src/story-api.ts} for the implementation.
  */
 export interface StoryAPI {
-  /** Get the value of a story variable. */
+  /**
+   * Get a variable value. Use '%name' prefix for transient variables.
+   * @example Story.get('health') // $health
+   * @example Story.get('%npcList') // %npcList (transient)
+   */
   get(name: string): unknown;
 
-  /** Set a single story variable. */
+  /**
+   * Set one or more variables. Use '%name' prefix for transient variables.
+   * @example Story.set('health', 100)
+   * @example Story.set('%npcList', [...])
+   * @example Story.set({ health: 100, '%npcList': [...] })
+   */
   set(name: string, value: unknown): void;
-  /** Set multiple story variables at once. */
   set(vars: Record<string, unknown>): void;
 
   /** Navigate to a passage by name. */
