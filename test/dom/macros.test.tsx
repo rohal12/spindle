@@ -273,6 +273,28 @@ describe('macro components', () => {
 
       document.body.removeChild(container);
     });
+
+    it('computed reading @local inside for-loop does not infinite-loop (#140)', () => {
+      useStoryStore.getState().setTemporary('items', [
+        { name: 'a', status: 'ok' },
+        { name: 'b', status: 'err' },
+      ]);
+
+      const container = document.createElement('div');
+      const passage = makePassage(
+        1,
+        'Test',
+        '{for @item of _items}{computed _derived = @item.status}<span class="result">{@item.name}-{_derived}</span>{/for}',
+      );
+      act(() => {
+        render(<Passage passage={passage} />, container);
+      });
+
+      const results = container.querySelectorAll('.result');
+      expect(results).toHaveLength(2);
+      expect(results[0].textContent).toBe('a-ok');
+      expect(results[1].textContent).toBe('b-err');
+    });
   });
 
   describe('{do}', () => {
