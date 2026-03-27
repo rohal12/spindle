@@ -22,9 +22,9 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
       const target = trimmed.slice(0, i).trim();
       const expr = trimmed.slice(i + 1).trim();
 
-      if (!target.match(/^[$_]\w+$/)) {
+      if (!target.match(/^[$_@]\w+$/)) {
         throw new Error(
-          `{computed}: target must be $name or _name, got "${target}"`,
+          `{computed}: target must be $name, _name, or @name, got "${target}"`,
         );
       }
 
@@ -58,12 +58,14 @@ function computeAndApply(
   expr: string,
   name: string,
   isTemp: boolean,
+  isLocal: boolean,
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
   transient: Record<string, unknown>,
   rawArgs: string,
   prevRef: { current: unknown },
+  localsUpdate: ((key: string, value: unknown) => void) | null,
 ): void {
   let newValue: unknown;
   try {
@@ -78,9 +80,20 @@ function computeAndApply(
 
   if (!valuesEqual(prevRef.current, newValue)) {
     prevRef.current = newValue;
-    const state = useStoryStore.getState();
-    if (isTemp) state.setTemporary(name, newValue);
-    else state.setVariable(name, newValue);
+    if (isLocal) {
+      try {
+        localsUpdate!(name, newValue);
+      } catch (err) {
+        console.error(
+          `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
+          err,
+        );
+      }
+    } else {
+      const state = useStoryStore.getState();
+      if (isTemp) state.setTemporary(name, newValue);
+      else state.setVariable(name, newValue);
+    }
   }
 }
 
@@ -102,8 +115,10 @@ defineMacro({
         />
       );
     }
+    const isLocal = target.startsWith('@');
     const isTemp = target.startsWith('_');
     const name = target.slice(1);
+    const localsUpdate = isLocal ? ctx.update : null;
 
     const prevOutput = ctx.hooks.useRef<unknown>(undefined);
 
@@ -114,12 +129,14 @@ defineMacro({
         expr,
         name,
         isTemp,
+        isLocal,
         mergedVars,
         mergedTemps,
         mergedLocals,
         mergedTrans,
         rawArgs,
         prevOutput,
+        localsUpdate,
       );
     }
 
@@ -128,12 +145,14 @@ defineMacro({
         expr,
         name,
         isTemp,
+        isLocal,
         mergedVars,
         mergedTemps,
         mergedLocals,
         mergedTrans,
         rawArgs,
         prevOutput,
+        localsUpdate,
       );
     }, [mergedVars, mergedTemps, mergedLocals, mergedTrans]);
 

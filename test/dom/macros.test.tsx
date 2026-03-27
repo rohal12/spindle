@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
@@ -310,13 +310,70 @@ describe('macro components', () => {
         render(<Passage passage={passage} />, container);
       });
 
-      // Multiple iterations writing to the same _derived temp: last-write-wins,
-      // so both iterations see the final value. The key assertion is that it
-      // renders without hanging and produces the correct number of results.
+      // _var targets write to global temp store — all iterations share the same
+      // variable, so last-write-wins. Use @-target for per-iteration values.
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
       expect(results[0].textContent).toMatch(/^a-(ok|err)$/);
       expect(results[1].textContent).toMatch(/^b-(ok|err)$/);
+    });
+
+    it('computed with @-target writes to local scope per-iteration', () => {
+      useStoryStore
+        .getState()
+        .setTemporary('items', [{ name: 'a', status: 'ok' }]);
+
+      const container = document.createElement('div');
+      const passage = makePassage(
+        1,
+        'Test',
+        "{for @item of _items}{computed @cls = @item.status == 'ok' ? 'green' : 'red'}<span class=\"result\">{@item.name}-{@cls}</span>{/for}",
+      );
+      act(() => {
+        render(<Passage passage={passage} />, container);
+      });
+
+      const results = container.querySelectorAll('.result');
+      expect(results).toHaveLength(1);
+      expect(results[0].textContent).toBe('a-green');
+    });
+
+    it('computed @-target produces per-iteration values in multi-item for-loop (#140)', () => {
+      useStoryStore.getState().setTemporary('items', [
+        { name: 'a', status: 'ok' },
+        { name: 'b', status: 'err' },
+      ]);
+
+      const container = document.createElement('div');
+      const passage = makePassage(
+        1,
+        'Test',
+        "{for @item of _items}{computed @cls = @item.status == 'ok' ? 'green' : 'red'}<span class=\"result\">{@item.name}-{@cls}</span>{/for}",
+      );
+      act(() => {
+        render(<Passage passage={passage} />, container);
+      });
+
+      const results = container.querySelectorAll('.result');
+      expect(results).toHaveLength(2);
+      expect(results[0].textContent).toBe('a-green');
+      expect(results[1].textContent).toBe('b-red');
+    });
+
+    it('computed @-target outside local scope logs error', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const container = document.createElement('div');
+      const passage = makePassage(1, 'Test', "{computed @cls = 'foo'}");
+      act(() => {
+        render(<Passage passage={passage} />, container);
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('{computed @cls'),
+        expect.any(Error),
+      );
+      spy.mockRestore();
     });
   });
 
