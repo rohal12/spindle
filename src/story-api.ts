@@ -76,20 +76,37 @@ function ensureVariableChangedSubscription(): void {
   if (variableChangedSubActive) return;
   variableChangedSubActive = true;
   let prevVars = { ...useStoryStore.getState().variables };
+  let prevTrans = { ...useStoryStore.getState().transient };
   useStoryStore.subscribe((state) => {
     const changed: Record<string, { from: unknown; to: unknown }> = {};
     let hasChanges = false;
-    const allKeys = new Set([
+
+    // Check $variables
+    const allVarKeys = new Set([
       ...Object.keys(prevVars),
       ...Object.keys(state.variables),
     ]);
-    for (const key of allKeys) {
+    for (const key of allVarKeys) {
       if (state.variables[key] !== prevVars[key]) {
         changed[key] = { from: prevVars[key], to: state.variables[key] };
         hasChanges = true;
       }
     }
+
+    // Check %transient
+    const allTransKeys = new Set([
+      ...Object.keys(prevTrans),
+      ...Object.keys(state.transient),
+    ]);
+    for (const key of allTransKeys) {
+      if (state.transient[key] !== prevTrans[key]) {
+        changed[`%${key}`] = { from: prevTrans[key], to: state.transient[key] };
+        hasChanges = true;
+      }
+    }
+
     prevVars = { ...state.variables };
+    prevTrans = { ...state.transient };
     if (hasChanges) {
       emit('variableChanged', changed);
     }
@@ -178,16 +195,27 @@ export interface StoryAPI {
 function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
+      if (name.startsWith('%')) {
+        return useStoryStore.getState().transient[name.slice(1)];
+      }
       return useStoryStore.getState().variables[name];
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
       const state = useStoryStore.getState();
       if (typeof nameOrVars === 'string') {
-        state.setVariable(nameOrVars, value);
+        if (nameOrVars.startsWith('%')) {
+          state.setTransient(nameOrVars.slice(1), value);
+        } else {
+          state.setVariable(nameOrVars, value);
+        }
       } else {
         for (const [k, v] of Object.entries(nameOrVars)) {
-          state.setVariable(k, v);
+          if (k.startsWith('%')) {
+            state.setTransient(k.slice(1), v);
+          } else {
+            state.setVariable(k, v);
+          }
         }
       }
     },
