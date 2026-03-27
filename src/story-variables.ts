@@ -35,7 +35,7 @@ function inferSchema(value: unknown): FieldSchema {
   const jsType = typeof value;
   if (!VALID_VAR_TYPES.has(jsType)) {
     throw new Error(
-      `StoryVariables: Unsupported type "${jsType}" for value ${String(value)}. Expected number, string, boolean, array, or object.`,
+      `Unsupported type "${jsType}" for value ${String(value)}. Expected number, string, boolean, array, or object.`,
     );
   }
   return { type: jsType as VarType };
@@ -74,7 +74,14 @@ export function parseStoryVariables(
       );
     }
 
-    const fieldSchema = inferSchema(value);
+    let fieldSchema: FieldSchema;
+    try {
+      fieldSchema = inferSchema(value);
+    } catch (err) {
+      throw new Error(
+        `${passageName}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
     schema.set(name, { ...fieldSchema, name, default: value });
   }
 

@@ -17,10 +17,17 @@ export function ExprDisplay({ expression, className, id }: ExprDisplayProps) {
   const localsValues = useContext(LocalsValuesContext);
   const variables = useStoryStore((s) => s.variables);
   const temporary = useStoryStore((s) => s.temporary);
+  const transient = useStoryStore((s) => s.transient);
 
   let display: string;
   try {
-    const value = evaluate(expression, variables, temporary, localsValues);
+    const value = evaluate(
+      expression,
+      variables,
+      temporary,
+      localsValues,
+      transient,
+    );
     display = value == null ? '' : String(value);
   } catch {
     display = `{error: ${expression}}`;
