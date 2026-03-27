@@ -53,21 +53,35 @@ function parseForArgs(rawArgs: string): {
 
 function ForIteration({
   parentValues,
-  ownKeys,
-  initialValues,
+  itemVar,
+  itemValue,
+  indexVar,
+  indexValue,
   children,
 }: {
   parentValues: Record<string, unknown>;
-  ownKeys: Record<string, unknown>;
-  initialValues: Record<string, unknown>;
+  itemVar: string;
+  itemValue: unknown;
+  indexVar: string | null;
+  indexValue: number;
   children: ASTNode[];
 }) {
   const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
-    () => ({ ...initialValues }),
+    () => ({}),
   );
 
-  // Recomputed every render — picks up new parentValues/ownKeys from parent
-  const localState = { ...parentValues, ...ownKeys, ...localMutations };
+  const ownKeys = useMemo(
+    () => ({
+      [itemVar]: itemValue,
+      ...(indexVar ? { [indexVar]: indexValue } : undefined),
+    }),
+    [itemVar, itemValue, indexVar, indexValue],
+  );
+
+  const localState = useMemo(
+    () => ({ ...parentValues, ...ownKeys, ...localMutations }),
+    [parentValues, ownKeys, localMutations],
+  );
 
   const valuesRef = useRef(localState);
   valuesRef.current = localState;
@@ -131,22 +145,17 @@ defineMacro({
       );
     }
 
-    const content = list.map((item, i) => {
-      const ownKeys: Record<string, unknown> = {
-        [itemVar]: item,
-        ...(indexVar ? { [indexVar]: i } : undefined),
-      };
-
-      return (
-        <ForIteration
-          key={`${i}-${JSON.stringify(item)}`}
-          parentValues={parentValues}
-          ownKeys={ownKeys}
-          initialValues={{}}
-          children={children}
-        />
-      );
-    });
+    const content = list.map((item, i) => (
+      <ForIteration
+        key={`${i}-${JSON.stringify(item)}`}
+        parentValues={parentValues}
+        itemVar={itemVar}
+        itemValue={item}
+        indexVar={indexVar}
+        indexValue={i}
+        children={children}
+      />
+    ));
 
     return ctx.wrap(content);
   },
