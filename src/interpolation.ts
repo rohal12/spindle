@@ -1,7 +1,7 @@
 import { evaluate } from './expression';
 
-/** Detects any {…} block that starts with a sigil ($, _, @). */
-const INTERP_TEST = /\{[\$_@]\w/;
+/** Detects any {…} block that starts with a sigil ($, _, @, %). */
+const INTERP_TEST = /\{[\$_@%]\w/;
 
 export function hasInterpolation(s: string): boolean {
   return INTERP_TEST.test(s);
@@ -25,8 +25,9 @@ export function interpolateExpression(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
+  transient: Record<string, unknown> = {},
 ): string {
-  const value = evaluate(expr, variables, temporary, locals);
+  const value = evaluate(expr, variables, temporary, locals, transient);
   return value == null ? '' : String(value);
 }
 
@@ -35,6 +36,7 @@ function resolveSimple(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
+  transient: Record<string, unknown>,
 ): string {
   const prefix = ref[0]!;
   const path = ref.slice(1);
@@ -46,6 +48,8 @@ function resolveSimple(
     value = variables[root];
   } else if (prefix === '_') {
     value = temporary[root];
+  } else if (prefix === '%') {
+    value = transient[root];
   } else {
     value = locals[root];
   }
@@ -62,6 +66,7 @@ export function interpolate(
   variables: Record<string, unknown>,
   temporary: Record<string, unknown>,
   locals: Record<string, unknown>,
+  transient: Record<string, unknown> = {},
 ): string {
   // Manual scan: process {…} blocks containing sigils.
   // Simple dot-path refs use the fast resolver; everything else falls back
@@ -86,7 +91,7 @@ export function interpolate(
     i++; // skip {
 
     const sigil = template[i];
-    if (sigil !== '$' && sigil !== '_' && sigil !== '@') {
+    if (sigil !== '$' && sigil !== '_' && sigil !== '@' && sigil !== '%') {
       // Not an interpolation — emit the { as text
       result += '{';
       continue;
@@ -111,10 +116,16 @@ export function interpolate(
     i = j + 1; // skip past closing }
 
     // Try simple dot-path match first
-    if (/^[\$_@][\w.]+$/.test(inner)) {
-      result += resolveSimple(inner, variables, temporary, locals);
+    if (/^[\$_@%][\w.]+$/.test(inner)) {
+      result += resolveSimple(inner, variables, temporary, locals, transient);
     } else {
-      result += interpolateExpression(inner, variables, temporary, locals);
+      result += interpolateExpression(
+        inner,
+        variables,
+        temporary,
+        locals,
+        transient,
+      );
     }
   }
 
