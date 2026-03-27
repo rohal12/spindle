@@ -10,9 +10,10 @@ export function executeMutation(
   const state = useStoryStore.getState();
   const vars = deepClone(state.variables);
   const temps = deepClone(state.temporary);
+  const trans = deepClone(state.transient);
   const localsClone = { ...mergedLocals };
 
-  execute(code, vars, temps, localsClone);
+  execute(code, vars, temps, localsClone, trans);
 
   for (const key of Object.keys(vars)) {
     if (vars[key] !== state.variables[key]) {
@@ -22,6 +23,11 @@ export function executeMutation(
   for (const key of Object.keys(temps)) {
     if (temps[key] !== state.temporary[key]) {
       state.setTemporary(key, temps[key]);
+    }
+  }
+  for (const key of Object.keys(trans)) {
+    if (trans[key] !== state.transient[key]) {
+      state.setTransient(key, trans[key]);
     }
   }
   for (const key of Object.keys(localsClone)) {
@@ -39,6 +45,11 @@ export function executeMutation(
   for (const key of Object.keys(state.temporary)) {
     if (!(key in temps)) {
       state.deleteTemporary(key);
+    }
+  }
+  for (const key of Object.keys(state.transient)) {
+    if (!(key in trans)) {
+      state.deleteTransient(key);
     }
   }
   for (const key of Object.keys(mergedLocals)) {

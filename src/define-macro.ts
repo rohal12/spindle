@@ -52,6 +52,7 @@ export interface MacroContext {
     Record<string, unknown>,
     Record<string, unknown>,
     Record<string, unknown>,
+    Record<string, unknown>,
   ];
   varName?: string;
   value?: unknown;
@@ -178,7 +179,7 @@ export function defineMacro(
       ctx.merged = useMergedLocals();
       const merged = ctx.merged;
       ctx.evaluate = (expr: string) =>
-        evaluate(expr, merged[0], merged[1], merged[2]);
+        evaluate(expr, merged[0], merged[1], merged[2], merged[3]);
     }
 
     if (config.storeVar) {

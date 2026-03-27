@@ -5,13 +5,13 @@ import { hasInterpolation, interpolate } from '../interpolation';
 export function useInterpolate(): (
   s: string | undefined,
 ) => string | undefined {
-  const [variables, temporary, locals] = useMergedLocals();
+  const [variables, temporary, locals, transient] = useMergedLocals();
 
   return useCallback(
     (s: string | undefined): string | undefined => {
       if (s === undefined || !hasInterpolation(s)) return s;
-      return interpolate(s, variables, temporary, locals);
+      return interpolate(s, variables, temporary, locals, transient);
     },
-    [variables, temporary, locals],
+    [variables, temporary, locals, transient],
   );
 }
