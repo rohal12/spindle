@@ -190,8 +190,10 @@ function WidgetBody({
     {},
   );
 
-  // Recomputed every render — picks up new ownKeys from parent
-  const localState = { ...parentValues, ...ownKeys, ...localMutations };
+  const localState = useMemo(
+    () => ({ ...parentValues, ...ownKeys, ...localMutations }),
+    [parentValues, ownKeys, localMutations],
+  );
 
   const valuesRef = useRef(localState);
   valuesRef.current = localState;
@@ -233,10 +235,9 @@ export function WidgetInvocation({
   }
 
   const argExprs = splitArgs(rawArgs);
-  const ownKeys: Record<string, unknown> = {};
+  const values: unknown[] = [];
 
   for (let i = 0; i < params.length; i++) {
-    const param = params[i]!;
     const expr = argExprs[i];
     let value: unknown;
     if (expr !== undefined) {
@@ -252,8 +253,19 @@ export function WidgetInvocation({
         value = undefined;
       }
     }
-    ownKeys[param.startsWith('@') ? param.slice(1) : param] = value;
+    values.push(value);
   }
+
+  const ownKeys = useMemo(() => {
+    const keys: Record<string, unknown> = {};
+    for (let i = 0; i < params.length; i++) {
+      keys[params[i]!.startsWith('@') ? params[i]!.slice(1) : params[i]!] =
+        values[i];
+    }
+    return keys;
+    // params is stable per widget instance; values tracks evaluated args
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, values);
 
   return (
     <WidgetChildrenContext.Provider value={childrenValue}>
