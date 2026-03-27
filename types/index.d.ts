@@ -294,6 +294,7 @@ export interface MacroContext {
     Record<string, unknown>,
     Record<string, unknown>,
     Record<string, unknown>,
+    Record<string, unknown>,
   ];
   varName?: string;
   value?: unknown;
