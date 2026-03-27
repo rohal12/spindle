@@ -185,6 +185,15 @@ export function defineMacro(
     if (config.storeVar) {
       const firstToken =
         props.rawArgs.trim().split(/\s+/)[0]?.replace(/["']/g, '') ?? '';
+
+      if (firstToken.startsWith('%')) {
+        return h(
+          'span',
+          { class: 'error' },
+          `{${config.name}}: transient variables (%${firstToken.slice(1)}) cannot be bound to input macros`,
+        );
+      }
+
       const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
       const segments = varExpr.split('.');
       ctx.varName = varExpr;
