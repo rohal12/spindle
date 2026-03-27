@@ -89,6 +89,39 @@ describe('evaluate', () => {
   it('still transforms _temp after operators', () => {
     expect(evaluate('1 + _x', {}, { x: 5 })).toBe(6);
   });
+
+  it('reads %transient variables', () => {
+    expect(evaluate('%count', {}, {}, {}, { count: 7 })).toBe(7);
+  });
+
+  it('handles mixed $, _, @, and % variables', () => {
+    expect(
+      evaluate('@x + $y + _z + %w', { y: 10 }, { z: 20 }, { x: 5 }, { w: 3 }),
+    ).toBe(38);
+  });
+
+  it('returns undefined for missing %transient', () => {
+    expect(evaluate('%missing', {}, {}, {}, {})).toBeUndefined();
+  });
+
+  it('resolves %transient dot paths', () => {
+    expect(evaluate('%obj.name', {}, {}, {}, { obj: { name: 'test' } })).toBe(
+      'test',
+    );
+  });
+
+  it('does not transform % inside string literals', () => {
+    expect(evaluate('"100%"', {}, {}, {}, {})).toBe('100%');
+  });
+
+  it('preserves modulo operator with word chars before %', () => {
+    expect(evaluate('10 % 3', {}, {}, {}, {})).toBe(1);
+    expect(evaluate('10%3', {}, {}, {}, {})).toBe(1);
+  });
+
+  it('distinguishes modulo from %transient', () => {
+    expect(evaluate('%x + 10 % 3', {}, {}, {}, { x: 5 })).toBe(6);
+  });
 });
 
 describe('execute', () => {
@@ -206,6 +239,25 @@ describe('execute', () => {
     const vars: Record<string, unknown> = { total: 0 };
     const locals: Record<string, unknown> = { item: 10 };
     execute('$total = $total + @item', vars, {}, locals);
+    expect(vars.total).toBe(10);
+  });
+
+  it('sets a %transient variable', () => {
+    const trans: Record<string, unknown> = {};
+    execute('%count = 42', {}, {}, {}, trans);
+    expect(trans.count).toBe(42);
+  });
+
+  it('modifies existing %transient', () => {
+    const trans: Record<string, unknown> = { x: 10 };
+    execute('%x = %x + 5', {}, {}, {}, trans);
+    expect(trans.x).toBe(15);
+  });
+
+  it('can mix % and $ in assignment', () => {
+    const vars: Record<string, unknown> = { total: 0 };
+    const trans: Record<string, unknown> = { bonus: 10 };
+    execute('$total = $total + %bonus', vars, {}, {}, trans);
     expect(vars.total).toBe(10);
   });
 });
