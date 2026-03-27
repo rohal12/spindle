@@ -310,9 +310,8 @@ describe('macro components', () => {
         render(<Passage passage={passage} />, container);
       });
 
-      // Multiple iterations writing to the same _derived temp: last-write-wins,
-      // so both iterations see the final value. The key assertion is that it
-      // renders without hanging and produces the correct number of results.
+      // _var targets write to global temp store — all iterations share the same
+      // variable, so last-write-wins. Use @-target for per-iteration values.
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
       expect(results[0].textContent).toMatch(/^a-(ok|err)$/);
