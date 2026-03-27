@@ -465,4 +465,100 @@ describe('renderNodes', () => {
       expect(el.innerHTML).not.toContain('&lt;svg');
     });
   });
+
+  // Issue #136: consecutive {set} macros can't see each other's temp mutations
+  describe('consecutive {set} mutations (issue #136)', () => {
+    it('second {set} sees temp set by first {set}', () => {
+      const container = document.createElement('div');
+      const tokens = tokenize(
+        '{set _x = [3, 1, 2]}{set _y = _x.slice().sort()}Result: {_y}',
+      );
+      const ast = buildAST(tokens);
+      render(<>{renderNodes(ast)}</>, container);
+      expect(container.textContent).toContain('Result: 1,2,3');
+    });
+
+    it('second {set} sees $var set by first {set}', () => {
+      const container = document.createElement('div');
+      const tokens = tokenize('{set $a = 10}{set $b = $a + 5}Answer: {$b}');
+      const ast = buildAST(tokens);
+      render(<>{renderNodes(ast)}</>, container);
+      expect(container.textContent).toContain('Answer: 15');
+    });
+  });
+
+  describe('whitespace-only fast path (issue #143)', () => {
+    it('renders HTML + macros with only whitespace text nodes', () => {
+      useStoryStore.getState().setVariable('items', [
+        { id: 'a', name: 'Alpha', status: 'active' },
+        { id: 'b', name: 'Beta', status: 'locked' },
+        { id: 'c', name: 'Gamma', status: 'active' },
+      ]);
+
+      // For-loop body is HTML + macros + variables with whitespace between tags.
+      // The tokenizer produces text nodes for "\n  " indentation — these are
+      // whitespace-only and should not trigger the markdown pipeline.
+      const markup = [
+        '{for @item of $items}',
+        '  <div class="card">',
+        '    <span class="name">{@item.name}</span>',
+        '    {if @item.status === "active"}',
+        '    <span class="badge">Active</span>',
+        '    {/if}',
+        '  </div>',
+        '{/for}',
+      ].join('\n');
+
+      const container = document.createElement('div');
+      const tokens = tokenize(markup);
+      const ast = buildAST(tokens);
+      render(<>{renderNodes(ast)}</>, container);
+
+      const cards = container.querySelectorAll('.card');
+      expect(cards).toHaveLength(3);
+      expect(cards[0].querySelector('.name')!.textContent).toBe('Alpha');
+      expect(cards[0].querySelector('.badge')!.textContent).toBe('Active');
+      expect(cards[1].querySelector('.badge')).toBeNull();
+      expect(cards[2].querySelector('.badge')!.textContent).toBe('Active');
+    });
+
+    it('preserves markdown processing when text nodes have content', () => {
+      useStoryStore
+        .getState()
+        .setVariable('items', [{ name: 'Alpha' }, { name: 'Beta' }]);
+
+      // Text node "**bold** " has non-whitespace content → must go through micromark
+      const markup = [
+        '{for @item of $items}',
+        '**{@item.name}** is ready',
+        '{/for}',
+      ].join('\n');
+
+      const container = document.createElement('div');
+      const tokens = tokenize(markup);
+      const ast = buildAST(tokens);
+      render(<>{renderNodes(ast)}</>, container);
+
+      const strongs = container.querySelectorAll('strong');
+      expect(strongs).toHaveLength(2);
+      expect(strongs[0].textContent).toBe('Alpha');
+      expect(strongs[1].textContent).toBe('Beta');
+    });
+
+    it('uses markdown pipeline when any text node has non-whitespace content', () => {
+      // Mix of whitespace text nodes (from indentation) and a real text node
+      const markup = '<div class="box">\n  A **bold** label\n</div>';
+
+      const container = document.createElement('div');
+      const tokens = tokenize(markup);
+      const ast = buildAST(tokens);
+      render(<>{renderNodes(ast)}</>, container);
+
+      const box = container.querySelector('.box');
+      expect(box).not.toBeNull();
+      const strong = box!.querySelector('strong');
+      expect(strong).not.toBeNull();
+      expect(strong!.textContent).toBe('bold');
+    });
+  });
 });

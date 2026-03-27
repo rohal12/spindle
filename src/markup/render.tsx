@@ -271,9 +271,16 @@ export function renderNodes(
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
 
-  // If there's no text at all, render nodes directly without markdown
-  const hasText = nodes.some((n) => n.type === 'text');
-  if (!hasText) {
+  // Skip the markdown pipeline when text nodes contain only whitespace.
+  // This eliminates ~97 redundant micromark + innerHTML calls per render
+  // in {for} loops over HTML + macro content (issue #143).
+  // However, don't skip if any text node contains blank lines (\n\n), as those
+  // have markdown semantics (paragraph separation).
+  const needsMarkdown = nodes.some(
+    (n) =>
+      n.type === 'text' && (n.value.trim() !== '' || /\n\s*\n/.test(n.value)),
+  );
+  if (!needsMarkdown) {
     return nodes.map((node, i) => renderSingleNode(node, i));
   }
 
