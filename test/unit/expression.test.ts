@@ -440,4 +440,23 @@ describe('executeMutation', () => {
     expect(useStoryStore.getState().temporary.t).toBeUndefined();
     expect('t' in useStoryStore.getState().temporary).toBe(false);
   });
+
+  // Reproduction of issue #136: consecutive {set} macros can't see each other
+  it('consecutive _temp mutations see each other (issue #136)', () => {
+    // Simulates: {set _x = [3, 1, 2]} then {set _y = _x.slice().sort()}
+    executeMutation('_x = [3, 1, 2]', {}, () => {});
+    executeMutation('_y = _x.slice().sort()', {}, () => {});
+
+    expect(useStoryStore.getState().temporary.x).toEqual([3, 1, 2]);
+    expect(useStoryStore.getState().temporary.y).toEqual([1, 2, 3]);
+  });
+
+  it('consecutive $var mutations see each other (issue #136)', () => {
+    // Simulates: {set $x = 10} then {set $y = $x + 5}
+    executeMutation('$x = 10', {}, () => {});
+    executeMutation('$y = $x + 5', {}, () => {});
+
+    expect(useStoryStore.getState().variables.x).toBe(10);
+    expect(useStoryStore.getState().variables.y).toBe(15);
+  });
 });

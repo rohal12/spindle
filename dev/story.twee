@@ -104,6 +104,8 @@ A wooden door stands to the north. Through a crack beneath it, you see flickerin
 
 [[Code passages->Code Passages Test]] | [[Watch triggers->Watch Tests]] | [[Dialog API->Dialog API Tests]] | [[SVG test->SVG Interop]]
 
+[[Consecutive set->Consecutive Set Test]]
+
 [[Nested HTML include->Nested HTML Include Test]] | [[Button HTML test->Button HTML Test]]
 
 :: Hallway
@@ -1258,6 +1260,16 @@ This is a programmatic dialog. It was opened via Story.openDialog().
 
 :: Dialog API Second
 This is the second queued dialog.
+
+:: Consecutive Set Test
+{include "Consecutive Set Sub"}
+
+[[Start]]
+
+:: Consecutive Set Sub [nobr]
+{set _x = [3, 1, 2]}
+{set _y = _x.slice().sort()}
+Result: {_y}
 
 :: Button HTML Test
 **Button with HTML block element inside:**
