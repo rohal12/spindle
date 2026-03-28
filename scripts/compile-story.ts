@@ -4,9 +4,9 @@
  *
  * Requires dist/format.js to exist (run `bun run build` first).
  */
-import { resolve, dirname } from 'path';
-import { existsSync, mkdirSync, copyFileSync } from 'fs';
-import { fileURLToPath } from 'url';
+import { resolve, dirname } from 'node:path';
+import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { compileToFile } from '@rohal12/twee-ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

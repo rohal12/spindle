@@ -7,9 +7,9 @@
  */
 import '../src/macros/register-builtins';
 import { getMacroRegistry } from '../src/registry';
-import { writeFileSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outputDir = resolve(__dirname, '..', 'dist', 'pkg');
