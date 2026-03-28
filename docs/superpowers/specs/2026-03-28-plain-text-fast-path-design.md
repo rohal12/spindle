@@ -19,7 +19,7 @@ Add a plain text fast path in `renderNodes` between the combined-string construc
 After building the combined string (render.tsx line 304), strip placeholder spans and test the remaining text:
 
 ```typescript
-const MARKDOWN_SYNTAX_RE = /[*_`#|~\[>\\\-]|!\[|\d+\./;
+const MARKDOWN_SYNTAX_RE = /[*_`#|~\[>\\\-+=]|!\[|\d+\./;
 const BLANK_LINE_RE = /\n\s*\n/;
 ```
 
@@ -35,7 +35,14 @@ Characters covered:
 - `\` — escape sequences
 - `-` — list items, thematic breaks (`---`)
 - `![` — images (`![alt](url)`) — bare `!` excluded to avoid false positives on UI text like `"Activate!"`
+- `+` — list items (`+ item`)
+- `=` — setext heading underlines (`Title\n===`)
 - `\d+\.` — ordered list items (`1.`) — note: also matches version-like strings e.g. `"v2.3"`, a harmless false positive
+
+### Known limitations
+
+- **HTML entities** (`&copy;`, `&#169;`) are not detected. Micromark decodes these; the fast path leaves them as literal text. In practice, Twine authors use Unicode characters directly.
+- **Trailing-space hard breaks** (two+ spaces before newline → `<br/>`) are not detected. The backslash hard break (`\`) IS caught. Trailing-space breaks are extremely rare in Twine content.
 - `\n\s*\n` — paragraph breaks (blank lines)
 
 This is broadly correct for all `renderNodes` callers. Any false positive (text contains `-` but not as a list item) harmlessly falls through to the existing micromark path.
