@@ -295,6 +295,39 @@ function getVariableTextValue(
 }
 
 /**
+ * Characters/patterns that trigger CommonMark or GFM transformations.
+ * Any match → fall through to the full micromark pipeline.
+ * False positives (e.g. `-` used as text, not list) just use the slower path.
+ */
+const MARKDOWN_SYNTAX_RE = /[*_`#|~\[>\\\-]|!\[|\d+\./;
+const BLANK_LINE_RE = /\n\s*\n/;
+const PLACEHOLDER_SPLIT_RE = /(<span data-tw="\d+"><\/span>)/;
+const PLACEHOLDER_IDX_RE = /^<span data-tw="(\d+)"><\/span>$/;
+const PLACEHOLDER_STRIP_RE = /<span data-tw="\d+"><\/span>/g;
+
+/**
+ * Build Preact vnodes from a combined string that contains only plain text
+ * and <span data-tw="N"></span> placeholders. No micromark, no innerHTML.
+ */
+function buildPlainTextVnodes(
+  combined: string,
+  components: preact.ComponentChildren[],
+  nobr?: boolean,
+): preact.ComponentChildren {
+  const parts = combined.split(PLACEHOLDER_SPLIT_RE);
+  const children: preact.ComponentChildren[] = [];
+  for (const part of parts) {
+    const m = PLACEHOLDER_IDX_RE.exec(part);
+    if (m) {
+      children.push(components[parseInt(m[1]!, 10)]);
+    } else if (part) {
+      children.push(part);
+    }
+  }
+  return nobr ? <>{children}</> : h('p', null, ...children);
+}
+
+/**
  * Render AST nodes with full CommonMark markdown support.
  *
  * Combines all nodes into a single markdown document, using <tw-N> placeholder
@@ -345,6 +378,15 @@ export function renderNodes(
       components.push(renderSingleNode(node, i));
       combined += `<span data-tw="${phIdx}"></span>`;
     }
+  }
+
+  // Fast path: skip micromark + innerHTML when text has no markdown syntax.
+  // This eliminates ~655 innerHTML calls on plain UI text like "ALMA",
+  // "▸ Crew", "Activate" that pass through the full pipeline only to
+  // produce the same text they started with (issue #145).
+  const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
+  if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
+    return buildPlainTextVnodes(combined, components, options?.nobr);
   }
 
   // Run combined text through markdown
