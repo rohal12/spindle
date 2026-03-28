@@ -307,3 +307,68 @@ describe('issue #61: deeply nested HTML with {include}', () => {
     });
   });
 });
+
+describe('inline HTML elements should not produce block-level markdown', () => {
+  beforeEach(() => {
+    const storyData = makeStoryData([makePassage(1, 'Start', 'Start')]);
+    useStoryStore.getState().init(storyData);
+  });
+
+  it('does not interpret "+" inside <span> as a list marker', () => {
+    // Simulates what RelDimBar produces after spindle-lsp formatting:
+    //   <span class="value">\n    +\n    0.95\n  </span>
+    const markup = '<span class="value">\n+\n0.95\n</span>';
+    const container = document.createElement('div');
+    const ast = buildAST(tokenize(markup));
+    render(<>{renderNodes(ast)}</>, container);
+
+    // Must NOT contain a <ul> or <li> — that's the markdown list artifact
+    expect(container.querySelector('ul')).toBeNull();
+    expect(container.querySelector('li')).toBeNull();
+    // The text content should contain the plus and value
+    expect(container.textContent).toContain('+');
+    expect(container.textContent).toContain('0.95');
+  });
+
+  it('does not interpret "-" inside <span> as a list marker', () => {
+    const markup = '<span>\n- text\n</span>';
+    const container = document.createElement('div');
+    const ast = buildAST(tokenize(markup));
+    render(<>{renderNodes(ast)}</>, container);
+
+    expect(container.querySelector('ul')).toBeNull();
+    expect(container.querySelector('li')).toBeNull();
+    expect(container.textContent).toContain('- text');
+  });
+
+  it('does not interpret "#" inside <span> as a heading', () => {
+    const markup = '<span>\n# not a heading\n</span>';
+    const container = document.createElement('div');
+    const ast = buildAST(tokenize(markup));
+    render(<>{renderNodes(ast)}</>, container);
+
+    expect(container.querySelector('h1')).toBeNull();
+    expect(container.textContent).toContain('# not a heading');
+  });
+
+  it('still allows block-level markdown inside <div>', () => {
+    const markup = '<div>\n- item one\n- item two\n</div>';
+    const container = document.createElement('div');
+    const ast = buildAST(tokenize(markup));
+    render(<>{renderNodes(ast)}</>, container);
+
+    // Block elements like <div> should still support markdown lists
+    expect(container.querySelector('ul')).not.toBeNull();
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+  });
+
+  it('preserves inline markdown (bold, italic) inside <span>', () => {
+    const markup = '<span>**bold** and *italic*</span>';
+    const container = document.createElement('div');
+    const ast = buildAST(tokenize(markup));
+    render(<>{renderNodes(ast)}</>, container);
+
+    expect(container.querySelector('strong')?.textContent).toBe('bold');
+    expect(container.querySelector('em')?.textContent).toBe('italic');
+  });
+});

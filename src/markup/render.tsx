@@ -87,6 +87,43 @@ function convertDomNode(
   return null;
 }
 
+/** Inline elements where block-level markdown (lists, headings) is invalid. */
+const INLINE_ELEMENTS = new Set([
+  'a',
+  'abbr',
+  'b',
+  'bdi',
+  'bdo',
+  'br',
+  'cite',
+  'code',
+  'data',
+  'dfn',
+  'em',
+  'i',
+  'kbd',
+  'label',
+  'mark',
+  'meter',
+  'output',
+  'progress',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'small',
+  'span',
+  'strong',
+  'sub',
+  'sup',
+  'time',
+  'u',
+  'var',
+  'wbr',
+]);
+
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
@@ -97,13 +134,16 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     attrs[k] = resolve(v) ?? v;
   }
   const isSvgRoot = node.tag.toLowerCase() === 'svg';
-  // Inside SVG, skip markdown processing — markdown wraps content in <p> tags
-  // which break the SVG namespace and produce zero-dimension elements.
+  const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
+  // Inside SVG, skip markdown processing entirely — markdown wraps content
+  // in <p> tags which break the SVG namespace.
+  // Inside inline elements, disable block-level markdown (lists, headings,
+  // blockquotes) since those produce invalid HTML inside inline containers.
   const children =
     node.children.length > 0
       ? inSvg || isSvgRoot
         ? renderInlineNodes(node.children)
-        : renderNodes(node.children, { nobr, locals })
+        : renderNodes(node.children, { nobr, locals, inline: isInline })
       : undefined;
   const element = h(node.tag, attrs, children);
   return isSvgRoot ? (
@@ -267,7 +307,11 @@ function getVariableTextValue(
  */
 export function renderNodes(
   nodes: ASTNode[],
-  options?: { nobr?: boolean; locals?: Record<string, unknown> },
+  options?: {
+    nobr?: boolean;
+    locals?: Record<string, unknown>;
+    inline?: boolean;
+  },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
 
@@ -304,7 +348,7 @@ export function renderNodes(
   }
 
   // Run combined text through markdown
-  const html = markdownToHtml(combined);
+  const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
   return htmlToPreact(html, components, options?.nobr);
