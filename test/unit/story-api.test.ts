@@ -77,6 +77,110 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('dot-path get/set', () => {
+    it('Story.get resolves dot-path on nested object', () => {
+      useStoryStore
+        .getState()
+        .setVariable('alma', { view: 'home', expanded: '' });
+      expect(Story.get('alma.view')).toBe('home');
+    });
+
+    it('Story.get returns undefined for missing intermediate', () => {
+      expect(Story.get('nonexistent.prop')).toBeUndefined();
+    });
+
+    it('Story.get returns undefined for missing leaf', () => {
+      useStoryStore.getState().setVariable('alma', { view: 'home' });
+      expect(Story.get('alma.missing')).toBeUndefined();
+    });
+
+    it('Story.get with deep path', () => {
+      useStoryStore
+        .getState()
+        .setVariable('config', { ui: { theme: { color: 'red' } } });
+      expect(Story.get('config.ui.theme.color')).toBe('red');
+    });
+
+    it('Story.get without dot still works (no regression)', () => {
+      useStoryStore.getState().setVariable('gold', 100);
+      expect(Story.get('gold')).toBe(100);
+    });
+
+    it('Story.get resolves dot-path on transient (%)', () => {
+      useStoryStore.getState().setTransient('ui', { panel: 'open' });
+      expect(Story.get('%ui.panel')).toBe('open');
+    });
+
+    it('Story.get with numeric segment accesses array index', () => {
+      useStoryStore.getState().setVariable('items', ['a', 'b', 'c']);
+      expect(Story.get('items.1')).toBe('b');
+    });
+
+    it('Story.set with dot-path sets nested property', () => {
+      useStoryStore
+        .getState()
+        .setVariable('alma', { view: 'home', expanded: '' });
+      Story.set('alma.view', 'settings');
+      expect(useStoryStore.getState().variables.alma).toEqual({
+        view: 'settings',
+        expanded: '',
+      });
+    });
+
+    it('Story.set with deep dot-path', () => {
+      useStoryStore
+        .getState()
+        .setVariable('config', { ui: { theme: { color: 'red' } } });
+      Story.set('config.ui.theme.color', 'blue');
+      expect(
+        (useStoryStore.getState().variables.config as any).ui.theme.color,
+      ).toBe('blue');
+    });
+
+    it('Story.set without dot still works (no regression)', () => {
+      Story.set('gold', 100);
+      expect(useStoryStore.getState().variables.gold).toBe(100);
+    });
+
+    it('Story.set with dot-path on transient (%)', () => {
+      useStoryStore.getState().setTransient('ui', { panel: 'closed' });
+      Story.set('%ui.panel', 'open');
+      expect(useStoryStore.getState().transient.ui).toEqual({ panel: 'open' });
+    });
+
+    it('Story.set batch form with dot-paths', () => {
+      useStoryStore.getState().setVariable('alma', { view: 'home' });
+      useStoryStore.getState().setVariable('character', { level: 1 });
+      Story.set({ 'alma.view': 'settings', 'character.level': 5 });
+      expect((useStoryStore.getState().variables.alma as any).view).toBe(
+        'settings',
+      );
+      expect((useStoryStore.getState().variables.character as any).level).toBe(
+        5,
+      );
+    });
+
+    it('Story.set batch form with mixed dot-path and flat keys', () => {
+      useStoryStore.getState().setVariable('alma', { view: 'home' });
+      Story.set({ 'alma.view': 'settings', gold: 200 });
+      expect((useStoryStore.getState().variables.alma as any).view).toBe(
+        'settings',
+      );
+      expect(useStoryStore.getState().variables.gold).toBe(200);
+    });
+
+    it('Story.set batch form with transient dot-path', () => {
+      useStoryStore.getState().setTransient('ui', { panel: 'closed' });
+      Story.set({ '%ui.panel': 'open', gold: 50 });
+      expect((useStoryStore.getState().transient.ui as any).panel).toBe('open');
+      expect(useStoryStore.getState().variables.gold).toBe(50);
+    });
+
+    it('Story.set throws on missing intermediate', () => {
+      expect(() => Story.set('nonexistent.prop', 'value')).toThrow();
+    });
+  });
+
   describe('navigation', () => {
     it('goto navigates to passage', () => {
       useStoryStore.getState().navigate('Room');
