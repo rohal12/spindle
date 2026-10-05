@@ -180,8 +180,35 @@ const jsOperand = fc.oneof(
   fc.constant('[1, 2]'),
 );
 
+/** Regex literals holding braces, quotes, backticks and slashes. */
+const jsRegex = fc.constantFrom(
+  '/}/',
+  '/\\}/g',
+  '/{/',
+  '/[{}"\'`]/g',
+  '/[/]}/',
+  "/'/",
+  '/"/',
+  '/`/',
+);
+
+/** Block comments holding braces, quotes and backticks. */
+const jsComment = fc.constantFrom('/* } */', '/* { " \' ` */', '/**/');
+
+/** Operands the passage tokenizer must lex as JavaScript. */
+const jsCodeOperand = fc.oneof(
+  jsOperand,
+  jsRegex,
+  jsComment.map((c) => `${c} 1`),
+);
+
 const expressionArb: fc.Arbitrary<Generated> = fc
-  .tuple(sigil, varPath, fc.constantFrom('+', '===', '||', '?? '), jsOperand)
+  .tuple(
+    sigil,
+    varPath,
+    fc.constantFrom('+', '===', '||', '?? ', '/'),
+    jsCodeOperand,
+  )
   .chain(([s, name, op, operand]) =>
     fc.tuple(fc.constant(`${s}${name} ${op} ${operand}`), optSelectors),
   )
@@ -216,16 +243,34 @@ const casedName = (name: string) =>
       [...name].map((c, i) => (ups[i] ? c.toUpperCase() : c)).join(''),
     );
 
-/** Macro arguments: words, JS literals, objects. Trimmed and brace-balanced. */
+const argWord = fc.stringMatching(/^[a-z0-9$_=+<>.]{1,5}$/);
+
+/**
+ * Macro arguments: words, JS literals, objects. Trimmed and brace-balanced.
+ * Arguments that are JavaScript may hold regex literals (in parentheses, so
+ * no `/` after a word reads as division) and comments, whose braces don't
+ * count. Prose-like arguments with an apostrophe (`don't`) are no
+ * JavaScript and are read leniently, where only string and template
+ * literals hide braces.
+ */
 const macroArgs = fc
-  .array(
-    fc.oneof(
-      fc.stringMatching(/^[a-z0-9$_=+<>.]{1,5}$/),
-      jsStringLiteral,
-      jsOperand,
-      fc.constant("don't"),
+  .oneof(
+    fc.array(
+      fc.oneof(
+        argWord,
+        jsStringLiteral,
+        jsOperand,
+        jsRegex.map((r) => `(${r})`),
+        jsComment,
+        // A line comment, and another word on the next line
+        fc.constantFrom('// } " \' `\nx', '//}\n0'),
+      ),
+      { minLength: 1, maxLength: 4 },
     ),
-    { minLength: 1, maxLength: 4 },
+    fc.array(
+      fc.oneof(argWord, jsStringLiteral, jsOperand, fc.constant("don't")),
+      { minLength: 1, maxLength: 4 },
+    ),
   )
   .chain((words) =>
     fc
@@ -283,16 +328,60 @@ const selfClosingMacroArb: fc.Arbitrary<Generated> = fc
     ],
   }));
 
-/** `{do}` bodies are raw JavaScript: any text not containing a `{/do}`. */
+/**
+ * Code in a `{do}` body: brackets, markup-like text and sigils, but nothing
+ * that starts a literal or comment (no quote, backtick or `/`) and no `{/do}`.
+ */
+export const DO_CODE = [...'{}[]()<>=;$_@% ab\n', '<b>', '[[', '{x}', '%a'];
+
+/** Text a literal or comment may hold: closers, braces, quotes, markup. */
+const literalText = (units: string[]) =>
+  fc
+    .array(fc.constantFrom('a', ' ', '{/do}', '{/DO }', '{', '}', ...units), {
+      maxLength: 5,
+    })
+    .map((parts) => parts.join(''));
+
+/**
+ * A literal or comment holding a `{/do}` that must not end the body. Each
+ * follows `=`, so a `/` starts a regex and no quote follows a word.
+ */
+const doLiteral = fc
+  .oneof(
+    literalText(["'", '`', '\\"', '\\\\', '\n', '<b>', '[[']).map(
+      (t) => `"${t}"`,
+    ),
+    literalText(['"', '`', "\\'", '\\\\', '[[']).map((t) => `'${t}'`),
+    literalText(['"', "'", '\\`', '${1}', '${"{/do}"}', '\n']).map(
+      (t) => `\`${t}\``,
+    ),
+    fc
+      .array(
+        fc.constantFrom('a', '{', '}', '[/]', '{\\/do}', '[{/do}]', '"', '`'),
+        { minLength: 1, maxLength: 4 },
+      )
+      .map((parts) => `/${parts.join('')}/g`),
+    literalText(['"', "'", '`', '\n', '*']).map((t) => `/*${t}*/`),
+    literalText(['"', "'", '`', '/']).map((t) => `//${t}\n`),
+  )
+  .map((lit) => `=${lit}`);
+
+/**
+ * `{do}` bodies are raw JavaScript, lexed as such: a `{/do}` inside a string,
+ * template or regex literal or a comment does not end the body.
+ */
 const doMacroArb: fc.Arbitrary<Generated> = fc
   .tuple(
     opener('do', false),
     fc
-      .string({
-        unit: fc.constantFrom(...'{}[]<>/\\$_@%"\'` ab\n', '{/d', '<b>', '[['),
-        maxLength: 20,
-      })
-      .filter((body) => !/\{\/do\s*\}/i.test(body)),
+      .array(
+        fc.oneof(
+          { weight: 3, arbitrary: fc.constantFrom(...DO_CODE) },
+          { weight: 1, arbitrary: doLiteral },
+        ),
+        { maxLength: 8 },
+      )
+      .map((parts) => parts.join('')),
     closer('do'),
   )
   .map(([o, body, close]) => ({
@@ -354,17 +443,35 @@ const attribute = fc.oneof(
       fc.constantFrom('"', "'"),
       fc.array(
         fc.oneof(
-          fc.string({
-            unit: fc.constantFrom(...'ab =>/\'"&;\n'),
-            maxLength: 4,
-          }),
-          fc.tuple(sigil, identifier).map(([s, n]) => `{${s}${n}}`),
+          fc
+            .string({
+              unit: fc.constantFrom(...'ab =>/\'"&;\n'),
+              maxLength: 4,
+            })
+            .map((text) => ({ text })),
+          // Interpolations: quotes and braces inside their literals and
+          // comments neither end the value nor the interpolation
+          fc
+            .tuple(
+              sigil,
+              identifier,
+              fc.constantFrom(
+                '',
+                ' + "}\'"',
+                ".replace(/['\"}]/g, '{')",
+                " /* '} */",
+                ' + `"${1}`',
+              ),
+            )
+            .map(([s, n, rest]) => ({ interp: `{${s}${n}${rest}}` })),
         ),
         { maxLength: 3 },
       ),
     )
     .map(([name, s1, s2, q, parts]) => {
-      const value = parts.join('').replaceAll(q, '');
+      const value = parts
+        .map((p) => ('text' in p ? p.text.replaceAll(q, '') : p.interp))
+        .join('');
       return {
         name,
         value,

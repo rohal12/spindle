@@ -186,6 +186,26 @@ describe('interpolate — braces inside strings (#169)', () => {
   });
 });
 
+describe('interpolate — regex literals and comments', () => {
+  it('handles } and quotes inside regex literals', () => {
+    const vars = { s: `a}b"c'd` };
+    expect(interpolate('[{$s.replace(/}/g, "")}]', vars, {}, {})).toBe(
+      `[ab"c'd]`,
+    );
+    expect(interpolate(`[{$s.replace(/"/g, '}')}]`, vars, {}, {})).toBe(
+      `[a}b}c'd]`,
+    );
+  });
+
+  it('handles } inside comments', () => {
+    expect(interpolate('[{$x /* } */}]', { x: 'a' }, {}, {})).toBe('[a]');
+  });
+
+  it('reads `/` after an operand as division', () => {
+    expect(interpolate('[{$a /2/ $b}]', { a: 6, b: 3 }, {}, {})).toBe('[1]');
+  });
+});
+
 describe('interpolate — unclosed template literals', () => {
   // Same exponential scan as the tokenizer (see tokenizer.test.ts).
   it('leaves nested unclosed template literals as text quickly', () => {

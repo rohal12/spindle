@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { lexJs, lexTemplate, scanStringLiteral } from '../../src/js-lexer';
+import {
+  findCodeEnd,
+  lexJs,
+  lexTemplate,
+  scanStringLiteral,
+} from '../../src/js-lexer';
 import type { JsGoal } from '../../src/js-lexer';
 
 type Piece = [
@@ -198,5 +203,42 @@ describe('lexJs nesting', () => {
       ['literal', '`', 0],
       ['code', ') / 2', 0],
     ]);
+  });
+});
+
+describe('findCodeEnd', () => {
+  it('finds the } closing the code, skipping literals and comments', () => {
+    expect(findCodeEnd('/}/.test(s)} x', 0)).toBe(11);
+    expect(findCodeEnd('a /* } */ + "}" + `${"}"}` } x', 0)).toBe(27);
+    expect(findCodeEnd('a // }\n} x', 0)).toBe(7);
+    expect(findCodeEnd('{ a: [/]}/] } } x', 0)).toBe(14);
+  });
+
+  it('reads / after an operand as division', () => {
+    expect(findCodeEnd('a /2/ b} x', 0)).toBe(7);
+    expect(findCodeEnd('(a) / 2 } x', 0)).toBe(8);
+  });
+
+  it('does not let a stray ) close the braces around it', () => {
+    expect(findCodeEnd('({ ) }) } x', 0)).toBe(8);
+  });
+
+  it('returns -1 for code that is not well-formed', () => {
+    expect(findCodeEnd("don't }", 0)).toBe(-1);
+    expect(findCodeEnd('"a }', 0)).toBe(-1);
+    expect(findCodeEnd('/a }\n}', 0)).toBe(-1);
+    expect(findCodeEnd('/* }', 0)).toBe(-1);
+    expect(findCodeEnd('(a }', 0)).toBe(-1);
+  });
+
+  it('accepts a string right after a keyword or modifier', () => {
+    expect(findCodeEnd("typeof'}' } x", 0)).toBe(10);
+    expect(findCodeEnd("class { static'}' } } x", 0)).toBe(20);
+  });
+
+  it('stops where `stop` holds, in code at any depth', () => {
+    const src = 'a = "{/do}"; if (b) { c(){/do} x';
+    const stop = (i: number) => src.startsWith('{/do}', i);
+    expect(findCodeEnd(src, 0, { goal: 'statements', stop })).toBe(25);
   });
 });

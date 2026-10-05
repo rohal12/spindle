@@ -547,6 +547,77 @@ describe('macro components', () => {
     });
   });
 
+  describe('JavaScript in macro arguments and expressions', () => {
+    // Braces, quotes and backticks in regex literals and comments do not
+    // end a macro or expression early, and `/` after an operand divides.
+    it('{if} with a regex literal holding }', () => {
+      useStoryStore.getState().setVariable('s', 'a}b');
+      const el = renderPassage('{if /}/.test($s)}yes{/if}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('yes');
+    });
+
+    it('{set} with a comment holding }', () => {
+      const el = renderPassage('{set $x = 1 /* } */}{$x}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('1');
+    });
+
+    it('{set} with a line comment holding }', () => {
+      const el = renderPassage('{set $x = 2 // }\n}{$x}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('2');
+    });
+
+    it('{set} with an escaped } in a regex literal', () => {
+      const el = renderPassage('{set $r = /\\}/}{print $r.test("}")}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('true');
+    });
+
+    it('{print} with quotes in a regex literal', () => {
+      useStoryStore.getState().setVariable('s', `a"b'c`);
+      const el = renderPassage(
+        `{print $s.replace(/"/g, "}").replace(/'/g, '{')}`,
+      );
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('a}b{c');
+    });
+
+    it('expression display with a regex literal holding }', () => {
+      useStoryStore.getState().setVariable('s', 'a}b');
+      const el = renderPassage('[{$s.replace(/}/g, "")}]');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('[ab]');
+    });
+
+    it('expression display divides', () => {
+      useStoryStore.getState().setVariable('a', 6);
+      useStoryStore.getState().setVariable('b', 3);
+      const el = renderPassage('{$a /2/ $b}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('1');
+    });
+
+    it('HTML attribute interpolation with a quote in a regex literal', () => {
+      useStoryStore.getState().setVariable('s', "a'b");
+      const el = renderPassage(
+        `<span title='{$s?.replace(/'/g, "}")}'>t</span>`,
+      );
+      expect(el.querySelector('span')!.getAttribute('title')).toBe('a}b');
+    });
+
+    it('{do} keeps a {/do} inside a string', () => {
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage('{do}$y = "{/do}";{/do}[{$y}]');
+      });
+      expect(el.querySelector('.error')).toBeNull();
+      expect(useStoryStore.getState().variables.y).toBe('{/do}');
+      expect(el.textContent).toBe('[{/do}]');
+    });
+  });
+
   describe('HTML void elements (#170)', () => {
     it('renders <input> without a closing tag', () => {
       const el = renderPassage('<input type="text"><span>After</span>');

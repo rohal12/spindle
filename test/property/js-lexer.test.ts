@@ -5,7 +5,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
-import { lexJs, lexTemplate, type JsGoal } from '../../src/js-lexer';
+import {
+  createJsScanCache,
+  findCodeEnd,
+  lexJs,
+  lexTemplate,
+  type JsGoal,
+} from '../../src/js-lexer';
 import { fcOptions } from './config';
 import { jsArbitraries, render } from './arbitraries/js';
 
@@ -165,6 +171,76 @@ describe('lexTemplate', () => {
       expect(end).toBeGreaterThan(0);
       expect(end).toBeLessThanOrEqual(src.length);
       expect(rebuilt).toBe(src.slice(0, end));
+    },
+  );
+});
+
+describe('findCodeEnd', () => {
+  const DO_CLOSER = '{/do}';
+  const atCloser = (src: string) => (i: number) => src.startsWith(DO_CLOSER, i);
+
+  /** A valid expression or statement list, with its goal. */
+  const validCode = fc.oneof(
+    sigils.sequence.map((d) => ({
+      code: render(d, 'sigil'),
+      g: 'expression' as const,
+    })),
+    sigils.program.map((d) => ({
+      code: render(d, 'sigil'),
+      g: 'statements' as const,
+    })),
+  );
+
+  test.prop([validCode, anyText], fcOptions)(
+    'finds the } closing valid code, whatever its literals and comments hold',
+    ({ code, g }, tail) => {
+      // A line break ends a trailing `//` comment, as it would in a block.
+      const src = `${code}\n}${tail}`;
+      expect(findCodeEnd(src, 0, { goal: g })).toBe(code.length + 1);
+    },
+  );
+
+  test.prop([sigils.program, anyText], fcOptions)(
+    'finds the stop after valid statements',
+    (doc, tail) => {
+      const code = render(doc, 'sigil');
+      fc.pre(!code.includes(DO_CLOSER));
+      const src = `${code}\n${DO_CLOSER}${tail}`;
+      const end = findCodeEnd(src, 0, {
+        goal: 'statements',
+        stop: atCloser(src),
+      });
+      expect(end).toBe(code.length + 1);
+    },
+  );
+
+  /** Text with many starts, closers and `{/do}`s to share results across. */
+  const scanText = fc.oneof(
+    anyText,
+    mutatedProgram,
+    fc
+      .array(fc.constantFrom(...LEXICAL, '{/do}', '{a ', '}', '{'), {
+        maxLength: 60,
+      })
+      .map((parts) => parts.join('')),
+  );
+
+  test.prop([scanText, fc.boolean()], fcOptions)(
+    'answers the same with a shared cache as without',
+    (src, shuffled) => {
+      const starts = [...Array(src.length + 1).keys()];
+      if (shuffled) starts.reverse();
+      const cache = createJsScanCache();
+      for (const start of starts) {
+        expect(findCodeEnd(src, start, { cache })).toBe(
+          findCodeEnd(src, start),
+        );
+        const stop = atCloser(src);
+        const opts = { goal: 'statements' as const, stop };
+        expect(findCodeEnd(src, start, { ...opts, stopKey: 'do', cache })).toBe(
+          findCodeEnd(src, start, opts),
+        );
+      }
     },
   );
 });

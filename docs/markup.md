@@ -108,7 +108,19 @@ Backslashes before a brace pair up as in markdown, where `\\` displays one backs
 
 A backslash before a link or an HTML tag is shown as it is: `C:\[[Start]]` renders `C:\` followed by the link.
 
-Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute interpolations need no escaping: `{set $x = "}"}` stores `}`.
+Macro arguments, `{…}` expressions and attribute interpolations are read as JavaScript, so braces, quotes and backticks inside strings, template literals, regex literals and comments need no escaping. Only a `}` in the code itself, outside any brackets the code opened, ends the macro:
+
+```
+{set $x = "}"}
+{if /}/.test($s)}has a brace{/if}
+{set $y = 1 /* } */}
+{print $s.replace(/["']/g, "")}
+{$a /2/ $b}
+```
+
+The last line divides: `/` after a value is division, not the start of a regex. A `//` comment runs to the end of the line, so the `}` closing its macro goes on the next line.
+
+Arguments that are not valid JavaScript, such as `{goto Bob's room}`, are read as before: an apostrophe after a letter is text, and a quote that is not closed on the same line is a plain character.
 
 ## HTML Tags
 
