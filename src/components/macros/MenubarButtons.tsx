@@ -13,13 +13,17 @@ interface MenubarActionConfig {
   title?: string;
   confirm?: string;
   hidden?: () => boolean;
-  setup?: () => { perform: () => void; disabled?: boolean };
+  setup?: () => { perform: () => void; disabled?: boolean; title?: string };
   dialog?: {
     passageName: string;
     fallbackMarkup?: string;
     panelClass?: string;
     showCloseButton?: boolean;
   };
+}
+
+function hotkeyTitle(label: string, key: string | null): string {
+  return key ? `${label} (${key})` : label;
 }
 
 export function defineMenubarAction(config: MenubarActionConfig) {
@@ -31,7 +35,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
       const [dialogOpen, setDialogOpen] = useState(false);
 
       const setup = config.setup?.() ?? { perform: () => {} };
-      const { disabled } = setup;
+      const { disabled, title = config.title } = setup;
 
       const cls = ctx.className
         ? `menubar-button ${ctx.className}`
@@ -61,7 +65,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
             class={cls}
             onClick={perform}
             disabled={disabled}
-            title={config.title}
+            title={title}
           >
             {config.label}
           </button>
@@ -104,9 +108,12 @@ defineMenubarAction({
   name: 'quicksave',
   label: 'QuickSave',
   actionType: 'save',
-  title: 'Quick Save (F6)',
   setup: () => ({
     perform: useStoryStore((s) => s.save),
+    title: hotkeyTitle(
+      'Quick Save',
+      useStoryStore((s) => s.quickSaveKey),
+    ),
   }),
 });
 
@@ -114,13 +121,17 @@ defineMenubarAction({
   name: 'quickload',
   label: 'QuickLoad',
   actionType: 'load',
-  title: 'Quick Load (F9)',
   confirm: 'Load saved game? Current progress will be lost.',
   setup: () => {
     const load = useStoryStore((s) => s.load);
     const hasSave = useStoryStore((s) => s.hasSave);
+    const key = useStoryStore((s) => s.quickLoadKey);
     useStoryStore((s) => s.knownSaves);
-    return { perform: () => load(), disabled: !hasSave() };
+    return {
+      perform: () => load(),
+      disabled: !hasSave(),
+      title: hotkeyTitle('Quick Load', key),
+    };
   },
 });
 

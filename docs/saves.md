@@ -19,7 +19,14 @@ The fastest way to save and load:
 - **Quick Save:** Click the `{quicksave}` button or press **F6**
 - **Quick Load:** Click the `{quickload}` button or press **F9**
 
-There is one quick save slot per story. Quick saving overwrites the previous quick save. Quick loading prompts for confirmation.
+There is one quick save slot per story. Quick saving overwrites the previous quick save. The `{quickload}` button prompts for confirmation.
+
+The keyboard shortcuts can be rebound or disabled with [`Story.config.quickSaveKey` / `Story.config.quickLoadKey`](story-api.md#story-config-quicksavekey-story-config-quickloadkey), for example when a story has its own save UI:
+
+```js
+Story.config.quickSaveKey = null;
+Story.config.quickLoadKey = null;
+```
 
 ```
 {quicksave}

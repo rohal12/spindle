@@ -218,6 +218,11 @@ export function _resetRuntimePhase(): void {
 // Store
 // ---------------------------------------------------------------------------
 
+/** A hotkey is a `KeyboardEvent.key` value; anything else disables it. */
+function normalizeHotkey(key: unknown): string | null {
+  return typeof key === 'string' && key !== '' ? key : null;
+}
+
 /** Restore or reset PRNG from a history moment's snapshot. */
 function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
   if (moment?.prng) {
@@ -248,6 +253,8 @@ export interface StoryState {
   knownSaves: Record<string, true>;
   playthroughId: string;
   maxHistory: number;
+  quickSaveKey: string | null;
+  quickLoadKey: string | null;
   saveError: string | null;
   loadError: string | null;
   transitionConfig: TransitionConfig | null;
@@ -256,6 +263,8 @@ export interface StoryState {
   renderDeferred: boolean;
 
   setMaxHistory: (limit: number) => void;
+  setQuickSaveKey: (key: string | null) => void;
+  setQuickLoadKey: (key: string | null) => void;
   init: (
     storyData: StoryData,
     variableDefaults?: Record<string, unknown>,
@@ -307,6 +316,8 @@ export const useStoryStore = create<StoryState>()(
     knownSaves: {},
     playthroughId: '',
     maxHistory: 40,
+    quickSaveKey: 'F6',
+    quickLoadKey: 'F9',
     saveError: null,
     loadError: null,
     transitionConfig: null,
@@ -317,6 +328,18 @@ export const useStoryStore = create<StoryState>()(
     setMaxHistory: (limit: number) => {
       set((state) => {
         state.maxHistory = Math.max(1, Math.round(limit));
+      });
+    },
+
+    setQuickSaveKey: (key: string | null) => {
+      set((state) => {
+        state.quickSaveKey = normalizeHotkey(key);
+      });
+    },
+
+    setQuickLoadKey: (key: string | null) => {
+      set((state) => {
+        state.quickLoadKey = normalizeHotkey(key);
       });
     },
 

@@ -678,6 +678,20 @@ Get or set the maximum number of history moments to keep. Oldest entries are dis
 
 Visit and render counts are unaffected by history trimming — they are tracked independently.
 
+#### `Story.config.quickSaveKey` / `Story.config.quickLoadKey`
+
+Get or set the keyboard shortcuts for quick save and quick load. Values are [`KeyboardEvent.key`](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key) names. Defaults: `'F6'` and `'F9'`. Set a shortcut to `null` to disable it. The key then reaches the page as usual. The tooltips of the `{quicksave}` and `{quickload}` buttons follow the setting.
+
+```js
+// In the story JavaScript
+Story.config.quickSaveKey = null; // disable F6 quick save
+Story.config.quickLoadKey = null; // disable F9 quick load
+
+Story.config.quickSaveKey = 'F5'; // or rebind
+```
+
+The shortcuts fire wherever focus is, including in text inputs, so prefer keys that don't type text (function keys). Like `maxHistory`, these settings survive `Story.restart()`.
+
 ### `Story.saves`
 
 The saves API.

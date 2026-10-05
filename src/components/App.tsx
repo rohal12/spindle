@@ -11,12 +11,14 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F6') {
+      const { quickSaveKey, quickLoadKey, save, load } =
+        useStoryStore.getState();
+      if (quickSaveKey !== null && e.key === quickSaveKey) {
         e.preventDefault();
-        useStoryStore.getState().save();
-      } else if (e.key === 'F9') {
+        save();
+      } else if (quickLoadKey !== null && e.key === quickLoadKey) {
         e.preventDefault();
-        useStoryStore.getState().load();
+        load();
       }
     };
     document.addEventListener('keydown', onKeyDown);

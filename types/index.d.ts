@@ -552,6 +552,16 @@ export interface StoryAPI {
   readonly config: {
     /** Maximum number of history moments to retain. */
     maxHistory: number;
+    /**
+     * Key that triggers a quick save (`KeyboardEvent.key`, default `'F6'`).
+     * Set to `null` to disable the shortcut.
+     */
+    quickSaveKey: string | null;
+    /**
+     * Key that triggers a quick load (`KeyboardEvent.key`, default `'F9'`).
+     * Set to `null` to disable the shortcut.
+     */
+    quickLoadKey: string | null;
   };
 
   /** Seedable pseudo-random number generator. */
