@@ -5,6 +5,8 @@ import { act } from 'preact/test-utils';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { markdownOptions } from '../../src/markup/markdown';
+import { micromark } from 'micromark';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -684,6 +686,77 @@ describe('renderNodes', () => {
       const strong = box!.querySelector('strong');
       expect(strong).not.toBeNull();
       expect(strong!.textContent).toBe('bold');
+    });
+  });
+
+  // Found by property testing: text with no other markdown syntax skipped
+  // micromark, so a raw HTML block (a comment, processing instruction or
+  // declaration opening a line) showed as text, and CR line endings kept
+  // the spaces before them and made no hard breaks or paragraphs, unlike
+  // the same text with any markdown in it.
+  describe('text that only looks plain', () => {
+    it.each([
+      '<!A b',
+      'x\n<?y',
+      '<!-- b',
+      'a <?php x ?> b',
+      'a \r\nb',
+      'a  \r\nb',
+      'a\r\rb',
+    ])('%j renders as micromark renders it', (markup) => {
+      // micromark's HTML, but for comment nodes, which aren't rendered
+      const expected = document.createElement('div');
+      expected.innerHTML = micromark(markup, markdownOptions());
+      const walker = document.createTreeWalker(
+        expected,
+        NodeFilter.SHOW_COMMENT,
+      );
+      const comments: Node[] = [];
+      while (walker.nextNode()) comments.push(walker.currentNode);
+      for (const comment of comments) comment.parentNode!.removeChild(comment);
+      expect(renderMarkup(markup).innerHTML).toBe(expected.innerHTML);
+    });
+
+    it('makes a hard break and paragraphs at CR line endings', () => {
+      expect(renderMarkup('a  \r\nb').querySelector('br')).not.toBeNull();
+      expect(renderMarkup('a\r\rb').querySelectorAll('p')).toHaveLength(2);
+    });
+  });
+
+  // Found by fuzzing: the whitespace trimmed at the edges of a paragraph and
+  // around its line endings was found with regexes (`/[ \t]*$/`) that try
+  // every position of a whitespace run, quadratic in its length.
+  describe('long whitespace runs', () => {
+    /** Milliseconds to render `markup`, best of three. */
+    function time(markup: string): number {
+      let best = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const t0 = performance.now();
+        renderMarkup(markup);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    }
+
+    it.each([
+      ['plain text', (ws: string) => `a${ws}b`],
+      ['markdown', (ws: string) => `*a*${ws}b`],
+      ['a variable', (ws: string) => `{$x}${ws}b`],
+      ['an inline element', (ws: string) => `<span>a${ws}b</span>`],
+    ])('render in about linear time in %s', (_, markup) => {
+      useStoryStore.getState().setVariable('x', 'X');
+      for (const unit of [' ', '\t', ' \t']) {
+        const small = time(markup(unit.repeat(2000)));
+        const large = time(markup(unit.repeat(16000)));
+        // 8× the input may take 8× the time, not the 64× of a quadratic scan
+        expect(large).toBeLessThan(Math.max(small, 1) * 24);
+      }
+    });
+
+    it('keep their spaces, but not around line endings', () => {
+      useStoryStore.getState().setVariable('x', 'X');
+      const el = renderMarkup(`a${' '.repeat(5)}b \t\n\t c {$x}  \t`);
+      expect(el.innerHTML).toBe(`<p>a${' '.repeat(5)}b\nc X</p>`);
     });
   });
 });

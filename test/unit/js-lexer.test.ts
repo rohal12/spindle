@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  createJsScanCache,
   findCodeEnd,
   lexJs,
   lexTemplate,
@@ -240,5 +241,50 @@ describe('findCodeEnd', () => {
     const src = 'a = "{/do}"; if (b) { c(){/do} x';
     const stop = (i: number) => src.startsWith('{/do}', i);
     expect(findCodeEnd(src, 0, { goal: 'statements', stop })).toBe(25);
+  });
+});
+
+describe('findCodeEnd with a shared cache', () => {
+  /** Scan `src` from each start in turn, sharing all results. */
+  const scanAll = (src: string, starts: number[]) => {
+    const cache = createJsScanCache();
+    cache.shareAfter = 0;
+    return starts.map((start) => findCodeEnd(src, start, { cache }));
+  };
+
+  // A scan that lexed the brackets records how they end, for the next scan
+  // opening them to skip them. The function or class body to come is not
+  // the same after them: one they start replaces it, and is gone when they
+  // close.
+  it.each([
+    ['x = function f(a = function(){}) {} /}/ }', 40],
+    ['x = function f(a = class {}) {} /}/ }', 36],
+    ['x = class A extends (function(){}) {} /}/ }', 42],
+    ['x = function f([a] = [function(){}]) {} /}/ }', 44],
+  ])('%j: a body started in brackets is not the one to come', (src, end) => {
+    const brackets = src.indexOf('(');
+    expect(scanAll(src, [brackets, 0])).toEqual([
+      findCodeEnd(src, brackets),
+      end,
+    ]);
+  });
+
+  // Inside unclosed brackets, a stray } closes no braces around them, so
+  // where they end is the same for every scan opening them there.
+  it('shares how unclosed brackets end across scans', () => {
+    const src = '( a[[}'.repeat(3);
+    const starts = [0, 6, 12, 3, 9];
+    expect(scanAll(src, starts)).toEqual(
+      starts.map((s) => findCodeEnd(src, s)),
+    );
+  });
+
+  // Brackets in braces: a } in them closes the braces, so how they end
+  // depends on what is around them.
+  it('keeps apart brackets that a } closes and brackets it does not', () => {
+    const src = '{ ( } ) } x';
+    // From 2 the brackets close at 6; from 0 the } at 4 closes the braces
+    // and the brackets with them, and the } at 8 ends the code
+    expect(scanAll(src, [2, 0])).toEqual([8, 8]);
   });
 });

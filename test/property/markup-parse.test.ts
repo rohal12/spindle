@@ -3,6 +3,7 @@ import { test, fc } from '@fast-check/vitest';
 import {
   createScanMemo,
   scanBalancedBrace,
+  scanTagAttributes,
   tokenize,
   type Token,
 } from '../../src/markup/tokenizer';
@@ -123,7 +124,19 @@ describe('tokenizer and AST builder robustness', () => {
     .tuple(
       fc.array(
         fc.constantFrom(
-          ...['{a', '{$a', '`', '${', '"', "'", '[[', '<a ', 'x="', '{.a'],
+          ...[
+            '{a',
+            '{$a',
+            '`',
+            '${',
+            '"',
+            "'",
+            '[[',
+            '<a ',
+            'x="',
+            'x=',
+            '{.a',
+          ],
           ...['\\', '{do}', ' ', '}', '{/a}'],
         ),
         { minLength: 1, maxLength: 4 },
@@ -158,16 +171,54 @@ describe('tokenizer and AST builder robustness', () => {
   );
 });
 
-describe('brace scans', () => {
-  test.prop([fc.oneof(markupNoise, mutatedPassage), fc.boolean()], fcOptions)(
-    'answer the same with a shared memo as without',
-    (input, reversed) => {
+describe('brace and tag scans', () => {
+  /**
+   * A few fragments repeated: scans from the repeats pass the same points,
+   * in the same or in different states, and share what they record there.
+   */
+  const repeatedUnits = fc
+    .tuple(
+      fc.array(
+        fc.constantFrom(
+          ...['{a', '{$a', '{(', '`', '\\`', '${', '"', "'", '}', '{'],
+          ...['(', ')', '[', ']', '/', '?', ' ', '\n', 'a', '<a ', '</a '],
+          ...['x=', 'x="', "x='", 'onclick="', '>', '{/do}', '{do}'],
+        ),
+        { minLength: 1, maxLength: 5 },
+      ),
+      fc.integer({ min: 2, max: 8 }),
+    )
+    .map(([parts, n]) => parts.join('').repeat(n));
+  const scanInput = fc.oneof(markupNoise, mutatedPassage, repeatedUnits);
+
+  // Code scans share results within brackets only once they are long, which
+  // the short input here never is unless `shareAll` lifts that limit.
+  test.prop([scanInput, fc.boolean(), fc.boolean()], fcOptions)(
+    'brace scans answer the same with a shared memo as without',
+    (input, reversed, shareAll) => {
       const starts = [...Array(input.length + 1).keys()];
       if (reversed) starts.reverse();
       const memo = createScanMemo();
+      if (shareAll) memo.js.shareAfter = 0;
       for (const start of starts) {
         expect(scanBalancedBrace(input, start, memo)).toBe(
           scanBalancedBrace(input, start),
+        );
+      }
+    },
+    propTimeout(5),
+  );
+
+  test.prop([scanInput, fc.boolean(), fc.boolean()], fcOptions)(
+    'tag attribute scans answer the same with a shared memo as without',
+    (input, reversed, shareAll) => {
+      const starts = [...Array(input.length + 1).keys()];
+      if (reversed) starts.reverse();
+      const memo = createScanMemo();
+      if (shareAll) memo.js.shareAfter = 0;
+      for (const start of starts) {
+        expect(scanTagAttributes(input, start, memo)).toBe(
+          scanTagAttributes(input, start),
         );
       }
     },
@@ -212,6 +263,39 @@ describe('tokenize running time', () => {
     '"if(b="{if',
     "[[({if''",
     '{a\n//\\{$a',
+    // Unclosed tags: an unquoted value takes in the next `<`, so each tag's
+    // attribute scan used to run over all the tags after it
+    '<a ',
+    '<a x',
+    '<a x=',
+    '<a x=y',
+    '<a a=a ',
+    '<a x={',
+    '<a x={$a}',
+    '<a x="',
+    "<a x='y' z=",
+    '<a x="{$a',
+    '<a x="{a"',
+    '<div class=a\n',
+    '<a onclick=',
+    '<a x=< ',
+    '</a ',
+    // A quoted value whose interpolations skip every quote after it runs to
+    // the end of the passage, from each tag
+    '<a x={<a x="}',
+    '<a x="}{.a<a x="{if 1}',
+    // Code inside an unclosed `(`, or after regex literals, never reached a
+    // point an earlier scan had passed in the same state
+    '}{(',
+    '{( a[[}',
+    '{(<a x="}',
+    "{a'</a </p>",
+    // A backtick escaped in one template literal starts another
+    '<a x="\\`{%a<span title="',
+    // An unquoted value holding every tag after it
+    '=<a:',
+    // Brackets left open in code that an earlier scan read as a regex
+    '</a?<a onclick="{$a/[',
   ];
 
   /** Milliseconds to tokenize `src`, best of three. */
