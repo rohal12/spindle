@@ -236,4 +236,18 @@ describe('block widgets', () => {
     expect(wrap).not.toBeNull();
     expect(wrap!.textContent).toContain('content here');
   });
+
+  it('keeps widget bodies and @children inline inside <span> (#220)', () => {
+    defineAndTrack('{widget "Greet"}Hello{/widget}');
+    defineAndTrack(
+      '{widget "Tag" @c}<span class="tag">{@children}</span>{/widget}',
+    );
+    defineAndTrack('{widget "Plain" @who}Hi {@who}{/widget}');
+    const el = renderPassage(
+      '<span id="a">{Greet}</span> <span id="b">{Plain "you"}</span> {Tag 1}child text{/Tag}',
+    );
+    expect(el.querySelector('#a')!.innerHTML).toBe('Hello');
+    expect(el.querySelector('#b')!.innerHTML).toBe('Hi you');
+    expect(el.querySelector('.tag')!.innerHTML).toBe('child text');
+  });
 });

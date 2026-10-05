@@ -328,6 +328,8 @@ describe('inline HTML elements should not produce block-level markdown', () => {
     // The text content should contain the plus and value
     expect(container.textContent).toContain('+');
     expect(container.textContent).toContain('0.95');
+    // ...nor a <p> wrapper (#220)
+    expect(container.querySelector('span p')).toBeNull();
   });
 
   it('does not interpret "-" inside <span> as a list marker', () => {
@@ -339,6 +341,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
     expect(container.querySelector('ul')).toBeNull();
     expect(container.querySelector('li')).toBeNull();
     expect(container.textContent).toContain('- text');
+    expect(container.querySelector('span p')).toBeNull();
   });
 
   it('does not interpret "#" inside <span> as a heading', () => {
@@ -349,6 +352,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
 
     expect(container.querySelector('h1')).toBeNull();
     expect(container.textContent).toContain('# not a heading');
+    expect(container.querySelector('span p')).toBeNull();
   });
 
   it('still allows block-level markdown inside <div>', () => {
@@ -370,5 +374,72 @@ describe('inline HTML elements should not produce block-level markdown', () => {
 
     expect(container.querySelector('strong')?.textContent).toBe('bold');
     expect(container.querySelector('em')?.textContent).toBe('italic');
+    expect(container.querySelector('span p')).toBeNull();
+  });
+
+  // #220: inline elements must not wrap their content in <p>
+  function renderMarkup(markup: string): HTMLElement {
+    const container = document.createElement('div');
+    render(<>{renderNodes(buildAST(tokenize(markup)))}</>, container);
+    return container;
+  }
+
+  it('does not wrap plain text inside <span> in a paragraph (#220)', () => {
+    const el = renderMarkup('Before <span id="inline">Hello</span> after');
+    expect(el.querySelector('#inline')!.outerHTML).toBe(
+      '<span id="inline">Hello</span>',
+    );
+  });
+
+  it('does not wrap inline markdown inside <span> in a paragraph (#220)', () => {
+    const el = renderMarkup('<span id="md">**bold** text</span>');
+    expect(el.querySelector('#md')!.innerHTML).toBe(
+      '<strong>bold</strong> text',
+    );
+  });
+
+  it.each(['b', 'em', 'a', 'label', 'code'])(
+    'does not wrap text inside <%s> in a paragraph (#220)',
+    (tag) => {
+      const el = renderMarkup(`<${tag}>Hello</${tag}>`);
+      expect(el.querySelector(tag)!.innerHTML).toBe('Hello');
+    },
+  );
+
+  it('does not wrap variables and text inside <span> in a paragraph (#220)', () => {
+    useStoryStore.getState().setVariable('name', 'Hero');
+    const el = renderMarkup('<span id="v">Hi {$name}!</span>');
+    expect(el.querySelector('#v')!.innerHTML).toBe('Hi Hero!');
+  });
+
+  it('does not wrap macro bodies inside <span> in a paragraph (#220)', () => {
+    const el = renderMarkup('<span id="m">{if true}Hello **you**{/if}</span>');
+    expect(el.querySelector('#m p')).toBeNull();
+    expect(el.querySelector('#m')!.textContent).toBe('Hello you');
+    expect(el.querySelector('#m strong')?.textContent).toBe('you');
+  });
+
+  it('does not wrap {for} bodies inside <span> in a paragraph (#220)', () => {
+    useStoryStore.getState().setVariable('items', ['a', 'b']);
+    const el = renderMarkup(
+      '<span id="f">{for @x of $items}item {@x};{/for}</span>',
+    );
+    expect(el.querySelector('#f p')).toBeNull();
+    expect(el.querySelector('#f')!.textContent).toBe('item a;item b;');
+  });
+
+  it('still wraps text inside <div> in a paragraph', () => {
+    const el = renderMarkup('<div id="block">Hello</div>');
+    expect(el.querySelector('#block')!.innerHTML).toBe('<p>Hello</p>');
+  });
+
+  it('still wraps markdown inside <div> in a paragraph', () => {
+    const el = renderMarkup('<div id="block">**bold** text</div>');
+    expect(el.querySelector('#block > p > strong')?.textContent).toBe('bold');
+  });
+
+  it('restores paragraphs for a <div> nested inside a <span>', () => {
+    const el = renderMarkup('<span><div id="inner">Hello</div></span>');
+    expect(el.querySelector('#inner')!.innerHTML).toBe('<p>Hello</p>');
   });
 });

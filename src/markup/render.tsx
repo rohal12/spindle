@@ -28,21 +28,29 @@ const defaultUpdater: LocalsUpdater = {
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
+/**
+ * True while rendering inside an inline HTML element (e.g. `<span>`), where
+ * block-level markdown and `<p>` wrappers would produce invalid HTML (#220).
+ * Macro and widget bodies read it so their content stays inline too.
+ */
+export const InlineContext = createContext(false);
 export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
  * replacing <span data-tw="N"> placeholder elements with pre-rendered components.
+ * With `unwrapParagraphs` (nobr or inline content), top-level <p> wrappers are
+ * replaced by their children.
  */
 function htmlToPreact(
   html: string,
   components: preact.ComponentChildren[],
-  nobr = false,
+  unwrapParagraphs = false,
 ): preact.ComponentChildren {
   const temp = document.createElement('div');
   temp.innerHTML = html.trim();
-  if (nobr) {
+  if (unwrapParagraphs) {
     for (const p of Array.from(temp.querySelectorAll(':scope > p'))) {
       p.replaceWith(...Array.from(p.childNodes));
     }
@@ -166,6 +174,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
   const inSvg = useContext(SvgContext);
+  const parentInline = useContext(InlineContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
@@ -175,13 +184,24 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   // Inside SVG, skip markdown processing entirely — markdown wraps content
   // in <p> tags which break the SVG namespace.
   // Inside inline elements, disable block-level markdown (lists, headings,
-  // blockquotes) since those produce invalid HTML inside inline containers.
-  const children =
-    node.children.length > 0
-      ? inSvg || isSvgRoot
-        ? renderInlineNodes(node.children)
-        : renderNodes(node.children, { nobr, locals, inline: isInline })
-      : undefined;
+  // blockquotes) and <p> wrappers since those produce invalid HTML inside
+  // inline containers. The inline flag reaches nested macro/widget bodies via
+  // InlineContext; a block element nested inside resets it.
+  let children: preact.ComponentChildren = undefined;
+  if (node.children.length > 0) {
+    if (inSvg || isSvgRoot) {
+      children = renderInlineNodes(node.children);
+    } else {
+      children = renderNodes(node.children, { nobr, locals, inline: isInline });
+      if (isInline !== parentInline) {
+        children = (
+          <InlineContext.Provider value={isInline}>
+            {children}
+          </InlineContext.Provider>
+        );
+      }
+    }
+  }
   const element = h(node.tag, attrs, children);
   return isSvgRoot ? (
     <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
@@ -193,9 +213,10 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const locals = useContext(LocalsValuesContext);
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals })}</>;
+  return <>{renderNodes(childrenAST, { nobr, locals, inline })}</>;
 }
 
 /**
@@ -368,7 +389,7 @@ const PLACEHOLDER_STRIP_RE = /<span data-tw="\d+"><\/span>/g;
 function buildPlainTextVnodes(
   combined: string,
   components: preact.ComponentChildren[],
-  nobr?: boolean,
+  unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
   const parts = combined.split(PLACEHOLDER_SPLIT_RE);
   const children: preact.ComponentChildren[] = [];
@@ -380,7 +401,7 @@ function buildPlainTextVnodes(
       children.push(part);
     }
   }
-  return nobr ? <>{children}</> : h('p', null, ...children);
+  return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
 /**
@@ -440,14 +461,16 @@ export function renderNodes(
   // This eliminates ~655 innerHTML calls on plain UI text like "ALMA",
   // "▸ Crew", "Activate" that pass through the full pipeline only to
   // produce the same text they started with (issue #145).
+  // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
+  const unwrapParagraphs = !!(options?.nobr || options?.inline);
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, components, options?.nobr);
+    return buildPlainTextVnodes(combined, components, unwrapParagraphs);
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, components, options?.nobr);
+  return htmlToPreact(html, components, unwrapParagraphs);
 }
