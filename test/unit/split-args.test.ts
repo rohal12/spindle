@@ -192,6 +192,16 @@ describe('splitArgs', () => {
       expect(splitArgs('$a / 2, "/"')).toEqual(['$a / 2', '"/"']);
       expect(splitArgs('x /2/ y, "a"')).toEqual(['x /2/ y', '"a"']);
     });
+
+    it('reads a slash after an object literal as division', () => {
+      // Property-test counterexample: the `/` opened a regex that hid the
+      // commas after it.
+      expect(splitArgs('-{}/-[], "" in $obj, 1')).toEqual([
+        '-{}/-[]',
+        '"" in $obj',
+        '1',
+      ]);
+    });
   });
 
   // ── Template literal interpolations ──────────────────────────────

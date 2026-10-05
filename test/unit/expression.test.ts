@@ -626,6 +626,16 @@ describe('regex literals (#217)', () => {
     expect(evaluate('%a /%b/ 2', {}, {}, {}, { a: 12, b: 3 })).toBe(2);
     expect(evaluate('_i++ /_b/ 1', {}, { i: 12, b: 3 })).toBe(4);
   });
+
+  it('treats a slash after an object literal as division', () => {
+    // Shrunk from a property-test counterexample: the `/` after `-{}` opened
+    // a regex that swallowed `$obj`, which was then left untransformed.
+    expect(evaluate('[-{}/-[], "k" in $obj]', { obj: { k: 1 } }, {})).toEqual([
+      NaN,
+      true,
+    ]);
+    expect(evaluate('`${ {} / 2 }` + _t', {}, { t: '!' })).toBe('NaN!');
+  });
 });
 
 describe('modulo across newlines and postfix operators (#218)', () => {
