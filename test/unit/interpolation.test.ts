@@ -58,6 +58,13 @@ describe('interpolate', () => {
     expect(interpolate('{$a.b}', { a: { b: 'deep' } }, {}, {})).toBe('deep');
   });
 
+  it('resolves built-in properties of primitives (#204)', () => {
+    expect(interpolate('{$name.length}', { name: 'hero' }, {}, {})).toBe('4');
+    expect(
+      interpolate('{_p.name.length}', {}, { p: { name: 'Hero' } }, {}),
+    ).toBe('4');
+  });
+
   it('returns empty string for undefined values', () => {
     expect(interpolate('{$missing}', {}, {}, {})).toBe('');
   });
