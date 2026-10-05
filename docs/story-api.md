@@ -258,6 +258,40 @@ Story.deleteSave(); // delete default save
 Story.deleteSave('my-slot'); // delete named slot
 ```
 
+### `Story.exportSave(slot?)`
+
+Returns a `Promise<SaveExport | null>` with the save in the given slot as a portable plain object, or `null` if the slot is empty. It is the same format as the Export button in the `{saves}` dialog. Use `JSON.stringify` to write it to a file.
+
+```javascript
+const data = await Story.exportSave('slot-1');
+if (data) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'slot-1.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+```
+
+The `SaveExport` object contains `version`, `ifid`, `exportedAt` and `save` (`{ meta, payload }`). Use `save.meta.title` and `save.meta.custom` to preview a file before importing it.
+
+### `Story.importSave(data, slot?)`
+
+Imports a save export into a slot and replaces any save already in that slot. Omit `slot` to import into the default autosave slot. Returns a `Promise<SaveInfo>` with the slot's new metadata. Afterwards `Story.hasSave(slot)` is `true` and `Story.load(slot)` loads the imported save.
+
+```javascript
+const text = await file.text();
+try {
+  const info = await Story.importSave(JSON.parse(text), 'slot-2');
+  console.log('Imported ' + info.title);
+} catch (err) {
+  console.error(err.message); // invalid file, or a save from another story
+}
+```
+
+The promise rejects, and the slot is left unchanged, if `data` is not a save export or if it comes from a different story (its IFID does not match). The imported save keeps its title and `custom` metadata. If its playthrough doesn't exist in this browser, it is grouped under an "Imported" playthrough. Importing does not load the save.
+
 ### `Story.defineMacro(config)`
 
 Register a custom macro. See [Custom Macros](custom-macros.md) for full details.

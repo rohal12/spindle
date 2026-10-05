@@ -18,6 +18,8 @@ import {
   deleteSlotSave,
   exportSave,
   importSave,
+  exportSlotSave,
+  importSlotSave,
   setTitleGenerator,
   setSaveTitlePassage,
   getStorageInfo,
@@ -504,6 +506,52 @@ describe('save-manager', () => {
       const loaded2 = await loadSave(imported2.meta.id);
       expect(loaded1).toBeDefined();
       expect(loaded2).toBeDefined();
+    });
+  });
+
+  describe('exportSlotSave / importSlotSave', () => {
+    it('exportSlotSave returns undefined for an empty slot', async () => {
+      expect(await exportSlotSave(IFID, 'empty-slot')).toBeUndefined();
+    });
+
+    it('exportSlotSave exports the save held in the slot', async () => {
+      const record = await quickSave(IFID, playthroughId, makePayload(), 'a');
+      const exported = await exportSlotSave(IFID, 'a');
+      expect(exported!.save.meta.id).toBe(record.meta.id);
+    });
+
+    it('importSlotSave keeps custom metadata but rewrites the slot keys', async () => {
+      await quickSave(IFID, playthroughId, makePayload(), 'from', { day: 4 });
+      const exported = await exportSlotSave(IFID, 'from');
+
+      const info = await importSlotSave(exported!, IFID, 'to');
+      expect(info.slot).toBe('to');
+      expect(info.custom).toEqual({ day: 4, isAutosave: false, slot: 'to' });
+      expect(await listSlotSaves(IFID)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ slot: 'to' })]),
+      );
+    });
+
+    it('importSlotSave deletes the save it replaces', async () => {
+      const old = await quickSave(IFID, playthroughId, makePayload(), 'dst');
+      await quickSave(IFID, playthroughId, makePayload(), 'src');
+      const exported = await exportSlotSave(IFID, 'src');
+
+      await importSlotSave(exported!, IFID, 'dst');
+      expect(await loadSave(old.meta.id)).toBeUndefined();
+      expect(await hasQuickSave(IFID, 'dst')).toBe(true);
+    });
+
+    it('importSlotSave validates the IFID before touching the slot', async () => {
+      await quickSave(IFID, playthroughId, makePayload(), 'keep');
+      const before = await getSlotSaveInfo(IFID, 'keep');
+      const exported = await exportSlotSave(IFID, 'keep');
+      const foreign = { ...exported!, ifid: 'some-other-story' };
+
+      await expect(importSlotSave(foreign, IFID, 'keep')).rejects.toThrow(
+        /different story/,
+      );
+      expect(await getSlotSaveInfo(IFID, 'keep')).toEqual(before);
     });
   });
 
