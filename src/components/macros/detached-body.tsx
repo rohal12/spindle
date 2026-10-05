@@ -10,6 +10,7 @@ import {
 } from '../../markup/render';
 import type { ASTNode } from '../../markup/ast';
 import { liveLocalsView } from '../../utils/live-locals';
+import { runWithCommittedMutations } from '../../execute-mutation';
 import { RepeatContext } from './Repeat';
 import { DialogCloseContext } from '../PassageDialog';
 
@@ -25,6 +26,12 @@ import { DialogCloseContext } from '../PassageDialog';
  * nobr/inline rendering, the enclosing block widget's {@children}, the
  * enclosing {repeat}'s {stop} and the enclosing dialog's close callback.
  * The body then behaves as if it rendered in place.
+ *
+ * The body's macros read story state from the store. Run from mutation code
+ * (Story.performAction, a click the code dispatches), it runs in program
+ * order: the code's writes so far are committed first, so the body sees
+ * them, and the code goes on from the state the body leaves (see
+ * runWithCommittedMutations).
  */
 export function useDetachedBody(): (children: ASTNode[]) => void {
   const updater = useContext(LocalsUpdateContext);
@@ -34,7 +41,7 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
   const repeat = useContext(RepeatContext);
   const closeDialog = useContext(DialogCloseContext);
 
-  return (children) => {
+  const run = (children: ASTNode[]) => {
     const locals = liveLocalsView(updater.getValues);
     const container = document.createElement('div');
     render(
@@ -57,4 +64,5 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
     );
     render(null, container);
   };
+  return (children) => runWithCommittedMutations(() => run(children));
 }

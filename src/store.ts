@@ -54,6 +54,10 @@ import {
 } from './prng';
 import { errorMessage } from './utils/error-message';
 import {
+  routeStoreUpdate,
+  runWithCommittedMutations,
+} from './execute-mutation';
+import {
   checkVariableName,
   createNamespace,
   isNamespace,
@@ -564,11 +568,32 @@ function keepNamespacesBare(draft: Draft<StoryState>): void {
 }
 
 /**
+ * Actions that record, replace or save story state. Called while mutation
+ * code runs (by Story.goto, a {link} or {back} the code performs, a
+ * watcher), they act in program order: the code's writes so far are
+ * committed first, and the code goes on from the state they leave (see
+ * runWithCommittedMutations). Outside mutation code they just run.
+ */
+const PROGRAM_ORDER_ACTIONS = [
+  'navigate',
+  'goBack',
+  'goForward',
+  'restart',
+  'save',
+  'getSavePayload',
+  'loadFromPayload',
+] as const;
+
+/**
  * Store middleware (inside `immer`) that every update goes through: the
  * store's own actions and outside `setState` calls alike.
  *
  * - The variable namespaces stay records without a prototype, whatever an
  *   update assigns (see utils/namespace.ts).
+ * - An update made while mutation code runs follows that code's pending
+ *   writes, in program order, and reaches its working copies (see
+ *   routeStoreUpdate in execute-mutation.ts).
+ * - The PROGRAM_ORDER_ACTIONS commit running mutation code first.
  */
 function storyStateGuard(
   creator: StateCreator<StoryState, [['zustand/immer', never]], []>,
@@ -588,13 +613,21 @@ function storyStateGuard(
           : (draft) => {
               Object.assign(draft, updater);
             };
+      const routed = routeStoreUpdate(get(), recipe);
       set((draft) => {
-        recipe(draft);
+        (routed ?? recipe)(draft);
         keepNamespacesBare(draft);
       });
     }) as typeof set;
     api.setState = guarded;
-    return creator(guarded, get, api);
+    const state = creator(guarded, get, api);
+    for (const name of PROGRAM_ORDER_ACTIONS) {
+      const action = state[name] as (...args: unknown[]) => unknown;
+      (state as unknown as Record<string, unknown>)[name] = (
+        ...args: unknown[]
+      ) => runWithCommittedMutations(() => action(...args));
+    }
+    return state;
   };
 }
 

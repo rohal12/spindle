@@ -21,12 +21,7 @@ import {
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
-import {
-  frozenCopy,
-  getActiveMutationScope,
-  writeInActiveScopes,
-  runWithCommittedMutations,
-} from './execute-mutation';
+import { frozenCopy, getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { checkVariableName } from './utils/namespace';
 import { defineMacro } from './define-macro';
@@ -301,50 +296,36 @@ function createStoryAPI(): StoryAPI {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
       }
-      // One store update for all keys, so watchers see them together
+      // One store update for all keys, so watchers see them together. Made
+      // while mutation code runs ({do}, ctx.mutate, watcher run actions), it
+      // follows the code's own pending writes (program order, #215): see
+      // routeStoreUpdate.
       useStoryStore.getState().updateVariables((draft) => {
-        // Mutation code running now ({do}, ctx.mutate, watcher run actions)
-        // works on copies of the namespaces and commits the paths it changed
-        // when it finishes. The write follows the code's own pending writes
-        // (program order, #215): see writeInActiveScopes.
-        const writes = entries.map(([name, v]) => {
-          const { isTransient, key } = parseName(name);
-          return {
-            ns: isTransient ? ('transient' as const) : ('variables' as const),
-            path: key.split('.'),
-            value: v,
-          };
-        });
-        if (writeInActiveScopes(draft, writes)) return;
         for (const [k, v] of entries) setOne(draft, k, v);
       });
     },
 
-    // Called from running mutation code, these commit the code's writes so
-    // far before they record, replace or save state, and the code goes on
-    // from the state they leave (see runWithCommittedMutations).
+    // Called from running mutation code, these store actions commit the
+    // code's writes so far before they record, replace or save state, and
+    // the code goes on from the state they leave (see storyStateGuard).
     goto(passageName: string): void {
-      runWithCommittedMutations(() =>
-        useStoryStore.getState().navigate(passageName),
-      );
+      useStoryStore.getState().navigate(passageName);
     },
 
     back(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().goBack());
+      useStoryStore.getState().goBack();
     },
 
     forward(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().goForward());
+      useStoryStore.getState().goForward();
     },
 
     restart(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().restart());
+      useStoryStore.getState().restart();
     },
 
     save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return runWithCommittedMutations(() =>
-        useStoryStore.getState().save(slot, custom),
-      );
+      return useStoryStore.getState().save(slot, custom);
     },
 
     load(slot?: string): Promise<void> {

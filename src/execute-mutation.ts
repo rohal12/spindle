@@ -1,10 +1,17 @@
-import { current as currentDraft, freeze, isDraft } from 'immer';
+import {
+  Immer,
+  current as currentDraft,
+  freeze,
+  isDraft,
+  type Draft,
+  type Patch,
+} from 'immer';
 import { useStoryStore } from './store';
 import type { VariableNamespaces } from './store';
 import { execute } from './expression';
 import { deepClone, deepEqual } from './class-registry';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-import { asNamespace, createNamespace } from './utils/namespace';
+import { asNamespace } from './utils/namespace';
 
 type NamespaceName = keyof VariableNamespaces;
 
@@ -22,10 +29,10 @@ type PathChange =
 /**
  * The state of one executing mutation. The code reads and writes `work`.
  * `base` is what `work` started as, with every write made elsewhere during
- * execution (Story.set, the commits of nested mutations) applied to both,
- * so diffing `work` against `base` yields exactly the code's own changes,
- * and a write made elsewhere after the code's own write to the same path
- * leaves no difference there: the later write wins.
+ * execution (any other store update, the commits of nested mutations)
+ * applied to both, so diffing `work` against `base` yields exactly the
+ * code's own changes, and a write made elsewhere after the code's own write
+ * to the same path leaves no difference there: the later write wins.
  */
 interface MutationScope {
   work: VariableNamespaces;
@@ -93,6 +100,9 @@ function diff(
     const w = work[key];
     if (!hasOwn(base, key)) {
       changes.push({ path: [...path, key], deleted: false, value: w });
+    } else if (Object.is(b, w)) {
+      // The same value (an untouched subtree of an Immer update)
+      continue;
     } else if (
       isMergeable(b) &&
       isMergeable(w) &&
@@ -166,57 +176,159 @@ function mirror(
   }
 }
 
-/** A Story.set write: `value` at `path` of a namespace. */
-export interface PathWrite {
-  ns: 'variables' | 'transient';
-  path: string[];
-  value: unknown;
+const NAMESPACE_KEYS: ReadonlySet<string> = new Set(NAMESPACES);
+
+/**
+ * Runs store updates on the running code's working copies. They stay the
+ * code's own, so nothing may freeze them.
+ */
+const scratch = new Immer({ autoFreeze: false });
+
+/** Set while commitScope() hands its commit to the store. */
+let committing = false;
+
+/**
+ * The path below a namespace that an Immer patch at `segments` changed, as
+ * the merge sees values: arrays, Map, Set, Date and RegExp change as a
+ * whole (see isMergeable), so a patch inside one is a change of it.
+ */
+function changedPath(
+  ns: Record<string, unknown>,
+  segments: readonly (string | number)[],
+): string[] {
+  const path: string[] = [];
+  let node: unknown = ns;
+  for (const segment of segments) {
+    if (!isMergeable(node)) break;
+    const key = String(segment);
+    path.push(key);
+    node = hasOwn(node, key) ? node[key] : undefined;
+  }
+  return path;
+}
+
+/** The change that brings `path` to what it holds in `ns`. */
+function changeTo(ns: Record<string, unknown>, path: string[]): PathChange {
+  const parent = getByPath(ns, path.slice(0, -1));
+  const key = path[path.length - 1]!;
+  return isMergeable(parent) && hasOwn(parent, key)
+    ? { path, deleted: false, value: parent[key] }
+    : { path, deleted: true };
 }
 
 /**
- * Make Story.set writes while mutation code runs, inside the store update
- * (`draft`) that carries them. Returns false, writing nothing, when no
- * mutation code runs.
- *
- * The code sees its own pending writes, so in program order a Story.set
- * path is resolved in the running code's state, not the store's: a path
- * the code's state cannot take (the code replaced or deleted an object on
- * it) throws a TypeError before anything is written, as an assignment
- * would. Each write then reaches the store at once, for watchers; where
- * the store's state cannot take the path, the code's state of the whole
- * root is written instead. Finally it is mirrored into every executing
- * mutation (see mirror()).
+ * The property paths of a namespace that an update wrote (Immer `patches`
+ * from `before` to `after`), each with what it holds afterwards: where the
+ * update assigned an object, the whole object is the change, so a write
+ * replaces exactly what it replaced in program order.
  */
-export function writeInActiveScopes(
-  draft: VariableNamespaces,
-  writes: readonly PathWrite[],
-): boolean {
+function writtenPaths(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  patches: readonly Patch[],
+): PathChange[] {
+  if (patches.some((p) => p.path.length === 1)) {
+    // The namespace itself was replaced: each root that differs
+    const roots = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return [...roots]
+      .filter((root) => !hasOwn(before, root) || before[root] !== after[root])
+      .map((root) => changeTo(after, [root]));
+  }
+  const seen = new Set<string>();
+  const changes: PathChange[] = [];
+  for (const patch of patches) {
+    const path = changedPath(after, patch.path.slice(1));
+    const key = JSON.stringify(path);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    changes.push(changeTo(after, path));
+  }
+  return changes;
+}
+
+/**
+ * Route a store update made while mutation code runs into program order.
+ * The store calls this for every update (see storyStateGuard in store.ts);
+ * it returns undefined, leaving the update as it is, when no mutation code
+ * runs or the update is a commit of mutation code. Otherwise the update is
+ * one made by something the code called: Story.set, an input binding or a
+ * {computed}/{unset} the code set off, a direct store action, a watcher.
+ *
+ * In program order such an update happens to the running code's state: its
+ * recipe runs on the innermost mutation's working copies (so it reads the
+ * code's pending writes, and a path is resolved as the code sees it; a path
+ * the code's state cannot take throws before anything is written, as an
+ * assignment would). The property paths it wrote there are then written to
+ * the code's working copy at once, so the code reads them next, and are
+ * returned as the recipe for the store: each write reaches the store at
+ * once (for watchers and components), and where the store's state cannot
+ * take the path, the code's state of the whole root is written instead.
+ * Each write is also mirrored into every executing mutation (see mirror()),
+ * so their commits neither drop nor revert it. Changes to the rest of the
+ * store state are applied as they are.
+ */
+export function routeStoreUpdate<S extends VariableNamespaces>(
+  state: S,
+  recipe: (draft: Draft<S>) => void,
+): ((draft: Draft<S>) => void) | undefined {
+  if (committing) {
+    committing = false;
+    return undefined;
+  }
   const inner = activeScopes[activeScopes.length - 1];
-  if (!inner) return false;
+  if (!inner) return undefined;
 
-  // Try all paths on copies of the roots they write first, so that a
-  // failing write leaves nothing half done
-  const trial: Record<string, Record<string, unknown>> = {};
-  for (const { ns, path, value } of writes) {
-    const root = path[0]!;
-    trial[ns] ??= createNamespace(inner.work[ns]);
-    if (trial[ns][root] === inner.work[ns][root]) {
-      trial[ns][root] = cloneValue(inner.work[ns][root]);
-    }
-    setByPath(trial[ns], path, value);
+  const view = {
+    ...state,
+    variables: inner.work.variables,
+    temporary: inner.work.temporary,
+    transient: inner.work.transient,
+  };
+  const [next, patches] = scratch.produceWithPatches(
+    view,
+    recipe as (draft: Draft<S>) => void,
+  );
+  const changes = NAMESPACES.map((ns) => {
+    const own = patches.filter((p) => p.path[0] === ns);
+    return [
+      ns,
+      own.length ? writtenPaths(view[ns], next[ns], own) : [],
+    ] as const;
+  });
+  const owned = (change: PathChange): PathChange =>
+    change.deleted ? change : { ...change, value: cloneValue(change.value) };
+  for (const [ns, list] of changes) {
+    for (const change of list) applyChange(inner.work[ns], owned(change));
   }
 
-  for (const { ns, path, value } of writes) {
-    const root = path[0]!;
-    setByPath(inner.work[ns], path, cloneValue(value));
-    try {
-      setByPath(draft[ns], path, value);
-    } catch {
-      draft[ns][root] = cloneValue(inner.work[ns][root]);
+  return (draft) => {
+    const target = draft as unknown as Record<string, unknown>;
+    for (const key of Object.keys(next)) {
+      const value = (next as unknown as Record<string, unknown>)[key];
+      if (
+        !NAMESPACE_KEYS.has(key) &&
+        value !== (view as unknown as Record<string, unknown>)[key]
+      ) {
+        target[key] = value;
+      }
     }
-    mirror(draft, ns, { path, deleted: false, value });
-  }
-  return true;
+    const namespaces = draft as unknown as VariableNamespaces;
+    for (const [ns, list] of changes) {
+      for (const change of list) {
+        const root = change.path[0]!;
+        try {
+          applyChange(namespaces[ns], owned(change));
+        } catch {
+          if (hasOwn(inner.work[ns], root)) {
+            namespaces[ns][root] = cloneValue(inner.work[ns][root]);
+          } else {
+            delete namespaces[ns][root];
+          }
+        }
+        mirror(namespaces, ns, change);
+      }
+    }
+  };
 }
 
 const cloneNamespaces = (from: VariableNamespaces): VariableNamespaces => ({
@@ -251,8 +363,16 @@ function commitScope(
 
   // One store update for everything: watchers must see the whole mutation,
   // and a watcher's run action must not be overwritten by paths this commit
-  // writes after it fired.
-  current.updateVariables((draft) => {
+  // writes after it fired. It is the commit itself, not an update made by
+  // running code (see routeStoreUpdate).
+  committing = true;
+  try {
+    current.updateVariables(commitRecipe);
+  } finally {
+    committing = false;
+  }
+
+  function commitRecipe(draft: VariableNamespaces): void {
     for (const [ns, list] of changes) {
       const replaced = new Set<string>();
       for (const change of list) {
@@ -275,7 +395,7 @@ function commitScope(
       // watchers fired by this update run.
       for (const change of list) mirror(draft, ns, change, enclosing);
     }
-  });
+  }
 }
 
 /**
