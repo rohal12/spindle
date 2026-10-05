@@ -136,6 +136,16 @@ Variable references (`{$var}`, `{_var}`, `{@var}`, `{%var}`) inside HTML attribu
 
 Tags not in the supported set are treated as plain text.
 
+The content of `<pre>`, `<textarea>` and `<svg>` is not processed as markdown: indentation and characters such as `#`, `*` and `-` are kept as written. Variables and macros still work inside them.
+
+```
+<pre>
+Inventory:
+    {$gold} gold
+    * {$item}
+</pre>
+```
+
 ## Markdown
 
 All passage text is processed through CommonMark with GFM extensions for tables and strikethrough.

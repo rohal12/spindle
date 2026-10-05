@@ -33,7 +33,16 @@ export const NobrContext = createContext(false);
  * Macro and widget bodies read it so their content stays inline too.
  */
 export const InlineContext = createContext(false);
-export const SvgContext = createContext(false);
+/**
+ * True while rendering inside an element whose content is not markdown: SVG
+ * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
+ * and `<textarea>`, whose text (indentation, `#`, `*`, ...) is literal.
+ * Macro and widget bodies read it so their content stays literal too.
+ */
+export const RawTextContext = createContext(false);
+
+/** Elements whose content is literal text, not markdown. */
+const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea']);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
@@ -243,23 +252,24 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
-  const inSvg = useContext(SvgContext);
+  const inRaw = useContext(RawTextContext);
   const parentInline = useContext(InlineContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
   }
-  const isSvgRoot = node.tag.toLowerCase() === 'svg';
-  const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
-  // Inside SVG, skip markdown processing entirely — markdown wraps content
-  // in <p> tags which break the SVG namespace.
+  const tag = node.tag.toLowerCase();
+  const isRawRoot = !inRaw && (tag === 'svg' || PREFORMATTED_ELEMENTS.has(tag));
+  const isInline = INLINE_ELEMENTS.has(tag);
+  // Inside SVG and preformatted elements, skip markdown processing entirely
+  // (see RawTextContext).
   // Inside inline elements, disable block-level markdown (lists, headings,
   // blockquotes) and <p> wrappers since those produce invalid HTML inside
   // inline containers. The inline flag reaches nested macro/widget bodies via
   // InlineContext; a block element nested inside resets it.
   let children: preact.ComponentChildren = undefined;
   if (node.children.length > 0) {
-    if (inSvg || isSvgRoot) {
+    if (inRaw || isRawRoot) {
       children = renderInlineNodes(node.children);
     } else {
       children = renderNodes(node.children, { nobr, locals, inline: isInline });
@@ -273,8 +283,8 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     }
   }
   const element = h(node.tag, attrs, children);
-  return isSvgRoot ? (
-    <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
+  return isRawRoot ? (
+    <RawTextContext.Provider value={true}>{element}</RawTextContext.Provider>
   ) : (
     element
   );
@@ -284,9 +294,10 @@ function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const locals = useContext(LocalsValuesContext);
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals, inline })}</>;
+  return <>{renderNodes(childrenAST, { nobr, locals, inline, raw })}</>;
 }
 
 /**
@@ -455,9 +466,12 @@ export function renderNodes(
     /** Unused: components read locals from LocalsValuesContext. Kept for API compatibility. */
     locals?: Record<string, unknown>;
     inline?: boolean;
+    /** Literal content (see RawTextContext): no markdown processing. */
+    raw?: boolean;
   },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
+  if (options?.raw) return renderInlineNodes(nodes);
 
   // Skip the markdown pipeline when text nodes contain only whitespace.
   // This eliminates ~97 redundant micromark + innerHTML calls per render
