@@ -21,6 +21,7 @@ import { getMacro, getMacroText, isSubMacro } from './registry';
 import type { MacroTextContext } from './registry';
 import { getWidget } from './widgets/widget-registry';
 import { splitArgs } from './components/macros/arg-utils';
+import { splitSigilTemplate } from './markup/code-attributes';
 
 /** Whether a string may contain markup (anything but plain text). */
 export function hasInterpolation(s: string): boolean {
@@ -294,6 +295,53 @@ export function interpolateText(
     };
   }
   return renderText(parsed.nodes, scope);
+}
+
+const SIGIL_KINDS = {
+  $: 'variable',
+  _: 'temporary',
+  '@': 'local',
+  '%': 'transient',
+} as const;
+
+/**
+ * Resolve the sigil references in the value of a code attribute (see
+ * isCodeAttribute): `{$x}`, `{_x.y}`, `{$n + 1}`. Everything else, other
+ * braces included, is literal text, passed through `decode` when given.
+ * A reference whose expression fails is reported and left empty.
+ */
+export function interpolateCode(
+  template: string,
+  scope: TextScope,
+  decode?: (text: string) => string,
+): TextResult {
+  const errors: TextError[] = [];
+  let text = '';
+  for (const part of splitSigilTemplate(template)) {
+    if ('text' in part) {
+      text += decode ? decode(part.text) : part.text;
+    } else if ('verbatim' in part) {
+      text += part.verbatim;
+    } else if (/^[$_@%][\w.]+$/.test(part.expr)) {
+      const kind = SIGIL_KINDS[part.expr[0] as keyof typeof SIGIL_KINDS];
+      text += display(resolveVariable(scope, kind, part.expr.slice(1)));
+    } else {
+      try {
+        text += display(
+          evaluate(
+            part.expr,
+            scope.variables,
+            scope.temporary,
+            scope.locals,
+            scope.transient,
+          ),
+        );
+      } catch (error) {
+        errors.push({ macro: 'expression', error });
+      }
+    }
+  }
+  return { text, errors };
 }
 
 /**

@@ -11,6 +11,7 @@ import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useTextScope } from '../hooks/use-interpolate';
 import {
   hasInterpolation,
+  interpolateCode,
   mapTextNodes,
   parseText,
   renderText,
@@ -19,6 +20,7 @@ import {
   type TextScope,
 } from '../interpolation';
 import { MacroError } from '../components/macros/MacroError';
+import { isCodeAttribute } from './code-attributes';
 import { errorMessage } from '../utils/error-message';
 
 export interface LocalsUpdater {
@@ -461,6 +463,9 @@ function decodeAttributeText(text: string): string {
   return decoded;
 }
 
+/** A `{` and a sigil starting a reference, in a code attribute. */
+const SIGIL_REFERENCE = /\{[$_@%]\w/;
+
 const attributeNodes = new Map<string, ParsedText>();
 const ATTRIBUTE_CACHE_LIMIT = 2000;
 
@@ -486,7 +491,9 @@ function parseAttributeValue(value: string): ParsedText {
 /**
  * An author-written attribute value with its markup evaluated (see
  * interpolation.ts) and its character references decoded. Errors are added
- * to `errors`; a value whose markup doesn't parse is kept as written.
+ * to `errors`; a value whose markup doesn't parse is kept as written. The
+ * value of a code attribute (`onclick`, see isCodeAttribute) only has its
+ * sigil references resolved.
  */
 function resolveAttributeValue(
   name: string,
@@ -494,6 +501,14 @@ function resolveAttributeValue(
   scope: TextScope,
   errors: AttributeError[],
 ): string {
+  if (isCodeAttribute(name)) {
+    // As before #225: without a character reference, a value with no sigil
+    // reference is taken as written.
+    if (!value.includes('&') && !SIGIL_REFERENCE.test(value)) return value;
+    const result = interpolateCode(value, scope, decodeAttributeText);
+    for (const error of result.errors) errors.push([name, error]);
+    return result.text;
+  }
   if (!hasInterpolation(value)) return decodeAttributeText(value);
   const parsed = parseAttributeValue(value);
   if ('error' in parsed) {

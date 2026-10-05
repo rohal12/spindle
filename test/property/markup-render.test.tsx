@@ -12,6 +12,7 @@ import { NUM_RUNS, fcOptions } from './config';
 import { INLINE_TAGS, richPassage, substituteVars } from './markup-rich';
 import {
   TEXT_WIDGET,
+  codePieces,
   outerLocal,
   pieces,
   textVars,
@@ -372,8 +373,9 @@ describe('markup in attribute values (#225)', () => {
     vars: TextVars,
     next: TextVars,
     outer: string | undefined,
+    [codeName, code]: [string, TextPiece],
   ) {
-    const element = `<span id="t" title="${value.src}">x</span>`;
+    const element = `<span id="t" title="${value.src}" ${codeName}="${code.src}">x</span>`;
     const src =
       outer === undefined
         ? element
@@ -383,10 +385,13 @@ describe('markup in attribute values (#225)', () => {
     withPassage(src, (el) => {
       const check = (env: TextEnv) => {
         const out = value.ref(env, true);
-        expect(el.querySelector('#t')!.getAttribute('title'), src).toBe(
-          out.text,
+        const codeOut = code.ref(env, true);
+        const span = el.querySelector('#t')!;
+        expect(span.getAttribute('title'), src).toBe(out.text);
+        expect(span.getAttribute(codeName), src).toBe(codeOut.text);
+        expect(el.querySelectorAll('.error').length, src).toBe(
+          out.errors + codeOut.errors,
         );
-        expect(el.querySelectorAll('.error').length, src).toBe(out.errors);
         // Nothing that can't resolve ran: no {set}, no {goto}.
         expect(useStoryStore.getState().variables.n, src).toBe(env.vars.n);
         expect(useStoryStore.getState().currentPassage, src).toBe('Start');
@@ -402,7 +407,17 @@ describe('markup in attribute values (#225)', () => {
   // Text, escapes, character references, variables, expressions and text
   // macros resolve to the string the reference evaluator gives, inside a
   // loop (whose @o the value may read) or not, and follow Story.set.
-  test.prop([pieces(2), textVars, textVars, outerLocal], domOptions)(
+  // Next to it sits a code attribute (an event handler, pattern or srcdoc),
+  // where only sigil references resolve and other braces are code.
+  const codeAttribute = fc.tuple(
+    fc.constantFrom('onclick', 'onmouseover', 'onfocus', 'pattern', 'srcdoc'),
+    codePieces,
+  );
+
+  test.prop(
+    [pieces(2), textVars, textVars, outerLocal, codeAttribute],
+    domOptions,
+  )(
     'resolve to the reference text and follow their variables',
     attributeCase,
     domTimeout,
@@ -412,7 +427,13 @@ describe('markup in attribute values (#225)', () => {
   // failing expressions) shows one error per evaluation, adds no text and
   // never runs, while the rest of the value still resolves.
   test.prop(
-    [pieces(2, { failing: true }), textVars, textVars, outerLocal],
+    [
+      pieces(2, { failing: true }),
+      textVars,
+      textVars,
+      outerLocal,
+      codeAttribute,
+    ],
     domOptions,
   )(
     'report what cannot resolve, and run none of it',

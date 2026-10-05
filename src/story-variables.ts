@@ -1,5 +1,6 @@
 import type { Passage } from './parser';
 import { tokenize, type Token } from './markup/tokenizer';
+import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
@@ -202,6 +203,16 @@ function findClosingQuote(code: string, start: number): number {
 const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
 /**
+ * Scan the value of a code attribute (`onclick`, see isCodeAttribute) for
+ * the `{$…}` references resolved in it; its other braces are code.
+ */
+function scanSigilReferences(value: string, onRef: RefCallback): void {
+  for (const part of splitSigilTemplate(value)) {
+    if ('expr' in part) scanCode(part.expr, 0, onRef);
+  }
+}
+
+/**
  * Scan literal text (string contents, HTML attribute values) for the markup
  * that labels and HTML attributes evaluate at runtime: `{$…}` displays,
  * expressions and macros, read as in passage text. A bare `$word` in
@@ -317,8 +328,9 @@ function collectTokenRefs(
     } else if (token.type === 'expression') {
       scanCode(token.expression, 0, onRef);
     } else if (token.type === 'html') {
-      for (const value of Object.values(token.attributes)) {
-        scanInterpolations(value, onRef, storeVarMacros);
+      for (const [name, value] of Object.entries(token.attributes)) {
+        if (isCodeAttribute(name)) scanSigilReferences(value, onRef);
+        else scanInterpolations(value, onRef, storeVarMacros);
       }
     } else if (token.type === 'macro' && !token.isClose) {
       scanCode(token.rawArgs, 0, onRef);

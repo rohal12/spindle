@@ -2,13 +2,19 @@ import { describe, expect, beforeAll, afterAll } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import { tokenize, type Token } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
-import { interpolateText } from '../../src/interpolation';
+import { interpolateCode, interpolateText } from '../../src/interpolation';
 import {
   registerWidget,
   clearWidgets,
 } from '../../src/widgets/widget-registry';
 import { fcOptions } from './config';
-import { TEXT_WIDGET, outerLocal, pieces, textVars } from './markup-text';
+import {
+  TEXT_WIDGET,
+  codePieces,
+  outerLocal,
+  pieces,
+  textVars,
+} from './markup-text';
 import {
   linkArb,
   markupNoise,
@@ -223,6 +229,23 @@ describe('text-only markup (#225)', () => {
       expect(result.text, value.src).toBe(out.text);
       expect(result.errors, value.src).toHaveLength(out.errors);
       expect(variables, value.src).toEqual(vars);
+    },
+    propTimeout(5),
+  );
+
+  test.prop([codePieces, textVars, outerLocal], fcOptions)(
+    'code attribute values resolve only their sigil references',
+    (code, vars, outer) => {
+      const locals = outer === undefined ? {} : { o: outer };
+      const result = interpolateCode(code.src, {
+        variables: { ...vars },
+        temporary: {},
+        locals,
+        transient: {},
+      });
+      const out = code.ref({ vars, locals }, false);
+      expect(result.text, code.src).toBe(out.text);
+      expect(result.errors, code.src).toHaveLength(out.errors);
     },
     propTimeout(5),
   );

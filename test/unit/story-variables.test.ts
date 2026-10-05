@@ -308,6 +308,8 @@ describe('validatePassages: only real references (#178)', () => {
     ['link markup', '[[Pay $cost->Shop]]'],
     ['escaped braces', '\\{$cost\\}'],
     ['escaped brace in an attribute', '<b title="\\{$cost}">x</b>'],
+    ['code in an event handler', '<b onclick="if (a) {return $cost}">x</b>'],
+    ['code in a pattern', '<input pattern="{if $cost}">'],
     [
       'line comment in do body',
       '{do}\n// uses $cost later\n$health = 1\n{/do}',
@@ -331,6 +333,7 @@ describe('validatePassages: only real references (#178)', () => {
     ['nested template interpolation', '{print `a ${`b ${$cost}`}`}'],
     ['string interpolation block', '{link "Pay {$cost}" "Shop"}{/link}'],
     ['HTML attribute interpolation', '<img src="{$cost}.png">'],
+    ['event handler reference', '<b onclick="go({$cost})">x</b>'],
     ['HTML attribute macro', '<b class="{if $cost > 1}a{/if}">x</b>'],
     ['HTML attribute macro body', '<b class="{if true}{$cost}{/if}">x</b>'],
     ['HTML attribute expression opened by !', '<b title="{!$cost}">x</b>'],

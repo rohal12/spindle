@@ -151,7 +151,7 @@ Tags not in the supported set are treated as plain text.
 
 ### Markup in attribute values
 
-HTML attribute values take the same `{…}` markup as passage text: variables, expressions, and macros that produce text. The value updates when the variables it uses change.
+HTML attribute values take the same `{…}` markup as passage text: variables, expressions, and macros that produce text. The value updates when the variables it uses change. Event handlers, `pattern` and `srcdoc` are the exception: they hold code, see [Attributes holding code](#attributes-holding-code).
 
 ```
 {set $color = "red"}
@@ -170,7 +170,18 @@ The value is plain text: no markdown, links or HTML tags, and line breaks are ke
 
 Macros that do something rather than produce text (`{set}`, `{do}`, `{goto}`, `{button}`, `{link}`, input macros, ...) can't be used in an attribute value. They don't run; an error is shown in front of the element instead, as are unknown macros, failing expressions and unclosed macros (an unclosed macro leaves the value as written). A boolean attribute whose markup yields nothing, such as `disabled="{if $locked}disabled{/if}"`, is left out.
 
-For literal braces in an attribute value, escape them as in passage text: `title="\{$x}"` shows `{$x}`. A backslash run before a brace pairs up (`\\` shows one backslash); other backslashes are kept as written. Braces that start no markup, such as a regex quantifier in `pattern="\d{3}"` or JSON in `data-config='{"a": 1}'`, need no escaping, but braces in inline JavaScript (`onclick="...{return x}"`) do when a letter, `/`, `(`, `!`, `.`, `#` or a variable sigil follows them.
+For literal braces in an attribute value, escape them as in passage text: `title="\{$x}"` shows `{$x}`. A backslash run before a brace pairs up (`\\` shows one backslash); other backslashes are kept as written. Braces that start no markup, such as JSON in `data-config='{"a": 1}'`, need no escaping.
+
+#### Attributes holding code
+
+Event handler attributes (`onclick`, `onmouseover`, any name starting with `on`, in any case), `pattern` (a regular expression) and `srcdoc` (an HTML document, with its own scripts and styles) hold code whose braces are its own. Their values are not read as markup: only variable references are resolved, `{$var}`, `{_var}`, `{@var}`, `{%var}` and expressions starting with one (`{$count + 1}`). Every other brace, and every backslash, is kept as written, and no macro runs there:
+
+```
+<button onclick="if (ready) {start('{$level}')}">Go</button>
+<input pattern="\p{L}{2,{$maxLength}}">
+```
+
+A failing reference shows an error in front of the element and leaves its part of the value empty. `style` is not among them: an inline style holds only declarations, without braces, so it takes markup like other attributes (`style="color: {if $hurt}red{else}inherit{/if}"`).
 
 Button and dialog labels (`{button "Count: {$count}"}`) and selector-based classes and ids (`{.item-{$type} print $name}`) are resolved the same way; errors there are logged to the browser console. A selector can only hold variable references, since a selector is part of the macro's own `{…}`.
 

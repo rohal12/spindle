@@ -399,6 +399,60 @@ describe('unsupported markup in attribute values', () => {
   });
 });
 
+describe('attributes holding code', () => {
+  // Event handlers hold JavaScript, `pattern` a regular expression and
+  // `srcdoc` an HTML document (with its own scripts and styles): their
+  // braces are code, so only sigil references are resolved, as before #225.
+  it.each([
+    'if (x) {return y}',
+    'f({a: 1})',
+    '{alert(1)}',
+    '{if (a) {b()}} {for (;;) {}}',
+    '{set} {nope} {/if} {(1)} {!x} {.a b}',
+    '\\{x}',
+  ])('keeps onclick="%s" as written, with no error', (code) => {
+    const el = renderPassage(`<button id="t" onclick="${code}">b</button>`);
+    expect(attr(el, '#t', 'onclick')).toBe(code);
+    expect(el.querySelector('.error')).toBeNull();
+  });
+
+  it('resolves sigil references and sigil-led expressions in a handler', () => {
+    initStory({ name: 'Ann', n: 1 });
+    const el = renderPassage(
+      `<button id="t" onClick="if (ok) {say('{$name}', {_t}, {$n + 1})}">b</button>`,
+    );
+    expect(attr(el, '#t', 'onclick')).toBe("if (ok) {say('Ann', , 2)}");
+    set('name', 'Bo');
+    expect(attr(el, '#t', 'onclick')).toBe("if (ok) {say('Bo', , 2)}");
+  });
+
+  it('sees @locals, keeps escapes and decodes references as before', () => {
+    const el = renderPassage(
+      '{for @i of [7]}<b id="t" ONMOUSEOVER="a &amp;&amp; g({@i}) \\{@i} &#123;@i}">b</b>{/for}',
+    );
+    expect(attr(el, '#t', 'onmouseover')).toBe('a && g(7) \\7 {@i}');
+  });
+
+  it('keeps pattern and srcdoc as written apart from sigil references', () => {
+    initStory({ n: 3 });
+    const el = renderPassage(
+      `<input id="p" pattern="\\p{L}{2,{$n}}\\d{3}"><iframe id="f" srcdoc="<style>p{color:red}</style><p>{$n}</p>"></iframe>`,
+    );
+    expect(attr(el, '#p', 'pattern')).toBe('\\p{L}{2,3}\\d{3}');
+    expect(attr(el, '#f', 'srcdoc')).toBe(
+      '<style>p{color:red}</style><p>3</p>',
+    );
+    expect(el.querySelector('.error')).toBeNull();
+  });
+
+  it('reports a failing reference in a handler instead of crashing', () => {
+    initStory({ n: 1 });
+    const el = renderPassage('<b id="t" onclick="go({$n.x.y()})">b</b>');
+    expect(attr(el, '#t', 'onclick')).toBe('go()');
+    expect(el.querySelector('.error')!.textContent).toContain('onclick');
+  });
+});
+
 describe('other text-only places', () => {
   it('evaluates macros in a macro label', () => {
     initStory({ on: true });

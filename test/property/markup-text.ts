@@ -328,6 +328,73 @@ export function pieces(
     .map(concat);
 }
 
+/**
+ * The value of a code attribute (`onclick`, `pattern`, `srcdoc`):
+ * JavaScript whose braces are code, with sigil references in it. Only the
+ * references (a sigil and a word character after `{`) resolve; other
+ * braces, backslashes and blocks like `{$(…)}` are kept as written, and
+ * character references in the code are decoded like other attribute text.
+ */
+export const codePieces: fc.Arbitrary<TextPiece> = fc
+  .array(
+    fc.oneof(
+      {
+        weight: 3,
+        arbitrary: fc
+          .constantFrom(
+            ...['if (x) ', '{return y}', 'f({a: 1})', '{alert(1)}', '{ x }'],
+            ...['{if (a) {b()}}', '{set $n = 9}', '{(1)}', '{!x}', '{.a b}'],
+            ...['{for (;;) {}}', ';', "'q'", "'}'", '\\', '\\{x}', 'a', ' '],
+            ...['{', '}', '{nope}', '{/if}', '\n'],
+          )
+          .map((s) => fixed(s)),
+      },
+      {
+        weight: 1,
+        arbitrary: fc
+          .constantFrom(
+            ['&amp;&amp;', '&&'],
+            ['&lt;', '<'],
+            ['&#123;$a}', '{$a}'],
+          )
+          .map(
+            ([src, decoded]): TextPiece => ({
+              src,
+              ref: (_env, decode) => text(decode ? decoded! : src!),
+            }),
+          ),
+      },
+      {
+        // Kept verbatim, character references and all.
+        weight: 1,
+        arbitrary: fc
+          .constantFrom("{$('#x')}", '{$ a}', '{%&amp;}')
+          .map((s) => fixed(s)),
+      },
+      {
+        weight: 3,
+        arbitrary: fc
+          .constantFrom(
+            ...VARIABLES.filter(([src]) => !src.startsWith('@')),
+            ['@o', (e: TextEnv) => local(e, 'o')],
+            ['$n + 1', (e: TextEnv) => e.vars.n + 1],
+            ["$b ? '}' : '{'", (e: TextEnv) => (e.vars.b ? '}' : '{')],
+            ['$list.length', (e: TextEnv) => e.vars.list.length],
+          )
+          .map(display),
+      },
+      {
+        weight: 1,
+        arbitrary: fc.constant<TextPiece>({
+          src: '{$a.nope()}',
+          ref: () => FAILED,
+        }),
+      },
+    ),
+    { maxLength: 6 },
+  )
+  .map(concat);
+
 const value = fc.constantFrom('q', '&amp;', '<i>', '{$n}', '', 'x y', '\\{');
 
 export const textVars: fc.Arbitrary<TextVars> = fc.record({
