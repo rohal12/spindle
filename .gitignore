@@ -5,6 +5,7 @@ bun.lockb
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 .agents/
+.worktrees/
 .claude/
 !.claude/skills/
 .vscode/
