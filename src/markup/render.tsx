@@ -365,6 +365,9 @@ const PREACT_RESERVED = new Set([
   'dangerouslySetInnerHTML',
 ]);
 
+/** Names set directly on SVG elements (see splitAttributes). */
+const SVG_DIRECT = new Set([...PREACT_RESERVED, 'class', 'className']);
+
 /** Attribute names setAttribute accepts (`@click` is parsed, not settable). */
 const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
 
@@ -400,8 +403,9 @@ function setRawAttribute(el: Element, name: string, value: string) {
  * On HTML elements an upper-case prop name avoids all of these, and
  * setAttribute lower-cases it back. Names compat matches in any case
  * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
- * whose names are case-sensitive, Preact's reserved names are set directly
- * instead.
+ * whose names are case-sensitive, Preact's reserved names and the `class`
+ * and `className` compat rewrites (dropping an empty `class`, turning
+ * `className` into `class`) are set directly instead.
  */
 function splitAttributes(
   attributes: [name: string, value: string, written: string][],
@@ -419,7 +423,7 @@ function splitAttributes(
       !SETTABLE_NAME.test(name) ||
       lower.startsWith('on') ||
       lower === 'translate' ||
-      (svg && (PREACT_RESERVED.has(name) || name === '__proto__'))
+      (svg && (SVG_DIRECT.has(name) || name === '__proto__'))
     ) {
       direct.push([name, value]);
     } else {
