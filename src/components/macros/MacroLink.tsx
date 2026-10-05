@@ -11,7 +11,7 @@ import { defineMacro } from '../../define-macro';
 import { liveLocalsView } from '../../utils/live-locals';
 import { unescapeQuoted } from './arg-utils';
 
-function parseArgs(rawArgs: string): {
+export function parseLinkArgs(rawArgs: string): {
   display: string;
   passage: string | null;
 } {
@@ -62,7 +62,7 @@ defineMacro({
   block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
-    const { display, passage } = parseArgs(rawArgs);
+    const { display, passage } = parseLinkArgs(rawArgs);
     const nobr = useContext(NobrContext);
 
     const handleClick = (e: Event) => {
