@@ -101,7 +101,7 @@ A variable name is any word after its sigil: letters, digits and `_` (for `%` tr
 {if $toString}set{else}not set{/if}   → not set
 ```
 
-The one exception is `__proto__`, which no namespace can hold (`$__proto__`, `___proto__`, `%__proto__`, `@__proto__`). Using it is an error wherever a name appears: in code (`{set}`, `{do}`, `{print}`, conditions), displays (`{$__proto__}`), `StoryVariables`/`StoryTransients` declarations, `{for}` and widget locals, `{computed}`, `{unset}`, input macros and `Story.get()`/`Story.set()`. Story state never holds a property named `__proto__` at any depth, since saves could not restore it.
+The one exception is `__proto__`, which no namespace can hold (`$__proto__`, `___proto__`, `%__proto__`, `@__proto__`). Using it is an error wherever a name appears: in code (`{set}`, `{do}`, `{print}`, conditions), displays (`{$__proto__}`), markup in HTML attribute values, alt text and labels, `StoryVariables`/`StoryTransients` declarations, `{for}` locals, widget parameters (a widget declaring `@__proto__`, in `{widget}` or a `widget` passage, is not registered), `{computed}`, `{unset}`, input macros and `Story.get()`/`Story.set()`. Story state never holds a property named `__proto__` at any depth, since saves could not restore it.
 
 The variable records themselves (`ctx.merged` in custom macros, for example) have no prototype, so use `Object.hasOwn(vars, "name")` or `"name" in vars` rather than `vars.hasOwnProperty("name")`. Save payloads hold plain objects.
 
