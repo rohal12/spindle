@@ -121,6 +121,95 @@ describe('history navigation', () => {
     });
   });
 
+  describe('lowering maxHistory', () => {
+    const session = () =>
+      JSON.parse(sessionStorage.getItem(`spindle.session.${IFID}`)!) as {
+        passage: string;
+        history: { passage: string; variables: Record<string, unknown> }[];
+        historyIndex: number;
+      };
+
+    function walk(): void {
+      store().init(makeStoryData(), { x: 0 });
+      for (const [i, p] of (['B', 'C', 'D', 'B'] as const).entries()) {
+        store().setVariable('x', i + 1);
+        store().navigate(p);
+      }
+      // History: A(x0) B(x1) C(x2) D(x3) B(x4), at the last moment
+    }
+
+    it('trims the oldest moments at once', () => {
+      walk();
+      useStoryStore.getState().setMaxHistory(2);
+
+      expect(store().history.map((m) => m.passage)).toEqual(['D', 'B']);
+      expect(store().historyIndex).toBe(1);
+      expect(historySnapshots()).toEqual([{ x: 3 }, { x: 4 }]);
+      store().goBack();
+      expect(store().currentPassage).toBe('D');
+      store().goBack();
+      expect(store().currentPassage).toBe('D');
+      expect(store().variables).toEqual({ x: 3 });
+
+      // The session autosave holds the trimmed history
+      expect(session().history.map((m) => m.passage)).toEqual(['D', 'B']);
+      expect(session().historyIndex).toBe(0);
+      expect(session().history.map((m) => m.variables)).toEqual([
+        { x: 3 },
+        { x: 4 },
+      ]);
+    });
+
+    it('keeps the current moment when it is older than the newest ones', () => {
+      walk();
+      store().goBack();
+      store().goBack();
+      store().goBack();
+      expect(store().currentPassage).toBe('B');
+      store().setVariable('x', 99);
+
+      useStoryStore.getState().setMaxHistory(2);
+
+      // The newest moments that include the current one: B (current) and C
+      expect(store().history.map((m) => m.passage)).toEqual(['B', 'C']);
+      expect(store().historyIndex).toBe(0);
+      expect(store().currentPassage).toBe('B');
+      // Live changes since entering the moment are kept
+      expect(store().variables).toEqual({ x: 99 });
+      expect(historySnapshots()).toEqual([{ x: 1 }, { x: 2 }]);
+      expect(session().history.map((m) => m.passage)).toEqual(['B', 'C']);
+      expect(session().historyIndex).toBe(0);
+
+      store().goForward();
+      expect(store().currentPassage).toBe('C');
+      store().goForward();
+      expect(store().currentPassage).toBe('C');
+      expect(store().variables).toEqual({ x: 2 });
+    });
+
+    it('also limits a loaded save made under a higher limit', () => {
+      walk();
+      const payload = store().getSavePayload();
+      useStoryStore.getState().setMaxHistory(2);
+      store().navigate('A');
+
+      store().loadFromPayload(payload);
+      expect(store().history.map((m) => m.passage)).toEqual(['D', 'B']);
+      expect(store().historyIndex).toBe(1);
+      expect(historySnapshots()).toEqual([{ x: 3 }, { x: 4 }]);
+      expect(session().history.map((m) => m.passage)).toEqual(['D', 'B']);
+    });
+
+    it('leaves history alone when raised', () => {
+      walk();
+      useStoryStore.getState().setMaxHistory(3);
+      useStoryStore.getState().setMaxHistory(10);
+
+      expect(store().history.map((m) => m.passage)).toEqual(['C', 'D', 'B']);
+      expect(historySnapshots()).toEqual([{ x: 2 }, { x: 3 }, { x: 4 }]);
+    });
+  });
+
   describe('serialized session after branching (#160)', () => {
     it('replaces the discarded forward moment at equal history length', () => {
       store().init(makeStoryData(), { x: 0 });

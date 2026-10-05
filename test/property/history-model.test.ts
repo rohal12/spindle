@@ -79,6 +79,7 @@ function assertMatches(m: HistoryModel): void {
   );
   expect(s.historyIndex).toBe(m.index);
   expect(s.maxHistory).toBe(m.maxHistory);
+  expect(s.history.length).toBeLessThanOrEqual(s.maxHistory);
   expect(s.variables).toStrictEqual(m.live);
   expect(s.visitCounts).toEqual(m.visitCounts);
 
@@ -106,14 +107,24 @@ function assertMatches(m: HistoryModel): void {
 
 type Cmd = fc.Command<HistoryModel, Real>;
 
+/**
+ * Trim history to the limit: keep the newest moments that include the
+ * current one (after a navigation, the newest moments).
+ */
+function modelTrim(m: HistoryModel): void {
+  const excess = m.moments.length - m.maxHistory;
+  if (excess <= 0) return;
+  const start = Math.min(m.index, excess);
+  m.moments = m.moments.slice(start, start + m.maxHistory);
+  m.index -= start;
+}
+
 /** Record entering `passage` from the live state, trimming to the limit. */
 function modelNavigate(m: HistoryModel, passage: PassageName): void {
   m.moments = m.moments.slice(0, m.index + 1);
   m.moments.push({ passage, vars: cloneVars(m.live), rolls: [] });
-  if (m.moments.length > m.maxHistory) {
-    m.moments = m.moments.slice(m.moments.length - m.maxHistory);
-  }
   m.index = m.moments.length - 1;
+  modelTrim(m);
   m.cursor = 0;
   m.visitCounts[passage] = (m.visitCounts[passage] ?? 0) + 1;
 }
@@ -174,8 +185,9 @@ class Mutate implements Cmd {
 }
 
 /**
- * Change the history limit. History is trimmed to it on the next
- * navigation (several moments at once when it was lowered).
+ * Change the history limit. Lowering it trims history at once (several
+ * moments, possibly newer ones than the current moment); raising it
+ * changes nothing.
  */
 class SetMaxHistory implements Cmd {
   constructor(readonly limit: number) {}
@@ -183,6 +195,7 @@ class SetMaxHistory implements Cmd {
   run(m: HistoryModel): void {
     Story.config.maxHistory = this.limit;
     m.maxHistory = Math.max(1, Math.round(this.limit));
+    modelTrim(m);
     assertMatches(m);
   }
   toString = () => `SetMaxHistory(${this.limit})`;
@@ -325,6 +338,8 @@ class SaveLoad implements Cmd {
     m.moments = saved.moments;
     m.index = saved.index;
     m.visitCounts = saved.visitCounts;
+    // A save made under a higher limit is trimmed to the current one
+    modelTrim(m);
     modelReenter(m);
     assertMatches(m);
   }

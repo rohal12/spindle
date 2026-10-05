@@ -738,7 +738,10 @@ export interface StoryAPI {
 
   /** Story configuration. */
   readonly config: {
-    /** Maximum number of history moments to retain. */
+    /**
+     * Maximum number of history moments to retain. Lowering it trims history
+     * at once, keeping the newest moments that include the current one.
+     */
     maxHistory: number;
     /**
      * Key that triggers a quick save (`KeyboardEvent.key`, default `'F6'`).

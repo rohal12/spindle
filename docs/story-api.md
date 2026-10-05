@@ -792,6 +792,8 @@ Configuration options for the story engine.
 
 Get or set the maximum number of history moments to keep. Oldest entries are discarded when the limit is exceeded. Default: `40`.
 
+Lowering the limit takes effect at once: history keeps the newest moments that include the current one, so `Story.back()` can't go further back than the new limit allows (if the player had gone back further than that, the moments after the newest kept one are dropped too). The session autosave is updated with the trimmed history, and a save made under a higher limit is trimmed when loaded. Raising the limit doesn't change history.
+
 ```
 {do}
   Story.config.maxHistory = 20;  // keep fewer moments (less memory)

@@ -196,6 +196,34 @@ function persistSession(get: () => StoryState): void {
   });
 }
 
+/**
+ * Trim history to `state.maxHistory` moments: keep the newest moments that
+ * include the current one. After a navigation (the current moment is the
+ * newest) that drops the oldest; when the player has gone back further than
+ * the limit allows, the moments after the newest kept one are dropped too.
+ * Call it inside a store update; the module-level variable history
+ * (base, patches, session cache) is trimmed alongside.
+ */
+function trimHistory(state: {
+  history: HistoryMoment[];
+  historyIndex: number;
+  maxHistory: number;
+}): boolean {
+  const excess = state.history.length - state.maxHistory;
+  if (excess <= 0) return false;
+  const start = Math.min(state.historyIndex, excess);
+  const end = start + state.maxHistory;
+  // Advance base through trimmed transitions
+  for (let i = 0; i < start; i++) {
+    variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
+  }
+  state.history = state.history.slice(start, end);
+  patchEntries = patchEntries.slice(start, end - 1);
+  serializedHistory = serializedHistory.slice(start, end);
+  state.historyIndex -= start;
+  return true;
+}
+
 /** True while navigate() lets watchers react to the moment it entered. */
 let navigationTriggerPhase = false;
 
@@ -496,9 +524,13 @@ export const useStoryStore = create<StoryState>()(
     renderDeferred: false,
 
     setMaxHistory: (limit: number) => {
+      let trimmed = false;
       set((state) => {
         state.maxHistory = Math.max(1, Math.round(limit));
+        // A lower limit takes effect at once
+        trimmed = trimHistory(state);
       });
+      if (trimmed) persistSession(get);
     },
 
     setQuickSaveKey: (key: string | null) => {
@@ -629,19 +661,9 @@ export const useStoryStore = create<StoryState>()(
           prng: snapshotPRNG(),
         });
 
-        // Trim oldest entries if over the limit
-        const overflow = state.history.length - state.maxHistory;
-        if (overflow > 0) {
-          // Advance base through trimmed transitions
-          for (let i = 0; i < overflow; i++) {
-            variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
-          }
-          state.history = state.history.slice(overflow);
-          patchEntries = patchEntries.slice(overflow);
-          serializedHistory = serializedHistory.slice(overflow);
-        }
-
         state.historyIndex = state.history.length - 1;
+        // Trim oldest entries if over the limit
+        trimHistory(state);
         state.visitCounts[passageName] =
           (state.visitCounts[passageName] ?? 0) + 1;
         state.renderCounts[passageName] =
@@ -1148,6 +1170,8 @@ export const useStoryStore = create<StoryState>()(
           0,
           Math.min(payload.historyIndex, state.history.length - 1),
         );
+        // A save made under a higher limit keeps no more than the limit
+        trimHistory(state);
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};
