@@ -148,6 +148,22 @@ describe('quoted labels that span lines', () => {
     expect(parseCheckboxLabel('$agree I\nagree')).toBe('I\nagree');
   });
 
+  it('reads a checkbox label with a long run of spaces in linear time', () => {
+    const time = (n: number) => {
+      const args = `$agree "a${' '.repeat(n)}b"  `;
+      let best = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const t0 = performance.now();
+        expect(parseCheckboxLabel(args)).toBe(`a${' '.repeat(n)}b`);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    };
+    // 8× the input may take 8× the time, not the 64× of a quadratic scan
+    expect(time(32000)).toBeLessThan(Math.max(time(4000), 0.5) * 24);
+    expect(parseCheckboxLabel('$agree Yes \t\n')).toBe('Yes');
+  });
+
   it('reads a multi-line radiobutton value and label', () => {
     expect(parseRadioArgs('$c "a\nb" "Line\nbreak"')).toEqual({
       value: 'a\nb',

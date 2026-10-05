@@ -2,10 +2,12 @@ import { defineMacro } from '../../define-macro';
 import { readWholeQuoted, stripLooseQuotes } from './arg-utils';
 
 export function parseCheckboxLabel(rawArgs: string): string {
-  // `s`: a quoted label may span lines.
-  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+(.+?)\s*$/s);
+  // `s`: a quoted label may span lines. Its trailing whitespace is trimmed
+  // here, not by the regex: `(.+?)\s*$` tries every position of a run of
+  // spaces in the label, taking time quadratic in its length.
+  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+(.+)$/s);
   if (!match) return '';
-  const rest = match[1]!;
+  const rest = match[1]!.trimEnd() || match[1]!;
   return readWholeQuoted(rest) ?? stripLooseQuotes(rest);
 }
 
