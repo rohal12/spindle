@@ -13,3 +13,13 @@ import type { StoryAPI as PublishedAPI } from '../types/index';
 const _sourceToPublished: PublishedAPI = {} as SourceAPI;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _publishedToSource: SourceAPI = {} as PublishedAPI;
+
+// Tooling entry point (`@rohal12/spindle/tooling`): types/tooling.d.ts must
+// match the parser that dist/pkg/tooling.js re-exports.
+import type { parseStoryVariables as SourceParse } from './story-variables';
+import type { parseStoryVariables as PublishedParse } from '../types/tooling';
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _parseSourceToPublished: typeof PublishedParse = {} as typeof SourceParse;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _parsePublishedToSource: typeof SourceParse = {} as typeof PublishedParse;

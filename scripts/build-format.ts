@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -71,8 +72,28 @@ copyFileSync(
 
 // Copy tooling type declarations
 copyFileSync(
-  resolve(projectRoot, 'pkg/types/tooling.d.ts'),
+  resolve(projectRoot, 'types/tooling.d.ts'),
   resolve(pkgTypesDir, 'tooling.d.ts'),
 );
 
 console.log('Copied tooling entry point to dist/pkg/');
+
+// Bundle the StoryVariables parser for the tooling entry point. It is plain
+// TypeScript with no Preact/DOM dependencies, so Node tooling can run it.
+await build({
+  configFile: false,
+  logLevel: 'warn',
+  build: {
+    outDir: pkgDir,
+    emptyOutDir: false,
+    target: 'es2020',
+    minify: false,
+    lib: {
+      entry: resolve(projectRoot, 'src/story-variables.ts'),
+      formats: ['es'],
+      fileName: () => 'story-variables.js',
+    },
+  },
+});
+
+console.log('Built dist/pkg/story-variables.js (tooling)');

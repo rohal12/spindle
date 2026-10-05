@@ -35,6 +35,7 @@
     "dist/pkg/index.js",
     "dist/pkg/format.js",
     "dist/pkg/tooling.js",
+    "dist/pkg/story-variables.js",
     "dist/pkg/macro-registry.json",
     "types",
     "src"
