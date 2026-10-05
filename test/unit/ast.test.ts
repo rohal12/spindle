@@ -770,3 +770,19 @@ describe('buildAST — HTML void elements (#170)', () => {
     ]);
   });
 });
+
+describe('buildAST — raw {do} bodies (#176)', () => {
+  it('gives {do} a single text child with the source verbatim', () => {
+    const ast = parse('{do}const o={foo:1}; if(a<b){f("<b>{x}</b>")}{/do}');
+    expect(ast).toEqual([
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        children: [
+          { type: 'text', value: 'const o={foo:1}; if(a<b){f("<b>{x}</b>")}' },
+        ],
+      },
+    ]);
+  });
+});

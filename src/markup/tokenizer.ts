@@ -84,6 +84,9 @@ const HTML_VOID_TAGS = new Set([
   'wbr',
 ]);
 
+/** Macros whose body is JavaScript source, kept verbatim instead of tokenized. */
+const RAW_BODY_MACROS = new Set(['do']);
+
 /**
  * Parse a Twine link interior into display and target.
  * Supports: display|target, display->target, target<-display, plain
@@ -363,6 +366,32 @@ export function tokenize(input: string): Token[] {
         end,
       });
     }
+  }
+
+  /**
+   * After an opening raw-body macro ({do}), emit everything up to the
+   * first {/name} as a single text token so JavaScript source is not
+   * parsed as markup. A literal "{/do}" inside the code would end it early.
+   * Without a closer, nothing is consumed and the AST builder reports it.
+   */
+  function consumeRawBody(name: string, isClose: boolean) {
+    const lower = name.toLowerCase();
+    if (isClose || !RAW_BODY_MACROS.has(lower)) return;
+    const closeRe = new RegExp(`\\{/${lower}\\s*\\}`, 'gi');
+    closeRe.lastIndex = i;
+    const m = closeRe.exec(input);
+    if (!m) return;
+    const closeStart = m.index;
+    const closeEnd = closeStart + m[0].length;
+    flushText(closeStart);
+    tokens.push({
+      type: 'macro',
+      ...parseMacroContent(input.slice(closeStart + 1, closeEnd - 1)),
+      start: closeStart,
+      end: closeEnd,
+    });
+    i = closeEnd;
+    textStart = closeEnd;
   }
 
   while (i < input.length) {
@@ -660,6 +689,7 @@ export function tokenize(input: string): Token[] {
           if (id) token.id = id;
           tokens.push(token);
           textStart = i;
+          consumeRawBody(name, isClose);
           continue;
         }
 
@@ -862,6 +892,7 @@ export function tokenize(input: string): Token[] {
           end: i,
         });
         textStart = i;
+        consumeRawBody(name, isClose);
         continue;
       }
 

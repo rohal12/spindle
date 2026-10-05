@@ -382,6 +382,40 @@ describe('macro components', () => {
       renderPassage('{do}$score = 42{/do}');
       expect(useStoryStore.getState().variables.score).toBe(42);
     });
+
+    // #176: the body is JavaScript source, not story markup
+    it('preserves compact object literals', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage(
+          '{do}const obj={foo:1}; $x=obj.foo;{/do}Value: {$x}',
+        );
+      });
+      expect(useStoryStore.getState().variables.x).toBe(1);
+      expect(el.textContent).toContain('Value: 1');
+    });
+
+    it('preserves compact control blocks and comparisons', () => {
+      renderPassage('{do}let a=1,b=2; if(a<b){$r="lt"}else{$r="ge"}{/do}');
+      expect(useStoryStore.getState().variables.r).toBe('lt');
+    });
+
+    it('preserves strings containing HTML and macro markup', () => {
+      const el = renderPassage(
+        '{do}$s="<b>{x}</b> {set $y = 1} [[L]]";{/do}after',
+      );
+      expect(useStoryStore.getState().variables.s).toBe(
+        '<b>{x}</b> {set $y = 1} [[L]]',
+      );
+      expect(useStoryStore.getState().variables.y).toBeUndefined();
+      expect(el.textContent).toBe('after');
+    });
+
+    it('works inside a block macro body', () => {
+      renderPassage('{if true}{do}$o={a:{b:2}}.a.b{/do}{/if}');
+      expect(useStoryStore.getState().variables.o).toBe(2);
+    });
   });
 
   describe('braces inside strings (#169)', () => {

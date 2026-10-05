@@ -1192,3 +1192,58 @@ describe('tokenize — HTML void elements (#170)', () => {
     expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
   });
 });
+
+describe('tokenize — raw {do} bodies (#176)', () => {
+  it('keeps a compact object literal as text', () => {
+    const tokens = tokenize('{do}const obj={foo:1}; $x=obj.foo;{/do}after');
+    expect(tokens).toEqual([
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        isClose: false,
+        start: 0,
+        end: 4,
+      },
+      {
+        type: 'text',
+        value: 'const obj={foo:1}; $x=obj.foo;',
+        start: 4,
+        end: 34,
+      },
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        isClose: true,
+        start: 34,
+        end: 39,
+      },
+      { type: 'text', value: 'after', start: 39, end: 44 },
+    ]);
+  });
+
+  it('keeps HTML, macros, links and escapes in strings untouched', () => {
+    const body = 'if(a<b){$s="<b>{x}</b> [[L]] {$y} \\{"}';
+    const tokens = tokenize(`{DO}${body}{/Do}`);
+    expect(tokens).toHaveLength(3);
+    expect(tokens[1]).toMatchObject({ type: 'text', value: body });
+    expect(tokens[2]).toMatchObject({ type: 'macro', isClose: true });
+  });
+
+  it('handles selector-prefixed {do}', () => {
+    const tokens = tokenize('{.c do}x={a:1}{/do}');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'text', 'macro']);
+    expect(tokens[1]).toMatchObject({ value: 'x={a:1}' });
+  });
+
+  it('produces no text token for an empty body', () => {
+    const tokens = tokenize('{do}{/do}');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'macro']);
+  });
+
+  it('leaves an unclosed {do} to the AST builder', () => {
+    const tokens = tokenize('{do}x = 1');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'text']);
+  });
+});
