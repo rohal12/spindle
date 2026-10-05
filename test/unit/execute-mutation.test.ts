@@ -547,3 +547,50 @@ describe('executeMutation with nested mutations and watchers', () => {
     expect(after.y).toBe(before.y);
   });
 });
+
+describe('Story.get inside mutation code', () => {
+  beforeEach(() => {
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([makePassage(1, 'Start', '')]),
+        { obj: { a: 0, b: 0 } },
+        { tobj: { a: 0 } },
+      );
+    installStoryAPI();
+  });
+
+  const run = (code: string) => executeMutation(code, {}, () => {});
+  const state = () => useStoryStore.getState();
+
+  it('reads the code’s own pending writes', () => {
+    run('$obj.a = 1; _r = Story.get("obj.a"); _s = Story.get("$obj").a');
+    expect(state().temporary.r).toBe(1);
+    expect(state().temporary.s).toBe(1);
+  });
+
+  it('reads pending transient writes', () => {
+    run('%tobj.a = 4; _r = Story.get("%tobj.a")');
+    expect(state().temporary.r).toBe(4);
+  });
+
+  it('reads pending new and deleted variables', () => {
+    run('$fresh = 3; delete $obj; _r = [Story.get("fresh"), Story.get("obj")]');
+    expect(state().temporary.r).toEqual([3, undefined]);
+  });
+
+  it('returns frozen values that do not alias the working copy', () => {
+    run(
+      '$obj.a = 1; const o = Story.get("obj"); _frozen = Object.isFrozen(o); try { o.b = 9 } catch {} ; _b = $obj.b',
+    );
+    expect(state().temporary.frozen).toBe(true);
+    expect(state().temporary.b).toBe(0);
+    expect(state().variables.obj).toEqual({ a: 1, b: 0 });
+  });
+
+  it('reads the store again once the run is over', () => {
+    run('$obj.a = 1');
+    const story = (globalThis as Record<string, any>).Story;
+    expect(story.get('obj')).toBe(state().variables.obj);
+  });
+});

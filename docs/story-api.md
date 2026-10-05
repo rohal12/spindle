@@ -14,6 +14,8 @@ Get a story variable's value. The name may be written with or without the `$` si
 {/do}
 ```
 
+Objects and arrays come back frozen; change them with `Story.set()` or an assignment such as `$player.hp = 5`. Inside running code (`{do}`, `{set}`, a `{watch}` run action) `Story.get()` sees the code's own writes so far, so `{do}$hp = 5; _h = Story.get("hp"){/do}` sets `_h` to 5. It returns a frozen copy of the value there, so `Story.get("obj") === Story.get("obj")` is false while the code runs.
+
 ### `Story.set(name, value)` / `Story.set(vars)`
 
 Set one or more story variables. As with `Story.get()`, a leading `$` is optional.

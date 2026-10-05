@@ -25,7 +25,11 @@ import {
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
-import { mirrorWriteToActiveScopes } from './execute-mutation';
+import {
+  frozenCopy,
+  getActiveMutationScope,
+  mirrorWriteToActiveScopes,
+} from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
@@ -273,10 +277,18 @@ function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
-      const store = isTransient
-        ? useStoryStore.getState().transient
-        : useStoryStore.getState().variables;
-      return key.includes('.') ? getByPath(store, key.split('.')) : store[key];
+      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+      // has pending writes in its working copy: read that, so the code sees
+      // its own changes. The value is a frozen copy, like the frozen store
+      // values returned otherwise, so writing to it cannot change the
+      // pending state outside the code's own assignments.
+      const scope = getActiveMutationScope();
+      const source = scope ?? useStoryStore.getState();
+      const namespace = isTransient ? source.transient : source.variables;
+      const value = key.includes('.')
+        ? getByPath(namespace, key.split('.'))
+        : namespace[key];
+      return scope ? frozenCopy(value) : value;
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {

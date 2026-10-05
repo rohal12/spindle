@@ -80,6 +80,13 @@ describe('Story.set inside mutation macros', () => {
     expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
   });
 
+  it('{do} sees its own pending writes through Story.get', () => {
+    const el = renderMarkup(
+      '{do}$obj.a = 1; _r = Story.get("obj.a");{/do}{print _r}',
+    );
+    expect(el.textContent).toBe('1');
+  });
+
   it('{do} keeps a {watch} run write to another property of the same root', () => {
     resetTriggers();
     const disconnect = connectTriggersToStore();

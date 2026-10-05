@@ -1,4 +1,4 @@
-import { current as currentDraft, isDraft } from 'immer';
+import { current as currentDraft, freeze, isDraft } from 'immer';
 import { useStoryStore } from './store';
 import type { VariableNamespaces } from './store';
 import { execute } from './expression';
@@ -36,7 +36,8 @@ const activeScopes: MutationScope[] = [];
 
 /**
  * The working copies of the store namespaces that the innermost executing
- * mutation reads and writes, or undefined outside of one.
+ * mutation reads and writes, or undefined outside of one. Story.get reads
+ * them so the code sees its own pending writes.
  */
 export function getActiveMutationScope(): VariableNamespaces | undefined {
   return activeScopes[activeScopes.length - 1]?.work;
@@ -44,6 +45,15 @@ export function getActiveMutationScope(): VariableNamespaces | undefined {
 
 const cloneValue = <T>(value: T): T =>
   deepClone(value, { keepUnregistered: true });
+
+/**
+ * A frozen copy of a value read from a working copy, matching what reads
+ * from the (frozen) store return: writing to it fails instead of changing
+ * the code's pending state behind its back.
+ */
+export function frozenCopy<T>(value: T): T {
+  return freeze(cloneValue(value), true);
+}
 
 /**
  * Objects merged property by property: plain objects and (registered)
