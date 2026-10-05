@@ -173,11 +173,18 @@ Returns `true` if any dialog is currently displayed.
 
 ### `Story.setNobr(enabled)`
 
-Globally enable or disable `<p>` tag wrapping from markdown. When `true`, all passages and macros suppress paragraph wrapping while keeping inline markdown (bold, italic, etc.).
+Turn off `<p>` wrapping for content _nested_ inside macros, HTML elements and included passages, while keeping inline markdown (bold, italic, etc.). Useful for layout markup — `<div>`s, `{for}` loops, widgets, `{if}` blocks — where stray paragraphs break the layout.
+
+A passage's own top-level text keeps its paragraphs, so prose still reads as prose. To remove those too, tag the passage `[nobr]` or wrap the text in `{nobr}...{/nobr}`.
+
+| Content                                                                   | `setNobr(false)` (default) | `setNobr(true)` | `[nobr]` passage tag |
+| ------------------------------------------------------------------------- | -------------------------- | --------------- | -------------------- |
+| Top-level text of a passage, dialog, `PassageHeader` / `PassageFooter`    | `<p>`                      | `<p>`           | no `<p>`             |
+| Text inside macros (`{if}`, `{for}`, widgets, …), HTML elements, includes | `<p>`                      | no `<p>`        | no `<p>`             |
 
 ```
 {do}
-  Story.setNobr(true);  // disable <p> wrapping everywhere
+  Story.setNobr(true);  // no <p> inside macros, elements and includes
   Story.setNobr(false); // re-enable (default)
 {/do}
 ```

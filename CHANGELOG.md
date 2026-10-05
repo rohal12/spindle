@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `{include}` macro `inline` flag to render included passage without markdown processing (e.g. `{include "Data" inline}`)
 - `{nobr}...{/nobr}` block macro to suppress `<p>` wrapping while keeping inline markdown
 - `[nobr]` passage tag to suppress `<p>` wrapping for an entire passage
-- `Story.setNobr(true)` global config to disable `<p>` wrapping everywhere
+- `Story.setNobr(true)` global config to disable `<p>` wrapping for content nested inside macros, HTML elements and included passages
 - `Story.setCSS(false)` to disable all built-in Spindle styles at runtime
 - Programmatic dialog API: `Story.openDialog(passageName, options?)`, `Story.closeDialog()`, `Story.closeAllDialogs()`, `Story.isDialogOpen()` for imperative dialog control from `{do}` blocks, custom macros, and event handlers
 - `showCloseButton` option for dialogs: hide the default `✕` close button via `{dialog "Label" noclose}`, `Story.openDialog(name, { showCloseButton: false })`, or `defineMenubarAction({ dialog: { showCloseButton: false } })`
@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.passage` element is now wrapped in a `.passage-container` div
 
 ### Fixed
+
+- Dialogs honour the opened passage's `[nobr]` tag, like passages and `{include}` already did. ([#186](https://github.com/rohal12/spindle/issues/186))
+- `Story.setNobr()` docs described it as removing `<p>` wrapping "everywhere"; they now describe what it does: it removes wrapping for content nested inside macros, HTML elements and included passages, while a passage's top-level text keeps its paragraphs unless the passage is tagged `[nobr]`. Tests pin this behaviour. ([#186](https://github.com/rohal12/spindle/issues/186))
 
 - `@rohal12/spindle/tooling` now ships the type declarations its `exports` entry points to (`types/tooling.d.ts` was missing from the package) and exports `parseStoryVariables`, so tests and tooling can validate `StoryVariables`/`StoryTransients` declarations with the same parser Spindle uses at boot
 - Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
