@@ -571,8 +571,11 @@ export interface StoryAPI {
   save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
 
   /**
-   * Load a saved state (quick load). Resolves once the loaded state is applied
-   * (immediately if the slot is empty); rejects if loading fails.
+   * Load a saved state (quick load). The game moves to the loaded save's
+   * playthrough, in call order: a save issued after the load belongs to it.
+   * Resolves once the loaded state is applied (immediately if the slot is
+   * empty, without loading if a restart was issued after the load); rejects
+   * if loading fails.
    */
   load(slot?: string): Promise<void>;
 
@@ -703,7 +706,8 @@ export interface StoryAPI {
     clearAllData(): Promise<void>;
     /**
      * Delete a specific playthrough and its saves. Deleting the current
-     * playthrough moves the running game to a new one.
+     * playthrough (the one the game started, restarted or last loaded a save
+     * in) moves the running game to a new one.
      */
     deletePlaythrough(playthroughId: string): Promise<void>;
     /** The active storage backend. */

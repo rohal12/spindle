@@ -163,6 +163,35 @@ export function getCurrentPlaythroughId(
 }
 
 /**
+ * Make `id` the story's current playthrough: the playthrough of a save the
+ * game has loaded. A no-op if it already is. A playthrough without a record
+ * in this browser (that of an imported save whose record was deleted since,
+ * or of a save a dialog still showed after its playthrough was deleted) is
+ * recorded again as "Imported", as importing the save would: it was not
+ * started here, so it takes no number.
+ */
+export function adoptPlaythrough(ifid: string, id: string): Promise<void> {
+  return inOrder(() => adoptPlaythroughNow(ifid, id));
+}
+
+async function adoptPlaythroughNow(ifid: string, id: string): Promise<void> {
+  const backend = await getBackend();
+  const playthroughs = await backend.getPlaythroughsByIfid(ifid);
+  if (!playthroughs.some((p) => p.id === id)) {
+    await backend.putPlaythrough({
+      id,
+      ifid,
+      createdAt: new Date().toISOString(),
+      label: 'Imported',
+    });
+  }
+  const key = currentPlaythroughKey(ifid);
+  if ((await backend.getMeta<string>(key)) !== id) {
+    await backend.setMeta(key, id);
+  }
+}
+
+/**
  * Set up the save system for a story that boots: the story's current
  * playthrough (a new one if it has none) and the slots holding saves (see
  * populateKnownSaves), looked up together in one operation.
@@ -572,6 +601,31 @@ export function loadQuickSave(
     const existingId = await (await getBackend()).getMeta<string>(metaKey);
     if (!existingId) return undefined;
     return loadSaveNow(existingId);
+  });
+}
+
+/**
+ * Read the save held in a slot (the default slot when `slot` is omitted) for
+ * the running game to load, and make its playthrough the story's current one
+ * (see adoptPlaythrough) in the same operation: operations issued after the
+ * load take effect in the loaded playthrough. Resolves to the live payload
+ * and its playthrough, or undefined if the slot is empty.
+ */
+export function loadSlotSave(
+  ifid: string,
+  slot?: string,
+): Promise<{ payload: SavePayload; playthroughId: string } | undefined> {
+  const metaKey = slotMetaKey(ifid, slot);
+  return inOrder(async () => {
+    const backend = await getBackend();
+    const existingId = await backend.getMeta<string>(metaKey);
+    if (!existingId) return undefined;
+    const record = await backend.getSave(existingId);
+    if (!record) return undefined;
+    const payload = deserializePayload(record.payload);
+    const { playthroughId } = record.meta;
+    if (playthroughId) await adoptPlaythroughNow(ifid, playthroughId);
+    return { payload, playthroughId };
   });
 }
 

@@ -8,6 +8,12 @@
  * model in saves-support.ts): each save tagged with the playthrough current
  * at its call (never '' or a stale one), playthroughs numbered in the order
  * they started, no save lost, duplicated or resurrected.
+ *
+ * A load from a slot is the one operation whose effect on the game state
+ * comes later: it switches playthroughs in call order (a save issued after
+ * it belongs to the loaded playthrough) but applies the save once it has
+ * been read, after the batch's synchronous operations; a restart, a boot or
+ * a dialog load issued after it supersedes it.
  */
 import { describe, it, beforeAll, afterAll, vi } from 'vitest';
 import fc from 'fast-check';
@@ -19,6 +25,8 @@ import {
   renameSave,
   deleteSaveById,
   populateKnownSaves,
+  exportSave,
+  deserializePayload,
 } from '../../src/saves/save-manager';
 import { useStoryStore, resolvePlaythroughId } from '../../src/store';
 import type { SaveExport, StorageBackend } from '../../src/saves/types';
@@ -40,6 +48,7 @@ import {
   freshGame,
   modelSave,
   modelLoad,
+  modelSwitchTo,
   modelGoto,
   modelImport,
   modelDeletePlaythrough,
@@ -62,8 +71,17 @@ interface Pre {
   ids: Map<number, string>;
   keys: number[];
   exports: Map<Slot, { data: SaveExport; rec: SaveRec }>;
+  /** Every save, by key, as a save dialog opened before the batch lists it. */
+  records: Map<number, { data: SaveExport; rec: SaveRec }>;
   pts: string[];
 }
+
+/**
+ * Loads from slots issued but not applied yet, in call order: they apply
+ * after the batch's synchronous operations, unless a restart, boot or dialog
+ * load issued after them supersedes them.
+ */
+let pendingLoads: SaveRec[] = [];
 
 /**
  * One operation: `issue` calls the API synchronously (returning its promise,
@@ -122,6 +140,7 @@ const ops = {
         m.current = id;
         m.pts.push({ id, label: `Playthrough ${++m.ptCounter}` });
         m.game = freshGame(m.start);
+        pendingLoads = [];
       },
       toString: () => 'Restart',
     };
@@ -135,7 +154,10 @@ const ops = {
         const id = resolvePlaythroughId().then((v) => (next = v));
         return Promise.all([p, id]);
       },
-      apply: (m) => modelClearGameData(m, next),
+      apply: (m) => {
+        modelClearGameData(m, next);
+        pendingLoads = [];
+      },
       toString: () => 'ClearGameData',
     };
   },
@@ -209,11 +231,15 @@ const ops = {
         restored = session !== undefined;
       },
       apply: (m) => {
+        // The session holds the game as it was at the refresh, without the
+        // loads still pending, which booting supersedes. The game stays in
+        // its playthrough (the stored current one).
         if (restored) {
           m.game.live = cloneVars(m.game.moments[m.game.index]!.vars);
         } else {
           m.game = freshGame(m.start);
         }
+        pendingLoads = [];
       },
       toString: () => 'Refresh',
     };
@@ -221,17 +247,54 @@ const ops = {
   load: (slot: Slot): Op => ({
     issue: () => Story.load(slotArg(slot)),
     apply: (m) => {
+      // The slot's save at this point of the call order: the game moves to
+      // its playthrough now, and to its state once it has been read
       const rec = m.slots.get(slot);
-      if (rec) modelLoad(m, rec);
+      if (!rec) return;
+      modelSwitchTo(m, rec.pt);
+      pendingLoads.push(cloneVars(rec));
     },
     toString: () => `Load(${JSON.stringify(slot)})`,
   }),
+  dialogLoad: (k: number): Op => {
+    const key = (pre: Pre) => pre.keys[k % pre.keys.length];
+    return {
+      // The dialog loads the save as it listed it, which may be gone (with
+      // its playthrough) by now
+      issue: (_m, pre) => {
+        const kk = key(pre);
+        if (kk === undefined) return;
+        const { data } = pre.records.get(kk)!;
+        store().loadFromPayload(
+          deserializePayload(data.save.payload),
+          undefined,
+          data.save.meta.playthroughId,
+        );
+      },
+      apply: (m, pre) => {
+        const kk = key(pre);
+        if (kk === undefined) return;
+        modelLoad(m, pre.records.get(kk)!.rec);
+        pendingLoads = [];
+      },
+      toString: () => `DialogLoad(${k})`,
+    };
+  },
 };
+
+/** Apply the loads from slots still pending (see pendingLoads). */
+function settleLoads(m: SavesModel): void {
+  for (const rec of pendingLoads) {
+    m.game = cloneVars(rec.game);
+    m.game.live = cloneVars(m.game.moments[m.game.index]!.vars);
+  }
+  pendingLoads = [];
+}
 
 const slotArb = fc.constantFrom(...SLOTS);
 const kArb = fc.nat({ max: 7 });
 
-/** Operations whose model is applied in call order (all but load). */
+/** Any operation. */
 const opArb: fc.Arbitrary<() => Op> = fc.oneof(
   fc.integer({ min: 0, max: 9 }).map((v) => () => ops.set(v)),
   fc.constantFrom(...PASSAGES).map((p) => () => ops.goto(p)),
@@ -253,6 +316,28 @@ const opArb: fc.Arbitrary<() => Op> = fc.oneof(
   ),
   kArb.map((k) => () => ops.dialogDelete(k)),
   fc.constant(() => ops.refresh()),
+  slotArb.map((s) => () => ops.load(s)),
+  kArb.map((k) => () => ops.dialogLoad(k)),
+);
+
+/**
+ * Loads mixed with the operations that change playthroughs or the saves a
+ * load reads: saves, restarts, playthrough deletions, imports, other loads.
+ */
+const loadMixArb: fc.Arbitrary<() => Op> = fc.oneof(
+  slotArb.map((s) => () => ops.load(s)),
+  slotArb.map((s) => () => ops.load(s)),
+  kArb.map((k) => () => ops.dialogLoad(k)),
+  slotArb.map((s) => () => ops.save(s)),
+  slotArb.map((s) => () => ops.save(s)),
+  fc.constant(() => ops.restart()),
+  kArb.map((k) => () => ops.deletePlaythrough(k)),
+  fc.tuple(slotArb, slotArb).map(
+    ([a, b]) =>
+      () =>
+        ops.importInto(a, b),
+  ),
+  fc.constantFrom(...PASSAGES).map((p) => () => ops.goto(p)),
 );
 
 /** Setup operations, run one at a time before the batch. */
@@ -262,18 +347,9 @@ const setupArb = fc.array(
     fc.constantFrom(...PASSAGES).map((p) => () => ops.goto(p)),
     slotArb.map((s) => () => ops.save(s)),
     fc.constant(() => ops.restart()),
+    slotArb.map((s) => () => ops.load(s)),
   ),
   { maxLength: 6 },
-);
-
-/**
- * A batch: operations issued together, optionally ending with a load (a
- * load applies its state when it completes, so it can only be compared in
- * call order as the last operation).
- */
-const batchArb = fc.tuple(
-  fc.array(opArb, { minLength: 1, maxLength: 6 }),
-  fc.option(slotArb, { nil: undefined }),
 );
 
 const BACKEND_METHODS = [
@@ -321,6 +397,7 @@ async function scheduleBackend(s: fc.Scheduler): Promise<void> {
 async function runOp(m: SavesModel, op: Op, pre: Pre): Promise<void> {
   await op.issue(m, pre);
   op.apply(m, pre);
+  settleLoads(m);
 }
 
 async function snapshotPre(m: SavesModel): Promise<Pre> {
@@ -330,7 +407,61 @@ async function snapshotPre(m: SavesModel): Promise<Pre> {
     const data = await Story.exportSave(slotArg(slot as Slot));
     exports.set(slot as Slot, { data: data!, rec: cloneVars(rec) });
   }
-  return { ids, keys: [...ids.keys()], exports, pts: m.pts.map((p) => p.id) };
+  const records = new Map<number, { data: SaveExport; rec: SaveRec }>();
+  for (const rec of [...m.slots.values(), ...m.loose.values()]) {
+    const data = await exportSave(ids.get(rec.key)!);
+    records.set(rec.key, { data: data!, rec: cloneVars(rec) });
+  }
+  return {
+    ids,
+    keys: [...ids.keys()],
+    exports,
+    records,
+    pts: m.pts.map((p) => p.id),
+  };
+}
+
+const EMPTY_PRE: Pre = {
+  ids: new Map(),
+  keys: [],
+  exports: new Map(),
+  records: new Map(),
+  pts: [],
+};
+
+/**
+ * Run the setup one operation at a time, then issue the batch at once with
+ * every storage call scheduled, and compare the result with the model run
+ * in call order.
+ */
+async function runBatch(
+  s: fc.Scheduler,
+  backend: BackendName,
+  x: number,
+  setup: (() => Op)[],
+  batch: (() => Op)[],
+): Promise<void> {
+  const m = await newRun(backend, x);
+  pendingLoads = [];
+  for (const make of setup) await runOp(m, make(), EMPTY_PRE);
+  await assertMatches(m);
+
+  const pre = await snapshotPre(m);
+  await scheduleBackend(s);
+
+  const issued = batch.map((make) => make());
+  const pending = issued.map((op) => Promise.resolve(op.issue(m, pre)));
+  const results = await s.waitFor(Promise.allSettled(pending));
+  // Background work: playthrough setups (restart, init)
+  await s.waitFor(resolvePlaythroughId());
+
+  for (const r of results) {
+    if (r.status === 'rejected') throw r.reason;
+  }
+  for (const op of issued) op.apply(m, pre);
+  settleLoads(m);
+  // Still scheduled: whatever is left runs in a scheduled order
+  await s.waitFor(assertMatches(m));
 }
 
 describe.each(BACKENDS)('save system races (%s)', (backend: BackendName) => {
@@ -354,40 +485,28 @@ describe.each(BACKENDS)('save system races (%s)', (backend: BackendName) => {
           fc.scheduler(),
           fc.integer({ min: 0, max: 9 }),
           setupArb,
-          batchArb,
-          async (s, x, setup, [batch, finalLoad]) => {
-            const m = await newRun(backend, x);
-            const empty: Pre = {
-              ids: new Map(),
-              keys: [],
-              exports: new Map(),
-              pts: [],
-            };
-            for (const make of setup) await runOp(m, make(), empty);
-            await assertMatches(m);
-
-            const pre = await snapshotPre(m);
-            await scheduleBackend(s);
-
-            const issued = batch.map((make) => make());
-            if (finalLoad !== undefined) issued.push(ops.load(finalLoad));
-            const pending = issued.map((op) =>
-              Promise.resolve(op.issue(m, pre)),
-            );
-            const results = await s.waitFor(Promise.allSettled(pending));
-            // Background work: playthrough setups (restart, init)
-            await s.waitFor(resolvePlaythroughId());
-
-            for (const r of results) {
-              if (r.status === 'rejected') throw r.reason;
-            }
-            for (const op of issued) op.apply(m, pre);
-            // Still scheduled: whatever is left runs in a scheduled order
-            await s.waitFor(assertMatches(m));
-          },
+          fc.array(opArb, { minLength: 1, maxLength: 6 }),
+          (s, x, setup, batch) => runBatch(s, backend, x, setup, batch),
         ),
         // Each case runs a setup and a batch, then checks every save; at most
         // 100 cases in CI (see modelRuns)
+        { ...fcOptions, numRuns: modelRuns(100) },
+      );
+    },
+    MODEL_TIMEOUT,
+  );
+
+  it(
+    'switches to the loaded playthrough in call order, whatever the interleaving',
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.scheduler(),
+          fc.integer({ min: 0, max: 9 }),
+          setupArb,
+          fc.array(loadMixArb, { minLength: 2, maxLength: 7 }),
+          (s, x, setup, batch) => runBatch(s, backend, x, setup, batch),
+        ),
         { ...fcOptions, numRuns: modelRuns(100) },
       );
     },

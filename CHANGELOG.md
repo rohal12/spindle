@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Loading a save (`Story.load()`, the quick load key, `{quickload}`, **Load** in the save dialog) moves the game to the loaded save's playthrough, so saves made afterwards are grouped with it; previously the game stayed in the playthrough it was in. The switch takes effect in call order with other save operations, survives a page refresh, and a restart issued after a pending `Story.load()` now wins over it. See [Playthroughs](docs/saves.md#playthroughs).
 - Default passage transition changed from incoming-only fade to `fade-through` (300ms fade out, 50ms pause, 300ms fade in). Use `Story.setTransition({ type: 'fade' })` to restore the old behavior.
 - Passage animation easing changed from `ease-in` to `ease`
 - `.passage` element is now wrapped in a `.passage-container` div

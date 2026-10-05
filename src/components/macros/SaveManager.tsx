@@ -163,12 +163,19 @@ export function SaveManagerContent() {
 
   const handleLoad = async (save: SaveRecord) => {
     try {
-      // Stored records hold serialized variables; the store expects live ones
-      loadFromPayload(deserializePayload(save.payload));
+      // Stored records hold serialized variables; the store expects live
+      // ones. The game moves to the save's playthrough.
+      loadFromPayload(
+        deserializePayload(save.payload),
+        undefined,
+        save.meta.playthroughId,
+      );
       showStatus('Game loaded');
       if (closeDialog) {
         closeTimer.current = window.setTimeout(closeDialog, 500);
       }
+      // A playthrough deleted since the list was read is recorded again
+      await refresh();
     } catch {
       showStatus('Failed to load save', 'error');
     }
