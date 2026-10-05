@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { extractOptions } from '../../src/components/macros/option-utils';
+import {
+  extractOptions,
+  parseVarArgs,
+} from '../../src/components/macros/option-utils';
 import type { ASTNode } from '../../src/markup/ast';
 
 describe('extractOptions', () => {
@@ -65,5 +68,48 @@ describe('extractOptions', () => {
       { type: 'macro', name: 'option', rawArgs: 'plain', children: [] },
     ];
     expect(extractOptions(children)).toEqual(['plain']);
+  });
+
+  it('unescapes quotes and backslashes in a quoted value', () => {
+    const option = (rawArgs: string): ASTNode => ({
+      type: 'macro',
+      name: 'option',
+      rawArgs,
+      children: [],
+    });
+    expect(
+      extractOptions([
+        option(String.raw`"Say \"hi\""`),
+        option(String.raw`'It\'s'`),
+        option(String.raw`"C:\\"`),
+      ]),
+    ).toEqual(['Say "hi"', "It's", 'C:\\']);
+  });
+});
+
+describe('parseVarArgs', () => {
+  it('reads the variable and quoted placeholder', () => {
+    expect(parseVarArgs('$name "Enter name"')).toEqual({
+      varName: '$name',
+      placeholder: 'Enter name',
+    });
+    expect(parseVarArgs(`"$name" 'Enter name'`)).toEqual({
+      varName: '$name',
+      placeholder: 'Enter name',
+    });
+  });
+
+  it('reads a variable without a placeholder', () => {
+    expect(parseVarArgs('$pc.name')).toEqual({
+      varName: '$pc.name',
+      placeholder: '',
+    });
+  });
+
+  it('unescapes quotes and backslashes in the placeholder', () => {
+    expect(parseVarArgs(String.raw`$name "Say \"hi\""`).placeholder).toBe(
+      'Say "hi"',
+    );
+    expect(parseVarArgs(String.raw`$path "C:\\"`).placeholder).toBe('C:\\');
   });
 });

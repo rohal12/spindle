@@ -183,6 +183,22 @@ describe('extended macro components', () => {
       expect(el.textContent).toContain('**Example**');
     });
 
+    it('finds the flag after a template literal with quotes in an interpolation', () => {
+      const el = renderPassage('{include `Mark${"`".slice(1)}down` inline}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**bold** text');
+    });
+
+    it('finds the flag after a regex literal containing a quote', () => {
+      const el = renderPassage(
+        `{include /"/.test('"') ? "Markdown" : "Helper" inline}`,
+      );
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**bold** text');
+    });
+
     it('renders with markdown by default', () => {
       const el = renderPassage('{include "Markdown"}');
       expect(el.querySelector('strong')).not.toBeNull();
@@ -575,6 +591,18 @@ describe('extended macro components', () => {
       });
       expect(el.textContent).toContain('INNER|OUTER');
     });
+
+    it.each([
+      ['whitespace', ' '],
+      ['comma', ', '],
+    ])(
+      'splits after a regex literal argument containing a quote (%s form)',
+      (_label, sep) => {
+        defineWidgets('{widget "Pair" @a @b}A=[{@a}] B=[{@b}]{/widget}');
+        const el = renderPassage(`{Pair "a\\"b".match(/"/).index${sep}"x"}`);
+        expect(el.textContent).toContain('A=[1] B=[x]');
+      },
+    );
 
     it.each([
       ['whitespace', ' '],

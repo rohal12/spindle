@@ -1,8 +1,11 @@
 import { defineMacro } from '../../define-macro';
+import { readWholeQuoted, stripLooseQuotes } from './arg-utils';
 
 function parseLabel(rawArgs: string): string {
-  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+["']?(.+?)["']?\s*$/);
-  return match?.[1] ?? '';
+  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+(.+?)\s*$/);
+  if (!match) return '';
+  const rest = match[1]!;
+  return readWholeQuoted(rest) ?? stripLooseQuotes(rest);
 }
 
 defineMacro({
