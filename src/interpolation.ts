@@ -1,4 +1,5 @@
 import { evaluate } from './expression';
+import { scanBalancedBrace } from './markup/tokenizer';
 
 /** Detects any {…} block that starts with a sigil ($, _, @, %). */
 const INTERP_TEST = /\{[\$_@%]\w/;
@@ -97,16 +98,10 @@ export function interpolate(
       continue;
     }
 
-    // Scan for balanced closing }
-    let depth = 1;
-    let j = i;
-    while (j < template.length && depth > 0) {
-      j++;
-      if (template[j] === '{') depth++;
-      else if (template[j] === '}') depth--;
-    }
+    // Scan for balanced closing }, ignoring braces inside strings
+    const j = scanBalancedBrace(template, i);
 
-    if (depth !== 0) {
+    if (j === -1) {
       // Unbalanced — emit as text
       result += '{';
       continue;

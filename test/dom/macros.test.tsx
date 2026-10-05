@@ -382,6 +382,86 @@ describe('macro components', () => {
       renderPassage('{do}$score = 42{/do}');
       expect(useStoryStore.getState().variables.score).toBe(42);
     });
+
+    // #176: the body is JavaScript source, not story markup
+    it('preserves compact object literals', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage(
+          '{do}const obj={foo:1}; $x=obj.foo;{/do}Value: {$x}',
+        );
+      });
+      expect(useStoryStore.getState().variables.x).toBe(1);
+      expect(el.textContent).toContain('Value: 1');
+    });
+
+    it('preserves compact control blocks and comparisons', () => {
+      renderPassage('{do}let a=1,b=2; if(a<b){$r="lt"}else{$r="ge"}{/do}');
+      expect(useStoryStore.getState().variables.r).toBe('lt');
+    });
+
+    it('preserves strings containing HTML and macro markup', () => {
+      const el = renderPassage(
+        '{do}$s="<b>{x}</b> {set $y = 1} [[L]]";{/do}after',
+      );
+      expect(useStoryStore.getState().variables.s).toBe(
+        '<b>{x}</b> {set $y = 1} [[L]]',
+      );
+      expect(useStoryStore.getState().variables.y).toBeUndefined();
+      expect(el.textContent).toBe('after');
+    });
+
+    it('works inside a block macro body', () => {
+      renderPassage('{if true}{do}$o={a:{b:2}}.a.b{/do}{/if}');
+      expect(useStoryStore.getState().variables.o).toBe(2);
+    });
+  });
+
+  describe('braces inside strings (#169)', () => {
+    it('{set} accepts a string containing }', () => {
+      useStoryStore.getState().setVariable('x', '');
+      const el = renderPassage('{set $x = "}"}Value: {$x}');
+      expect(useStoryStore.getState().variables.x).toBe('}');
+      expect(el.textContent).toContain('Value: }');
+      expect(el.querySelector('.error')).toBeNull();
+    });
+
+    it('{set} accepts a string containing {', () => {
+      renderPassage("{set $x = '{' + `}${'{'}`}");
+      expect(useStoryStore.getState().variables.x).toBe('{}{');
+    });
+
+    it('expression display handles braces in strings', () => {
+      useStoryStore.getState().setVariable('x', 'a');
+      const el = renderPassage('[{$x + "}"}]');
+      expect(el.textContent).toContain('[a}]');
+    });
+
+    it('HTML attribute interpolation handles braces in strings', () => {
+      useStoryStore.getState().setVariable('x', 'a');
+      const el = renderPassage(`<span title='{$x + "}"}'>t</span>`);
+      expect(el.querySelector('span')!.getAttribute('title')).toBe('a}');
+    });
+  });
+
+  describe('HTML void elements (#170)', () => {
+    it('renders <input> without a closing tag', () => {
+      const el = renderPassage('<input type="text"><span>After</span>');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('input')).not.toBeNull();
+      expect(el.querySelector('span')!.textContent).toBe('After');
+    });
+
+    it('renders void elements inside containers', () => {
+      const el = renderPassage(
+        '<div><input type="checkbox"><img src="a.png"><span>After</span></div>',
+      );
+      expect(el.querySelector('.error')).toBeNull();
+      const div = el.querySelector('div')!;
+      expect(div.querySelector('input')).not.toBeNull();
+      expect(div.querySelector('span')!.textContent).toBe('After');
+    });
   });
 
   describe('{meter}', () => {

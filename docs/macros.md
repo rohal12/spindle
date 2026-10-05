@@ -72,6 +72,8 @@ Execute JavaScript statements without rendering anything.
 
 Code runs during rendering. Use `$var` and `_var` syntax inside the code block.
 
+The body is plain JavaScript: it is not parsed as story markup, so compact object literals (`{foo:1}`), `if (a < b) {...}` blocks and strings containing HTML or macros all work as written. The first `{/do}` ends the block, so avoid that exact text inside strings (write `"{/" + "do}"` instead).
+
 ## Variables
 
 ### `{set}`

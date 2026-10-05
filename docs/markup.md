@@ -98,13 +98,15 @@ Object notation: \{ key: "value" \}
 
 This renders as: `The set macro syntax is {set $x = 5}.`
 
+Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute interpolations need no escaping: `{set $x = "}"}` stores `}`.
+
 ## HTML Tags
 
 A curated set of HTML tags is supported directly in passage content:
 
 `a`, `article`, `aside`, `b`, `blockquote`, `br`, `caption`, `code`, `col`, `colgroup`, `dd`, `del`, `details`, `dfn`, `div`, `dl`, `dt`, `em`, `figcaption`, `figure`, `footer`, `h1`-`h6`, `header`, `hr`, `i`, `img`, `ins`, `kbd`, `li`, `main`, `mark`, `nav`, `ol`, `p`, `pre`, `q`, `s`, `samp`, `section`, `small`, `span`, `strong`, `sub`, `summary`, `sup`, `table`, `tbody`, `td`, `tfoot`, `th`, `thead`, `tr`, `u`, `ul`, `wbr`
 
-Void tags (`br`, `col`, `hr`, `img`, `wbr`) are self-closing. All other tags require a closing tag.
+Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`) are self-closing and need no closing tag (a redundant one such as `</input>` is ignored). All other tags require a closing tag.
 
 ```
 <div class="box">
