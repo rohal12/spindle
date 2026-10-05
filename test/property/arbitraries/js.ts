@@ -1026,7 +1026,7 @@ function stmtList(stmt: fc.Arbitrary<Stmt>): fc.Arbitrary<Doc> {
         if (s.semi) {
           if (dropSemi && next === undefined) {
             // last statement: ASI at the end
-          } else if (dropSemi && next.asiSafe) {
+          } else if (dropSemi && next?.asiSafe) {
             docs.push(before, ['\n']);
           } else {
             docs.push(before, [';']);

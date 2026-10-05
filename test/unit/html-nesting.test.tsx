@@ -84,8 +84,8 @@ describe('issue #109: <button> elements should not be HTML-escaped', () => {
 
     const buttons = container.querySelectorAll('button');
     expect(buttons).toHaveLength(2);
-    expect(buttons[0].textContent).toBe('Test');
-    expect(buttons[1].textContent).toBe('Other');
+    expect(buttons[0]!.textContent).toBe('Test');
+    expect(buttons[1]!.textContent).toBe('Other');
     // Ensure no escaped HTML
     expect(container.innerHTML).not.toContain('&lt;button');
   });

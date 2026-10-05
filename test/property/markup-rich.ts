@@ -245,7 +245,7 @@ export function richPassage(opts: RichOptions = {}) {
       // whose text is literal by design (docs/markup.md "Links"), so a
       // variable inside it shows as `{$v}`. Only the explicit links are kept.
       (src) =>
-        !src.replaceAll('[[Start]]', 'L').includes('[[') &&
+        !src.split('[[Start]]').join('L').includes('[[') &&
         !macroInImageAlt(src),
     );
 }

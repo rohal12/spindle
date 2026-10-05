@@ -137,10 +137,11 @@ function withSelectors<T extends object>(
   node: T,
   sel: { className?: string; id?: string } | undefined,
 ): T {
-  const out: Record<string, unknown> = { ...node };
-  if (sel?.className) out.className = sel.className;
-  if (sel?.id) out.id = sel.id;
-  return out as T;
+  return {
+    ...node,
+    ...(sel?.className ? { className: sel.className } : {}),
+    ...(sel?.id ? { id: sel.id } : {}),
+  };
 }
 
 const variableArb: fc.Arbitrary<Generated> = fc
@@ -364,7 +365,7 @@ const attribute = fc.oneof(
       ),
     )
     .map(([name, s1, s2, q, parts]) => {
-      const value = parts.join('').replaceAll(q, '');
+      const value = parts.join('').split(q).join('');
       return {
         name,
         value,

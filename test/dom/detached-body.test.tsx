@@ -153,13 +153,19 @@ describe('detached {button}/{link} bodies', () => {
     const el = renderPassage(
       '{repeat 100ms}{set $n = ($n ?? 0) + 1}{button "Stop"}{stop}{/button}{/repeat}',
     );
-    act(() => vi.advanceTimersByTime(100));
-    act(() => vi.advanceTimersByTime(100));
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
     const n = useStoryStore.getState().variables.n as number;
     expect(n).toBeGreaterThan(0);
 
     act(() => (el.querySelector('button') as HTMLElement).click());
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(useStoryStore.getState().variables.n).toBe(n);
   });
 
@@ -168,11 +174,15 @@ describe('detached {button}/{link} bodies', () => {
     const el = renderPassage(
       '{repeat 100ms}{set $n = ($n ?? 0) + 1}{link "Stop"}{stop}{/link}{/repeat}',
     );
-    act(() => vi.advanceTimersByTime(100));
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
     const n = useStoryStore.getState().variables.n as number;
 
     act(() => (el.querySelector('a.macro-link') as HTMLElement).click());
-    act(() => vi.advanceTimersByTime(500));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(useStoryStore.getState().variables.n).toBe(n);
   });
 });

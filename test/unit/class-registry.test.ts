@@ -669,7 +669,8 @@ describe('class-registry', () => {
     it('keeps the class of an instance with an own "constructor" key', () => {
       registerClass('Player', Player);
       const player = new Player();
-      (player as unknown as Record<string, unknown>).constructor = null;
+      // @ts-expect-error -- an own, non-function `constructor` key is the case under test
+      player.constructor = null;
       const restored = roundTrip({ p: player }) as { p: Player };
       expect(restored.p).toBeInstanceOf(Player);
       expect(deepClone(player)).toBeInstanceOf(Player);

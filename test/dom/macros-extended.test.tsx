@@ -733,7 +733,10 @@ describe('extended macro components', () => {
         const typeEl = el.querySelector('.macro-type')!;
         expect(typeEl.classList.contains('macro-type-done')).toBe(false);
 
-        for (let i = 0; i < 50; i++) act(() => vi.advanceTimersByTime(10));
+        for (let i = 0; i < 50; i++)
+          act(() => {
+            vi.advanceTimersByTime(10);
+          });
         expect(typeEl.classList.contains('macro-type-done')).toBe(true);
         expect(el.querySelector('.macro-type-cursor')).toBeNull();
         expect(vi.getTimerCount()).toBe(0);

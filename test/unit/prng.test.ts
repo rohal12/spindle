@@ -145,7 +145,7 @@ describe('prng', () => {
       const n = 5000;
       for (let i = 0; i < n; i++) {
         const val = random();
-        buckets[Math.floor(val * 5)]++;
+        buckets[Math.floor(val * 5)]!++;
       }
       // Each bucket should have roughly n/5 = 1000. Allow 30% deviation.
       for (const count of buckets) {
