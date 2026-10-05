@@ -250,4 +250,48 @@ describe('load pipeline', () => {
       ]);
     });
   });
+
+  describe('load events receive the slot (#174)', () => {
+    it('passes a named slot to beforeload and afterload', async () => {
+      await saveTo('named');
+      const calls: Array<[string, string | undefined]> = [];
+      Story.on('beforeload', (slot) => calls.push(['before', slot]));
+      Story.on('afterload', (slot) => calls.push(['after', slot]));
+
+      await loadFrom('named');
+
+      expect(calls).toEqual([
+        ['before', 'named'],
+        ['after', 'named'],
+      ]);
+    });
+
+    it('passes undefined for the default slot', async () => {
+      await saveTo();
+      const calls: Array<[string, string | undefined]> = [];
+      Story.on('beforeload', (slot) => calls.push(['before', slot]));
+      Story.on('afterload', (slot) => calls.push(['after', slot]));
+
+      await loadFrom();
+
+      expect(calls).toEqual([
+        ['before', undefined],
+        ['after', undefined],
+      ]);
+    });
+
+    it('passes undefined when loading a payload directly (session restore)', () => {
+      Story.goto('B');
+      const calls: Array<[string, string | undefined]> = [];
+      Story.on('beforeload', (slot) => calls.push(['before', slot]));
+      Story.on('afterload', (slot) => calls.push(['after', slot]));
+
+      refresh();
+
+      expect(calls).toEqual([
+        ['before', undefined],
+        ['after', undefined],
+      ]);
+    });
+  });
 });

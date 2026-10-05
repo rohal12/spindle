@@ -301,8 +301,11 @@ export interface StoryState {
   clearAllData: () => void;
   deletePlaythrough: (playthroughId: string) => void;
   getSavePayload: () => SavePayload;
-  /** Replace the game state with a live (deserialized) payload. */
-  loadFromPayload: (payload: SavePayload) => void;
+  /**
+   * Replace the game state with a live (deserialized) payload. `slot` is
+   * passed to the `beforeload`/`afterload` events.
+   */
+  loadFromPayload: (payload: SavePayload, slot?: string) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
@@ -685,7 +688,7 @@ export const useStoryStore = create<StoryState>()(
       loadQuickSave(storyData.ifid, slot)
         .then((payload) => {
           if (!payload) return;
-          get().loadFromPayload(payload);
+          get().loadFromPayload(payload, slot);
         })
         .catch((err) => {
           console.error('spindle: failed to load save', err);
@@ -833,13 +836,13 @@ export const useStoryStore = create<StoryState>()(
       };
     },
 
-    loadFromPayload: (payload: SavePayload) => {
+    loadFromPayload: (payload: SavePayload, slot?: string) => {
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
 
-      emit('beforeload', undefined);
+      emit('beforeload', slot);
 
       // The payload is already live (deserialized at the storage boundary by
       // loadSave/loadSession); deserializing again would corrupt built-ins.
@@ -895,7 +898,7 @@ export const useStoryStore = create<StoryState>()(
       // Write the loaded game to the session so a refresh restores it
       persistSession(get);
 
-      emit('afterload', undefined);
+      emit('afterload', slot);
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {
