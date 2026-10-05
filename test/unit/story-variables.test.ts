@@ -317,6 +317,12 @@ describe('validatePassages: only real references (#178)', () => {
     ['block comment in do body', '{do}/* $cost */ $health = 1{/do}'],
     ['block comment in expression', '{print $health /* $cost */}'],
     ['string inside do body', '{do}$health = "$cost".length{/do}'],
+    // The code is lexed as the expression engine lexes it
+    ['string after a regex with a quote', '{print /"/.test("$cost")}'],
+    ['string after a regex with a backtick', '{print /`/.test("$cost")}'],
+    ['string after a regex class with a slash', "{print /[/']/.test('$cost')}"],
+    ['property named like a variable', '{print $health.$cost}'],
+    ['object key named like a variable', '{print { $cost: 1 }.x}'],
   ])('ignores $cost in %s', (_label, content) => {
     expect(errorsFor(content)).toEqual([]);
   });
@@ -345,6 +351,9 @@ describe('validatePassages: only real references (#178)', () => {
     ['quoted input macro variable', '{textbox "$cost" "Enter"}'],
     ['unquoted input macro variable', '{numberbox $cost}'],
     ['widget invocation argument', '{Card $cost}'],
+    ['argument after a regex with a quote', '{print /"/.test($cost)}'],
+    ['argument after a regex with a backtick', '{print /`/.test($cost)}'],
+    ['template after a regex', '{print /\\//.test(`${$cost}`)}'],
   ])('reports undeclared $cost in %s', (_label, content) => {
     const errors = errorsFor(content);
     expect(errors).toHaveLength(1);
