@@ -133,7 +133,8 @@ function persistSession(get: () => StoryState): void {
   } = get();
   if (!storyData) return;
 
-  // Trim cache when history was truncated (goBack then navigate)
+  // Trim cache when history shrank (navigate() drops discarded forward
+  // moments itself, since a replacement branch may keep the same length)
   if (serializedHistory.length > history.length) {
     serializedHistory.length = history.length;
   }
@@ -420,7 +421,7 @@ export const useStoryStore = create<StoryState>()(
     },
 
     navigate: (passageName: string) => {
-      const { storyData, variables: currVars } = get();
+      const { storyData } = get();
       if (!storyData) return;
 
       if (SPECIAL_PASSAGES.has(passageName)) {
@@ -438,8 +439,9 @@ export const useStoryStore = create<StoryState>()(
       const previousPassage = get().currentPassage;
       emit('beforenavigate', passageName);
 
-      // Compute variable delta before Immer set()
-      const patchEntry = computeVarPatches(lastNavigationVars, currVars);
+      // Compute variable delta before Immer set(). Read the variables after
+      // beforenavigate so changes made by its handlers are recorded.
+      const patchEntry = computeVarPatches(lastNavigationVars, get().variables);
 
       set((state) => {
         state.temporary = {};
@@ -448,6 +450,9 @@ export const useStoryStore = create<StoryState>()(
         // Truncate forward history if we navigated back then chose a new path
         state.history = state.history.slice(0, state.historyIndex + 1);
         patchEntries.length = state.historyIndex;
+        if (serializedHistory.length > state.historyIndex + 1) {
+          serializedHistory.length = state.historyIndex + 1;
+        }
 
         // Push new transition and moment
         patchEntries.push(patchEntry);
@@ -483,17 +488,16 @@ export const useStoryStore = create<StoryState>()(
     },
 
     goBack: () => {
-      const { historyIndex, variables } = get();
+      const { historyIndex } = get();
       if (historyIndex <= 0) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = get().history[historyIndex - 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply inverse transition: moment historyIndex → historyIndex−1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex - 1]!.inverse),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex - 1));
 
       set((state) => {
         state.historyIndex--;
@@ -510,17 +514,16 @@ export const useStoryStore = create<StoryState>()(
     },
 
     goForward: () => {
-      const { historyIndex, history: hist, variables } = get();
+      const { historyIndex, history: hist } = get();
       if (historyIndex >= hist.length - 1) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = hist[historyIndex + 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply forward transition: moment historyIndex → historyIndex+1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex]!.forward),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex + 1));
 
       set((state) => {
         state.historyIndex++;
