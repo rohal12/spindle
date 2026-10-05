@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   skipString,
   readQuoted,
+  readWholeQuoted,
   unescapeQuoted,
   splitTopLevel,
   isWhitespace,
@@ -108,6 +109,23 @@ describe('readQuoted', () => {
   it('returns null when not at a quote or at a backtick', () => {
     expect(readQuoted('abc', 0)).toBeNull();
     expect(readQuoted('`abc`', 0)).toBeNull();
+  });
+});
+
+describe('readWholeQuoted', () => {
+  it('returns the unescaped value of a single quoted string', () => {
+    expect(readWholeQuoted('"a b"')).toBe('a b');
+    expect(readWholeQuoted(String.raw`'it\'s'`)).toBe("it's");
+    expect(readWholeQuoted(String.raw`"C:\\"`)).toBe('C:\\');
+    expect(readWholeQuoted('""')).toBe('');
+  });
+
+  it('returns null unless the whole input is one string', () => {
+    expect(readWholeQuoted('"a" "b"')).toBeNull();
+    expect(readWholeQuoted('"a".length')).toBeNull();
+    expect(readWholeQuoted('plain')).toBeNull();
+    expect(readWholeQuoted(`"mismatched'`)).toBeNull();
+    expect(readWholeQuoted(String.raw`"a\"`)).toBeNull();
   });
 });
 

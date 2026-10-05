@@ -103,6 +103,24 @@ export function readQuoted(
 }
 
 /**
+ * The unescaped value of `src` when it is exactly one `"…"` or `'…'` string
+ * (as with `readQuoted`), otherwise `null`.
+ */
+export function readWholeQuoted(src: string): string | null {
+  const quoted = readQuoted(src, 0);
+  return quoted && quoted.end === src.length ? quoted.value : null;
+}
+
+/**
+ * Strip an optional quote from each end of an unquoted-or-loosely-quoted
+ * argument (`"Red`, `Red'`), leaving at least one character. This is the
+ * lenient fallback for labels that are not one well-formed quoted string.
+ */
+export function stripLooseQuotes(src: string): string {
+  return /^["']?(.+?)["']?$/.exec(src)?.[1] ?? src;
+}
+
+/**
  * Indices of the characters in `src` that satisfy `isSeparator` and sit at
  * depth 0: outside string and template literals and outside `()`, `[]` and
  * `{}` pairs.

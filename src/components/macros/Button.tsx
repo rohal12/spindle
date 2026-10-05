@@ -1,6 +1,7 @@
 import { h, render } from 'preact';
 import { useContext } from 'preact/hooks';
 import { defineMacro } from '../../define-macro';
+import { readWholeQuoted } from './arg-utils';
 import {
   renderNodes,
   LocalsUpdateContext,
@@ -14,7 +15,9 @@ defineMacro({
   block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
-    const label = ctx.resolve?.(rawArgs.replace(/^["']|["']$/g, '')) ?? rawArgs;
+    const text =
+      readWholeQuoted(rawArgs.trim()) ?? rawArgs.replace(/^["']|["']$/g, '');
+    const label = ctx.resolve?.(text) ?? rawArgs;
     const nobr = useContext(NobrContext);
 
     const handleClick = () => {

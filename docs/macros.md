@@ -246,6 +246,8 @@ A clickable button that runs its body macros on click. The label goes in the ope
 
 Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.
 
+As with `{link}`, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash inside the quoted label. The same escapes work in `{dialog}` labels, input placeholders and labels, `{radiobutton}` values and `{option}` values.
+
 ### `{dialog}`
 
 A button that opens a modal dialog showing another passage. The label goes in the opening tag, the passage name goes in the body.
@@ -296,6 +298,8 @@ On restart, `StoryVariables` defaults are restored and `StoryInit` is re-execute
 ## Form Inputs
 
 All form inputs bind to a story variable and update it in real time.
+
+Quoted placeholders, labels and values accept `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
 
 ### `{textbox}`
 

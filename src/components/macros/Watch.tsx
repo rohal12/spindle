@@ -1,7 +1,7 @@
 import { defineMacro } from '../../define-macro';
 import { addMacroTrigger, removeTrigger } from '../../triggers';
 import type { WatchOptions } from '../../triggers';
-import { isWhitespace, readQuoted } from './arg-utils';
+import { isWhitespace, readQuoted, readWholeQuoted } from './arg-utils';
 
 const WORD_RE = /\w+/y;
 const DIGITS_RE = /\d+/y;
@@ -83,9 +83,7 @@ export function parseWatchArgs(
  */
 export function parseUnwatchName(rawArgs: string): string {
   const raw = rawArgs.trim();
-  const quoted = readQuoted(raw, 0);
-  if (quoted && quoted.end === raw.length) return quoted.value;
-  return raw.replace(/^['"]|['"]$/g, '');
+  return readWholeQuoted(raw) ?? raw.replace(/^['"]|['"]$/g, '');
 }
 
 defineMacro({

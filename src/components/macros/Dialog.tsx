@@ -1,5 +1,6 @@
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
+import { readWholeQuoted } from './arg-utils';
 
 defineMacro({
   name: 'dialog',
@@ -11,7 +12,9 @@ defineMacro({
     const noclose = /\bnoclose\s*$/.test(rawArgs);
     const labelRaw = rawArgs.replace(/\bnoclose\s*$/, '').trim();
     const label =
-      ctx.resolve?.(labelRaw.replace(/^["']|["']$/g, '')) ?? labelRaw;
+      ctx.resolve?.(
+        readWholeQuoted(labelRaw) ?? labelRaw.replace(/^["']|["']$/g, ''),
+      ) ?? labelRaw;
     const passageName = ctx
       .collectText(children)
       .trim()

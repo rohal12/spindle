@@ -1,6 +1,6 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
-import { isWhitespace, readQuoted, splitTopLevel } from './arg-utils';
+import { isWhitespace, readWholeQuoted, splitTopLevel } from './arg-utils';
 
 /**
  * Parse `{meter currentExpr maxExpr ["label"]}`. Arguments are separated by
@@ -16,13 +16,11 @@ export function parseMeterArgs(rawArgs: string): {
   const tokens = splitTopLevel(rawArgs.trim(), isWhitespace).filter(Boolean);
 
   let labelMode = '';
-  const last = tokens[tokens.length - 1];
-  if (tokens.length >= 2 && last) {
-    const label = readQuoted(last, 0);
-    if (label && label.end === last.length) {
-      labelMode = label.value;
-      tokens.pop();
-    }
+  const label =
+    tokens.length >= 2 ? readWholeQuoted(tokens[tokens.length - 1]!) : null;
+  if (label !== null) {
+    labelMode = label;
+    tokens.pop();
   }
 
   if (tokens.length < 2) {
