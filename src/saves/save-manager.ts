@@ -7,7 +7,7 @@ import type {
   SaveExport,
   StorageInfo,
 } from './types';
-import { isSavePayload } from './types';
+import { isSaveExport, isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
 import { deepClone, serialize, deserialize } from '../class-registry';
 import { emit } from '../event-emitter';
@@ -596,6 +596,11 @@ async function prepareImport(
     throw new Error(
       `Save is from a different story (expected IFID ${ifid}, got ${data.ifid})`,
     );
+  }
+  // Callers may pass parsed JSON; check the full structure before anything
+  // is stored or replaced
+  if (!isSaveExport(data)) {
+    throw new Error('Invalid save file format');
   }
 
   const backend = await getBackend();

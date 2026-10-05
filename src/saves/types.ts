@@ -78,15 +78,64 @@ export function isSaveExport(value: unknown): value is SaveExport {
   if (typeof meta.updatedAt !== 'string') return false;
   if (typeof meta.title !== 'string') return false;
 
-  const payload = save.payload as Record<string, unknown>;
-  if (typeof payload.passage !== 'string') return false;
-  if (!Array.isArray(payload.history) || payload.history.length === 0)
-    return false;
-  if (typeof payload.historyIndex !== 'number') return false;
-  if (typeof payload.variables !== 'object' || payload.variables === null)
-    return false;
+  return isImportablePayload(save.payload);
+}
 
-  return true;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Absent, null, or a `{ seed, pull }` PRNG snapshot. */
+function isOptionalPRNGSnapshot(value: unknown): boolean {
+  if (value == null) return true;
+  return (
+    isRecord(value) &&
+    typeof value.seed === 'string' &&
+    typeof value.pull === 'number' &&
+    Number.isInteger(value.pull) &&
+    value.pull >= 0
+  );
+}
+
+function isSaveHistoryMoment(value: unknown): value is SaveHistoryMoment {
+  return (
+    isRecord(value) &&
+    typeof value.passage === 'string' &&
+    isRecord(value.variables) &&
+    typeof value.timestamp === 'number' &&
+    isOptionalPRNGSnapshot(value.prng)
+  );
+}
+
+/**
+ * Full check of a payload from outside the running story (an imported save):
+ * every history moment is well formed, and `historyIndex` is an integer that
+ * points at a moment of the payload's passage. Anything that passes can be
+ * stored and later loaded.
+ */
+function isImportablePayload(value: unknown): value is SavePayload {
+  if (!isRecord(value)) return false;
+  if (typeof value.passage !== 'string') return false;
+  if (!isRecord(value.variables)) return false;
+
+  const { history, historyIndex } = value;
+  if (!Array.isArray(history) || history.length === 0) return false;
+  if (!history.every(isSaveHistoryMoment)) return false;
+  if (
+    typeof historyIndex !== 'number' ||
+    !Number.isInteger(historyIndex) ||
+    historyIndex < 0 ||
+    historyIndex >= history.length
+  ) {
+    return false;
+  }
+  if (history[historyIndex]!.passage !== value.passage) return false;
+
+  if (value.visitCounts !== undefined && !isRecord(value.visitCounts))
+    return false;
+  if (value.renderCounts !== undefined && !isRecord(value.renderCounts))
+    return false;
+  return isOptionalPRNGSnapshot(value.prng);
 }
 
 export function isSavePayload(value: unknown): value is SavePayload {

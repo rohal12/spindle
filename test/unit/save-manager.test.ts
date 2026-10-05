@@ -336,6 +336,9 @@ describe('save-manager', () => {
       const payload = makePayload({
         passage: 'Room',
         variables: { gold: 999, name: 'Hero' },
+        history: [
+          { passage: 'Room', variables: { gold: 999 }, timestamp: Date.now() },
+        ],
       });
       const record = await createSave(IFID, playthroughId, payload);
       const exported = await exportSave(record.meta.id);
@@ -553,6 +556,20 @@ describe('save-manager', () => {
       );
       expect(await getSlotSaveInfo(IFID, 'keep')).toEqual(before);
     });
+
+    it('importSlotSave validates the history before touching the slot', async () => {
+      await quickSave(IFID, playthroughId, makePayload(), 'keep-history');
+      const before = await getSlotSaveInfo(IFID, 'keep-history');
+      const exported = (await exportSlotSave(IFID, 'keep-history'))!;
+      const malformed = structuredClone(exported);
+      (malformed.save.payload as { history: unknown[] }).history = [null];
+
+      await expect(
+        importSlotSave(malformed, IFID, 'keep-history'),
+      ).rejects.toThrow('Invalid save file format');
+      expect(await getSlotSaveInfo(IFID, 'keep-history')).toEqual(before);
+      expect(await loadQuickSave(IFID, 'keep-history')).toBeDefined();
+    });
   });
 
   describe('named slot saves', () => {
@@ -670,7 +687,7 @@ describe('save-manager', () => {
     it('concurrent imports into one slot keep a single record', async () => {
       const freshIfid = 'slot-race-import-' + Date.now();
       const ptId = await startNewPlaythrough(freshIfid);
-      await quickSave(freshIfid, ptId, makePayload({ passage: 'Src' }), 'src');
+      await quickSave(freshIfid, ptId, makePayload(), 'src');
       const exported = (await exportSlotSave(freshIfid, 'src'))!;
 
       await Promise.all([
