@@ -120,4 +120,67 @@ describe('history navigation', () => {
       expect(store().variables).toEqual({ player: { hp: 10, items: ['a'] } });
     });
   });
+
+  describe('serialized session after branching (#160)', () => {
+    it('replaces the discarded forward moment at equal history length', () => {
+      store().init(makeStoryData(), { x: 0 });
+      store().navigate('B');
+      store().navigate('C');
+      store().setVariable('x', 3);
+      store().goBack();
+      store().setVariable('x', 4);
+      store().navigate('D');
+
+      const raw = JSON.parse(
+        sessionStorage.getItem(`spindle.session.${IFID}`)!,
+      );
+      expect(raw.passage).toBe('D');
+      expect(raw.history.map((m: { passage: string }) => m.passage)).toEqual([
+        'A',
+        'B',
+        'D',
+      ]);
+      expect(raw.history[2].variables).toEqual({ x: 4 });
+
+      refresh({ x: 0 });
+      expect(store().currentPassage).toBe('D');
+      store().goBack();
+      expect(store().currentPassage).toBe('B');
+      store().goForward();
+      expect(store().currentPassage).toBe('D');
+      expect(store().variables).toEqual({ x: 4 });
+    });
+
+    it('drops discarded forward moments when the new history is shorter', () => {
+      store().init(makeStoryData(), { x: 0 });
+      store().navigate('B');
+      store().navigate('C');
+      store().navigate('B');
+      store().navigate('C');
+      store().goBack();
+      store().goBack();
+      store().goBack();
+      expect(store().currentPassage).toBe('B');
+      store().setVariable('x', 9);
+      store().navigate('D');
+
+      const raw = JSON.parse(
+        sessionStorage.getItem(`spindle.session.${IFID}`)!,
+      );
+      expect(raw.history.map((m: { passage: string }) => m.passage)).toEqual([
+        'A',
+        'B',
+        'D',
+      ]);
+
+      refresh({ x: 0 });
+      expect(store().history.map((m) => m.passage)).toEqual(['A', 'B', 'D']);
+      store().goBack();
+      store().goForward();
+      expect(store().currentPassage).toBe('D');
+      expect(store().variables).toEqual({ x: 9 });
+      store().goForward();
+      expect(store().currentPassage).toBe('D');
+    });
+  });
 });

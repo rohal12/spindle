@@ -133,7 +133,8 @@ function persistSession(get: () => StoryState): void {
   } = get();
   if (!storyData) return;
 
-  // Trim cache when history was truncated (goBack then navigate)
+  // Trim cache when history shrank (navigate() drops discarded forward
+  // moments itself, since a replacement branch may keep the same length)
   if (serializedHistory.length > history.length) {
     serializedHistory.length = history.length;
   }
@@ -448,6 +449,9 @@ export const useStoryStore = create<StoryState>()(
         // Truncate forward history if we navigated back then chose a new path
         state.history = state.history.slice(0, state.historyIndex + 1);
         patchEntries.length = state.historyIndex;
+        if (serializedHistory.length > state.historyIndex + 1) {
+          serializedHistory.length = state.historyIndex + 1;
+        }
 
         // Push new transition and moment
         patchEntries.push(patchEntry);
