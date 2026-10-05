@@ -529,7 +529,7 @@ Remove a named watcher.
 
 ### `{quicksave}`
 
-A button that performs a quick save. Keyboard shortcut: F6.
+A button that performs a quick save. Keyboard shortcut: F6 (configurable via `Story.config.quickSaveKey`).
 
 ```
 {quicksave}
@@ -537,7 +537,7 @@ A button that performs a quick save. Keyboard shortcut: F6.
 
 ### `{quickload}`
 
-A button that loads the quick save. Keyboard shortcut: F9. Disabled when no quick save exists.
+A button that loads the quick save. Keyboard shortcut: F9 (configurable via `Story.config.quickLoadKey`). Disabled when no quick save exists.
 
 ```
 {quickload}

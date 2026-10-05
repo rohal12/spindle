@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   useStoryStore,
   enterRuntimePhase,
@@ -558,6 +558,31 @@ describe('StoryAPI', () => {
       const userMacro = registry.find((m: any) => m.name === 'user-test-macro');
       expect(userMacro).toBeDefined();
       expect(userMacro.source).toBe('user');
+    });
+  });
+
+  describe('config quick save / load keys', () => {
+    afterEach(() => {
+      useStoryStore.setState({ quickSaveKey: 'F6', quickLoadKey: 'F9' });
+    });
+
+    it('defaults to F6 and F9', () => {
+      expect(Story.config.quickSaveKey).toBe('F6');
+      expect(Story.config.quickLoadKey).toBe('F9');
+    });
+
+    it('can be rebound or disabled', () => {
+      Story.config.quickSaveKey = 'F2';
+      Story.config.quickLoadKey = null;
+      expect(useStoryStore.getState().quickSaveKey).toBe('F2');
+      expect(Story.config.quickLoadKey).toBeNull();
+    });
+
+    it('treats an empty string or non-string as disabled', () => {
+      Story.config.quickSaveKey = '';
+      Story.config.quickLoadKey = false;
+      expect(Story.config.quickSaveKey).toBeNull();
+      expect(Story.config.quickLoadKey).toBeNull();
     });
   });
 
