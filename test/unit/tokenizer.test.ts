@@ -1493,6 +1493,26 @@ describe('tokenize — JavaScript in macro arguments and expressions', () => {
     expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
   });
 
+  // Code attributes keep backslashes as text (docs/markup.md), so a
+  // backslash before `{$…}` doesn't stop the reference hiding its quotes.
+  it('reads a backslash before a reference in a code attribute as text', () => {
+    const value = String.raw`f('\{$a.replace(/"/g, "'")}')`;
+    const tokens = tokenize(`<b onclick="${value}" title="\\{$a" id="i">x</b>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { onclick: value, title: '\\{$a', id: 'i' },
+    });
+  });
+
+  it('reads only sigil references as blocks in a code attribute', () => {
+    const value = `{a{$a.replace(/[}"']/g, '{')}`;
+    const tokens = tokenize(`<b onclick="${value}" id="i">x</b>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { onclick: value, id: 'i' },
+    });
+  });
+
   it('lexes macros in attribute values after their names', () => {
     const tokens = tokenize(
       `<i title="{if /"}/.test($s)}a{/if}" class="{.c print '"'}">t</i>`,

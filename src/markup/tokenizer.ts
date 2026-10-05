@@ -1,4 +1,5 @@
 import { createJsScanCache, findCodeEnd, type JsScanCache } from '../js-lexer';
+import { isCodeAttribute } from './code-attributes';
 
 export interface TextToken {
   type: 'text';
@@ -267,8 +268,12 @@ function parseHtmlAttributes(
         const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
+        // A code attribute's value is no markup (`isCodeAttribute`): only
+        // `{` and a sigil open a reference, other braces and backslashes
+        // are text, as `splitSigilTemplate` reads them.
+        const code = isCodeAttribute(attrName);
         while (j < input.length) {
-          if (input[j] === '\\') {
+          if (!code && input[j] === '\\') {
             // A brace after an odd backslash run is escaped (`\{`) and opens
             // no interpolation, as in passage text.
             let k = j + 1;
@@ -279,7 +284,11 @@ function parseHtmlAttributes(
           }
           if (input[j] === '{') {
             // Skip a whole {…} interpolation so quotes inside it don't end the value
-            const closeIdx = scanBlockClose(input, j, memo);
+            const closeIdx = !code
+              ? scanBlockClose(input, j, memo)
+              : SIGIL_CHARS.has(input[j + 1]!)
+                ? scanBalancedBrace(input, j + 1, memo)
+                : -1;
             if (closeIdx !== -1) {
               j = closeIdx + 1;
               continue;
