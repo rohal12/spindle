@@ -84,7 +84,12 @@ export function executeMutation(
   const vars = deepClone(state.variables);
   const temps = deepClone(state.temporary);
   const trans = deepClone(state.transient);
-  const localsClone = { ...mergedLocals };
+  // Locals are deep-cloned like the store namespaces: a loop item or widget
+  // argument taken from story state is Immer-frozen, and an unfrozen object
+  // mutated in place would keep its reference, so a nested assignment
+  // (`@item.name = "x"`) would be lost or never reach the scope updater.
+  // Unregistered class instances (DOM nodes etc.) stay shared by reference.
+  const localsClone = deepClone(mergedLocals, { keepUnregistered: true });
 
   execute(code, vars, temps, localsClone, trans);
 
@@ -98,7 +103,7 @@ export function executeMutation(
   });
 
   for (const key of Object.keys(localsClone)) {
-    if (localsClone[key] !== mergedLocals[key]) {
+    if (!deepEqual(localsClone[key], mergedLocals[key])) {
       scopeUpdate(key, localsClone[key]);
     }
   }

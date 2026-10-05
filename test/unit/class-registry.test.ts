@@ -138,6 +138,20 @@ describe('class-registry', () => {
       expect((cloned as any).name).toBe('Test');
     });
 
+    it('keeps unregistered class instances by reference with keepUnregistered', () => {
+      registerClass('Inventory', Inventory);
+      const player = new Player({ name: 'Test' });
+      const inv = new Inventory();
+      const obj = { player, inv, data: { n: 1 } };
+      const cloned = deepClone(obj, { keepUnregistered: true });
+
+      expect(cloned.player).toBe(player);
+      expect(cloned.inv).not.toBe(inv);
+      expect(cloned.inv instanceof Inventory).toBe(true);
+      expect(cloned.data).not.toBe(obj.data);
+      expect(cloned.data).toEqual({ n: 1 });
+    });
+
     it('handles circular references', () => {
       const obj: any = { a: 1 };
       obj.self = obj;

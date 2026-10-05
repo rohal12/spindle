@@ -27,7 +27,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-export function deepClone<T>(value: T): T {
+export interface DeepCloneOptions {
+  /**
+   * Return instances of unregistered classes (DOM nodes, promises, other
+   * library objects) by reference instead of copying their own keys into a
+   * plain object, which would lose their prototype and identity.
+   */
+  keepUnregistered?: boolean;
+}
+
+export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
   const seen = new Map<object, object>();
 
   function clone(val: unknown): unknown {
@@ -83,6 +92,7 @@ export function deepClone<T>(value: T): T {
     }
 
     // Plain object (or unregistered class — treat as plain)
+    if (!isPlainObject(val) && options.keepUnregistered) return val;
     if (isPlainObject(val) || typeof val === 'object') {
       const copy: Record<string, unknown> = {};
       seen.set(obj, copy);
