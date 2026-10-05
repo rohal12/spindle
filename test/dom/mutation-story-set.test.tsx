@@ -8,6 +8,7 @@ import { renderNodes } from '../../src/markup/render';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { defineMacro } from '../../src/define-macro';
+import { connectTriggersToStore, resetTriggers } from '../../src/triggers';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -44,7 +45,7 @@ describe('Story.set inside mutation macros', () => {
       .getState()
       .init(
         makeStoryData([makePassage(1, 'Start', '')]),
-        { data: { value: 0 }, list: [1], obj: { a: 0, b: 0 } },
+        { data: { value: 0 }, list: [1], obj: { a: 0, b: 0 }, flag: 0 },
         { tdata: { value: 0 } },
       );
     installStoryAPI();
@@ -77,6 +78,21 @@ describe('Story.set inside mutation macros', () => {
     );
     expect(el.textContent).toBe('1-2');
     expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('{do} keeps a {watch} run write to another property of the same root', () => {
+    resetTriggers();
+    const disconnect = connectTriggersToStore();
+    try {
+      const el = renderMarkup(
+        `{watch '$flag == 1' run "$obj.b = 2"}{do}$obj.a = 1; Story.set("flag", 1);{/do}{print $obj.a}-{print $obj.b}`,
+      );
+      expect(el.textContent).toBe('1-2');
+      expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
+    } finally {
+      disconnect();
+      resetTriggers();
+    }
   });
 
   it('custom ctx.mutate keeps a Story.set object update', () => {

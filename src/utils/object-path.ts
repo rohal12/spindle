@@ -52,13 +52,47 @@ export function setByPath(
   value: unknown,
   options: SetByPathOptions = {},
 ): void {
+  const parent = walkToParent(root, segments, options.createMissing ?? false);
+  parent[segments[segments.length - 1]!] = value;
+}
+
+/**
+ * Delete the property at dot-path `segments` below `root`, copying
+ * undrafted objects on the way down like setByPath(). Does nothing when an
+ * intermediate is missing or not an object, or the property is absent.
+ */
+export function deleteByPath(
+  root: Record<string, unknown>,
+  segments: readonly string[],
+): void {
+  const last = segments[segments.length - 1]!;
+  // Check first, so a no-op delete copies nothing.
+  const holder = getByPath(root, segments.slice(0, -1));
+  if (holder == null || typeof holder !== 'object' || !(last in holder)) {
+    return;
+  }
+  const parent = walkToParent(root, segments, false);
+  delete parent[last];
+}
+
+/**
+ * Walk to the object holding the last of `segments`, copying undrafted
+ * objects when `root` is an Immer draft (see setByPath). A missing or
+ * non-object intermediate is replaced by a plain object when
+ * `createMissing` is set, and throws a TypeError otherwise.
+ */
+function walkToParent(
+  root: Record<string, unknown>,
+  segments: readonly string[],
+  createMissing: boolean,
+): Record<string, unknown> {
   const copyOnWrite = isDraft(root);
   let current: Record<string, unknown> = root;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i]!;
     let next = current[seg];
     if (next == null || typeof next !== 'object') {
-      if (!options.createMissing) {
+      if (!createMissing) {
         throw new TypeError(
           `spindle: Cannot set property "${segments[i + 1]}" on ${next === null ? 'null' : typeof next} (at "${segments.slice(0, i + 1).join('.')}")`,
         );
@@ -71,5 +105,5 @@ export function setByPath(
     }
     current = next as Record<string, unknown>;
   }
-  current[segments[segments.length - 1]!] = value;
+  return current;
 }

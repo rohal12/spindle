@@ -24,8 +24,8 @@ import {
   populateKnownSaves,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
-import { registerClass, deepClone } from './class-registry';
-import { getActiveMutationScope } from './execute-mutation';
+import { registerClass } from './class-registry';
+import { mirrorWriteToActiveScopes } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
@@ -291,19 +291,21 @@ function createStoryAPI(): StoryAPI {
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
         for (const [k, v] of entries) setOne(draft, k, v);
-      });
-      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
-      // works on copies of the namespaces and commits changed roots when it
-      // finishes. Apply the write to those copies too, so the code sees it
-      // and the commit keeps it in program order alongside the code's own
-      // changes to the same root (#215). Values are copied: the store's are
-      // frozen, and the code must not change the store through them.
-      const scope = getActiveMutationScope();
-      if (scope) {
+        // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+        // works on copies of the namespaces and commits the paths it changed
+        // when it finishes. Apply the write to those copies too, so the code
+        // sees it and its commit keeps it in program order (#215). This runs
+        // inside the update, before watchers it triggers write.
         for (const [k, v] of entries) {
-          setOne(scope, k, deepClone(v, { keepUnregistered: true }));
+          const { isTransient, key } = parseName(k);
+          mirrorWriteToActiveScopes(
+            draft,
+            isTransient ? 'transient' : 'variables',
+            key.split('.'),
+            v,
+          );
         }
-      }
+      });
     },
 
     goto(passageName: string): void {

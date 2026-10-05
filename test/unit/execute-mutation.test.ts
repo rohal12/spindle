@@ -376,3 +376,174 @@ describe('executeMutation commit', () => {
     expect(useStoryStore.getState().variables.status).toBe('dead');
   });
 });
+
+describe('executeMutation with nested mutations and watchers', () => {
+  class Player {
+    hp = 100;
+    name = 'Ada';
+  }
+
+  let disconnect: () => void;
+  const unsubs: (() => void)[] = [];
+
+  beforeEach(() => {
+    registerClass('Player', Player);
+    resetTriggers();
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([makePassage(1, 'Start', '')]),
+        { obj: { a: 0, b: 0 }, flag: 0, seen: null, list: [1] },
+        { tobj: { a: 0, b: 0 } },
+      );
+    installStoryAPI();
+    useStoryStore.getState().setVariable('player', new Player());
+    disconnect = connectTriggersToStore();
+  });
+
+  afterEach(() => {
+    disconnect();
+    for (const u of unsubs.splice(0)) u();
+    clearRegistry();
+    resetTriggers();
+    delete g.externalSet;
+  });
+
+  const run = (code: string) => executeMutation(code, {}, () => {});
+  const vars = () => useStoryStore.getState().variables;
+  const story = () => (globalThis as Record<string, any>).Story;
+
+  it('keeps a watcher run write to another property of a root the code changed', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2' });
+    run('$obj.a = 1; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+    expect(vars().flag).toBe(1);
+  });
+
+  it('keeps a watcher run Story.set to another property of a root the code changed', () => {
+    addTrigger('$flag == 1', { run: 'Story.set("obj.b", 2)' });
+    run('$obj.a = 1; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps transient writes from a watcher run action', () => {
+    addTrigger('$flag == 1', { run: '%tobj.b = 2' });
+    run('%tobj.a = 1; Story.set("flag", 1)');
+    expect(useStoryStore.getState().transient.tobj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('applies conflicting watcher writes in program order', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2' });
+    run('$obj.b = 5; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 0, b: 2 });
+  });
+
+  it('lets the code overwrite a watcher write made earlier in the run', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2' });
+    run('Story.set("flag", 1); $obj.b = 5');
+    expect(vars().obj).toEqual({ a: 0, b: 5 });
+  });
+
+  it('lets the code replace a root after a watcher wrote into it', () => {
+    addTrigger('$flag == 1', { run: '$obj.c = 3' });
+    run('Story.set("flag", 1); $obj = { a: 9 }');
+    expect(vars().obj).toEqual({ a: 9 });
+  });
+
+  it('lets the code see a watcher write made earlier in the run', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2' });
+    run('Story.set("flag", 1); $obj.a = $obj.b + 1');
+    expect(vars().obj).toEqual({ a: 3, b: 2 });
+  });
+
+  it('runs a watcher action on the pending state of the code that triggered it', () => {
+    addTrigger('$flag == 1', { run: '$seen = $obj.a' });
+    run('$obj.a = 7; Story.set("flag", 1)');
+    expect(vars().seen).toBe(7);
+    expect(vars().obj).toEqual({ a: 7, b: 0 });
+  });
+
+  it('keeps a watcher delete next to the code’s own change', () => {
+    addTrigger('$flag == 1', { run: 'delete $obj.b' });
+    run('$obj.a = 1; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1 });
+  });
+
+  it('keeps a code delete next to a watcher write', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2' });
+    run('delete $obj.a; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ b: 2 });
+  });
+
+  it('keeps watcher writes to a registered class root the code changed', () => {
+    addTrigger('$flag == 1', { run: '$player.hp = 50' });
+    run('$player.name = "Bo"; Story.set("flag", 1)');
+    const player = vars().player as Player;
+    expect(player).toBeInstanceOf(Player);
+    expect(player).toMatchObject({ name: 'Bo', hp: 50 });
+  });
+
+  it('keeps writes of a variableChanged handler that runs mutation code', () => {
+    unsubs.push(
+      story().on('variableChanged', (changed: Record<string, unknown>) => {
+        if ('flag' in changed) run('$obj.b = 2');
+      }),
+    );
+    run('$obj.a = 1; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps writes of a variableChanged handler that calls Story.set', () => {
+    unsubs.push(
+      story().on('variableChanged', (changed: Record<string, unknown>) => {
+        if ('flag' in changed) story().set('obj.b', 2);
+      }),
+    );
+    run('$obj.a = 1; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps writes of watchers fired by the commit itself', () => {
+    addTrigger('$obj.a == 1', { run: '$obj.b = 2' });
+    unsubs.push(
+      story().on('variableChanged', (changed: Record<string, unknown>) => {
+        if ('obj' in changed && !('list' in changed)) story().set('list', [9]);
+      }),
+    );
+    run('$obj.a = 1');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+    expect(vars().list).toEqual([9]);
+  });
+
+  it('keeps writes from two levels of nested watchers', () => {
+    addTrigger('$flag == 1', { run: '$obj.b = 2; Story.set("flag", 2)' });
+    addTrigger('$flag == 2', { run: '$player.hp = 1' });
+    run('$obj.a = 1; $player.name = "Bo"; Story.set("flag", 1)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+    expect(vars().player).toMatchObject({ name: 'Bo', hp: 1 });
+    expect(vars().flag).toBe(2);
+  });
+
+  it('keeps nonconflicting direct store writes to a root the code changed', () => {
+    g.externalSet = () =>
+      useStoryStore.getState().updateVariables((d) => {
+        (d.variables.obj as Record<string, unknown>).b = 2;
+      });
+    run('$obj.a = 1; externalSet()');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('replaces arrays as a whole', () => {
+    run('$list.push(2); $list.unshift(0)');
+    expect(vars().list).toEqual([0, 1, 2]);
+  });
+
+  it('keeps references of untouched nested objects', () => {
+    useStoryStore.getState().setVariable('deep', { x: { n: 1 }, y: { n: 2 } });
+    const before = vars().deep as Record<string, unknown>;
+    run('$deep.x.n = 5');
+    const after = vars().deep as Record<string, unknown>;
+    expect(after.x).toEqual({ n: 5 });
+    expect(after.y).toBe(before.y);
+  });
+});
