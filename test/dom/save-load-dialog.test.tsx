@@ -1046,5 +1046,52 @@ describe('SaveManagerContent', () => {
 
       clearSpy.mockRestore();
     });
+
+    it('starts no status timer when a save finishes after unmount', async () => {
+      renderSaveManager(container, onClose);
+      await flush();
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(async () => saveModeBtn.click());
+      await flush();
+
+      const setSpy = vi.spyOn(globalThis, 'setTimeout');
+      // Close the manager while the save is still being written
+      act(() => {
+        (container.querySelector('.save-slot-new') as HTMLElement).click();
+        render(null, container);
+      });
+      await flush();
+
+      const statusTimers = setSpy.mock.calls.filter(([, ms]) => ms === 3000);
+      setSpy.mockRestore();
+      expect(statusTimers).toEqual([]);
+    });
+
+    it('cancels the pending dialog close on unmount', async () => {
+      await createSave(
+        IFID,
+        useStoryStore.getState().playthroughId,
+        makePayload(),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        renderSaveManager(container, onClose);
+        await vi.waitFor(() =>
+          expect(container.querySelector('.save-slot')).not.toBeNull(),
+        );
+        const loadBtn = [
+          ...container.querySelectorAll('.save-slot-action.primary'),
+        ].find((b) => b.textContent === 'Load') as HTMLElement;
+        act(() => loadBtn.click());
+        act(() => render(null, container));
+        expect(vi.getTimerCount()).toBe(0);
+        vi.advanceTimersByTime(1000);
+        expect(onClose).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

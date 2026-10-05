@@ -105,6 +105,9 @@ defineMacro({
       cleanupSnapshots(containerRef.current);
     }, []);
 
+    // A transition still running on unmount must not fire into it.
+    useEffect(() => cancelTransition, [cancelTransition]);
+
     // State machine effect — triggers on every navigation
     useEffect(() => {
       const store = useStoryStore.getState();

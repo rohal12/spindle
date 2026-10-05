@@ -84,15 +84,25 @@ export function SaveManagerContent() {
     }
   }, [renamingId]);
 
+  // Actions are async and may finish after the manager closed: once
+  // unmounted, no status is shown and no timer is left behind.
+  const mounted = useRef(true);
   const statusTimer = useRef<number>();
+  const closeTimer = useRef<number>();
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
+    if (!mounted.current) return;
     clearTimeout(statusTimer.current);
     setStatus({ text, type });
     statusTimer.current = window.setTimeout(() => setStatus(null), 3000);
   };
 
   useEffect(() => {
-    return () => clearTimeout(statusTimer.current);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(statusTimer.current);
+      clearTimeout(closeTimer.current);
+    };
   }, []);
 
   const toggleCollapse = (id: string) => {
@@ -155,7 +165,9 @@ export function SaveManagerContent() {
       // Stored records hold serialized variables; the store expects live ones
       loadFromPayload(deserializePayload(save.payload));
       showStatus('Game loaded');
-      if (closeDialog) setTimeout(closeDialog, 500);
+      if (closeDialog) {
+        closeTimer.current = window.setTimeout(closeDialog, 500);
+      }
     } catch {
       showStatus('Failed to load save', 'error');
     }
