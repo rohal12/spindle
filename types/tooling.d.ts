@@ -39,3 +39,30 @@ export declare function defineMacro(config: MacroDefinition): void;
  * Return metadata for all registered macros (built-in + user-defined).
  */
 export declare function getMacroRegistry(): MacroMetadata[];
+
+/** Variable type inferred from a StoryVariables/StoryTransients default value. */
+export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
+
+/** Inferred shape of a declared variable (or one of its object fields). */
+export interface FieldSchema {
+  type: VarType;
+  /** Field schemas, only present for objects. */
+  fields?: Map<string, FieldSchema>;
+}
+
+/** A declared variable: its inferred schema plus its default value. */
+export interface VariableSchema extends FieldSchema {
+  name: string;
+  default: unknown;
+}
+
+/**
+ * Parse the content of a `StoryVariables` (`$name = value`) or
+ * `StoryTransients` (`%name = value`, pass `sigil: '%'`) passage into a
+ * schema map, exactly as Spindle does at boot.
+ * Throws on invalid declarations or unsupported value types (e.g. `null`).
+ */
+export declare function parseStoryVariables(
+  content: string,
+  sigil?: '$' | '%',
+): Map<string, VariableSchema>;

@@ -360,6 +360,54 @@ export interface SaveInfo {
 }
 
 /**
+ * Metadata stored with each save record.
+ * @see {@link ../../src/saves/types.ts} for the implementation.
+ */
+export interface SaveMeta {
+  /** Unique save ID. */
+  id: string;
+  /** IFID of the story that created the save. */
+  ifid: string;
+  /** Playthrough the save belongs to. */
+  playthroughId: string;
+  /** ISO 8601 timestamp when the save was first created. */
+  createdAt: string;
+  /** ISO 8601 timestamp when the save was last updated. */
+  updatedAt: string;
+  /** Save title (generated or custom). */
+  title: string;
+  /** Passage name at the time of saving. */
+  passage: string;
+  /** Custom metadata passed when saving. */
+  custom: Record<string, unknown>;
+  /** Estimated size of the stored payload in bytes. */
+  estimatedBytes?: number;
+}
+
+/**
+ * A stored save: metadata plus the serialized payload.
+ * @see {@link ../../src/saves/types.ts} for the implementation.
+ */
+export interface SaveRecord {
+  meta: SaveMeta;
+  payload: SavePayload;
+}
+
+/**
+ * Portable save file produced by `exportSave()` and accepted by `importSave()`.
+ * Plain JSON: `JSON.stringify` it to write a file, `JSON.parse` to read one back.
+ * @see {@link ../../src/saves/types.ts} for the implementation.
+ */
+export interface SaveExport {
+  version: 1;
+  /** IFID of the story the save belongs to. Imports into other stories are rejected. */
+  ifid: string;
+  /** ISO 8601 timestamp of the export. */
+  exportedAt: string;
+  save: SaveRecord;
+}
+
+/**
  * The main Story API available as `window.Story` at runtime.
  * Provides access to variables, navigation, save/load, and visit tracking.
  * @see {@link ../../src/story-api.ts} for the implementation.
@@ -410,6 +458,21 @@ export interface StoryAPI {
 
   /** Delete a save by slot name. */
   deleteSave(slot?: string): void;
+
+  /**
+   * Export the save in a slot as a portable object (plain JSON).
+   * Resolves to null if the slot is empty.
+   * @example const data = await Story.exportSave('slot-1'); // JSON.stringify(data) to download
+   */
+  exportSave(slot?: string): Promise<SaveExport | null>;
+
+  /**
+   * Import an exported save into a slot, replacing whatever the slot held.
+   * Rejects if `data` is not a save export or belongs to a different story (IFID).
+   * Resolves to the slot's new metadata.
+   * @example await Story.importSave(JSON.parse(text), 'slot-2')
+   */
+  importSave(data: unknown, slot?: string): Promise<SaveInfo>;
 
   /** Return the number of times a passage has been visited. */
   visited(name?: string): number;

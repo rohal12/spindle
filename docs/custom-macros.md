@@ -385,7 +385,7 @@ You can add optional metadata to your macro definition to help LSP servers, lint
 | `parameters[].required`    | `boolean?` | Whether the parameter is required              |
 | `parameters[].description` | `string?`  | Human-readable description of the parameter    |
 
-This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point. See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
+This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests)). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 
 ## Reference
 

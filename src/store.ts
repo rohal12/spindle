@@ -8,7 +8,13 @@ import {
 } from 'immer';
 import type { StoryData } from './parser';
 import type { TransitionConfig } from './transition';
-import type { SavePayload, SaveHistoryMoment, SaveInfo } from './saves/types';
+import type {
+  SavePayload,
+  SaveHistoryMoment,
+  SaveInfo,
+  SaveExport,
+} from './saves/types';
+import { isSaveExport } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { emit } from './event-emitter';
 import { resetTriggers } from './triggers';
@@ -22,6 +28,8 @@ import {
   getSlotSaveInfo,
   listSlotSaves,
   deleteSlotSave,
+  exportSlotSave,
+  importSlotSave,
   saveSession,
   clearSession,
   clearGameData as smClearGameData,
@@ -287,6 +295,8 @@ export interface StoryState {
   getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
   listSaves: () => Promise<SaveInfo[]>;
   deleteSave: (slot?: string) => void;
+  exportSave: (slot?: string) => Promise<SaveExport | null>;
+  importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
   clearGameData: () => void;
   clearAllData: () => void;
   deletePlaythrough: (playthroughId: string) => void;
@@ -718,6 +728,24 @@ export const useStoryStore = create<StoryState>()(
         .catch((err) => {
           console.error('spindle: failed to delete save', err);
         });
+    },
+
+    exportSave: async (slot?: string): Promise<SaveExport | null> => {
+      const { storyData } = get();
+      if (!storyData) return null;
+      return (await exportSlotSave(storyData.ifid, slot)) ?? null;
+    },
+
+    importSave: async (data: unknown, slot?: string): Promise<SaveInfo> => {
+      const { storyData } = get();
+      if (!storyData) throw new Error('spindle: Story is not initialized.');
+      if (!isSaveExport(data)) throw new Error('Invalid save file format');
+
+      const info = await importSlotSave(data, storyData.ifid, slot);
+      set((state) => {
+        state.knownSaves = { ...state.knownSaves, [slot ?? '']: true };
+      });
+      return info;
     },
 
     clearGameData: () => {

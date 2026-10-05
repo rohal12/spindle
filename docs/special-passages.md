@@ -53,6 +53,21 @@ Transient variables are reactive but excluded from all persistence (history, sav
 
 Variable names must be unique across `StoryVariables` and `StoryTransients`. See [Variables](variables.md) for details.
 
+### Checking declarations in tests
+
+A bad declaration (for example `$target = null`, which has no supported type) only fails when the story boots in the browser. To catch it in a unit test or editor tooling, use the parser Spindle runs at boot. It is exported from the Node.js tooling entry point:
+
+```ts
+import { parseStoryVariables } from '@rohal12/spindle/tooling';
+
+// Content of the StoryVariables passage (without the :: header)
+parseStoryVariables(storyVariablesContent); // throws on invalid lines or types
+// Content of the StoryTransients passage
+parseStoryVariables(storyTransientsContent, '%');
+```
+
+It returns a `Map` from variable name to `{ name, type, default, fields? }` and throws the same errors Spindle reports at startup.
+
 ## `StoryInterface`
 
 Controls the entire page layout. When this passage exists, its content replaces the default UI — including the menubar and passage display area. Use the `{passage}` macro to place the current passage within your custom layout.

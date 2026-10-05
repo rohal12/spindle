@@ -10,6 +10,7 @@ import { settings } from './settings';
 import type {
   SavePayload,
   SaveInfo,
+  SaveExport,
   StorageInfo,
   StorageQuota,
 } from './saves/types';
@@ -158,6 +159,8 @@ export interface StoryAPI {
   getSaveInfo(slot?: string): Promise<SaveInfo | null>;
   listSaves(): Promise<SaveInfo[]>;
   deleteSave(slot?: string): void;
+  exportSave(slot?: string): Promise<SaveExport | null>;
+  importSave(data: unknown, slot?: string): Promise<SaveInfo>;
   visited(name?: string): number;
   hasVisited(name?: string): boolean;
   hasVisitedAny(...names: string[]): boolean;
@@ -308,6 +311,14 @@ function createStoryAPI(): StoryAPI {
 
     deleteSave(slot?: string): void {
       useStoryStore.getState().deleteSave(slot);
+    },
+
+    exportSave(slot?: string): Promise<SaveExport | null> {
+      return useStoryStore.getState().exportSave(slot);
+    },
+
+    importSave(data: unknown, slot?: string): Promise<SaveInfo> {
+      return useStoryStore.getState().importSave(data, slot);
     },
 
     visited(name?: string): number {
