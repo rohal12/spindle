@@ -37,14 +37,14 @@ export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
- * Placeholder markers for components inside markdown code spans. micromark
- * escapes HTML in code spans, so a <span data-tw> placeholder would show as
- * literal text there; private-use characters pass through verbatim and are
- * swapped for the live component afterwards, keeping it subscribed (#223).
+ * A component placeholder that micromark escaped because it sits in code
+ * (a code span of any backtick length, or a fenced code block). It reaches
+ * the DOM as literal text and is swapped for the live component, keeping it
+ * subscribed (#223). Letting micromark decide what is code keeps this exact,
+ * with no CommonMark re-implementation to drift from it.
  */
-const CODE_MARKER_OPEN = '\uE000';
-const CODE_MARKER_CLOSE = '\uE001';
-const CODE_MARKER_SPLIT_RE = /\uE000(\d+)\uE001/;
+const ESCAPED_PLACEHOLDER = '<span data-tw="';
+const ESCAPED_PLACEHOLDER_SPLIT_RE = /<span data-tw="(\d+)"><\/span>/;
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -77,11 +77,11 @@ function convertDomNode(
 ): preact.ComponentChildren {
   if (node.nodeType === Node.TEXT_NODE) {
     const text = node.textContent ?? '';
-    if (!text.includes(CODE_MARKER_OPEN)) return text;
-    // Swap code-span markers for their components; the split puts captured
-    // indices at odd positions.
+    if (!text.includes(ESCAPED_PLACEHOLDER)) return text;
+    // Swap escaped placeholders for their components; the split puts
+    // captured indices at odd positions.
     return text
-      .split(CODE_MARKER_SPLIT_RE)
+      .split(ESCAPED_PLACEHOLDER_SPLIT_RE)
       .map((part, i) =>
         i % 2 === 1 ? components[parseInt(part, 10)] : part || null,
       );
@@ -354,14 +354,6 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   return nodes.map((node) => renderSingleNode(node));
 }
 
-function countBackticks(s: string): number {
-  let count = 0;
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '`') count++;
-  }
-  return count;
-}
-
 /**
  * Characters/patterns that trigger CommonMark or GFM transformations.
  * Any match → fall through to the full micromark pipeline.
@@ -408,8 +400,8 @@ function buildPlainTextVnodes(
  *
  * After micromark processes the combined string, the HTML is parsed back into
  * Preact VNodes with placeholders replaced by the real rendered components.
- * Inside code spans the placeholders are text markers instead (see
- * CODE_MARKER_OPEN), so variables there stay live components too.
+ * Placeholders that micromark escaped as code text are swapped back too (see
+ * ESCAPED_PLACEHOLDER), so variables in code stay live components.
  */
 export function renderNodes(
   nodes: ASTNode[],
@@ -438,22 +430,16 @@ export function renderNodes(
   // Build combined markdown string with placeholders for non-text nodes
   const components: preact.ComponentChildren[] = [];
   let combined = '';
-  // An odd backtick count means the next placeholder sits in a code span.
-  let backticks = 0;
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
       combined += node.value;
-      backticks += countBackticks(node.value);
       continue;
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
-    combined +=
-      backticks % 2 === 1
-        ? `${CODE_MARKER_OPEN}${phIdx}${CODE_MARKER_CLOSE}`
-        : `<span data-tw="${phIdx}"></span>`;
+    combined += `<span data-tw="${phIdx}"></span>`;
   }
 
   // Fast path: skip micromark + innerHTML when text has no markdown syntax.
