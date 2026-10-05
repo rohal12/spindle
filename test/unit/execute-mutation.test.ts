@@ -249,6 +249,34 @@ describe('executeMutation with nested Story.set writes (#215)', () => {
     expect(vars().obj).toEqual({ a: 0, b: 2 });
   });
 
+  // Counterexamples of test/property/mutation-merge.test.ts: a Story.set
+  // path follows the code's pending writes, not the store's state
+  it('resolves a Story.set path through a root the code replaced', () => {
+    run('$obj = { inner: { a: 1 } }; Story.set("obj.inner.b", 2)');
+    expect(vars().obj).toEqual({ inner: { a: 1, b: 2 } });
+    run('$list = [{ a: 1 }]; Story.set("list.0.a", 2)');
+    expect(vars().list).toEqual([{ a: 2 }]);
+  });
+
+  it('throws when the code removed an object on the Story.set path', () => {
+    // The store's state could take the path: the code's writes were lost
+    useStoryStore.getState().setVariable('obj', { a: {} });
+    expect(() =>
+      run('$obj = { a: 5 }; Story.set("obj.a.x", 1); $obj.b = 1'),
+    ).toThrow(TypeError);
+    expect(vars().obj).toEqual({ a: {} });
+    expect(() => run('delete $obj; Story.set("obj.a", 1)')).toThrow(TypeError);
+    expect(vars().obj).toEqual({ a: {} });
+  });
+
+  it('writes nothing for a Story.set batch with a failing path', () => {
+    useStoryStore.getState().setVariable('obj', { a: {} });
+    expect(() =>
+      run('$obj = { a: 5 }; Story.set({ "obj.b": 1, "obj.a.x": 1 })'),
+    ).toThrow(TypeError);
+    expect(vars().obj).toEqual({ a: {} });
+  });
+
   it('does not route Story.set calls made after the run into its copy', () => {
     run('$obj.a = 1');
     (globalThis as Record<string, any>).Story.set('obj.b', 2);

@@ -1,6 +1,7 @@
 import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
 import {
+  enableMapSet,
   enablePatches,
   produceWithPatches,
   applyPatches,
@@ -50,6 +51,9 @@ import {
 import { errorMessage } from './utils/error-message';
 
 enablePatches();
+// Story state holds Map and Set values: Immer must be able to draft them
+// when a write (a dot path, a macro binding) reaches one
+enableMapSet();
 
 const SPECIAL_PASSAGES = new Set([
   'StoryInit',
@@ -230,6 +234,44 @@ let navigationTriggerPhase = false;
 
 /** Navigations requested during the trigger phase, run once it is over. */
 let deferredNavigations: string[] = [];
+
+/**
+ * The moment navigate() entered, while its watchers may still change it:
+ * the navigation it belongs to and the variables it was recorded with.
+ */
+let enteredMoment: {
+  navigationId: number;
+  variables: Record<string, unknown>;
+} | null = null;
+
+/**
+ * Record the entered moment as it is now (watcher run actions and the PRNG
+ * rolls they made belong to it), unless the story has left it already.
+ * navigate() calls this after its watchers, and back/forward before they
+ * leave the moment: a watcher that moves through history must not have the
+ * moment it leaves recorded with the state of the one it arrives at.
+ */
+function finishEnteredMoment(
+  get: () => StoryState,
+  set: (recipe: (state: StoryState) => void) => void,
+): void {
+  const moment = enteredMoment;
+  enteredMoment = null;
+  if (!moment || get().navigationId !== moment.navigationId) return;
+  if (get().variables !== moment.variables) {
+    rerecordNewestMoment(get().variables);
+  }
+  // The next navigate() diffs from this recorded snapshot. A watcher that
+  // left the moment has set it to the snapshot of the one it went to.
+  lastNavigationVars = get().variables;
+  const prng = snapshotPRNG();
+  const recorded = get().history[get().historyIndex]!.prng;
+  if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
+    set((state) => {
+      state.history[state.historyIndex]!.prng = prng;
+    });
+  }
+}
 
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
 function resetModuleState(base: Record<string, unknown>): void {
@@ -674,7 +716,10 @@ export const useStoryStore = create<StoryState>()(
       // Watchers react to the completed transition (visit counts, cleared
       // temporaries). Like beforenavigate changes, their run actions belong
       // to the entered moment; navigations they request run afterwards.
-      const enteredVars = get().variables;
+      enteredMoment = {
+        navigationId: get().navigationId,
+        variables: get().variables,
+      };
       navigationTriggerPhase = true;
       try {
         checkTriggersOnNavigation();
@@ -683,18 +728,7 @@ export const useStoryStore = create<StoryState>()(
       }
       const deferred = deferredNavigations;
       deferredNavigations = [];
-      if (get().variables !== enteredVars) {
-        rerecordNewestMoment(get().variables);
-      }
-      const prng = snapshotPRNG();
-      const recorded = get().history[get().historyIndex]!.prng;
-      if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
-        set((state) => {
-          state.history[state.historyIndex]!.prng = prng;
-        });
-      }
-
-      lastNavigationVars = get().variables;
+      finishEnteredMoment(get, set);
       persistSession(get);
 
       emit('afternavigate', passageName, previousPassage);
@@ -705,6 +739,7 @@ export const useStoryStore = create<StoryState>()(
     goBack: () => {
       const { historyIndex } = get();
       if (historyIndex <= 0) return;
+      finishEnteredMoment(get, set);
 
       const previousPassage = get().currentPassage;
       const targetPassage = get().history[historyIndex - 1]!.passage;
@@ -734,6 +769,7 @@ export const useStoryStore = create<StoryState>()(
     goForward: () => {
       const { historyIndex, history: hist } = get();
       if (historyIndex >= hist.length - 1) return;
+      finishEnteredMoment(get, set);
 
       const previousPassage = get().currentPassage;
       const targetPassage = hist[historyIndex + 1]!.passage;

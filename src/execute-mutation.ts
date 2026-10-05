@@ -165,18 +165,57 @@ function mirror(
   }
 }
 
+/** A Story.set write: `value` at `path` of a namespace. */
+export interface PathWrite {
+  ns: 'variables' | 'transient';
+  path: string[];
+  value: unknown;
+}
+
 /**
- * Mirror a Story.set write into every executing mutation (see mirror()).
- * Call it inside the store update that writes `value` at `path` of `ns`.
+ * Make Story.set writes while mutation code runs, inside the store update
+ * (`draft`) that carries them. Returns false, writing nothing, when no
+ * mutation code runs.
+ *
+ * The code sees its own pending writes, so in program order a Story.set
+ * path is resolved in the running code's state, not the store's: a path
+ * the code's state cannot take (the code replaced or deleted an object on
+ * it) throws a TypeError before anything is written, as an assignment
+ * would. Each write then reaches the store at once, for watchers; where
+ * the store's state cannot take the path, the code's state of the whole
+ * root is written instead. Finally it is mirrored into every executing
+ * mutation (see mirror()).
  */
-export function mirrorWriteToActiveScopes(
+export function writeInActiveScopes(
   draft: VariableNamespaces,
-  ns: 'variables' | 'transient',
-  path: string[],
-  value: unknown,
-): void {
-  if (activeScopes.length === 0) return;
-  mirror(draft, ns, { path, deleted: false, value });
+  writes: readonly PathWrite[],
+): boolean {
+  const inner = activeScopes[activeScopes.length - 1];
+  if (!inner) return false;
+
+  // Try all paths on copies of the roots they write first, so that a
+  // failing write leaves nothing half done
+  const trial: Record<string, Record<string, unknown>> = {};
+  for (const { ns, path, value } of writes) {
+    const root = path[0]!;
+    trial[ns] ??= { ...inner.work[ns] };
+    if (trial[ns][root] === inner.work[ns][root]) {
+      trial[ns][root] = cloneValue(inner.work[ns][root]);
+    }
+    setByPath(trial[ns], path, value);
+  }
+
+  for (const { ns, path, value } of writes) {
+    const root = path[0]!;
+    setByPath(inner.work[ns], path, cloneValue(value));
+    try {
+      setByPath(draft[ns], path, value);
+    } catch {
+      draft[ns][root] = cloneValue(inner.work[ns][root]);
+    }
+    mirror(draft, ns, { path, deleted: false, value });
+  }
+  return true;
 }
 
 const cloneNamespaces = (from: VariableNamespaces): VariableNamespaces => ({

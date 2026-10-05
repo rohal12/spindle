@@ -24,7 +24,7 @@ import { registerClass } from './class-registry';
 import {
   frozenCopy,
   getActiveMutationScope,
-  mirrorWriteToActiveScopes,
+  writeInActiveScopes,
   runWithCommittedMutations,
 } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
@@ -299,21 +299,20 @@ function createStoryAPI(): StoryAPI {
       }
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
-        for (const [k, v] of entries) setOne(draft, k, v);
         // Mutation code running now ({do}, ctx.mutate, watcher run actions)
         // works on copies of the namespaces and commits the paths it changed
-        // when it finishes. Apply the write to those copies too, so the code
-        // sees it and its commit keeps it in program order (#215). This runs
-        // inside the update, before watchers it triggers write.
-        for (const [k, v] of entries) {
-          const { isTransient, key } = parseName(k);
-          mirrorWriteToActiveScopes(
-            draft,
-            isTransient ? 'transient' : 'variables',
-            key.split('.'),
-            v,
-          );
-        }
+        // when it finishes. The write follows the code's own pending writes
+        // (program order, #215): see writeInActiveScopes.
+        const writes = entries.map(([name, v]) => {
+          const { isTransient, key } = parseName(name);
+          return {
+            ns: isTransient ? ('transient' as const) : ('variables' as const),
+            path: key.split('.'),
+            value: v,
+          };
+        });
+        if (writeInActiveScopes(draft, writes)) return;
+        for (const [k, v] of entries) setOne(draft, k, v);
       });
     },
 

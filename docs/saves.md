@@ -114,3 +114,7 @@ If you use [registered classes](variables.md#using-classes), their instances are
 - On save, class instances are tagged as `{ __spindle_class__: "Name", __spindle_data__: { ... } }` in the stored data.
 - On load, tagged objects are restored with the correct prototype — methods and getters work immediately.
 - If a class is not registered when a save is loaded (e.g. the class was removed), Spindle logs a warning and falls back to a plain object with the saved data fields.
+
+### Saved Values
+
+Besides plain objects, arrays, strings, numbers, booleans and `null`, saves keep `Map`, `Set`, `Date` (also an invalid one), `RegExp`, `bigint`, `undefined`, `NaN`, `Infinity`, `-Infinity` and `-0` exactly. They are tagged like class instances, since JSON cannot hold them. Two things cannot be saved, and saving them throws an error: circular references, and a property named `__proto__`.

@@ -74,6 +74,25 @@ describe('prng', () => {
 
       expect(restored).toEqual(after);
     });
+
+    it('fast-forwards to the same state as pulling one by one', () => {
+      initPRNG('skip-test', false);
+      for (let i = 0; i < 1000; i++) random();
+      const expected = Array.from({ length: 3 }, () => random());
+
+      restorePRNG('skip-test', 1000);
+      expect(Array.from({ length: 3 }, () => random())).toEqual(expected);
+      expect(getPRNGPull()).toBe(1003);
+    });
+
+    it('restores a huge pull count without stepping through it', () => {
+      // An imported save may hold any count; a step loop would hang
+      const start = Date.now();
+      restorePRNG('big', Number.MAX_SAFE_INTEGER);
+      expect(Date.now() - start).toBeLessThan(1000);
+      expect(getPRNGPull()).toBe(Number.MAX_SAFE_INTEGER);
+      expect(random()).toBeGreaterThanOrEqual(0);
+    });
   });
 
   describe('resetPRNG()', () => {

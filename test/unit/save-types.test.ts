@@ -266,6 +266,29 @@ describe('isSaveExport', () => {
     expect(isSaveExport(data)).toBe(true);
   });
 
+  it('returns false for a history with a hole', () => {
+    // every() skips holes, which load as null moments
+    const data = makeValidExport();
+    const history = [{ passage: 'Start', variables: {}, timestamp: 1 }];
+    history.length = 2;
+    history.reverse();
+    (data as any).save.payload.history = history;
+    (data as any).save.payload.historyIndex = 1;
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('returns false for a variable or property named __proto__', () => {
+    const top = makeValidExport();
+    (top as any).save.payload.variables = JSON.parse('{"__proto__": {"a": 1}}');
+    expect(isSaveExport(top)).toBe(false);
+
+    const nested = makeValidExport();
+    (nested as any).save.payload.history[0].variables = JSON.parse(
+      '{"x": {"y": {"__proto__": {"admin": true}}}}',
+    );
+    expect(isSaveExport(nested)).toBe(false);
+  });
+
   it('accepts a multi-moment history with PRNG snapshots', () => {
     const data = makeValidExport();
     (data as any).save.payload = {

@@ -413,6 +413,18 @@ describe('save-manager', () => {
       expect(imported.meta.ifid).toBe(IFID);
     });
 
+    it('files an imported save under the story it is imported into', async () => {
+      // The validator accepts any meta.ifid; the save was indexed under it
+      // and so missing from the story's saves (found by property tests)
+      const record = await createSave(IFID, playthroughId, makePayload());
+      const exported = await exportSave(record.meta.id);
+      exported!.save.meta.ifid = 'another-story';
+      const imported = await importSave(exported!, IFID);
+      expect(imported.meta.ifid).toBe(IFID);
+      const saves = await (await getBackend()).getSavesByIfid(IFID);
+      expect(saves.map((s) => s.meta.id)).toContain(imported.meta.id);
+    });
+
     it('imported save updates updatedAt timestamp', async () => {
       const record = await createSave(IFID, playthroughId, makePayload());
       const exported = await exportSave(record.meta.id);
