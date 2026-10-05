@@ -83,6 +83,34 @@ describe('save-manager', () => {
       const id2 = await startNewPlaythrough(IFID);
       expect(id2).not.toBe(playthroughId);
     });
+
+    // Found by the save model property test (test/property/saves-model)
+    it('never reuses the number of a deleted playthrough', async () => {
+      const ifid = 'pt-numbers-' + Date.now();
+      const labels = async () =>
+        (await getSavesGrouped(ifid)).map((g) => g.playthrough.label).sort();
+
+      const pt1 = await startNewPlaythrough(ifid);
+      await startNewPlaythrough(ifid);
+      await deletePlaythroughData(ifid, pt1);
+      await startNewPlaythrough(ifid);
+
+      expect(await labels()).toEqual(['Playthrough 2', 'Playthrough 3']);
+    });
+
+    it('gives imported playthroughs no number', async () => {
+      const ifid = 'pt-imported-' + Date.now();
+      await startNewPlaythrough(ifid);
+      const foreign = await createSave(ifid, 'foreign-pt', makePayload());
+      const data = await exportSave(foreign.meta.id);
+      await deletePlaythroughData(ifid, 'foreign-pt');
+      await importSave(data!, ifid);
+      await startNewPlaythrough(ifid);
+
+      expect(
+        (await getSavesGrouped(ifid)).map((g) => g.playthrough.label).sort(),
+      ).toEqual(['Imported', 'Playthrough 1', 'Playthrough 2']);
+    });
   });
 
   describe('createSave / loadSave', () => {

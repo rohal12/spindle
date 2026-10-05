@@ -81,8 +81,7 @@ export async function startNewPlaythrough(
   id: string = crypto.randomUUID(),
 ): Promise<string> {
   const backend = await getBackend();
-  const existing = await backend.getPlaythroughsByIfid(ifid);
-  const num = existing.length + 1;
+  const num = await nextPlaythroughNumber(ifid);
 
   const record: PlaythroughRecord = {
     id,
@@ -92,8 +91,32 @@ export async function startNewPlaythrough(
   };
 
   await backend.putPlaythrough(record);
+  await backend.setMeta(playthroughCountKey(ifid), num);
   await backend.setMeta(`currentPlaythroughId.${ifid}`, id);
   return id;
+}
+
+const PLAYTHROUGH_LABEL = /^Playthrough (\d+)$/;
+
+function playthroughCountKey(ifid: string): string {
+  return `playthroughCount.${ifid}`;
+}
+
+/**
+ * The number of the next playthrough the story starts: one past the highest
+ * number given so far. The count is stored, so deleting a playthrough never
+ * frees its number for another (two groups labelled alike); the highest
+ * existing label covers data stored before the count was. Imported
+ * playthroughs take no number.
+ */
+async function nextPlaythroughNumber(ifid: string): Promise<number> {
+  const backend = await getBackend();
+  let highest = (await backend.getMeta<number>(playthroughCountKey(ifid))) ?? 0;
+  for (const pt of await backend.getPlaythroughsByIfid(ifid)) {
+    const match = PLAYTHROUGH_LABEL.exec(pt.label);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return highest + 1;
 }
 
 export async function getCurrentPlaythroughId(

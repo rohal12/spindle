@@ -52,7 +52,7 @@ From the dialog you can:
 
 ## Playthroughs
 
-Each time the story starts fresh (initial load or restart), a new **playthrough** is created. Saves are grouped by playthrough in the save dialog, with labels like "Playthrough 1", "Playthrough 2", etc.
+Each time the story starts fresh (initial load or restart), a new **playthrough** is created. Saves are grouped by playthrough in the save dialog, with labels like "Playthrough 1", "Playthrough 2", etc. Playthroughs are numbered in the order they start, and a number is never given out twice: deleting a playthrough does not free its number, and imported playthroughs don't take one.
 
 This lets players maintain separate save histories for different runs through the story.
 
