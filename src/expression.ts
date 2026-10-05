@@ -31,21 +31,45 @@ const fnCache = new Map<string, CompiledExpression>();
 
 /**
  * Transform expression: $var → variables["var"], _var → temporary["var"],
- * @var → locals["var"], %var → transient["var"]
+ * @var → locals["var"]
  * Only transforms when sigils appear as a word boundary (not inside strings naively,
  * but authors already have full JS access so this is acceptable).
+ * `%var` → transient["var"] is handled by `transform` itself, because `%` is
+ * also the modulo operator and only an operand position makes it a sigil.
  */
 const VAR_RE = /\$(\w+)/g;
 const TEMP_RE = /(?<![.\w])_(\w+)/g;
 const LOCAL_RE = /@(\w+)/g;
-const TRANS_RE = /(?<!\w)%(\w+)/g;
+/** Transient name after `%`: an identifier, so `%3` is never a reference. */
+const TRANS_NAME_RE = /[A-Za-z_]\w*/y;
+/** Characters of identifiers, numbers and sigil variable references. */
+const WORD_CHAR_RE = /[\w$@]/;
+const SPACE_RE = /\s/;
+/** Keywords followed by an operand rather than an operator. */
+const OPERAND_KEYWORDS = new Set([
+  'await',
+  'case',
+  'delete',
+  'do',
+  'else',
+  'in',
+  'instanceof',
+  'new',
+  'of',
+  'return',
+  'throw',
+  'typeof',
+  'void',
+  'yield',
+]);
+/** Keywords whose parenthesised header is followed by a statement. */
+const HEADER_KEYWORDS = new Set(['for', 'if', 'while', 'with']);
 
 function transformSegment(segment: string): string {
   return segment
     .replace(VAR_RE, 'variables["$1"]')
     .replace(TEMP_RE, 'temporary["$1"]')
-    .replace(LOCAL_RE, 'locals["$1"]')
-    .replace(TRANS_RE, 'transient["$1"]');
+    .replace(LOCAL_RE, 'locals["$1"]');
 }
 
 /**
@@ -53,17 +77,71 @@ function transformSegment(segment: string): string {
  * character so that variable sigils ($, _, @, %) inside string literals are
  * left untouched while code — including expressions inside template-literal
  * `${…}` interpolations — is transformed.
+ *
+ * It also tracks whether the next token is an operand or an operator, so that
+ * `%name` in operand position is a transient reference while `%` after an
+ * operand — `($n)%3`, `$a[i] %2`, `$a%$b` — stays the modulo operator.
  */
 function transform(expr: string): string {
   let result = '';
   let code = ''; // accumulates code characters to be transformed
   let i = 0;
 
+  let operandNext = true; // an operand (not an operator) comes next
+  let word = ''; // identifier/number currently being read
+  let afterDot = false; // `word` is a property name, never a keyword
+  let afterHeaderKeyword = false; // last token was if/while/for/with
+  let lastPunct = '';
+  const parenIsHeader: boolean[] = []; // per open `(`: closes a header?
+
   function flushCode() {
     if (code) {
       result += transformSegment(code);
       code = '';
     }
+  }
+
+  function endWord() {
+    if (!word) return;
+    operandNext = !afterDot && OPERAND_KEYWORDS.has(word);
+    afterHeaderKeyword = !afterDot && HEADER_KEYWORDS.has(word);
+    afterDot = false;
+    lastPunct = '';
+    word = '';
+  }
+
+  /** A string or template literal, or a transient reference, just ended. */
+  function endOperand() {
+    endWord();
+    operandNext = false;
+    afterHeaderKeyword = false;
+    afterDot = false;
+    lastPunct = '';
+  }
+
+  function trackCode(c: string) {
+    if (WORD_CHAR_RE.test(c)) {
+      word += c;
+      return;
+    }
+    endWord();
+    // A line may start a new statement such as `%x = 1`.
+    if (c === '\n') operandNext = true;
+    if (SPACE_RE.test(c)) return;
+    if (c === '(') parenIsHeader.push(afterHeaderKeyword);
+    if (c === ')') {
+      // `if (…) %x = 1` vs `($n)%3`
+      operandNext = parenIsHeader.pop() ?? false;
+    } else if (c === '.') {
+      // Property access, unless it is the spread `...`
+      operandNext = lastPunct === '.';
+    } else {
+      // `]` ends an operand; `}` closes a block, so a statement may follow.
+      operandNext = c !== ']';
+    }
+    afterDot = c === '.';
+    afterHeaderKeyword = false;
+    lastPunct = c;
   }
 
   while (i < expr.length) {
@@ -90,6 +168,7 @@ function transform(expr: string): string {
         }
       }
       result += str;
+      endOperand();
       continue;
     }
 
@@ -192,10 +271,26 @@ function transform(expr: string): string {
           i++;
         }
       }
+      endOperand();
       continue;
     }
 
+    // Transient reference — only where an operand is expected
+    if (ch === '%') {
+      endWord();
+      TRANS_NAME_RE.lastIndex = i + 1;
+      const name = operandNext ? TRANS_NAME_RE.exec(expr)?.[0] : undefined;
+      if (name) {
+        flushCode();
+        result += `transient["${name}"]`;
+        i += 1 + name.length;
+        endOperand();
+        continue;
+      }
+    }
+
     // Regular code character
+    trackCode(ch);
     code += ch;
     i++;
   }

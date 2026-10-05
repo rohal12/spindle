@@ -34,9 +34,10 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
     value = storeValue;
   }
 
-  // Resolve dot path (e.g. "character.name" → character['name'])
+  // Resolve dot path (e.g. "character.name" → character['name']). Primitives
+  // box on access, so built-ins like "name.length" resolve too.
   for (let i = 1; i < parts.length; i++) {
-    if (value == null || typeof value !== 'object') {
+    if (value == null) {
       value = undefined;
       break;
     }

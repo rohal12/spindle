@@ -11,7 +11,8 @@ export function hasInterpolation(s: string): boolean {
 function resolveDotPath(root: unknown, parts: string[]): unknown {
   let value = root;
   for (let i = 1; i < parts.length; i++) {
-    if (value == null || typeof value !== 'object') return undefined;
+    // Primitives box on access, so `{$name.length}` works too.
+    if (value == null) return undefined;
     value = (value as Record<string, unknown>)[parts[i]!];
   }
   return value;

@@ -122,6 +122,38 @@ describe('evaluate', () => {
   it('distinguishes modulo from %transient', () => {
     expect(evaluate('%x + 10 % 3', {}, {}, {}, { x: 5 })).toBe(6);
   });
+
+  it('keeps compact modulo after a closing delimiter (#205)', () => {
+    expect(evaluate('($n)%3', { n: 10 }, {})).toBe(1);
+    expect(evaluate('$a[1]%3', { a: [0, 7] }, {})).toBe(1);
+    expect(evaluate('(10)%3', {}, {}, {}, { 3: 99 })).toBe(1);
+  });
+
+  it('keeps modulo whose operand is a sigil variable (#205)', () => {
+    expect(evaluate('$a%$b', { a: 10, b: 4 }, {})).toBe(2);
+    expect(evaluate('$a %_b', { a: 10 }, { b: 3 })).toBe(1);
+    expect(evaluate('$a%@b', { a: 10 }, {}, { b: 6 })).toBe(4);
+    expect(evaluate('$a %3', { a: 10 }, {})).toBe(1);
+    expect(evaluate('"ab".length%2', {}, {})).toBe(0);
+  });
+
+  it('reads %transient in operand position next to modulo (#205)', () => {
+    const trans = { x: 10, y: 4, list: [5, 6] };
+    expect(evaluate('%x%%y', {}, {}, {}, trans)).toBe(2);
+    expect(evaluate('(%x)%(%y)', {}, {}, {}, trans)).toBe(2);
+    expect(evaluate('%list[1]%%y', {}, {}, {}, trans)).toBe(2);
+    expect(evaluate('-%x', {}, {}, {}, trans)).toBe(-10);
+    expect(evaluate('typeof %x', {}, {}, {}, trans)).toBe('number');
+    expect(evaluate('[%x, %y]', {}, {}, {}, trans)).toEqual([10, 4]);
+    expect(evaluate('[...%list]', {}, {}, {}, trans)).toEqual([5, 6]);
+    expect(evaluate('Math.max(%x, %y)%3', {}, {}, {}, trans)).toBe(1);
+    expect(evaluate('%x > 5 ? %y : %x', {}, {}, {}, trans)).toBe(4);
+    expect(evaluate('`${%x}%`', {}, {}, {}, trans)).toBe('10%');
+  });
+
+  it('reads %transient names beginning with an underscore (#205)', () => {
+    expect(evaluate('%_x', {}, { x: 1 }, {}, { _x: 2 })).toBe(2);
+  });
 });
 
 describe('execute', () => {
@@ -259,6 +291,26 @@ describe('execute', () => {
     const trans: Record<string, unknown> = { bonus: 10 };
     execute('$total = $total + %bonus', vars, {}, {}, trans);
     expect(vars.total).toBe(10);
+  });
+
+  it('assigns %transient at statement starts (#205)', () => {
+    const vars: Record<string, unknown> = { n: 10 };
+    const trans: Record<string, unknown> = { a: 0, b: 0, c: 0, d: 0 };
+    execute(
+      '$n = $n%3\n%a = 1; if ($n) %b = 2; else %c = 3\nif (true) { %d = ($n)%2 }',
+      vars,
+      {},
+      {},
+      trans,
+    );
+    expect(vars.n).toBe(1);
+    expect(trans).toEqual({ a: 1, b: 2, c: 0, d: 1 });
+  });
+
+  it('assigns %transient inside a for-of header (#205)', () => {
+    const trans: Record<string, unknown> = { list: [1, 2, 3], sum: 0 };
+    execute('for (const x of %list) %sum += x', {}, {}, {}, trans);
+    expect(trans.sum).toBe(6);
   });
 });
 
