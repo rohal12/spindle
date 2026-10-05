@@ -158,10 +158,9 @@ function persistSession(get: () => StoryState): void {
       for (let i = 0; i < history.length; i++) {
         if (i > 0) vars = applyPatches(vars, patchEntries[i - 1]!.forward);
         if (i >= serializedHistory.length) {
-          const v = i === history.length - 1 ? variables : vars;
           serializedHistory[i] = {
             passage: history[i]!.passage,
-            variables: serialize(v),
+            variables: serialize(vars),
             timestamp: history[i]!.timestamp,
             prng: history[i]!.prng,
           };
