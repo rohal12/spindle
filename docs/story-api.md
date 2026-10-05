@@ -6,7 +6,7 @@ Spindle exposes a `window.Story` global object for JavaScript access to story st
 
 ### `Story.get(name)`
 
-Get a story variable's value.
+Get a story variable's value. The name may be written with or without the `$` sigil: `Story.get("health")` and `Story.get("$health")` read the same variable.
 
 ```
 {do}
@@ -16,7 +16,7 @@ Get a story variable's value.
 
 ### `Story.set(name, value)` / `Story.set(vars)`
 
-Set one or more story variables.
+Set one or more story variables. As with `Story.get()`, a leading `$` is optional.
 
 ```
 {do}
@@ -24,6 +24,8 @@ Set one or more story variables.
   Story.set({ health: 100, name: "Hero" });
 {/do}
 ```
+
+Writing a variable that is not declared in `StoryVariables` (or a `%` transient not declared in `StoryTransients`) still works, but logs a console warning once per name: passages cannot reference such a variable, so it is usually a typo. For dot-paths only the root name is checked.
 
 #### Transient variables
 

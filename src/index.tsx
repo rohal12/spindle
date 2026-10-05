@@ -3,7 +3,11 @@ import { App } from './components/App';
 import { parseStoryData } from './parser';
 import { useStoryStore, enterRuntimePhase } from './store';
 import { emit } from './event-emitter';
-import { installStoryAPI, getReadyPromise } from './story-api';
+import {
+  installStoryAPI,
+  getReadyPromise,
+  setDeclaredVariables,
+} from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
 import { checkTriggers, reinitTriggerState } from './triggers';
@@ -118,6 +122,7 @@ function boot() {
   }
 
   defaults = extractDefaults(schema);
+  setDeclaredVariables(Object.keys(defaults), Object.keys(transientDefaults));
 
   useStoryStore.getState().init(storyData, defaults, transientDefaults);
 
