@@ -620,6 +620,18 @@ describe('StoryAPI', () => {
       });
     });
 
+    it('openDialog with dismissible option', async () => {
+      const { shiftDialogQueue, resetTriggers } =
+        await import('../../src/triggers');
+      resetTriggers();
+      Story.openDialog('Choice', { dismissible: false });
+      const item = shiftDialogQueue();
+      expect(item).toEqual({
+        passageName: 'Choice',
+        dismissible: false,
+      });
+    });
+
     it('closeDialog invokes registered close callback', async () => {
       const { registerDialogHost, resetTriggers } =
         await import('../../src/triggers');
