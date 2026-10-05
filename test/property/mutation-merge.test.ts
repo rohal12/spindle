@@ -150,7 +150,8 @@ type Op =
   | { k: 'back' }
   | { k: 'forward' }
   | { k: 'restart' }
-  | { k: 'save' };
+  | { k: 'save' }
+  | { k: 'gate'; pick: number; open: boolean };
 
 /** Small choices, so that operations meet on the same objects often. */
 const choice = fc.nat({ max: 11 });
@@ -200,6 +201,14 @@ function opsArb(withSaves: boolean): fc.Arbitrary<Op[]> {
           via: fc.nat(3),
         }),
       ],
+      [
+        3,
+        fc.record({
+          k: fc.constant('gate' as const),
+          pick: choice,
+          open: fc.boolean(),
+        }),
+      ],
       [3, fc.constant({ k: 'goto' as const })],
       [2, fc.constant({ k: 'back' as const })],
       [1, fc.constant({ k: 'forward' as const })],
@@ -245,8 +254,11 @@ const PREFIX: Record<NsName, string> = {
   transient: '%',
 };
 
-/** Watcher flags: only the harness writes them (see 'watch'). */
-const isProtectedRoot = (name: string) => /^f\d+$/.test(name);
+/** Watcher flags and gates: only the harness writes them (see 'watch'). */
+const isProtectedRoot = (name: string) => /^[fg]\d+$/.test(name);
+
+/** Watchers share these gates, which the code writes (see 'gate'). */
+const GATES = 3;
 
 const isWalkable = (v: unknown): v is Rec =>
   typeof v === 'object' &&
@@ -327,9 +339,15 @@ const nsOf = (n: number, withTemps: boolean): NsName =>
 
 // --- Planning: run the model and write the program ---
 
-/** A watcher: `$<flag> == 1`, once, running `ops` as its run action. */
+/**
+ * A watcher: `$<flag> == 1 && $<gate> !== 1`, once, running `ops` as its
+ * run action. The flag is set by Story.set, the gate by plain assignments
+ * in the code, which the store takes only when the code commits: the
+ * watcher must act on the program-order state all the same.
+ */
 interface Watcher {
   flag: string;
+  gate: string;
   ops: Op[];
   /** Its condition's value at the last check (see triggers.ts). */
   last: boolean;
@@ -368,6 +386,10 @@ interface Engine {
   restarted: boolean;
 }
 
+/** A watcher's condition in the model state. */
+const holds = (model: Model, w: Watcher) =>
+  model.variables[w.flag] === 1 && model.variables[w.gate] !== 1;
+
 /** Plan a watcher check pass (triggers.ts runCheckLoop). */
 function checkWatchers(model: Model, engine: Engine, p: Plan): void {
   for (let depth = 0; depth < 10; depth++) {
@@ -375,7 +397,7 @@ function checkWatchers(model: Model, engine: Engine, p: Plan): void {
     for (let i = 0; i < p.watchers.length; i++) {
       const w = p.watchers[i]!;
       if (w.fired || w.removed) continue;
-      const result = model.variables[w.flag] === 1;
+      const result = holds(model, w);
       const wasFalse = !w.last;
       w.last = result;
       if (result && wasFalse) {
@@ -433,7 +455,7 @@ function traverse(model: Model, engine: Engine, p: Plan, step: number): void {
   model.temporary = createNamespace();
   // Restored state is not a change watchers react to
   for (const w of p.watchers) {
-    if (!w.fired) w.last = model.variables[w.flag] === 1;
+    if (!w.fired) w.last = holds(model, w);
   }
 }
 
@@ -443,6 +465,17 @@ function traverse(model: Model, engine: Engine, p: Plan, step: number): void {
  */
 function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
   const lines: string[] = [];
+  /**
+   * The store takes the code's pending writes (as at every store update
+   * the code sets off, and when it finishes) and watchers react to the
+   * state, unless a check is in progress.
+   */
+  const sync = () => {
+    if (engine.checking) return;
+    engine.checking = true;
+    checkWatchers(model, engine, p);
+    engine.checking = false;
+  };
   const extCall = (fn: () => void) => {
     p.ext.push(fn);
     lines.push(`ext(${p.ext.length - 1});`);
@@ -498,6 +531,7 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'storySet': {
+        sync();
         const entries: [string, Spec][] = [];
         for (const e of op.entries) {
           const ns = nsOf(e.ns, false);
@@ -542,6 +576,7 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
       case 'direct': {
         // A store update other than Story.set (an input binding, {computed},
         // {unset}, a store action): made in program order like any write
+        sync();
         const ns = nsOf(op.ns, true);
         // Store actions name a variable: a root
         const path = resolvePath(
@@ -596,10 +631,12 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'watch': {
-        // A watcher whose condition a Story.set here makes true
+        // A watcher whose flag a Story.set here sets
+        sync();
         const flag = `f${p.watchers.length}`;
         p.watchers.push({
           flag,
+          gate: `g${p.watchers.length % GATES}`,
           ops: op.ops,
           last: false,
           fired: false,
@@ -615,17 +652,27 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         }
         break;
       }
+      case 'gate': {
+        // A plain assignment: the store takes it when the code commits
+        const gate = `g${op.pick % GATES}`;
+        model.variables[gate] = op.open ? 0 : 1;
+        lines.push(`$${gate} = ${op.open ? 0 : 1};`);
+        break;
+      }
       case 'goto':
+        sync();
         lines.push('Story.goto("Room");');
         navigate(model, engine, p);
         break;
       case 'back':
       case 'forward':
+        sync();
         lines.push(`Story.${op.k}();`);
         traverse(model, engine, p, op.k === 'back' ? -1 : 1);
         break;
       case 'restart':
         // Back to the defaults, with a new history; watchers are removed
+        sync();
         lines.push('Story.restart();');
         model.variables = createNamespace(variableDefaults());
         model.transient = createNamespace(transientDefaults());
@@ -637,6 +684,7 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         for (const w of p.watchers) if (!w.fired) w.removed = true;
         break;
       case 'save': {
+        sync();
         const slot = `s${p.saves.length}`;
         // Saved as plain data
         const entry: Plan['saves'][number] = {
@@ -651,6 +699,8 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
       }
     }
   }
+  // The code's commit when it finishes
+  sync();
   return lines.join('\n');
 }
 
@@ -749,7 +799,7 @@ async function check(ops: Op[], withSaves: boolean): Promise<void> {
   g.unexpected = (flag: string) => unexpected.push(flag);
   for (const w of p.watchers) {
     const run = w.fired ? w.code : `unexpected(${JSON.stringify(w.flag)})`;
-    addTrigger(`$${w.flag} == 1`, { run, once: true });
+    addTrigger(`$${w.flag} == 1 && $${w.gate} !== 1`, { run, once: true });
   }
   const errors: unknown[] = [];
   const errorSpy = vi
