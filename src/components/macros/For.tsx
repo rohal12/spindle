@@ -14,6 +14,7 @@ import {
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
+import { stableKey } from '../../utils/stable-key';
 import type { ASTNode } from '../../markup/ast';
 
 /**
@@ -153,7 +154,7 @@ defineMacro({
 
     const content = list.map((item, i) => (
       <ForIteration
-        key={`${i}-${JSON.stringify(item)}`}
+        key={`${i}-${stableKey(item)}`}
         parentValues={parentValues}
         itemVar={itemVar}
         itemValue={item}

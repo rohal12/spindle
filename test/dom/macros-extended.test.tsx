@@ -575,6 +575,19 @@ describe('extended macro components', () => {
       });
       expect(el.textContent).toContain('INNER|OUTER');
     });
+
+    it.each([
+      ['whitespace', ' '],
+      ['comma', ', '],
+    ])(
+      'splits a string argument ending in an escaped backslash (%s form, #224)',
+      (_label, sep) => {
+        defineWidgets('{widget "Pair" @a @b}A=[{@a}] B=[{@b}]{/widget}');
+        const args = JSON.stringify('C:\\') + sep + JSON.stringify('label');
+        const el = renderPassage(`{Pair ${args}}`);
+        expect(el.textContent).toContain('A=[C:\\] B=[label]');
+      },
+    );
   });
 
   describe('CSS class and id selectors on macros', () => {
