@@ -369,7 +369,7 @@ describe('renderNodes', () => {
       expect(ul).not.toBeNull();
       const items = ul!.querySelectorAll('li');
       expect(items).toHaveLength(3);
-      expect(items[0].textContent).toBe('Item 1');
+      expect(items[0]!.textContent).toBe('Item 1');
     });
 
     it('renders ordered lists', () => {
@@ -406,10 +406,10 @@ describe('renderNodes', () => {
       expect(table).not.toBeNull();
       const th = table!.querySelectorAll('th');
       expect(th).toHaveLength(2);
-      expect(th[0].textContent).toBe('Name');
+      expect(th[0]!.textContent).toBe('Name');
       const td = table!.querySelectorAll('td');
       expect(td).toHaveLength(2);
-      expect(td[1].textContent).toBe('100');
+      expect(td[1]!.textContent).toBe('100');
     });
 
     it('renders GFM tables with Twine variables in cells', () => {
@@ -422,10 +422,10 @@ describe('renderNodes', () => {
       expect(table).not.toBeNull();
       const td = table!.querySelectorAll('td');
       expect(td).toHaveLength(4);
-      expect(td[0].textContent).toBe('HP');
-      expect(td[1].textContent?.trim()).toBe('100');
-      expect(td[2].textContent).toBe('MP');
-      expect(td[3].textContent?.trim()).toBe('50');
+      expect(td[0]!.textContent).toBe('HP');
+      expect(td[1]!.textContent?.trim()).toBe('100');
+      expect(td[2]!.textContent).toBe('MP');
+      expect(td[3]!.textContent?.trim()).toBe('50');
     });
   });
 
@@ -641,10 +641,10 @@ describe('renderNodes', () => {
 
       const cards = container.querySelectorAll('.card');
       expect(cards).toHaveLength(3);
-      expect(cards[0].querySelector('.name')!.textContent).toBe('Alpha');
-      expect(cards[0].querySelector('.badge')!.textContent).toBe('Active');
-      expect(cards[1].querySelector('.badge')).toBeNull();
-      expect(cards[2].querySelector('.badge')!.textContent).toBe('Active');
+      expect(cards[0]!.querySelector('.name')!.textContent).toBe('Alpha');
+      expect(cards[0]!.querySelector('.badge')!.textContent).toBe('Active');
+      expect(cards[1]!.querySelector('.badge')).toBeNull();
+      expect(cards[2]!.querySelector('.badge')!.textContent).toBe('Active');
     });
 
     it('preserves markdown processing when text nodes have content', () => {
@@ -666,8 +666,8 @@ describe('renderNodes', () => {
 
       const strongs = container.querySelectorAll('strong');
       expect(strongs).toHaveLength(2);
-      expect(strongs[0].textContent).toBe('Alpha');
-      expect(strongs[1].textContent).toBe('Beta');
+      expect(strongs[0]!.textContent).toBe('Alpha');
+      expect(strongs[1]!.textContent).toBe('Beta');
     });
 
     it('uses markdown pipeline when any text node has non-whitespace content', () => {

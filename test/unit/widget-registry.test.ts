@@ -87,4 +87,14 @@ describe('widget-registry', () => {
     registerWidget('card', body, ['$title', '@children', '$class'], true);
     expect(getWidget('card')?.params).toEqual(['$title', '$class']);
   });
+
+  it('refuses a parameter named @__proto__, registering nothing', () => {
+    const body: ASTNode[] = [{ type: 'text', value: 'test' }];
+    expect(() => registerWidget('w', body, ['@a', '@__proto__'])).toThrow(
+      /"@__proto__" cannot be used as a variable name/,
+    );
+    expect(getWidget('w')).toBeUndefined();
+    registerWidget('w', body, ['@toString', '@constructor']);
+    expect(getWidget('w')?.params).toEqual(['@toString', '@constructor']);
+  });
 });

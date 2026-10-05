@@ -137,10 +137,11 @@ function withSelectors<T extends object>(
   node: T,
   sel: { className?: string; id?: string } | undefined,
 ): T {
-  const out: Record<string, unknown> = { ...node };
-  if (sel?.className) out.className = sel.className;
-  if (sel?.id) out.id = sel.id;
-  return out as T;
+  return {
+    ...node,
+    ...(sel?.className ? { className: sel.className } : {}),
+    ...(sel?.id ? { id: sel.id } : {}),
+  };
 }
 
 const variableArb: fc.Arbitrary<Generated> = fc
@@ -202,16 +203,21 @@ const jsCodeOperand = fc.oneof(
   jsComment.map((c) => `${c} 1`),
 );
 
+/** Expressions open with a sigil, or with `(` or `!` (#225). */
 const expressionArb: fc.Arbitrary<Generated> = fc
   .tuple(
     sigil,
     varPath,
     fc.constantFrom('+', '===', '||', '?? ', '/'),
     jsCodeOperand,
+    fc.constantFrom('', '!', '('),
   )
-  .chain(([s, name, op, operand]) =>
-    fc.tuple(fc.constant(`${s}${name} ${op} ${operand}`), optSelectors),
-  )
+  .chain(([s, name, op, operand, open]) => {
+    const body = `${s}${name} ${op} ${operand}`;
+    const expression =
+      open === '(' ? `(${body})` : open === '!' ? `!${body}` : body;
+    return fc.tuple(fc.constant(expression), optSelectors);
+  })
   .map(([expression, sel]) => ({
     src: sel ? `{${sel.src} ${expression}}` : `{${expression}}`,
     ast: [withSelectors({ type: 'expression', expression } as ASTNode, sel)],
@@ -470,7 +476,7 @@ const attribute = fc.oneof(
     )
     .map(([name, s1, s2, q, parts]) => {
       const value = parts
-        .map((p) => ('text' in p ? p.text.replaceAll(q, '') : p.interp))
+        .map((p) => ('text' in p ? p.text.split(q).join('') : p.interp))
         .join('');
       return {
         name,

@@ -168,7 +168,9 @@ describe('save export', () => {
       expect(state.currentPassage).toBe(payload.passage);
       expect(state.historyIndex).toBe(payload.historyIndex);
       const entry = payload.history[payload.historyIndex]!.variables;
-      expect(structEq(state.variables, entry)).toBe(true);
+      // The store holds variables as a namespace without a prototype
+      expect(Object.getPrototypeOf(state.variables)).toBe(null);
+      expect(structEq({ ...state.variables }, entry)).toBe(true);
     },
   );
 

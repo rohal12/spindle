@@ -1,10 +1,14 @@
 import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
+import type { StateCreator } from 'zustand/vanilla';
 import {
+  current,
   enableMapSet,
   enablePatches,
+  isDraft,
   produceWithPatches,
   applyPatches,
+  type Draft,
   type Patch,
 } from 'immer';
 import type { StoryData } from './parser';
@@ -49,6 +53,16 @@ import {
   type PRNGSnapshot,
 } from './prng';
 import { errorMessage } from './utils/error-message';
+import {
+  routeStoreUpdate,
+  runWithCommittedMutations,
+} from './execute-mutation';
+import {
+  checkVariableName,
+  createNamespace,
+  isNamespace,
+  type Namespace,
+} from './utils/namespace';
 
 enablePatches();
 // Story state holds Map and Set values: Immer must be able to draft them
@@ -78,7 +92,7 @@ interface PatchEntry {
 }
 
 /** Full variable snapshot at history index 0. */
-let variableBase: Record<string, unknown> = {};
+let variableBase: Namespace = createNamespace();
 
 /**
  * Transitions between consecutive history moments.
@@ -88,7 +102,7 @@ let variableBase: Record<string, unknown> = {};
 let patchEntries: PatchEntry[] = [];
 
 /** Immer-produced reference to variables right after the last navigation. */
-let lastNavigationVars: Record<string, unknown> = {};
+let lastNavigationVars: Namespace = createNamespace();
 
 /** Deep-clone patch values so they are independent of future mutations. */
 function clonePatches(patches: Patch[]): Patch[] {
@@ -106,7 +120,9 @@ function computeVarPatches(
   const [, forward, inverse] = produceWithPatches(prev, (draft) => {
     const d = draft as Record<string, unknown>;
     for (const key of Object.keys(d)) {
-      if (!(key in curr)) delete d[key];
+      // Own keys only: `curr` may be a plain object (a loaded snapshot),
+      // whose inherited `constructor` is no variable
+      if (!Object.prototype.hasOwnProperty.call(curr, key)) delete d[key];
     }
     for (const [key, val] of Object.entries(curr)) {
       d[key] = val;
@@ -273,8 +289,16 @@ function finishEnteredMoment(
   }
 }
 
+/**
+ * A deep copy of a variable namespace as save data: a plain object, as a
+ * loaded save holds it (the store turns it back into a namespace on load).
+ */
+const plainCopy = (ns: Namespace): Record<string, unknown> => ({
+  ...deepClone(ns),
+});
+
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
-function resetModuleState(base: Record<string, unknown>): void {
+function resetModuleState(base: Namespace): void {
   variableBase = base;
   patchEntries = [];
   lastNavigationVars = base;
@@ -529,6 +553,89 @@ export interface StoryState {
   clearDeferredRender: () => void;
 }
 
+const NAMESPACE_KEYS = ['variables', 'temporary', 'transient'] as const;
+
+type StoryRecipe = (draft: Draft<StoryState>) => void;
+
+/** Replace a namespace an update left with a prototype by one without. */
+function keepNamespacesBare(draft: Draft<StoryState>): void {
+  for (const key of NAMESPACE_KEYS) {
+    const ns = draft[key];
+    if (!isNamespace(ns)) {
+      draft[key] = createNamespace(isDraft(ns) ? current(ns) : ns);
+    }
+  }
+}
+
+/**
+ * Actions that record, replace or save story state. Called while mutation
+ * code runs (by Story.goto, a {link} or {back} the code performs, a
+ * watcher), they act in program order: the code's writes so far are
+ * committed first, and the code goes on from the state they leave (see
+ * runWithCommittedMutations). Outside mutation code they just run.
+ */
+const PROGRAM_ORDER_ACTIONS = [
+  'navigate',
+  'goBack',
+  'goForward',
+  'restart',
+  'save',
+  'getSavePayload',
+  'loadFromPayload',
+] as const;
+
+/**
+ * Store middleware (inside `immer`) that every update goes through: the
+ * store's own actions and outside `setState` calls alike.
+ *
+ * - The variable namespaces stay records without a prototype, whatever an
+ *   update assigns (see utils/namespace.ts).
+ * - An update made while mutation code runs follows that code's pending
+ *   writes, in program order, and reaches its working copies (see
+ *   routeStoreUpdate in execute-mutation.ts).
+ * - The PROGRAM_ORDER_ACTIONS commit running mutation code first.
+ */
+function storyStateGuard(
+  creator: StateCreator<StoryState, [['zustand/immer', never]], []>,
+): StateCreator<StoryState, [['zustand/immer', never]], []> {
+  return (set, get, api) => {
+    const guarded = ((
+      updater: Partial<StoryState> | StoryRecipe,
+      replace?: boolean,
+    ) => {
+      if (replace) {
+        (set as (u: unknown, r: true) => void)(updater, true);
+        return;
+      }
+      const recipe: StoryRecipe =
+        typeof updater === 'function'
+          ? updater
+          : (draft) => {
+              Object.assign(draft, updater);
+            };
+      const routed = routeStoreUpdate(recipe);
+      set((draft) => {
+        (routed ?? recipe)(draft);
+        keepNamespacesBare(draft);
+      });
+    }) as typeof set;
+    api.setState = guarded;
+    const state = creator(guarded, get, api);
+    for (const name of PROGRAM_ORDER_ACTIONS) {
+      const action = state[name] as (...args: unknown[]) => unknown;
+      (state as unknown as Record<string, unknown>)[name] = (
+        ...args: unknown[]
+      ) => runWithCommittedMutations(() => action(...args));
+    }
+    return state;
+  };
+}
+
+/** The story store's middleware: Immer updates, guarded (see above). */
+const storyStore = (
+  creator: StateCreator<StoryState, [['zustand/immer', never]], []>,
+) => immer(storyStateGuard(creator));
+
 /**
  * Return `p` marked as handled: a caller that ignores the result of a
  * fire-and-forget operation (whose failure is already logged) gets no
@@ -541,15 +648,15 @@ function handled<T>(p: Promise<T>): Promise<T> {
 }
 
 export const useStoryStore = create<StoryState>()(
-  immer((set, get) => ({
+  storyStore((set, get) => ({
     storyData: null,
     currentPassage: '',
     navigationId: 0,
-    variables: {},
+    variables: createNamespace(),
     variableDefaults: {},
-    transient: {},
+    transient: createNamespace(),
     transientDefaults: {},
-    temporary: {},
+    temporary: createNamespace(),
     history: [],
     historyIndex: -1,
     visitCounts: {},
@@ -600,7 +707,7 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
-      const initialVars = deepClone(variableDefaults);
+      const initialVars = createNamespace(deepClone(variableDefaults));
       resetModuleState(deepClone(initialVars));
 
       set((state) => {
@@ -611,9 +718,9 @@ export const useStoryStore = create<StoryState>()(
         state.navigationId++;
         state.variables = initialVars;
         state.variableDefaults = variableDefaults;
-        state.transient = deepClone(transientDefaults);
+        state.transient = createNamespace(deepClone(transientDefaults));
         state.transientDefaults = transientDefaults;
-        state.temporary = {};
+        state.temporary = createNamespace();
         state.history = [
           {
             passage: startPassage.name,
@@ -685,7 +792,7 @@ export const useStoryStore = create<StoryState>()(
       const patchEntry = computeVarPatches(lastNavigationVars, get().variables);
 
       set((state) => {
-        state.temporary = {};
+        state.temporary = createNamespace();
         state.currentPassage = passageName;
         state.navigationId++;
 
@@ -754,7 +861,7 @@ export const useStoryStore = create<StoryState>()(
         state.currentPassage = state.history[state.historyIndex]!.passage;
         state.navigationId++;
         state.variables = restoredVars;
-        state.temporary = {};
+        state.temporary = createNamespace();
       });
 
       // Restored state is not a change watchers react to
@@ -784,7 +891,7 @@ export const useStoryStore = create<StoryState>()(
         state.currentPassage = state.history[state.historyIndex]!.passage;
         state.navigationId++;
         state.variables = restoredVars;
-        state.temporary = {};
+        state.temporary = createNamespace();
       });
 
       // Restored state is not a change watchers react to
@@ -798,36 +905,42 @@ export const useStoryStore = create<StoryState>()(
 
     setVariable: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `$${name}`);
         state.variables[name] = value;
       });
     },
 
     setTemporary: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `_${name}`);
         state.temporary[name] = value;
       });
     },
 
     deleteVariable: (name: string) => {
       set((state) => {
+        checkVariableName(name, `$${name}`);
         delete state.variables[name];
       });
     },
 
     deleteTemporary: (name: string) => {
       set((state) => {
+        checkVariableName(name, `_${name}`);
         delete state.temporary[name];
       });
     },
 
     setTransient: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `%${name}`);
         state.transient[name] = value;
       });
     },
 
     deleteTransient: (name: string) => {
       set((state) => {
+        checkVariableName(name, `%${name}`);
         delete state.transient[name];
       });
     },
@@ -872,15 +985,15 @@ export const useStoryStore = create<StoryState>()(
 
       resetPRNG();
       resetTriggers();
-      const initialVars = deepClone(variableDefaults);
+      const initialVars = createNamespace(deepClone(variableDefaults));
       resetModuleState(deepClone(initialVars));
 
       set((state) => {
         state.currentPassage = startPassage.name;
         state.navigationId++;
         state.variables = initialVars;
-        state.transient = deepClone(transientDefaults);
-        state.temporary = {};
+        state.transient = createNamespace(deepClone(transientDefaults));
+        state.temporary = createNamespace();
         state.history = [
           {
             passage: startPassage.name,
@@ -1136,7 +1249,7 @@ export const useStoryStore = create<StoryState>()(
         }
         saveHistory.push({
           passage: history[i]!.passage,
-          variables: deepClone(vars),
+          variables: plainCopy(vars),
           timestamp: history[i]!.timestamp,
           prng: history[i]!.prng,
         });
@@ -1144,7 +1257,7 @@ export const useStoryStore = create<StoryState>()(
 
       return {
         passage: currentPassage,
-        variables: deepClone(variables),
+        variables: plainCopy(variables),
         history: saveHistory,
         historyIndex,
         visitCounts: { ...visitCounts },
@@ -1171,12 +1284,16 @@ export const useStoryStore = create<StoryState>()(
       // The payload is already live (deserialized at the storage boundary by
       // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
-      const base = deepClone(payload.history[0]?.variables ?? {});
+      const base = createNamespace(
+        deepClone(payload.history[0]?.variables ?? {}),
+      );
       const newPatchEntries: PatchEntry[] = [];
 
       let prevVars: Record<string, unknown> = base;
       for (let i = 1; i < payload.history.length; i++) {
-        const currVars = deepClone(payload.history[i]!.variables);
+        const currVars = createNamespace(
+          deepClone(payload.history[i]!.variables),
+        );
         newPatchEntries.push(computeVarPatches(prevVars, currVars));
         prevVars = currVars;
       }
@@ -1195,7 +1312,9 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.currentPassage = payload.passage;
         state.navigationId++;
-        state.variables = deepClone(entry?.variables ?? payload.variables);
+        state.variables = createNamespace(
+          deepClone(entry?.variables ?? payload.variables),
+        );
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
@@ -1209,8 +1328,8 @@ export const useStoryStore = create<StoryState>()(
         trimHistory(state);
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
-        state.temporary = {};
-        state.transient = deepClone(get().transientDefaults);
+        state.temporary = createNamespace();
+        state.transient = createNamespace(deepClone(get().transientDefaults));
       });
 
       // Loaded state is not a change watchers react to

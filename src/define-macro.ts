@@ -21,10 +21,11 @@ import {
   renderInlineNodes,
 } from './markup/render';
 import type { ASTNode } from './markup/ast';
-import { executeMutation } from './execute-mutation';
+import { executeMutation, readState } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
+import { RESERVED_NAME } from './utils/namespace';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -32,11 +33,14 @@ import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import {
   registerMacro,
+  registerMacroText,
   registerSubMacro,
   registerMacroMetadata,
 } from './registry';
-import type { MacroProps, ParameterDef } from './registry';
+import type { MacroProps, MacroTextContext, ParameterDef } from './registry';
 import { registerBlockMacro } from './markup/ast';
+
+export type { MacroTextContext };
 
 export function macroClass(type: string, className?: string): string {
   const base = `macro-${type}`;
@@ -92,6 +96,12 @@ export interface MacroDefinition {
   description?: string;
   parameters?: ParameterDef[];
   render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  /**
+   * The macro's text form, used where markup becomes a string: HTML
+   * attribute values, image alt text and link titles, macro labels. Without
+   * one, the macro can't be used there and is reported as an error.
+   */
+  text?: (props: MacroProps, ctx: MacroTextContext) => string;
 }
 
 const sharedHooks = {
@@ -186,10 +196,17 @@ export function defineMacro(
 
       const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
       const segments = varExpr.split('.');
+      if (segments.includes(RESERVED_NAME)) {
+        return h(
+          'span',
+          { class: 'error' },
+          `{${config.name}}: "$${varExpr}" cannot be bound: ${RESERVED_NAME} is reserved`,
+        );
+      }
       ctx.varName = varExpr;
       ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
-      ctx.getValue = () =>
-        getByPath(useStoryStore.getState().variables, segments);
+      // In program order, also when mutation code performs the input
+      ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = (value: unknown) => {
         useStoryStore.setState((state) => {
           setByPath(state.variables, segments, value, {
@@ -203,6 +220,7 @@ export function defineMacro(
   }
 
   registerMacro(config.name, Wrapper);
+  registerMacroText(config.name, config.text);
 
   // Store metadata for tooling API
   const isBlock =

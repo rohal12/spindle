@@ -141,7 +141,10 @@ describe('executeStoryInit on restart', () => {
 
   /** Advance fake timers in small steps so Preact flushes between ticks. */
   function tick(ms: number): void {
-    for (let t = 0; t < ms; t += 10) act(() => vi.advanceTimersByTime(10));
+    for (let t = 0; t < ms; t += 10)
+      act(() => {
+        vi.advanceTimersByTime(10);
+      });
   }
 
   beforeEach(() => {

@@ -335,7 +335,7 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(1);
-      expect(results[0].textContent).toBe('a-ok');
+      expect(results[0]!.textContent).toBe('a-ok');
     });
 
     it('computed reading @local inside for-loop does not infinite-loop (#140)', () => {
@@ -358,8 +358,8 @@ describe('macro components', () => {
       // variable, so last-write-wins. Use @-target for per-iteration values.
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
-      expect(results[0].textContent).toMatch(/^a-(ok|err)$/);
-      expect(results[1].textContent).toMatch(/^b-(ok|err)$/);
+      expect(results[0]!.textContent).toMatch(/^a-(ok|err)$/);
+      expect(results[1]!.textContent).toMatch(/^b-(ok|err)$/);
     });
 
     it('computed with @-target writes to local scope per-iteration', () => {
@@ -379,7 +379,7 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(1);
-      expect(results[0].textContent).toBe('a-green');
+      expect(results[0]!.textContent).toBe('a-green');
     });
 
     it('computed @-target produces per-iteration values in multi-item for-loop (#140)', () => {
@@ -400,8 +400,8 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
-      expect(results[0].textContent).toBe('a-green');
-      expect(results[1].textContent).toBe('b-red');
+      expect(results[0]!.textContent).toBe('a-green');
+      expect(results[1]!.textContent).toBe('b-red');
     });
 
     it('computed sees a local set just before it, without a stale first write', () => {

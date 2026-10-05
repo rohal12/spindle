@@ -1,3 +1,5 @@
+import { createNamespace, ownValue } from './namespace';
+
 /**
  * Read-only view of a locals scope that always reflects its current values.
  *
@@ -9,9 +11,14 @@
 export function liveLocalsView(
   getValues: () => Record<string, unknown>,
 ): Record<string, unknown> {
-  return new Proxy({} as Record<string, unknown>, {
-    get: (_, key) => (typeof key === 'string' ? getValues()[key] : undefined),
-    has: (_, key) => key in getValues(),
+  // No prototype and own entries only, like every namespace (see
+  // utils/namespace.ts)
+  return new Proxy(createNamespace(), {
+    get: (_, key) =>
+      typeof key === 'string' ? ownValue(getValues(), key) : undefined,
+    has: (_, key) =>
+      typeof key === 'string' &&
+      Object.prototype.hasOwnProperty.call(getValues(), key),
     ownKeys: () => Reflect.ownKeys(getValues()),
     getOwnPropertyDescriptor: (_, key) => {
       const desc = Object.getOwnPropertyDescriptor(getValues(), key);

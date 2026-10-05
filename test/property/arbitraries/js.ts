@@ -407,8 +407,8 @@ const IDENT_VALUES = [
 
 /**
  * Names of sigil variables. `$`, `_` and `@` take `\w+`, `%` an identifier.
- * `__proto__` is left out: the namespaces are plain objects, where assigning
- * it changes the prototype instead of storing a value.
+ * Names of Object.prototype members are plain variables (the namespaces
+ * have no prototype).
  */
 export const NAMES = [
   'a',
@@ -420,8 +420,14 @@ export const NAMES = [
   'return',
   'of',
   'constructor',
+  'toString',
+  'hasOwnProperty',
+  'valueOf',
+  '__defineGetter__',
 ];
 const NUMERIC_NAMES = ['1', '2b'];
+/** The one name no namespace holds: programs using it are refused. */
+export const RESERVED_NAME = '__proto__';
 
 const GLOBALS = [
   'Math',
@@ -594,8 +600,15 @@ export interface JsOptions {
 }
 
 export function jsArbitraries({ refs }: JsOptions) {
-  const transientName = fc.constantFrom(...NAMES);
-  const wordName = fc.constantFrom(...NAMES, ...NUMERIC_NAMES);
+  const reserved = { weight: 1, arbitrary: fc.constant(RESERVED_NAME) };
+  const transientName = fc.oneof(
+    { weight: 20, arbitrary: fc.constantFrom(...NAMES) },
+    reserved,
+  );
+  const wordName = fc.oneof(
+    { weight: 20, arbitrary: fc.constantFrom(...NAMES, ...NUMERIC_NAMES) },
+    reserved,
+  );
   const ref: fc.Arbitrary<Ref> = fc.oneof(
     fc.record({ ref: fc.constantFrom<Sigil>('$', '_', '@'), name: wordName }),
     fc.record({ ref: fc.constant<Sigil>('%'), name: transientName }),
@@ -1026,7 +1039,7 @@ function stmtList(stmt: fc.Arbitrary<Stmt>): fc.Arbitrary<Doc> {
         if (s.semi) {
           if (dropSemi && next === undefined) {
             // last statement: ASI at the end
-          } else if (dropSemi && next.asiSafe) {
+          } else if (dropSemi && next?.asiSafe) {
             docs.push(before, ['\n']);
           } else {
             docs.push(before, [';']);

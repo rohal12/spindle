@@ -153,7 +153,7 @@ So far we've used features that are always available. Some features need to be t
 {/do}
 ```
 
-This also gives you `ctx.resolve()` to manually resolve variable references in any string — useful if you want to support them in arguments too.
+This also gives you `ctx.resolve()` to resolve the markup in any string, as an HTML attribute value is resolved (variables, expressions and macros with a [text form](#text-form-macros-in-attribute-values)) — useful if you want to support them in arguments too. Errors are logged to the console and leave their part of the string empty.
 
 ### `merged` — Reading Variables and Evaluating Expressions
 
@@ -322,6 +322,41 @@ Each `{tab}` becomes a branch in `props.branches`. A branch has:
 - `branch.rawArgs` — the text after the sub-macro name (e.g. `"Inventory"`)
 - `branch.children` — the content nodes inside that branch
 
+## Text Form (Macros in Attribute Values)
+
+HTML attribute values, image alt text, link titles and labels resolved with `ctx.resolve()` are strings, so a macro used there can't render elements. Give your macro a `text` function to make it usable there: it returns the string the macro stands for. Without one, using the macro in an attribute value shows an error instead.
+
+```
+:: StoryInit
+{do}
+  Story.defineMacro({
+    name: "plural",
+    merged: true,
+    render: function(props, ctx) {
+      var n = ctx.evaluate(props.rawArgs);
+      return n === 1 ? "" : "s";
+    },
+    text: function(props, ctx) {
+      var n = ctx.evaluate(props.rawArgs);
+      return n === 1 ? "" : "s";
+    }
+  });
+{/do}
+```
+
+```
+<span title="{$count} coin{plural $count}">Purse</span>
+```
+
+The text form gets the macro's props and a small context:
+
+| Property                        | Description                                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ctx.evaluate(expr)`            | Evaluate an expression in the attribute's scope (story, temporary, transient and `@local` variables) |
+| `ctx.renderText(nodes, locals)` | The text of child nodes (`props.children`, a branch's `children`), with optional extra `@locals`     |
+
+It runs while the element renders and again whenever the variables or locals it may read change, so it must not have side effects. An error it throws is shown in front of the element.
+
 ## Putting It Together: A Confirm Button
 
 Here's a practical example that combines several features — a button that asks for confirmation before modifying variables:
@@ -427,7 +462,7 @@ Rendered nodes are tracked by identity: when `ctx.renderNodes()` is given differ
 | Flag          | What it adds                                 | Turn it on when...                                         |
 | ------------- | -------------------------------------------- | ---------------------------------------------------------- |
 | `block`       | Closing-tag support (`{macro}...{/macro}`)   | Your macro wraps content (auto-set when `subMacros` given) |
-| `interpolate` | `ctx.resolve(s)` — resolve variable refs     | Authors may use `{$var}` in class names or IDs             |
+| `interpolate` | `ctx.resolve(s)` — resolve markup in strings | Authors may use `{$var}` in class names or IDs             |
 | `merged`      | `ctx.evaluate(expr)` — evaluate expressions  | Your macro needs to read variables or run expressions      |
 | `storeVar`    | `ctx.varName`, `ctx.value`, `ctx.setValue()` | Your macro is an input bound to a single `$variable`       |
 

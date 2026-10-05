@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, beforeEach } from 'vitest';
+import { describe, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -10,6 +10,22 @@ import { markdownToHtml } from '../../src/markup/markdown';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import { NUM_RUNS, fcOptions } from './config';
 import { INLINE_TAGS, richPassage, substituteVars } from './markup-rich';
+import {
+  TEXT_WIDGETS,
+  codePieces,
+  outerLocal,
+  pieces,
+  textVars,
+  type TextEnv,
+  type TextPiece,
+  type TextVars,
+} from './markup-text';
+import { tokenize } from '../../src/markup/tokenizer';
+import { buildAST } from '../../src/markup/ast';
+import {
+  registerWidget,
+  clearWidgets,
+} from '../../src/widgets/widget-registry';
 
 /**
  * DOM properties mount a full Passage per case, so CI runs fewer cases than
@@ -174,13 +190,17 @@ describe('markdown parity', () => {
   );
 });
 
+/** Variable names, the first ones those of Object.prototype members. */
+const INHERITED = ['constructor', 'toString', 'valueOf', 'hasOwnProperty'];
+const varName = (k: number) => INHERITED[k] ?? `v${k}`;
+
 describe('placeholders', () => {
   test.prop([richPassage()], domOptions)(
     'never leak, and every variable renders its value exactly once',
     (raw) => {
-      const { src, count } = substituteVars(raw, (k) => `{$v${k}}`);
+      const { src, count } = substituteVars(raw, (k) => `{$${varName(k)}}`);
       const vars: Record<string, string> = {};
-      for (let k = 0; k < count; k++) vars[`v${k}`] = `«${k}»`;
+      for (let k = 0; k < count; k++) vars[varName(k)] = `«${k}»`;
       initStory(vars);
       withPassage(src, (el) => {
         expectNoLeak(el);
@@ -194,13 +214,30 @@ describe('placeholders', () => {
   );
 
   test.prop([richPassage()], domOptions)(
-    'variables in every context update after Story.set',
+    'unset variables render as nothing, whatever their name',
     (raw) => {
-      const { src, count } = substituteVars(raw, () => '{$x}');
-      initStory({ x: '«old»' });
+      const sigils = ['$', '_', '%', '@'];
+      const { src } = substituteVars(
+        raw,
+        (k) => `{${sigils[k % 4]}${INHERITED[k % INHERITED.length]}}`,
+      );
+      initStory();
+      withPassage(src, (el) => {
+        expectNoLeak(el);
+        expect(shownText(el)).not.toMatch(/native code|function/);
+      });
+    },
+    domTimeout,
+  );
+
+  test.prop([richPassage(), fc.constantFrom('x', ...INHERITED)], domOptions)(
+    'variables in every context update after Story.set',
+    (raw, name) => {
+      const { src, count } = substituteVars(raw, () => `{$${name}}`);
+      initStory({ [name]: '«old»' });
       withPassage(src, (el) => {
         expect(countOf(shownText(el), '«old»')).toBe(count);
-        act(() => window.Story.set('x', '«new»'));
+        act(() => window.Story.set(name, '«new»'));
         expectNoLeak(el);
         expect(countOf(shownText(el), '«old»')).toBe(0);
         expect(countOf(shownText(el), '«new»')).toBe(count);
@@ -301,7 +338,7 @@ describe('HTML attributes', () => {
         const value = raw.replace(/[\s"'=<>`]/g, '').replace(/\/+$/, '') || 'v';
         return ` ${name}${s1}=${s2}${value}`;
       }
-      return ` ${name}${s1}=${s2}${quote}${raw.replaceAll(quote, '')}${quote}`;
+      return ` ${name}${s1}=${s2}${quote}${raw.split(quote).join('')}${quote}`;
     });
 
   function attributesOf(el: Element): Record<string, string> {
@@ -337,6 +374,93 @@ describe('HTML attributes', () => {
         expect(attributesOf(rendered!), html).toEqual(expected);
       });
     },
+    domTimeout,
+  );
+});
+
+describe('markup in attribute values (#225)', () => {
+  beforeAll(() => {
+    for (const widget of TEXT_WIDGETS) {
+      registerWidget(
+        widget.name,
+        buildAST(tokenize(widget.body)),
+        widget.params,
+      );
+    }
+  });
+  afterAll(() => clearWidgets());
+
+  /** Render the value in an element, in an outer loop when `outer` is set. */
+  function attributeCase(
+    value: TextPiece,
+    vars: TextVars,
+    next: TextVars,
+    outer: string | undefined,
+    [codeName, code]: [string, TextPiece],
+  ) {
+    const element = `<span id="t" title="${value.src}" ${codeName}="${code.src}">x</span>`;
+    const src =
+      outer === undefined
+        ? element
+        : `{for @o of [${JSON.stringify(outer)}]}${element}{/for}`;
+    const locals = outer === undefined ? {} : { o: outer };
+    initStory({ ...vars });
+    withPassage(src, (el) => {
+      const check = (env: TextEnv) => {
+        const out = value.ref(env, true);
+        const codeOut = code.ref(env, true);
+        const span = el.querySelector('#t')!;
+        expect(span.getAttribute('title'), src).toBe(out.text);
+        expect(span.getAttribute(codeName), src).toBe(codeOut.text);
+        expect(el.querySelectorAll('.error').length, src).toBe(
+          out.errors + codeOut.errors,
+        );
+        // Nothing that can't resolve ran: no {set}, no {goto}.
+        expect(useStoryStore.getState().variables.n, src).toBe(env.vars.n);
+        expect(useStoryStore.getState().currentPassage, src).toBe('Start');
+      };
+      check({ vars, locals });
+      act(() => {
+        for (const [k, v] of Object.entries(next)) window.Story.set(k, v);
+      });
+      check({ vars: next, locals });
+    });
+  }
+
+  // Text, escapes, character references, variables, expressions and text
+  // macros resolve to the string the reference evaluator gives, inside a
+  // loop (whose @o the value may read) or not, and follow Story.set.
+  // Next to it sits a code attribute (an event handler, pattern or srcdoc),
+  // where only sigil references resolve and other braces are code.
+  const codeAttribute = fc.tuple(
+    fc.constantFrom('onclick', 'onmouseover', 'onfocus', 'pattern', 'srcdoc'),
+    codePieces,
+  );
+
+  test.prop(
+    [pieces(2), textVars, textVars, outerLocal, codeAttribute],
+    domOptions,
+  )(
+    'resolve to the reference text and follow their variables',
+    attributeCase,
+    domTimeout,
+  );
+
+  // Markup that can't resolve (macros without a text form, unknown macros,
+  // failing expressions) shows one error per evaluation, adds no text and
+  // never runs, while the rest of the value still resolves.
+  test.prop(
+    [
+      pieces(2, { failing: true }),
+      textVars,
+      textVars,
+      outerLocal,
+      codeAttribute,
+    ],
+    domOptions,
+  )(
+    'report what cannot resolve, and run none of it',
+    attributeCase,
     domTimeout,
   );
 });

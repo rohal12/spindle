@@ -4,6 +4,8 @@ All macros are case-insensitive. Block macros require a closing `{/macroName}` t
 
 Every macro that renders visible output supports optional CSS selectors: `{.class#id macroName args}`.
 
+`{if}`, `{switch}`, `{for}`, `{print}`, `{nobr}`, `{span}`, `{story-title}` and widgets also work inside HTML attribute values and labels, where they stand for their text: `<div class="card {if $selected}active{/if}">`. See [Markup in attribute values](markup.md#markup-in-attribute-values).
+
 ## Control Flow
 
 ### `{if}` / `{elseif}` / `{else}`
@@ -237,11 +239,12 @@ Runs during rendering, so the passage changes instantly.
 
 ### `{button}`
 
-A clickable button that runs its body macros on click. The label goes in the opening tag (supports interpolation), the body contains macros like `{set}` or `{do}`.
+A clickable button that runs its body macros on click. The label goes in the opening tag (it takes variables, expressions and text macros, as [attribute values](markup.md#markup-in-attribute-values) do), the body contains macros like `{set}` or `{do}`.
 
 ```
 {button "Take damage"}{do}$health -= 10{/do}{/button}
 {button "Count: {$count}"}{set $count = $count + 1}{/button}
+{button "{if $lamp}Turn off{else}Turn on{/if}"}{set $lamp = !$lamp}{/button}
 ```
 
 Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.
@@ -542,6 +545,8 @@ Inside the quoted condition and option values, write `\"` (or `\'`) for a litera
 Watchers are **edge-triggered** — they fire only on a `false → true` transition of the condition. A condition that is already true when the watcher is registered will not fire until it becomes false and then true again.
 
 Conditions are re-checked whenever a story (`$`), temporary (`_`) or transient (`%`) variable changes, and after each navigation to a passage (so conditions such as `hasVisited('Cave')` fire on arrival). Variables changed by a watcher fired by navigation are recorded in the history moment of the passage being entered, and a `goto` fired by navigation happens after that navigation has completed. Moving back or forward through history, or loading a save, re-syncs watchers to the restored variables without firing them.
+
+Inside running code (`{do}`, `{set}`, a run action) the code's own assignments reach the story when it finishes, or earlier when it writes story state another way (`Story.set()`, a performed action, navigation): its assignments so far are applied first, and watchers react to the state as it is at that point in the code. With `{watch '$a == 1 && $b == 2' run '...'}`, the code `{do}$a = 1; Story.set("b", 2); $a = 3{/do}` fires the watcher at the `Story.set()`, and its run action sees `$a` as 1. Assignments applied this way stay even if the code throws an error afterwards.
 
 Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough. Revisiting a passage does not add a second copy of a watcher that is still registered with the same condition and options; a `once` watcher that has already fired (or one removed with `{unwatch}`) is registered again.
 

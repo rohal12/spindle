@@ -197,7 +197,7 @@ describe('variables in markdown attributes', () => {
     ['![`{$x}`](i.png)', '<p><img src="i.png" alt="V"></p>'],
     ['![{$x + 1}](i.png)', '<p><img src="i.png" alt="V1"></p>'],
     ['![a <b>c</b> {$x}](i.png)', '<p><img src="i.png" alt="a c V"></p>'],
-    ['![p {print 1}](i.png)', '<p><img src="i.png" alt="p "></p>'],
+    ['![p {print 1}](i.png)', '<p><img src="i.png" alt="p 1"></p>'],
     ['[l](http://u "t {$x}")', '<p><a href="http://u" title="t V">l</a></p>'],
     ["[l](http://u 't {$x}')", '<p><a href="http://u" title="t V">l</a></p>'],
     ['[l](http://u (t {$x}))', '<p><a href="http://u" title="t V">l</a></p>'],

@@ -151,3 +151,76 @@ export function splitTopLevel(
   segments.push(src.slice(from));
   return segments;
 }
+
+/**
+ * Check whether a whitespace-delimited token looks like a standalone value
+ * (not an operator or partial expression): it starts like a value and does
+ * not end with an operator still waiting for its operand.
+ */
+function isStandaloneValue(token: string): boolean {
+  return startsLikeValue(token) && !endsWithOperator(token);
+}
+
+function startsLikeValue(token: string): boolean {
+  const first = token[0]!;
+  // Quoted string
+  if (first === '"' || first === "'" || first === '`') return true;
+  // Variable ($var, _var, @var, %var), but not the modulo operator in `$a % 2`
+  if (/^[$_@]\w|^%[A-Za-z_]/.test(token)) return true;
+  // Number literal
+  if (/\d/.test(first)) return true;
+  // Signed number (-1, +2)
+  if (
+    (first === '-' || first === '+') &&
+    token.length > 1 &&
+    /\d/.test(token[1]!)
+  )
+    return true;
+  // Grouped expression or collection literal
+  if (first === '(' || first === '[' || first === '{') return true;
+  // Boolean / null / undefined, alone or leading an expression (true||$x)
+  if (/^(?:true|false|null|undefined)(?![\w$])/.test(token)) return true;
+  // Negation (!$flag, !true), but not the operators != and !==
+  if (first === '!' && token.length > 1 && token[1] !== '=') return true;
+  return false;
+}
+
+/**
+ * Try to split a raw string on whitespace at depth 0 (respecting strings,
+ * template literals, parentheses, brackets, and braces). Each resulting token
+ * must pass `isStandaloneValue()` or the split is rejected and `null` is
+ * returned.
+ */
+function trySplitOnWhitespace(raw: string): string[] | null {
+  const args = splitTopLevel(raw, isWhitespace).filter(Boolean);
+
+  // Need 2+ tokens
+  if (args.length < 2) return null;
+
+  // Every token must be a standalone value (not an operator)
+  for (const arg of args) {
+    if (!isStandaloneValue(arg)) return null;
+  }
+
+  return args;
+}
+
+/**
+ * Split rawArgs by commas, respecting parentheses, brackets, braces, and
+ * strings. When no top-level commas are present, also supports adjacent quoted
+ * string literals separated by whitespace (e.g. `"Label" "target"`).
+ */
+export function splitArgs(raw: string): string[] {
+  const args = splitTopLevel(raw, (ch) => ch === ',').map((a) => a.trim());
+  const hasComma = args.length > 1;
+  if (args[args.length - 1] === '') args.pop();
+
+  // If no commas were found and we got a single expression, try splitting
+  // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
+  if (!hasComma && args.length === 1) {
+    const split = trySplitOnWhitespace(args[0]!);
+    if (split) return split;
+  }
+
+  return args;
+}

@@ -89,6 +89,14 @@ const HTML_VOID_TAGS = new Set([
 /** Variable sigils: story ($), temporary (_), local (@), transient (%). */
 const SIGIL_CHARS = new Set(['$', '_', '@', '%']);
 
+/**
+ * Characters other than a sigil that open an expression after `{`:
+ * `{(Math.max($a, 0))}`, `{!$done}`. Other characters that can start an
+ * expression (quotes, digits, `[`, `-`) are left out, because braces around
+ * them are common as literal text (JSON, regex quantifiers, `{[[link]]}`).
+ */
+const EXPRESSION_START = new Set(['(', '!']);
+
 /** Macros whose body is JavaScript source, kept verbatim instead of tokenized. */
 const RAW_BODY_MACROS = new Set(['do']);
 
@@ -260,9 +268,18 @@ function parseHtmlAttributes(
         j++; // skip opening quote
         const valStart = j;
         while (j < input.length) {
+          if (input[j] === '\\') {
+            // A brace after an odd backslash run is escaped (`\{`) and opens
+            // no interpolation, as in passage text.
+            let k = j + 1;
+            while (input[k] === '\\') k++;
+            const brace = input[k] === '{' || input[k] === '}';
+            j = brace && (k - j) % 2 === 1 ? k + 1 : k;
+            continue;
+          }
           if (input[j] === '{') {
             // Skip a whole {…} interpolation so quotes inside it don't end the value
-            const closeIdx = scanBalancedBrace(input, j + 1, memo);
+            const closeIdx = scanBlockClose(input, j, memo);
             if (closeIdx !== -1) {
               j = closeIdx + 1;
               continue;
@@ -372,6 +389,27 @@ function scanMacroClose(
     run.to = k;
   }
   return scanClose(input, run.to, contentStart, memo);
+}
+
+/**
+ * Index of the } closing the `{…}` block opened at `open`, read as passage
+ * text reads it: a macro (`{name args}`, `{/name}`) has its arguments lexed
+ * after its name, an expression (`{$…}`, `{(…)}`, `{!…}`) from its first
+ * character, after any `.class#id` selectors. Any other block is scanned as
+ * code from just past the {. Returns -1 if it is unclosed.
+ */
+function scanBlockClose(input: string, open: number, memo: ScanMemo): number {
+  let at = open + 1;
+  const c = input[at];
+  if (c === '.' || c === '#') {
+    at = parseSelectors(input, at).endIdx;
+    if (input[at] === ' ') at++;
+  }
+  const first = input[at];
+  if (first !== undefined && (first === '/' || /[a-zA-Z]/.test(first))) {
+    return scanMacroClose(input, at, memo);
+  }
+  return scanBalancedBrace(input, at, memo);
 }
 
 /** Lex the code from `codeStart`, else scan leniently from `lenientStart`. */
@@ -574,10 +612,28 @@ function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
 }
 
 /**
+ * Options for {@link tokenize}.
+ */
+export interface TokenizeOptions {
+  /**
+   * Text mode, for markup that becomes a string (HTML attribute values,
+   * macro labels): only `{…}` markup and brace escapes are recognized, while
+   * `[[` and `<` are text. With no markdown to pair up the backslashes of a
+   * run before a brace, they are paired up here: `\\{` is one backslash
+   * before a live brace, `\\\{` one before a literal one.
+   */
+  text?: boolean;
+}
+
+/**
  * Single-pass tokenizer for Twine passage content.
  * Recognizes: [[links]], {$variable}, {_temporary}, {macroName args}
  */
-export function tokenize(input: string): Token[] {
+export function tokenize(
+  input: string,
+  options: TokenizeOptions = {},
+): Token[] {
+  const textMode = options.text === true;
   const tokens: Token[] = [];
   const memo = createScanMemo();
   let i = 0;
@@ -643,6 +699,34 @@ export function tokenize(input: string): Token[] {
     textStart = closeEnd;
   }
 
+  /**
+   * Push an expression token for the `{…}` block opened at `start` whose
+   * expression starts at `exprStart`, flushing the text before it first
+   * when `flush`. Returns false, consuming nothing, if the block is unclosed.
+   */
+  function pushExpression(
+    exprStart: number,
+    start: number,
+    flush: boolean,
+    className?: string,
+    id?: string,
+  ): boolean {
+    const closeIdx = scanBalancedBrace(input, exprStart, memo);
+    if (closeIdx === -1) return false;
+    if (flush) flushText(start);
+    const token: ExpressionToken = {
+      type: 'expression',
+      expression: input.slice(exprStart, closeIdx),
+      start,
+      end: closeIdx + 1,
+    };
+    if (className) token.className = className;
+    if (id) token.id = id;
+    tokens.push(token);
+    i = textStart = closeIdx + 1;
+    return true;
+  }
+
   while (i < input.length) {
     // Escaped braces: \{ and \}. Count the whole backslash run so \\{ is a
     // backslash pair before a live brace. In an odd run the last backslash
@@ -652,6 +736,15 @@ export function tokenize(input: string): Token[] {
       let k = i + 1;
       while (input[k] === '\\') k++;
       const next = input[k];
+      if (textMode && (next === '{' || next === '}')) {
+        const escaped = (k - i) % 2 === 1;
+        const end = escaped ? k + 1 : k;
+        const value = '\\'.repeat((k - i) >> 1) + (escaped ? next : '');
+        flushText(i);
+        if (value) tokens.push({ type: 'text', value, start: i, end });
+        i = textStart = end;
+        continue;
+      }
       if ((next === '{' || next === '}') && (k - i) % 2 === 1) {
         flushText(k - 1);
         tokens.push({ type: 'text', value: next, start: k - 1, end: k + 1 });
@@ -664,7 +757,7 @@ export function tokenize(input: string): Token[] {
     }
 
     // Check for [[ link
-    if (input[i] === '[' && input[i + 1] === '[') {
+    if (!textMode && input[i] === '[' && input[i + 1] === '[') {
       flushText(i);
       const start = i;
       i += 2;
@@ -908,6 +1001,13 @@ export function tokenize(input: string): Token[] {
           continue;
         }
 
+        if (
+          EXPRESSION_START.has(charAfter!) &&
+          pushExpression(afterSelectors, start, false, className, id)
+        ) {
+          continue;
+        }
+
         if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
           // {.class#id macroName args}
           // Scan to closing }, tracking brace nesting and string literals
@@ -1106,6 +1206,13 @@ export function tokenize(input: string): Token[] {
         continue;
       }
 
+      // {(expr)} or {!expr}: an expression that doesn't start with a variable
+      if (EXPRESSION_START.has(nextChar!)) {
+        if (pushExpression(i + 1, start, true)) continue;
+        i++;
+        continue;
+      }
+
       // {macro ...} or {/macro} — but not bare { that's just text
       // Must start with a letter or /
       if (
@@ -1149,7 +1256,7 @@ export function tokenize(input: string): Token[] {
     }
 
     // Check for < — HTML tag
-    if (input[i] === '<') {
+    if (!textMode && input[i] === '<') {
       const start = i;
       let j = i + 1;
 

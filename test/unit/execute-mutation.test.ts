@@ -243,10 +243,14 @@ describe('executeMutation with nested Story.set writes (#215)', () => {
   });
 
   it('keeps Story.set writes made before the code throws', () => {
+    // The code's writes before the Story.set reached the store with it (in
+    // program order, watchers saw them); those after it are dropped
     expect(() =>
-      run('$obj.a = 1; Story.set("obj.b", 2); throw new Error("x")'),
+      run(
+        '$obj.a = 1; Story.set("obj.b", 2); $obj.c = 3; throw new Error("x")',
+      ),
     ).toThrow('x');
-    expect(vars().obj).toEqual({ a: 0, b: 2 });
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
   });
 
   // Counterexamples of test/property/mutation-merge.test.ts: a Story.set
@@ -259,14 +263,16 @@ describe('executeMutation with nested Story.set writes (#215)', () => {
   });
 
   it('throws when the code removed an object on the Story.set path', () => {
-    // The store's state could take the path: the code's writes were lost
+    // The store's state could take the path; the code's writes made before
+    // the Story.set reach the store first, those after it do not
     useStoryStore.getState().setVariable('obj', { a: {} });
     expect(() =>
       run('$obj = { a: 5 }; Story.set("obj.a.x", 1); $obj.b = 1'),
     ).toThrow(TypeError);
-    expect(vars().obj).toEqual({ a: {} });
+    expect(vars().obj).toEqual({ a: 5 });
+    useStoryStore.getState().setVariable('obj', { a: {} });
     expect(() => run('delete $obj; Story.set("obj.a", 1)')).toThrow(TypeError);
-    expect(vars().obj).toEqual({ a: {} });
+    expect(vars().obj).toBeUndefined();
   });
 
   it('writes nothing for a Story.set batch with a failing path', () => {
@@ -274,7 +280,7 @@ describe('executeMutation with nested Story.set writes (#215)', () => {
     expect(() =>
       run('$obj = { a: 5 }; Story.set({ "obj.b": 1, "obj.a.x": 1 })'),
     ).toThrow(TypeError);
-    expect(vars().obj).toEqual({ a: {} });
+    expect(vars().obj).toEqual({ a: 5 });
   });
 
   it('does not route Story.set calls made after the run into its copy', () => {

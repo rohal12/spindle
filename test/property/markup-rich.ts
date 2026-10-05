@@ -244,30 +244,8 @@ export function richPassage(opts: RichOptions = {}) {
       // Adjacent brackets (`[` + `[label](url)`) can form a Twine link
       // whose text is literal by design (docs/markup.md "Links"), so a
       // variable inside it shows as `{$v}`. Only the explicit links are kept.
-      (src) =>
-        !src.replaceAll('[[Start]]', 'L').includes('[[') &&
-        !macroInImageAlt(src),
+      (src) => !src.split('[[Start]]').join('L').includes('[['),
     );
-}
-
-/**
- * Whether an image's alt text (`!` noise before `[label](url)`) contains a
- * macro. Alt text is an attribute, where macros have no text form and show
- * nothing (docs/markup.md "Links and images"), so variables inside them
- * legitimately don't render.
- */
-function macroInImageAlt(src: string): boolean {
-  for (let i = src.indexOf('!['); i !== -1; i = src.indexOf('![', i + 1)) {
-    let depth = 0;
-    for (let j = i + 1; j < src.length; j++) {
-      if (src[j] === '[') depth++;
-      else if (src[j] === ']' && --depth === 0) {
-        if (/\{(if|span|nobr)\b/.test(src.slice(i, j))) return true;
-        break;
-      }
-    }
-  }
-  return false;
 }
 
 /** Replace each sentinel with `name(k)` for its occurrence index k. */

@@ -1,9 +1,11 @@
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
+import { readState } from '../../execute-mutation';
 import { deepEqual } from '../../class-registry';
 import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
+import { checkVariableName } from '../../utils/namespace';
 
 function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   const trimmed = rawArgs.trim();
@@ -29,6 +31,7 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
         );
       }
 
+      checkVariableName(target.slice(1), target);
       return { target, expr };
     }
   }
@@ -58,7 +61,8 @@ function computeAndApply(
 ): void {
   let newValue: unknown;
   try {
-    const { variables, temporary, transient } = useStoryStore.getState();
+    // In program order, also when mutation code sets this off
+    const { variables, temporary, transient } = readState();
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
     console.error(

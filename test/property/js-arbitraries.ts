@@ -48,6 +48,8 @@ export const EXPR_ENV = {
     obj: { k: 'v', 'sp ace': 1, n: { m: 2 } },
     flag: true,
     f: identity,
+    // A variable named like an Object.prototype member
+    constructor: 'ctor',
   } as Record<string, unknown>,
   temporary: { t: 7, u: 'x y' } as Record<string, unknown>,
   locals: { item: 'loc', n: 4 } as Record<string, unknown>,
@@ -69,16 +71,24 @@ const VAR_REFS: Record<string, { src: string; value: unknown }[]> = {
     { src: '$obj.n.m', value: 2 },
     { src: '$list[1]', value: 'two' },
     { src: '$s.length', value: (V.s as string).length },
+    { src: '$constructor', value: 'ctor' },
+    // Not set: Object.prototype members are no variables
+    { src: '$toString', value: undefined },
   ],
   _: [
     { src: '_t', value: T.t },
     { src: '_u', value: T.u },
+    { src: '_valueOf', value: undefined },
   ],
   '@': [
     { src: '@item', value: L.item },
     { src: '@n', value: L.n },
+    { src: '@hasOwnProperty', value: undefined },
   ],
-  '%': [{ src: '%tr', value: TR.tr }],
+  '%': [
+    { src: '%tr', value: TR.tr },
+    { src: '%constructor', value: undefined },
+  ],
 };
 
 type Unit = readonly [value: string, src: string];

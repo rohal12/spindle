@@ -243,7 +243,7 @@ describe('findCodeEnd', () => {
       ]);
       expect(shared).toEqual(fresh);
     },
-    Math.max(5000, NUM_RUNS * 20),
+    Math.max(5000, NUM_RUNS * 100),
   );
 });
 

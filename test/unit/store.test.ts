@@ -74,7 +74,7 @@ describe('useStoryStore', () => {
       expect(state.currentPassage).toBe('Start');
       expect(state.storyData).toBe(story);
       expect(state.history).toHaveLength(1);
-      expect(state.history[0].passage).toBe('Start');
+      expect(state.history[0]!.passage).toBe('Start');
       expect(state.historyIndex).toBe(0);
     });
 
@@ -119,7 +119,7 @@ describe('useStoryStore', () => {
       const state = useStoryStore.getState();
       expect(state.currentPassage).toBe('Room');
       expect(state.history).toHaveLength(2);
-      expect(state.history[1].passage).toBe('Room');
+      expect(state.history[1]!.passage).toBe('Room');
       expect(state.historyIndex).toBe(1);
       expect(state.temporary).toEqual({});
     });
@@ -154,7 +154,7 @@ describe('useStoryStore', () => {
 
       const state = useStoryStore.getState();
       expect(state.history).toHaveLength(3); // A, B, A (C was truncated)
-      expect(state.history[2].passage).toBe('A');
+      expect(state.history[2]!.passage).toBe('A');
       expect(state.historyIndex).toBe(2);
     });
   });
@@ -689,7 +689,7 @@ describe('useStoryStore', () => {
 
       useStoryStore.getState().navigate('Room');
 
-      const moment = useStoryStore.getState().history[1];
+      const moment = useStoryStore.getState().history[1]!;
       expect(moment.prng).toEqual({ seed: 'nav-test', pull: 1 });
     });
 
