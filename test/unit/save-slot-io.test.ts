@@ -197,6 +197,37 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     expect(Story.passage).toBe('Room');
   });
 
+  it.each([
+    ['the live variables', 'variables'],
+    ['a history moment', 'history'],
+  ])(
+    'rejects a malformed encoded value in %s and keeps the save it would replace',
+    async (_, where) => {
+      Story.set('hp', 42);
+      Story.goto('Room');
+      await saveTo('slot-1');
+      const before = await Story.getSaveInfo('slot-1');
+      const data = (await Story.exportSave('slot-1'))!;
+      const malformed = structuredClone(data);
+      const bad = {
+        __spindle_class__: '__Map__',
+        __spindle_data__: { entries: 42 },
+      };
+      const payload = malformed.save.payload;
+      if (where === 'variables') payload.variables.inventory = bad;
+      else payload.history[0]!.variables.inventory = bad;
+
+      await expect(Story.importSave(malformed, 'slot-1')).rejects.toThrow(
+        'Invalid save file format',
+      );
+      expect(await Story.getSaveInfo('slot-1')).toEqual(before);
+      Story.set('hp', 1);
+      await expect(Story.load('slot-1')).resolves.toBeUndefined();
+      expect(Story.get('hp')).toBe(42);
+      expect(Story.passage).toBe('Room');
+    },
+  );
+
   it('rejects an out-of-range history index', async () => {
     await saveTo('slot-1');
     const data = (await Story.exportSave('slot-1'))!;
