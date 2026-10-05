@@ -203,6 +203,11 @@ tw-storydata {
   position: relative;
 }
 
+/* Focused programmatically when the dialog has no focusable content */
+.dialog-panel:focus {
+  outline: none;
+}
+
 .dialog-saves {
   max-width: 550px;
 }

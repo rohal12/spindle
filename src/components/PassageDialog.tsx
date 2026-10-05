@@ -5,6 +5,7 @@ import { buildAST } from '../markup/ast';
 import { renderNodes } from '../markup/render';
 import { useStoryStore } from '../store';
 import { emitFromRender } from '../event-emitter';
+import { useModalFocus } from '../hooks/use-modal-focus';
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
@@ -60,8 +61,13 @@ export function PassageDialog({
     }
   }, [markup]);
 
-  // Signal that the dialog's DOM is committed (once per open).
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Focus into the dialog, trap Tab, Escape to close, restore focus on close.
+  // Declared before the dialogrender effect so handlers can move focus.
+  useModalFocus(panelRef, '.dialog-body', dismissible, stableOnClose);
+
+  // Signal that the dialog's DOM is committed (once per open).
   useLayoutEffect(() => {
     if (panelRef.current) {
       emitFromRender('dialogrender', passageName ?? '', panelRef.current);
@@ -86,10 +92,14 @@ export function PassageDialog({
         <div
           ref={panelRef}
           class={cls}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
         >
           {showCloseButton && (
             <button
               class="dialog-close"
+              aria-label="Close"
               onClick={stableOnClose}
             >
               ✕
