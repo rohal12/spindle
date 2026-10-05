@@ -134,28 +134,45 @@ function scanRegex(
   start: number,
   cache?: JsScanCache,
 ): { end: number; closed: boolean } {
+  // The rest of a regex reads the same from just past a class, however the
+  // scan got there: record how it ends there, and use what is recorded
+  const pending: number[] = [];
+  const done = (end: number, closed: boolean) => {
+    if (cache) {
+      for (const at of pending) cache.regexes.set(at, end * 2 + +closed);
+    }
+    return { end, closed };
+  };
   let i = start + 1;
   while (i < src.length) {
     const c = src.charAt(i);
     if (c === '\\') {
-      if (LINE_TERMINATOR_RE.test(src.charAt(i + 1))) break;
+      // An escaped line break ends the line, and the regex, too
+      if (LINE_TERMINATOR_RE.test(src.charAt(i + 1))) return done(i + 1, false);
       i += 2;
       continue;
     }
     // Unterminated at the end of the line: leave the rest to the parser
-    if (LINE_TERMINATOR_RE.test(c)) return { end: i, closed: false };
+    if (LINE_TERMINATOR_RE.test(c)) return done(i, false);
     if (c === '[') {
       // A class, where `/` does not close
       i = scanRegexClass(src, i, cache);
-      if (src.charAt(i) !== ']') return { end: i, closed: false };
-    } else if (c === '/') {
+      if (src.charAt(i) !== ']') return done(i, false);
+      i++;
+      const known = cache?.regexes.get(i);
+      if (known !== undefined)
+        return done(Math.floor(known / 2), known % 2 === 1);
+      pending.push(i);
+      continue;
+    }
+    if (c === '/') {
       REGEX_FLAGS_RE.lastIndex = i + 1;
       const flags = REGEX_FLAGS_RE.exec(src)?.[0].length ?? 0;
-      return { end: i + 1 + flags, closed: true };
+      return done(i + 1 + flags, true);
     }
     i++;
   }
-  return { end: Math.min(i + 1, src.length), closed: false };
+  return done(src.length, false);
 }
 
 /**
@@ -324,20 +341,46 @@ interface StrictScan {
   cache?: JsScanCache;
   /** `cache.braces`, unless the scan has a `stop`. */
   braces?: Map<number, number>;
-  /** `cache.statements` for this scan's `stopKey`. */
+  /** `cache.checkpoints` for this kind of scan. */
   checkpoints?: Map<number, number>;
   /** Checkpoints this scan passed, to record its result at. */
   passed: number[];
 }
 
-/** A `{…}` frame result: it is still open at the end of the source. */
-const UNCLOSED = -1;
-/** A `{…}` frame result: a lexical error inside it ends the scan. */
-const MALFORMED = -2;
-const BRACE_KINDS: readonly Frame['kind'][] = ['block', 'object', 'class'];
+/** Characters that a scan checkpoint follows (`checkpointKey`). */
+const CHECKPOINT_AFTER = new Set([
+  '}',
+  '"',
+  "'",
+  '`',
+  '/',
+  '\n',
+  '\r',
+  ' ',
+  ' ',
+]);
 
-/** Key of a `{…}` frame result: where it opens and what it holds. */
-const braceKey = (f: Frame) => f.open * 3 + BRACE_KINDS.indexOf(f.kind);
+/** A frame result: it is still open at the end of the source. */
+const UNCLOSED = -1;
+/** A frame result: a lexical error inside it ends the scan. */
+const MALFORMED = -2;
+const FRAME_KINDS: readonly Frame['kind'][] = [
+  'block',
+  'object',
+  'class',
+  'template',
+];
+
+/**
+ * Key of a frame result, for the frames whose code lexes the same whatever
+ * surrounds them: braces (a block, an object literal, a class body), a
+ * template literal and its interpolations. Undefined for parentheses and
+ * square brackets, which a stray closer inside may close.
+ */
+function frameKey(f: Frame): number | undefined {
+  const kind = f.interpolation ? 4 : FRAME_KINDS.indexOf(f.kind);
+  return kind < 0 ? undefined : f.open * 5 + kind;
+}
 
 /**
  * Results that `findCodeEnd` scans of one source share, so that scanning it
@@ -345,37 +388,41 @@ const braceKey = (f: Frame) => f.open * 3 + BRACE_KINDS.indexOf(f.kind);
  */
 export interface JsScanCache {
   /**
-   * Where each `{…}` frame closes: the index of its `}`, `UNCLOSED` or
-   * `MALFORMED`. The code inside a frame lexes the same whatever surrounds
-   * it, given where it opens and its kind (block, object literal or class
-   * body) — a stray `)` or `]` inside never closes it — so a later scan
-   * entering the same frame skips to its end.
+   * Where each `{…}` frame, template literal or `${…}` interpolation closes:
+   * the index of its `}` or closing backtick, `UNCLOSED` or `MALFORMED`. The
+   * code inside such a frame lexes the same whatever surrounds it, given
+   * where it opens and its kind — a stray `)` or `]` inside never closes it
+   * — so a later scan entering the same frame skips to its end.
    */
   braces: Map<number, number>;
   /** Look-ahead bracket matches (`ScanContext.brackets`). */
   brackets: Map<number, number>;
   /** Regex character class ends (`scanRegexClass`). */
   classes: Map<number, number>;
+  /** How a regex goes on from just past a class: `end * 2 + closed`. */
+  regexes: Map<number, number>;
   /** The last search for a line break ending a `//` comment. */
   lineEnd: NextMatch;
   /** The last search for the end of a block comment. */
   commentClose: NextMatch;
   /**
-   * Statement scans with a `stop`, by `stopKey`: how a scan goes on from a
-   * point at the top level just past a `}`, by the point and the scan state
-   * there. Scans from different starts soon pass such points in the same
-   * state (a statement scan starts in one, past the `}` of `{do}`), and
-   * from there on go the same way.
+   * How scans go on from points at the top level, by the kind of scan (its
+   * goal and how it ends) and then by the point and the scan state there:
+   * the index the scan ends at, `UNCLOSED` or `MALFORMED`. The points are
+   * just past a line break, a `}` or the end of a literal or comment. Scans
+   * from different starts soon pass such points in the same state, and from
+   * there on go the same way.
    */
-  statements: Map<string, Map<number, number>>;
+  checkpoints: Map<string, Map<number, number>>;
 }
 
 export function createJsScanCache(): JsScanCache {
   return {
-    statements: new Map(),
+    checkpoints: new Map(),
     braces: new Map(),
     brackets: new Map(),
     classes: new Map(),
+    regexes: new Map(),
     lineEnd: { from: Infinity, at: -1 },
     commentClose: { from: Infinity, at: -1 },
   };
@@ -482,8 +529,8 @@ export interface FindCodeEndOptions {
   /** End the code at a `{` in code, at any depth, for which this holds. */
   stop?: (index: number) => boolean;
   /**
-   * Names `stop` for `cache`: statement scans with the same key share
-   * results.
+   * Names `stop` for `cache`: scans with the same key share results (scans
+   * with a `stop` but no key don't use `cache.checkpoints`).
    */
   stopKey?: string;
   /**
@@ -525,9 +572,10 @@ export function findCodeEnd(
   strict.cache = cache;
   // Where a `{…}` frame ends depends on `stop`
   if (cache && !stop) strict.braces = cache.braces;
-  if (cache && stop && stopKey !== undefined && goal === 'statements') {
-    let checkpoints = cache.statements.get(stopKey);
-    if (!checkpoints) cache.statements.set(stopKey, (checkpoints = new Map()));
+  if (cache && (!stop || stopKey !== undefined)) {
+    const kindKey = `${goal} ${stop ? `stop ${stopKey}` : '}'}`;
+    let checkpoints = cache.checkpoints.get(kindKey);
+    if (!checkpoints) cache.checkpoints.set(kindKey, (checkpoints = new Map()));
     strict.checkpoints = checkpoints;
   }
   const ctx: ScanContext = {
@@ -539,11 +587,8 @@ export function findCodeEnd(
   const outer = frame(kind, stop ? '' : '}', start - 1);
   const end = scan(src, {}, start, 0, outer, ctx);
   if (strict.checkpoints) {
-    const result = strict.malformed
-      ? MALFORMED
-      : strict.stopped
-        ? end
-        : UNCLOSED;
+    const ended = stop ? strict.stopped : end < src.length;
+    const result = strict.malformed ? MALFORMED : ended ? end : UNCLOSED;
     for (const at of strict.passed) strict.checkpoints.set(at, result);
   }
   if (strict.malformed) return -1;
@@ -601,16 +646,23 @@ function scan(
   /** A `{…}` frame result found in `braces`, to skip to. */
   let skipTo: { frame: Frame; end: number } | undefined;
 
-  /** Record how the open `{…}` frames end, when the scan ends in them. */
+  /** Record how the open frames end, when the scan ends in them. */
   function recordOpen(result: number) {
     if (!braces) return;
-    for (let k = 1; k < frames.length; k++) {
-      const f = frames[k]!;
-      if (f.closer === '}' && !f.interpolation) {
-        braces.set(braceKey(f), result);
-      }
-    }
+    for (let k = 1; k < frames.length; k++) record(frames[k]!, result);
   }
+
+  /** Record how a frame ends. */
+  function record(f: Frame, result: number) {
+    const key = braces && frameKey(f);
+    if (key !== undefined) braces!.set(key, result);
+  }
+
+  /** How an earlier scan found the frame `f` to end, if it did. */
+  const known = (f: Frame) => {
+    const key = braces && frameKey(f);
+    return key === undefined ? undefined : braces!.get(key);
+  };
 
   /** End a strict scan at a lexical error. */
   const malformed = () => {
@@ -625,27 +677,38 @@ function scan(
   }
 
   /**
-   * At the top level, just past a `}` in code: the key of the position and
-   * the scan state there, which decide how the scan goes on (or undefined
-   * elsewhere). Past a `}` no word is being read, the last token is no
-   * keyword and no `=` or `.`, and no line break follows it yet; what is
-   * left is what may come next, a pending function or class body, and open
-   * conditionals.
+   * At the top level, just past a line break, a `}` or the end of a literal
+   * or comment: the key of the position and the whole scan state there,
+   * which decide how the scan goes on (or undefined elsewhere). No word is
+   * being read there, and the character before is no word character, so a
+   * quote after it starts a string in any scan.
    */
   function checkpointKey(): number | undefined {
     const ternary = frames[0]!.ternary;
-    if (frames.length !== 1 || src.charAt(i - 1) !== '}' || ternary > 3) {
+    if (
+      frames.length !== 1 ||
+      ternary > 3 ||
+      !CHECKPOINT_AFTER.has(src.charAt(i - 1))
+    ) {
       return undefined;
     }
     let state = ternary;
-    if (operandNext) state |= 4;
-    if (stmtNext) state |= 8;
-    if (keyNext) state |= 16;
+    if (operandNext) state |= 1 << 2;
+    if (stmtNext) state |= 1 << 3;
+    if (keyNext) state |= 1 << 4;
     if (pendingBody) {
-      state |= pendingBody.frame.kind === 'class' ? 32 : 64;
-      if (pendingBody.frame.operand) state |= 128;
+      state |= pendingBody.frame.kind === 'class' ? 1 << 5 : 1 << 6;
+      if (pendingBody.frame.operand) state |= 1 << 7;
     }
-    return i * 256 + state;
+    if (arrowBody) state |= 1 << 8;
+    if (afterDot) state |= 1 << 9;
+    if (afterHeaderKeyword) state |= 1 << 10;
+    if (lineBreak) state |= 1 << 11;
+    if (RESTRICTED_KEYWORDS.has(lastKeyword)) state |= 1 << 12;
+    if (lastPunct === '=') state |= 1 << 13;
+    // A run of dots: one or two (a spread may follow), three, or more
+    if (lastPunct === '.') state |= Math.min(dots, 4) << 14;
+    return i * (1 << 17) + state;
   }
 
   /**
@@ -775,7 +838,7 @@ function scan(
     }
     f.open = i;
     endPunct('{', true);
-    const end = braces?.get(braceKey(f));
+    const end = known(f);
     if (end === undefined) open(f);
     else skipTo = { frame: f, end };
   }
@@ -815,7 +878,7 @@ function scan(
     } else if (c === ']') {
       endPunct(c, false);
     } else {
-      braces?.set(braceKey(closed), i);
+      record(closed, i);
       afterBrace(closed);
     }
   }
@@ -929,14 +992,26 @@ function scan(
         i += 2;
       } else if (ch === '`') {
         literal(ch, i);
+        if (frames.length === 1) return i + 1; // the end of `lexTemplate`
+        record(top(), i);
         i++;
-        if (frames.length === 1) return i; // the end of `lexTemplate`
         truncate(frames.length - 1);
         endOperand();
       } else if (ch === '$' && src.charAt(i + 1) === '{') {
-        literal('${', i);
         const f = frame('expr', '}', i);
         f.interpolation = true;
+        const end = known(f);
+        if (end === MALFORMED) return malformed();
+        if (end === UNCLOSED) {
+          i = src.length;
+          break;
+        }
+        if (end !== undefined) {
+          // An interpolation an earlier scan lexed: on with the text after it
+          i = end + 1;
+          continue;
+        }
+        literal('${', i);
         i += 2;
         nesting++;
         endPunct('{', true);
@@ -964,8 +1039,21 @@ function scan(
 
     if (ch === '`') {
       endWord();
+      const f = frame('template', '`', i);
+      const end = known(f);
+      if (end === MALFORMED) return malformed();
+      if (end === UNCLOSED) {
+        i = src.length;
+        break;
+      }
+      if (end !== undefined) {
+        // A template literal an earlier scan lexed: on after it
+        i = end + 1;
+        endOperand();
+        continue;
+      }
       literal(ch, i);
-      push(frame('template', '`', i));
+      push(f);
       i++;
       continue;
     }
@@ -980,6 +1068,7 @@ function scan(
       const k = innermost('}');
       if (frames[k]!.interpolation) {
         endWord();
+        record(frames[k]!, i);
         truncate(k);
         nesting--;
         literal(ch, i);

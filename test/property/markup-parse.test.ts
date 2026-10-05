@@ -160,6 +160,17 @@ describe('tokenize running time', () => {
     '{$a // `',
     '{do}/*{/do}',
     '{do}=>/`{/do}',
+    // Unclosed links and {do}s, which used to search the rest each
+    '[[',
+    '[[a]',
+    ') {a[[{a',
+    '{do}',
+    '{do} {/d',
+    // Strings and comments that hide the next openers from earlier scans
+    "'{$a'<a ",
+    '"if(b="{if',
+    "[[({if''",
+    '{a\n//\\{$a',
   ];
 
   /** Milliseconds to tokenize `src`, best of three. */

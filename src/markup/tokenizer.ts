@@ -308,6 +308,13 @@ export interface ScanMemo {
   template: Map<number, number>;
   /** The last macro name run found: no whitespace or } in [from, to). */
   name: { from: number; to: number };
+  /** Link scan results (`scanLinkClose`). */
+  link: Map<number, number>;
+  /**
+   * The last search for a raw-body closer, by macro name: the first one
+   * from `from` on is at `at` (-1 for none).
+   */
+  rawClose: Map<string, { from: number; at: number }>;
 }
 
 export function createScanMemo(): ScanMemo {
@@ -317,6 +324,8 @@ export function createScanMemo(): ScanMemo {
     brace: new Map(),
     template: new Map(),
     name: { from: 0, to: -1 },
+    link: new Map(),
+    rawClose: new Map(),
   };
 }
 
@@ -382,6 +391,37 @@ function scanClose(
 }
 
 /**
+ * Index of the ]] closing the link whose text starts at `from`, or -1. A
+ * [[ inside opens a nested pair. Each nested [[ starts a scan that reads the
+ * rest the same way, so its result is recorded too: unclosed [[s don't each
+ * scan to the end of the input.
+ */
+function scanLinkClose(input: string, from: number, memo: ScanMemo): number {
+  const known = memo.link.get(from);
+  if (known !== undefined) return known;
+  const opens = [from];
+  let i = from;
+  while (i < input.length) {
+    if (input[i] === '[' && input[i + 1] === '[') {
+      i += 2;
+      const inner = memo.link.get(i);
+      if (inner === undefined) opens.push(i);
+      else if (inner === -1)
+        break; // nor does this one close
+      else i = inner + 2;
+    } else if (input[i] === ']' && input[i + 1] === ']') {
+      memo.link.set(opens.pop()!, i);
+      if (!opens.length) return i;
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  for (const open of opens) memo.link.set(open, -1);
+  return -1;
+}
+
+/**
  * Skip a '…' or "…" string literal opening at i.
  * Returns the index just past the closing quote, or -1 if the string is
  * not closed on the same line (JS strings can't span lines unescaped).
@@ -413,8 +453,11 @@ const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
 interface LenientScan {
   template: boolean;
   start: number;
-  /** For braces: the starts of the nested {…} still open. */
-  opens: number[];
+  /**
+   * For braces, per brace depth from the outermost: the checkpoints at that
+   * depth whose scans end where the depth does.
+   */
+  levels: number[][];
 }
 
 /**
@@ -425,14 +468,17 @@ interface LenientScan {
  * Returns the index of the closing } or -1 if unbalanced.
  *
  * Template literals and their ${…} parts are scans on a stack, not
- * recursive calls, so deep nesting can't overflow the call stack. A
- * nested { is the start of a scan of its own: the one from just past it
- * reads the same text the same way, so its result is recorded too.
+ * recursive calls, so deep nesting can't overflow the call stack. How the
+ * text reads depends only on where a scan is, so a scan passing a point —
+ * just past a {, a string or a template literal — goes on as a scan
+ * starting there would: its result there is recorded too, and a recorded
+ * result is used instead of scanning on. Scans from many starts in one
+ * input then take about linear time.
  */
 function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
   const known = memo.brace.get(i);
   if (known !== undefined) return known;
-  const stack: LenientScan[] = [{ template: false, start: i, opens: [] }];
+  const stack: LenientScan[] = [{ template: false, start: i, levels: [[]] }];
   for (;;) {
     const scan = stack[stack.length - 1]!;
     let end: number | undefined; // set when `scan` is done
@@ -453,50 +499,63 @@ function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
         }
       }
       if (end === undefined && i < input.length) {
-        stack.push({ template: false, start: i + 2, opens: [] });
+        stack.push({ template: false, start: i + 2, levels: [[]] });
         i += 2;
         continue;
       }
       end ??= -1;
     } else {
+      const { levels } = scan;
+      /** The } at `close` ends the innermost level. */
+      const closeLevel = (close: number) => {
+        for (const at of levels.pop()!) memo.brace.set(at, close);
+        if (!levels.length) end = close;
+      };
       while (end === undefined && i < input.length) {
         const c = input[i]!;
+        let at = -1; // a checkpoint, if one starts here
         if (c === '{') {
-          const inner = memo.brace.get(++i);
-          if (inner === undefined) scan.opens.push(i);
-          else if (inner !== -1) i = inner + 1;
-          else {
-            // A nested { never closes, so neither does this one
-            i = input.length;
-            break;
-          }
+          levels.push([]);
+          at = ++i;
         } else if (c === '}') {
-          const open = scan.opens.pop();
-          if (open === undefined) end = i;
-          else memo.brace.set(open, i);
-          i++;
+          closeLevel(i++);
         } else if (
           (c === '"' || c === "'") &&
           !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!))
         ) {
           const close = skipQuoted(input, i);
-          i = close === -1 ? i + 1 : close;
+          if (close === -1) i++;
+          else at = i = close;
         } else if (c === '`') {
           const close = memo.template.get(i);
           if (close === undefined) break; // scan the template first
-          i = close === -1 ? i + 1 : close;
+          if (close === -1) i++;
+          else at = i = close;
         } else {
           i++;
         }
+        if (at === -1) continue;
+        const known = memo.brace.get(at);
+        if (known === undefined) {
+          levels[levels.length - 1]!.push(at);
+        } else if (known === -1) {
+          // The innermost level never closes, so neither do the others
+          i = input.length;
+        } else {
+          closeLevel(known);
+          i = known + 1;
+        }
       }
       if (end === undefined && i < input.length) {
-        stack.push({ template: true, start: i, opens: [] });
+        stack.push({ template: true, start: i, levels: [] });
         i++;
         continue;
       }
       if (end === undefined) {
         end = -1;
-        for (const open of scan.opens) memo.brace.set(open, -1);
+        for (const level of levels) {
+          for (const at of level) memo.brace.set(at, -1);
+        }
       }
     }
     // `scan` is done: hand its result to the scan that started it
@@ -548,10 +607,17 @@ export function tokenize(input: string): Token[] {
     const lower = name.toLowerCase();
     if (isClose || !RAW_BODY_MACROS.has(lower)) return;
     const closer = `\\{/${lower}\\s*\\}`;
-    const firstRe = new RegExp(closer, 'gi');
-    firstRe.lastIndex = i;
-    const first = firstRe.exec(input);
-    if (!first) return;
+    // The first closer from here on. Without one from `from` on there is
+    // none later either, so many unclosed {do}s don't each search the rest.
+    let last = memo.rawClose.get(lower);
+    if (!last || i < last.from || (last.at >= 0 && i > last.at)) {
+      const firstRe = new RegExp(closer, 'gi');
+      firstRe.lastIndex = i;
+      last = { from: i, at: firstRe.exec(input)?.index ?? -1 };
+      memo.rawClose.set(lower, last);
+    }
+    const first = last.at;
+    if (first === -1) return;
     const atRe = new RegExp(closer, 'iy');
     const closerAt = (k: number) => {
       atRe.lastIndex = k;
@@ -563,7 +629,7 @@ export function tokenize(input: string): Token[] {
       stopKey: lower,
       cache: memo.js,
     });
-    if (closeStart === -1) closeStart = first.index;
+    if (closeStart === -1) closeStart = first;
     atRe.lastIndex = closeStart;
     const closeEnd = closeStart + atRe.exec(input)![0].length;
     flushText(closeStart);
@@ -616,30 +682,18 @@ export function tokenize(input: string): Token[] {
       }
 
       // Find closing ]]
-      let depth = 1;
       const innerStart = i;
-      while (i < input.length && depth > 0) {
-        if (input[i] === '[' && input[i + 1] === '[') {
-          depth++;
-          i += 2;
-        } else if (input[i] === ']' && input[i + 1] === ']') {
-          depth--;
-          if (depth === 0) break;
-          i += 2;
-        } else {
-          i++;
-        }
-      }
+      const closeIdx = scanLinkClose(input, innerStart, memo);
 
-      if (depth !== 0) {
+      if (closeIdx === -1) {
         // Unclosed link — treat as text
         i = start + 2;
         textStart = start;
         continue;
       }
 
-      const inner = input.slice(innerStart, i);
-      i += 2; // skip ]]
+      const inner = input.slice(innerStart, closeIdx);
+      i = closeIdx + 2; // skip ]]
 
       const { display, target } = parseLink(inner);
       const linkToken: LinkToken = {

@@ -12,7 +12,7 @@ import {
   lexTemplate,
   type JsGoal,
 } from '../../src/js-lexer';
-import { fcOptions } from './config';
+import { NUM_RUNS, fcOptions } from './config';
 import { jsArbitraries, render } from './arbitraries/js';
 
 /** Characters that steer the lexer's state machine. */
@@ -227,21 +227,23 @@ describe('findCodeEnd', () => {
 
   test.prop([scanText, fc.boolean()], fcOptions)(
     'answers the same with a shared cache as without',
-    (src, shuffled) => {
+    (src, reversed) => {
       const starts = [...Array(src.length + 1).keys()];
-      if (shuffled) starts.reverse();
+      if (reversed) starts.reverse();
       const cache = createJsScanCache();
-      for (const start of starts) {
-        expect(findCodeEnd(src, start, { cache })).toBe(
-          findCodeEnd(src, start),
-        );
-        const stop = atCloser(src);
-        const opts = { goal: 'statements' as const, stop };
-        expect(findCodeEnd(src, start, { ...opts, stopKey: 'do', cache })).toBe(
-          findCodeEnd(src, start, opts),
-        );
-      }
+      const stop = atCloser(src);
+      const opts = { goal: 'statements' as const, stop };
+      const shared = starts.map((start) => [
+        findCodeEnd(src, start, { cache }),
+        findCodeEnd(src, start, { ...opts, stopKey: 'do', cache }),
+      ]);
+      const fresh = starts.map((start) => [
+        findCodeEnd(src, start),
+        findCodeEnd(src, start, opts),
+      ]);
+      expect(shared).toEqual(fresh);
     },
+    Math.max(5000, NUM_RUNS * 20),
   );
 });
 
