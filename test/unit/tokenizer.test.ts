@@ -1416,6 +1416,16 @@ describe('tokenize — unclosed template literals', () => {
     );
   });
 
+  // The lenient scan recursed once per nesting level and overflowed the
+  // call stack (RangeError) at a few thousand levels.
+  it('scans deeply nested unclosed template literals without recursion', () => {
+    const input = '{$a`${'.repeat(20000);
+    const tokens = tokenize(input);
+    expect(tokens.map((t) => (t.type === 'text' ? t.value : '')).join('')).toBe(
+      input,
+    );
+  });
+
   it('still balances nested closed template literals', () => {
     const tokens = tokenize('{print `a${`b${1}c`}d`}!');
     expect(tokens[0]).toMatchObject({
@@ -1424,6 +1434,175 @@ describe('tokenize — unclosed template literals', () => {
       rawArgs: '`a${`b${1}c`}d`',
     });
     expect(tokens[1]).toMatchObject({ type: 'text', value: '!' });
+  });
+});
+
+describe('tokenize — JavaScript in macro arguments and expressions', () => {
+  // Only a `}` in code, outside the brackets the code opened, ends a macro
+  // or expression: braces, quotes and backticks inside string, template and
+  // regex literals and comments don't count.
+  it.each([
+    ['{if /}/.test($s)}', 'if', '/}/.test($s)'],
+    ['{set $x = 1 /* } */}', 'set', '$x = 1 /* } */'],
+    ['{set $x = "a { b"}', 'set', '$x = "a { b"'],
+    ['{button "a } b"}', 'button', '"a } b"'],
+    ['{print $s.replace(/[{}]/g, "")}', 'print', '$s.replace(/[{}]/g, "")'],
+    ['{set $r = /\\}/}', 'set', '$r = /\\}/'],
+    ['{set $t = `${"}"}`}', 'set', '$t = `${"}"}`'],
+    ['{set $x = 1 // }\n}', 'set', '$x = 1 // }'],
+    ['{print /"/.test($s) + "}"}', 'print', '/"/.test($s) + "}"'],
+    ["{print /'/.test($s) + '}'}", 'print', "/'/.test($s) + '}'"],
+    ['{print /`/.test($s) + `}`}', 'print', '/`/.test($s) + `}`'],
+    ['{print 1 /* " */ + "}"}', 'print', '1 /* " */ + "}"'],
+    ['{print [/]}/][0]}', 'print', '[/]}/][0]'],
+    ['{set $s = "line\n}"}', 'set', '$s = "line\n}"'],
+    ['{.c print /}/.test($s)}', 'print', '/}/.test($s)'],
+    ["{print typeof'}'}", 'print', "typeof'}'"],
+  ])('macro %j', (src, name, rawArgs) => {
+    const tokens = tokenize(src + 'after');
+    expect(tokens[0]).toMatchObject({ type: 'macro', name, rawArgs });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+    expect(tokens).toHaveLength(2);
+  });
+
+  it.each([
+    ['{$s.replace(/}/g, "")}', '$s.replace(/}/g, "")'],
+    ['{$a /* } */}', '$a /* } */'],
+    ['{$a /2/ $b}', '$a /2/ $b'],
+    ['{_a /2/ _b}', '_a /2/ _b'],
+    ['{@a /2/ @b}', '@a /2/ @b'],
+    ['{%a /2/ %b}', '%a /2/ %b'],
+    ['{%a % /}/.source.length}', '%a % /}/.source.length'],
+    ["{$s.split(/'/).join('}')}", "$s.split(/'/).join('}')"],
+    ['{$a + `${/}/.source}`}', '$a + `${/}/.source}`'],
+    ['{$a // }\n}', '$a // }\n'],
+  ])('expression %j', (src, expression) => {
+    const tokens = tokenize(src + 'after');
+    expect(tokens[0]).toMatchObject({ type: 'expression', expression });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+    expect(tokens).toHaveLength(2);
+  });
+
+  it('lexes selector-prefixed expressions', () => {
+    const tokens = tokenize('{.c $s.replace(/}/g, "")}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'expression',
+      expression: '$s.replace(/}/g, "")',
+      className: 'c',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  // Code attributes keep backslashes as text (docs/markup.md), so a
+  // backslash before `{$…}` doesn't stop the reference hiding its quotes.
+  it('reads a backslash before a reference in a code attribute as text', () => {
+    const value = String.raw`f('\{$a.replace(/"/g, "'")}')`;
+    const tokens = tokenize(`<b onclick="${value}" title="\\{$a" id="i">x</b>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { onclick: value, title: '\\{$a', id: 'i' },
+    });
+  });
+
+  it('reads only sigil references as blocks in a code attribute', () => {
+    const value = `{a{$a.replace(/[}"']/g, '{')}`;
+    const tokens = tokenize(`<b onclick="${value}" id="i">x</b>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { onclick: value, id: 'i' },
+    });
+  });
+
+  it('lexes macros in attribute values after their names', () => {
+    const tokens = tokenize(
+      `<i title="{if /"}/.test($s)}a{/if}" class="{.c print '"'}">t</i>`,
+    );
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: {
+        title: `{if /"}/.test($s)}a{/if}`,
+        class: `{.c print '"'}`,
+      },
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 't' });
+  });
+
+  it('lexes HTML attribute interpolations', () => {
+    const tokens = tokenize(
+      `<span title='{$s.replace(/'/g, "}")}' id=x>t</span>`,
+    );
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { title: `{$s.replace(/'/g, "}")}`, id: 'x' },
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 't' });
+  });
+
+  it('reads `/` after an operand as division', () => {
+    const tokens = tokenize('{print ($a) / 2 + "}"}after {$b /1}');
+    expect(tokens[0]).toMatchObject({ rawArgs: '($a) / 2 + "}"' });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after ' });
+    expect(tokens[2]).toMatchObject({ expression: '$b /1' });
+  });
+
+  // Text that is not well-formed JavaScript keeps the tokenizer's lenient
+  // reading: apostrophes are text and a quote not closed on its line is a
+  // plain character.
+  it.each([
+    ["{goto Bob's room}", "Bob's room"],
+    ["{print ' + $x}", "' + $x"],
+    ['{print "a + $x}', '"a + $x'],
+    ['{print /a + $x}', '/a + $x'],
+    ['{print `a + $x}', '`a + $x'],
+    ['{print 1 /* a}', '1 /* a'],
+    ['{print (1}', '(1'],
+  ])('falls back on malformed code %j', (src, rawArgs) => {
+    const tokens = tokenize(src + '\nafter');
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: '\nafter' });
+  });
+});
+
+describe('tokenize — {do} bodies are lexed as JavaScript', () => {
+  it.each([
+    '$x = "{/do}";',
+    "$x = '{/do}';",
+    '$x = `{/do}`;',
+    '$x = `${"{/do}"}`;',
+    '$x = /[{/do}]/;',
+    '$x = 1; /* {/do} */',
+    '$x = 1; // {/do}\n',
+    'if (a) { $x = "}" }',
+  ])('a {/do} in a literal or comment does not end the body: %j', (body) => {
+    const tokens = tokenize(`{do}${body}{/do}after`);
+    expect(tokens.map((t) => t.type)).toEqual([
+      'macro',
+      'text',
+      'macro',
+      'text',
+    ]);
+    expect(tokens[1]).toMatchObject({ value: body });
+    expect(tokens[2]).toMatchObject({ name: 'do', isClose: true });
+    expect(tokens[3]).toMatchObject({ value: 'after' });
+  });
+
+  it('ends the body at a {/do} in code, at any depth', () => {
+    const tokens = tokenize('{do}if (a) { b(){/do}after');
+    expect(tokens[1]).toMatchObject({ value: 'if (a) { b()' });
+    expect(tokens[3]).toMatchObject({ value: 'after' });
+  });
+
+  it('falls back to the first {/do} when the body is malformed', () => {
+    const tokens = tokenize('{do}$x = "a{/do}after');
+    expect(tokens[1]).toMatchObject({ value: '$x = "a' });
+    expect(tokens[2]).toMatchObject({ name: 'do', isClose: true });
+    expect(tokens[3]).toMatchObject({ value: 'after' });
+  });
+
+  it('falls back to the first {/do} when no {/do} is in code', () => {
+    const tokens = tokenize('{do}$x = 1 // c{/do}after');
+    expect(tokens[1]).toMatchObject({ value: '$x = 1 // c' });
+    expect(tokens[3]).toMatchObject({ value: 'after' });
   });
 });
 

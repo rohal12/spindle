@@ -1,6 +1,11 @@
-import { describe, expect, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
-import { tokenize, type Token } from '../../src/markup/tokenizer';
+import {
+  createScanMemo,
+  scanBalancedBrace,
+  tokenize,
+  type Token,
+} from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { interpolateCode, interpolateText } from '../../src/interpolation';
 import {
@@ -16,6 +21,7 @@ import {
   textVars,
 } from './markup-text';
 import {
+  DO_CODE,
   linkArb,
   markupNoise,
   mutatedPassage,
@@ -152,6 +158,82 @@ describe('tokenizer and AST builder robustness', () => {
   );
 });
 
+describe('brace scans', () => {
+  test.prop([fc.oneof(markupNoise, mutatedPassage), fc.boolean()], fcOptions)(
+    'answer the same with a shared memo as without',
+    (input, reversed) => {
+      const starts = [...Array(input.length + 1).keys()];
+      if (reversed) starts.reverse();
+      const memo = createScanMemo();
+      for (const start of starts) {
+        expect(scanBalancedBrace(input, start, memo)).toBe(
+          scanBalancedBrace(input, start),
+        );
+      }
+    },
+    propTimeout(5),
+  );
+});
+
+describe('tokenize running time', () => {
+  /**
+   * Unclosed openers whose scans would each run to the end of the passage:
+   * macros and expressions in unclosed brackets, template literals, regex
+   * literals and comments, and `{do}` bodies that never reach a `{/do}` in
+   * code. Scans of one passage share their results.
+   */
+  const PATTERNS = [
+    '{a',
+    '{$a',
+    'x {a\n',
+    '{a (',
+    '{a ((((]',
+    '{a {$a',
+    '{a `',
+    '{$a`${',
+    '{$a`${$a`',
+    '{a "',
+    "{a '} ",
+    '{a /',
+    '{a /[',
+    '{a //',
+    '{a /*',
+    '{$a // `',
+    '{do}/*{/do}',
+    '{do}=>/`{/do}',
+    // Unclosed links and {do}s, which used to search the rest each
+    '[[',
+    '[[a]',
+    ') {a[[{a',
+    '{do}',
+    '{do} {/d',
+    // Strings and comments that hide the next openers from earlier scans
+    "'{$a'<a ",
+    '"if(b="{if',
+    "[[({if''",
+    '{a\n//\\{$a',
+  ];
+
+  /** Milliseconds to tokenize `src`, best of three. */
+  function time(src: string): number {
+    let best = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const t0 = performance.now();
+      tokenize(src);
+      best = Math.min(best, performance.now() - t0);
+    }
+    return best;
+  }
+
+  it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
+    const small = time(pattern.repeat(500));
+    const large = time(pattern.repeat(4000));
+    // 8× the input may take 8× the time; allow generous noise, but not the
+    // 64× of a quadratic scan.
+    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+  });
+});
+
 describe('grammar round trip', () => {
   test.prop([passageArb], fcOptions)(
     'well-formed passages parse to the AST they were generated from',
@@ -169,6 +251,40 @@ describe('grammar round trip', () => {
       const tokens = tokenize(src);
       expect(tokens).toHaveLength(1);
       expect(tokens[0]).toMatchObject({ type: 'link', display, target });
+    },
+    propTimeout(5),
+  );
+
+  // docs/macros.md `{do}`: a body that is no well-formed JavaScript up to a
+  // `{/do}` in code ends at the first `{/do}`, wherever later text would
+  // close its unterminated literal.
+  const code = fc
+    .array(fc.constantFrom(...DO_CODE), { maxLength: 4 })
+    .map((parts) => parts.join(''));
+  const malformedDoBody = fc
+    .tuple(
+      code,
+      fc.constantFrom('"x', "'x", '`x', '/*x', '=/x\n', " don't", '=/[x\n'),
+      code,
+    )
+    .map((parts) => parts.join(''));
+  const tail = fc
+    .array(fc.constantFrom('a', ' ', '\n', '{', '}', '{/do}', '{do}', '*'), {
+      maxLength: 6,
+    })
+    .map((parts) => parts.join(''));
+
+  test.prop([malformedDoBody, tail], fcOptions)(
+    'a malformed {do} body ends at the first {/do}',
+    (body, rest) => {
+      const tokens = tokenize(`{do}${body}{/do}${rest}`);
+      expect(tokens[1]).toMatchObject({ type: 'text', value: body });
+      expect(tokens[2]).toMatchObject({
+        type: 'macro',
+        name: 'do',
+        isClose: true,
+        start: 4 + body.length,
+      });
     },
     propTimeout(5),
   );

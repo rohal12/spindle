@@ -176,6 +176,13 @@ const EXPRESSIONS: Expr[] = [
     (e) => e.vars.constructor + local(e, 'valueOf'),
   ],
   ['(typeof @hasOwnProperty)', (e) => typeof local(e, 'hasOwnProperty')],
+  // Regex literals and comments hold braces and quotes; `/` after an
+  // operand divides
+  [`$a.replace(/[{}"']/g, "")`, (e) => e.vars.a.replace(/[{}"']/g, '')],
+  [`!/[}'"]/.test($a)`, (e) => !/[}'"]/.test(e.vars.a)],
+  [`$a.split(/\\}|'/).length`, (e) => e.vars.a.split(/\}|'/).length],
+  [`$n /* } " ' */ + 1`, (e) => e.vars.n + 1],
+  ['($n /2/ 1)', (e) => e.vars.n / 2 / 1],
 ];
 
 /** Conditions for {if} / {elseif}. */
@@ -186,6 +193,8 @@ const CONDITIONS: Expr[] = [
   ['$a == "q"', (e) => e.vars.a === 'q'],
   ['$list.length', (e) => e.vars.list.length],
   ['@i == 0', (e) => local(e, 'i') === 0],
+  [`/[{}"]/.test($a)`, (e) => /[{}"]/.test(e.vars.a)],
+  [`$n > 1 /* } ' */`, (e) => e.vars.n > 1],
 ];
 
 const VARIABLES: Expr[] = [
@@ -437,6 +446,10 @@ export const codePieces: fc.Arbitrary<TextPiece> = fc
             ['@o', (e: TextEnv) => local(e, 'o')],
             ['$n + 1', (e: TextEnv) => e.vars.n + 1],
             ["$b ? '}' : '{'", (e: TextEnv) => (e.vars.b ? '}' : '{')],
+            [
+              `$a.replace(/[}"']/g, '{')`,
+              (e: TextEnv) => e.vars.a.replace(/[}"']/g, '{'),
+            ],
             ['$list.length', (e: TextEnv) => e.vars.list.length],
             ['@toString', (e: TextEnv) => local(e, 'toString')],
             ['_constructor', () => undefined],

@@ -29,17 +29,16 @@ const domOptions = {
   numRuns: Math.max(30, Math.round(NUM_RUNS / 3)),
 };
 
-// Passage markup: no regex literals or comments (the passage tokenizer
-// does not lex JavaScript), no line breaks inside literals (a quoted string
-// ends at a line break there), `$` variables only (no locals at passage
-// level), and no `{` in labels (`{$x}` would interpolate).
-const dom = exprArbs({
-  sigils: ['$'],
-  regex: false,
-  comments: false,
-  newlines: false,
-});
-const domLabel = quotedLabel({ newlines: false, braces: false });
+// Passage markup: `$` variables only (no locals at passage level). The
+// tokenizer lexes macro arguments as JavaScript, so regex literals,
+// comments and line breaks in literals are all fine.
+const dom = exprArbs({ sigils: ['$'] });
+// Labels are text markup: a `{` that opens a variable, expression or macro
+// (`{$x}`, `{(`, `{a`), or a backslash escaping a brace, would not show as
+// written. Other braces are text.
+const domLabel = quotedLabel().filter(
+  ({ text }) => !/\{[A-Za-z/.#$_@%(!]|\\[{}]/.test(text),
+);
 
 function makePassage(pid: number, name: string, content: string): PassageData {
   return { pid, name, tags: [], metadata: {}, content };
@@ -146,8 +145,11 @@ describe('widget invocation', () => {
 });
 
 describe('{meter}', () => {
+  // A max expression starting with a regex literal reads as division after
+  // the current value; docs/macros.md says to wrap it in parentheses.
+  const max = dom.any.filter((e) => !e.src.startsWith('/'));
   const meter = fc
-    .tuple(dom.standalone, dom.any, fc.option(domLabel, { nil: undefined }))
+    .tuple(dom.standalone, max, fc.option(domLabel, { nil: undefined }))
     .filter(
       ([, max, label]) =>
         label !== undefined || readWholeQuoted(max.src) === null,

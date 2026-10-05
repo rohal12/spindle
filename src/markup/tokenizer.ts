@@ -1,3 +1,6 @@
+import { createJsScanCache, findCodeEnd, type JsScanCache } from '../js-lexer';
+import { isCodeAttribute } from './code-attributes';
+
 export interface TextToken {
   type: 'text';
   value: string;
@@ -265,8 +268,12 @@ function parseHtmlAttributes(
         const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
+        // A code attribute's value is no markup (`isCodeAttribute`): only
+        // `{` and a sigil open a reference, other braces and backslashes
+        // are text, as `splitSigilTemplate` reads them.
+        const code = isCodeAttribute(attrName);
         while (j < input.length) {
-          if (input[j] === '\\') {
+          if (!code && input[j] === '\\') {
             // A brace after an odd backslash run is escaped (`\{`) and opens
             // no interpolation, as in passage text.
             let k = j + 1;
@@ -277,7 +284,11 @@ function parseHtmlAttributes(
           }
           if (input[j] === '{') {
             // Skip a whole {…} interpolation so quotes inside it don't end the value
-            const closeIdx = scanBalancedBrace(input, j + 1, memo);
+            const closeIdx = !code
+              ? scanBlockClose(input, j, memo)
+              : SIGIL_CHARS.has(input[j + 1]!)
+                ? scanBalancedBrace(input, j + 1, memo)
+                : -1;
             if (closeIdx !== -1) {
               j = closeIdx + 1;
               continue;
@@ -303,6 +314,161 @@ function parseHtmlAttributes(
 }
 
 /**
+ * Results of the brace and template scans of one input, shared by repeated
+ * scans of it. A scan's result depends only on the input and where it
+ * starts, so caching it is exact. Without the cache, each unclosed template
+ * literal was scanned once as a template and again as plain text, so nested
+ * unclosed ones (`` {$a`${$a`${… ``) took time exponential in their depth;
+ * and each unclosed `{` was scanned to the end of the input, so many of them
+ * took quadratic time. A memo must only be reused for scans of the same input
+ * string.
+ */
+export interface ScanMemo {
+  /** `scanBalancedBrace` results, by lenient start. */
+  code: Map<number, number>;
+  /** JavaScript lexer results. */
+  js: JsScanCache;
+  /** Lenient brace scan results. */
+  brace: Map<number, number>;
+  /** Lenient template literal scan results. */
+  template: Map<number, number>;
+  /** The last macro name run found: no whitespace or } in [from, to). */
+  name: { from: number; to: number };
+  /** Link scan results (`scanLinkClose`). */
+  link: Map<number, number>;
+  /**
+   * The last search for a raw-body closer, by macro name: the first one
+   * from `from` on is at `at` (-1 for none).
+   */
+  rawClose: Map<string, { from: number; at: number }>;
+}
+
+export function createScanMemo(): ScanMemo {
+  return {
+    code: new Map(),
+    js: createJsScanCache(),
+    brace: new Map(),
+    template: new Map(),
+    name: { from: 0, to: -1 },
+    link: new Map(),
+    rawClose: new Map(),
+  };
+}
+
+/**
+ * Find the } closing the code that starts at position i: a `{$…}`
+ * expression from its sigil on, an attribute interpolation. The code is
+ * lexed as JavaScript, so only a } in code outside the brackets it opened
+ * counts — not one in a string, template or regex literal or a comment —
+ * and `/` after an operand divides.
+ *
+ * Text that is not well-formed JavaScript (an apostrophe, an unterminated
+ * literal or comment, unbalanced brackets) is scanned leniently instead, as
+ * prose-like macro arguments are: braces count except inside string and
+ * template literals, and a quote that can't start a string (apostrophe,
+ * escaped, not closed on its line) is text.
+ *
+ * Returns the index of the closing } or -1 if there is none. Pass the same
+ * memo to repeated scans of one input to share their work.
+ */
+export function scanBalancedBrace(
+  input: string,
+  i: number,
+  memo: ScanMemo = createScanMemo(),
+): number {
+  return scanClose(input, i, i, memo);
+}
+
+/**
+ * Index of the } closing the macro whose content (name, then arguments)
+ * starts at `contentStart`, or -1. The name runs up to whitespace or the }
+ * (as `parseMacroContent` reads it); the arguments after it are code. The
+ * lenient scan covers the whole content, as it always has.
+ */
+function scanMacroClose(
+  input: string,
+  contentStart: number,
+  memo: ScanMemo,
+): number {
+  const run = memo.name;
+  if (contentStart < run.from || contentStart > run.to) {
+    let k = contentStart;
+    while (k < input.length && input[k] !== '}' && !/\s/.test(input[k]!)) k++;
+    run.from = contentStart;
+    run.to = k;
+  }
+  return scanClose(input, run.to, contentStart, memo);
+}
+
+/**
+ * Index of the } closing the `{…}` block opened at `open`, read as passage
+ * text reads it: a macro (`{name args}`, `{/name}`) has its arguments lexed
+ * after its name, an expression (`{$…}`, `{(…)}`, `{!…}`) from its first
+ * character, after any `.class#id` selectors. Any other block is scanned as
+ * code from just past the {. Returns -1 if it is unclosed.
+ */
+function scanBlockClose(input: string, open: number, memo: ScanMemo): number {
+  let at = open + 1;
+  const c = input[at];
+  if (c === '.' || c === '#') {
+    at = parseSelectors(input, at).endIdx;
+    if (input[at] === ' ') at++;
+  }
+  const first = input[at];
+  if (first !== undefined && (first === '/' || /[a-zA-Z]/.test(first))) {
+    return scanMacroClose(input, at, memo);
+  }
+  return scanBalancedBrace(input, at, memo);
+}
+
+/** Lex the code from `codeStart`, else scan leniently from `lenientStart`. */
+function scanClose(
+  input: string,
+  codeStart: number,
+  lenientStart: number,
+  memo: ScanMemo,
+): number {
+  let end = memo.code.get(lenientStart);
+  if (end === undefined) {
+    end = findCodeEnd(input, codeStart, { cache: memo.js });
+    if (end === -1) end = scanBraceLenient(input, lenientStart, memo);
+    memo.code.set(lenientStart, end);
+  }
+  return end;
+}
+
+/**
+ * Index of the ]] closing the link whose text starts at `from`, or -1. A
+ * [[ inside opens a nested pair. Each nested [[ starts a scan that reads the
+ * rest the same way, so its result is recorded too: unclosed [[s don't each
+ * scan to the end of the input.
+ */
+function scanLinkClose(input: string, from: number, memo: ScanMemo): number {
+  const known = memo.link.get(from);
+  if (known !== undefined) return known;
+  const opens = [from];
+  let i = from;
+  while (i < input.length) {
+    if (input[i] === '[' && input[i + 1] === '[') {
+      i += 2;
+      const inner = memo.link.get(i);
+      if (inner === undefined) opens.push(i);
+      else if (inner === -1)
+        break; // nor does this one close
+      else i = inner + 2;
+    } else if (input[i] === ']' && input[i + 1] === ']') {
+      memo.link.set(opens.pop()!, i);
+      if (!opens.length) return i;
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  for (const open of opens) memo.link.set(open, -1);
+  return -1;
+}
+
+/**
  * Skip a '…' or "…" string literal opening at i.
  * Returns the index just past the closing quote, or -1 if the string is
  * not closed on the same line (JS strings can't span lines unescaped).
@@ -321,107 +487,137 @@ function skipQuoted(input: string, i: number): number {
 }
 
 /**
- * Results of brace and template scans on one input, by start position. A
- * scan's result depends only on the input and where it starts, so caching
- * it is exact. Without the cache, each unclosed template literal is scanned
- * once as a template and again as plain text, so nested unclosed ones
- * (`` {$a`${$a`${… ``) took time exponential in their depth.
- * A memo must only be reused for scans of the same input string.
- */
-export interface ScanMemo {
-  brace: Map<number, number>;
-  template: Map<number, number>;
-}
-
-export function createScanMemo(): ScanMemo {
-  return { brace: new Map(), template: new Map() };
-}
-
-/**
- * Skip a `…` template literal opening at i, including ${…} parts.
- * Returns the index just past the closing backtick, or -1 if unclosed.
- */
-function skipTemplate(input: string, i: number, memo: ScanMemo): number {
-  let end = memo.template.get(i);
-  if (end === undefined) {
-    end = scanTemplate(input, i, memo);
-    memo.template.set(i, end);
-  }
-  return end;
-}
-
-function scanTemplate(input: string, i: number, memo: ScanMemo): number {
-  let j = i + 1;
-  while (j < input.length) {
-    const c = input[j];
-    if (c === '\\') {
-      j += 2;
-    } else if (c === '`') {
-      return j + 1;
-    } else if (c === '$' && input[j + 1] === '{') {
-      const closeIdx = scanBalancedBrace(input, j + 2, memo);
-      if (closeIdx === -1) return -1;
-      j = closeIdx + 1;
-    } else {
-      j++;
-    }
-  }
-  return -1;
-}
-
-/**
  * A quote directly after a letter/digit is an apostrophe (don't), not a
  * string; after a backslash it is an escaped attribute delimiter (\").
  */
 const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
 
 /**
- * Scan for the balanced closing } starting at position i (just past the {).
- * Braces inside string and template literals are ignored. A quote that
- * can't start a string (apostrophe, escaped, unterminated) counts as text.
- * Returns the index of the closing } or -1 if unbalanced. Pass the same
- * memo to repeated scans of one input to share their work.
+ * A brace or template literal scan in progress: braces from `start` (just
+ * past a {) to their closing }, or a template literal from its backtick at
+ * `start` to the closing one.
  */
-export function scanBalancedBrace(
-  input: string,
-  i: number,
-  memo: ScanMemo = createScanMemo(),
-): number {
-  let end = memo.brace.get(i);
-  if (end === undefined) {
-    end = scanBrace(input, i, memo);
-    memo.brace.set(i, end);
-  }
-  return end;
+interface LenientScan {
+  template: boolean;
+  start: number;
+  /**
+   * For braces, per brace depth from the outermost: the checkpoints at that
+   * depth whose scans end where the depth does.
+   */
+  levels: number[][];
 }
 
-function scanBrace(input: string, i: number, memo: ScanMemo): number {
-  let depth = 1;
-  while (i < input.length) {
-    const c = input[i]!;
-    if (c === '{') {
-      depth++;
-    } else if (c === '}') {
-      if (--depth === 0) return i;
-    } else if (
-      (c === '"' || c === "'") &&
-      !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!))
-    ) {
-      const end = skipQuoted(input, i);
-      if (end !== -1) {
-        i = end;
+/**
+ * Scan for the balanced closing } starting at position i (just past the {).
+ * Braces inside string and template literals are ignored. A quote that
+ * can't start a string (apostrophe, escaped, unterminated) counts as text,
+ * and so does a backtick without a closing one.
+ * Returns the index of the closing } or -1 if unbalanced.
+ *
+ * Template literals and their ${…} parts are scans on a stack, not
+ * recursive calls, so deep nesting can't overflow the call stack. How the
+ * text reads depends only on where a scan is, so a scan passing a point —
+ * just past a {, a string or a template literal — goes on as a scan
+ * starting there would: its result there is recorded too, and a recorded
+ * result is used instead of scanning on. Scans from many starts in one
+ * input then take about linear time.
+ */
+function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
+  const known = memo.brace.get(i);
+  if (known !== undefined) return known;
+  const stack: LenientScan[] = [{ template: false, start: i, levels: [[]] }];
+  for (;;) {
+    const scan = stack[stack.length - 1]!;
+    let end: number | undefined; // set when `scan` is done
+    if (scan.template) {
+      while (end === undefined && i < input.length) {
+        const c = input[i];
+        if (c === '\\') {
+          i += 2;
+        } else if (c === '`') {
+          end = i + 1;
+        } else if (c === '$' && input[i + 1] === '{') {
+          const inner = memo.brace.get(i + 2);
+          if (inner === undefined) break; // scan the ${…} first
+          if (inner === -1) end = -1;
+          else i = inner + 1;
+        } else {
+          i++;
+        }
+      }
+      if (end === undefined && i < input.length) {
+        stack.push({ template: false, start: i + 2, levels: [[]] });
+        i += 2;
         continue;
       }
-    } else if (c === '`') {
-      const end = skipTemplate(input, i, memo);
-      if (end !== -1) {
-        i = end;
+      end ??= -1;
+    } else {
+      const { levels } = scan;
+      /** The } at `close` ends the innermost level. */
+      const closeLevel = (close: number) => {
+        for (const at of levels.pop()!) memo.brace.set(at, close);
+        if (!levels.length) end = close;
+      };
+      while (end === undefined && i < input.length) {
+        const c = input[i]!;
+        let at = -1; // a checkpoint, if one starts here
+        if (c === '{') {
+          levels.push([]);
+          at = ++i;
+        } else if (c === '}') {
+          closeLevel(i++);
+        } else if (
+          (c === '"' || c === "'") &&
+          !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!))
+        ) {
+          const close = skipQuoted(input, i);
+          if (close === -1) i++;
+          else at = i = close;
+        } else if (c === '`') {
+          const close = memo.template.get(i);
+          if (close === undefined) break; // scan the template first
+          if (close === -1) i++;
+          else at = i = close;
+        } else {
+          i++;
+        }
+        if (at === -1) continue;
+        const known = memo.brace.get(at);
+        if (known === undefined) {
+          levels[levels.length - 1]!.push(at);
+        } else if (known === -1) {
+          // The innermost level never closes, so neither do the others
+          i = input.length;
+        } else {
+          closeLevel(known);
+          i = known + 1;
+        }
+      }
+      if (end === undefined && i < input.length) {
+        stack.push({ template: true, start: i, levels: [] });
+        i++;
         continue;
+      }
+      if (end === undefined) {
+        end = -1;
+        for (const level of levels) {
+          for (const at of level) memo.brace.set(at, -1);
+        }
       }
     }
-    i++;
+    // `scan` is done: hand its result to the scan that started it
+    stack.pop();
+    (scan.template ? memo.template : memo.brace).set(scan.start, end);
+    const parent = stack[stack.length - 1];
+    if (!parent) return end;
+    if (parent.template) {
+      // An unclosed ${…} leaves the template unclosed: go on to its end
+      i = end === -1 ? input.length : end + 1;
+    } else {
+      // An unclosed template's backtick is text
+      i = end === -1 ? scan.start + 1 : end;
+    }
   }
-  return -1;
 }
 
 /**
@@ -464,20 +660,43 @@ export function tokenize(
   }
 
   /**
-   * After an opening raw-body macro ({do}), emit everything up to the
-   * first {/name} as a single text token so JavaScript source is not
-   * parsed as markup. A literal "{/do}" inside the code would end it early.
-   * Without a closer, nothing is consumed and the AST builder reports it.
+   * After an opening raw-body macro ({do}), emit everything up to its
+   * {/name} as a single text token so JavaScript source is not parsed as
+   * markup. The body is lexed as JavaScript statements: a {/do} in code ends
+   * it, one inside a string, template or regex literal or a comment does
+   * not. If the body is not well-formed JavaScript up to a {/do} in code,
+   * the first {/do} ends it. Without a closer, nothing is consumed and the
+   * AST builder reports it.
    */
   function consumeRawBody(name: string, isClose: boolean) {
     const lower = name.toLowerCase();
     if (isClose || !RAW_BODY_MACROS.has(lower)) return;
-    const closeRe = new RegExp(`\\{/${lower}\\s*\\}`, 'gi');
-    closeRe.lastIndex = i;
-    const m = closeRe.exec(input);
-    if (!m) return;
-    const closeStart = m.index;
-    const closeEnd = closeStart + m[0].length;
+    const closer = `\\{/${lower}\\s*\\}`;
+    // The first closer from here on. Without one from `from` on there is
+    // none later either, so many unclosed {do}s don't each search the rest.
+    let last = memo.rawClose.get(lower);
+    if (!last || i < last.from || (last.at >= 0 && i > last.at)) {
+      const firstRe = new RegExp(closer, 'gi');
+      firstRe.lastIndex = i;
+      last = { from: i, at: firstRe.exec(input)?.index ?? -1 };
+      memo.rawClose.set(lower, last);
+    }
+    const first = last.at;
+    if (first === -1) return;
+    const atRe = new RegExp(closer, 'iy');
+    const closerAt = (k: number) => {
+      atRe.lastIndex = k;
+      return atRe.test(input);
+    };
+    let closeStart = findCodeEnd(input, i, {
+      goal: 'statements',
+      stop: closerAt,
+      stopKey: lower,
+      cache: memo.js,
+    });
+    if (closeStart === -1) closeStart = first;
+    atRe.lastIndex = closeStart;
+    const closeEnd = closeStart + atRe.exec(input)![0].length;
     flushText(closeStart);
     tokens.push({
       type: 'macro',
@@ -565,30 +784,18 @@ export function tokenize(
       }
 
       // Find closing ]]
-      let depth = 1;
       const innerStart = i;
-      while (i < input.length && depth > 0) {
-        if (input[i] === '[' && input[i + 1] === '[') {
-          depth++;
-          i += 2;
-        } else if (input[i] === ']' && input[i + 1] === ']') {
-          depth--;
-          if (depth === 0) break;
-          i += 2;
-        } else {
-          i++;
-        }
-      }
+      const closeIdx = scanLinkClose(input, innerStart, memo);
 
-      if (depth !== 0) {
+      if (closeIdx === -1) {
         // Unclosed link — treat as text
         i = start + 2;
         textStart = start;
         continue;
       }
 
-      const inner = input.slice(innerStart, i);
-      i += 2; // skip ]]
+      const inner = input.slice(innerStart, closeIdx);
+      i = closeIdx + 2; // skip ]]
 
       const { display, target } = parseLink(inner);
       const linkToken: LinkToken = {
@@ -646,7 +853,7 @@ export function tokenize(
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx$ = scanBalancedBrace(input, nameStart, memo);
+          const closeIdx$ = scanBalancedBrace(input, nameStart - 1, memo);
           if (closeIdx$ !== -1) {
             const expression = input.slice(afterSelectors, closeIdx$);
             i = closeIdx$ + 1;
@@ -691,7 +898,7 @@ export function tokenize(
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_ = scanBalancedBrace(input, nameStart, memo);
+          const closeIdx_ = scanBalancedBrace(input, nameStart - 1, memo);
           if (closeIdx_ !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_);
             i = closeIdx_ + 1;
@@ -736,7 +943,7 @@ export function tokenize(
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_at = scanBalancedBrace(input, nameStart, memo);
+          const closeIdx_at = scanBalancedBrace(input, nameStart - 1, memo);
           if (closeIdx_at !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_at);
             i = closeIdx_at + 1;
@@ -781,7 +988,7 @@ export function tokenize(
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_pct = scanBalancedBrace(input, nameStart, memo);
+          const closeIdx_pct = scanBalancedBrace(input, nameStart - 1, memo);
           if (closeIdx_pct !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_pct);
             i = closeIdx_pct + 1;
@@ -814,7 +1021,7 @@ export function tokenize(
           // {.class#id macroName args}
           // Scan to closing }, tracking brace nesting and string literals
           const contentStart = afterSelectors;
-          const closeIdx = scanBalancedBrace(input, contentStart, memo);
+          const closeIdx = scanMacroClose(input, contentStart, memo);
 
           if (closeIdx === -1) {
             i = start + 1;
@@ -869,7 +1076,7 @@ export function tokenize(
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart, memo);
+        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -909,7 +1116,7 @@ export function tokenize(
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart, memo);
+        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -949,7 +1156,7 @@ export function tokenize(
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart, memo);
+        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -989,7 +1196,7 @@ export function tokenize(
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart, memo);
+        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -1026,7 +1233,7 @@ export function tokenize(
         // Scan to closing }, tracking brace nesting (object literals)
         // and string literals
         const contentStart = i + 1;
-        const closeIdx = scanBalancedBrace(input, contentStart, memo);
+        const closeIdx = scanMacroClose(input, contentStart, memo);
 
         if (closeIdx === -1) {
           // Unclosed macro — treat as text
