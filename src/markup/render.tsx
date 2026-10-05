@@ -350,8 +350,11 @@ function getVariableTextValue(
  * Characters/patterns that trigger CommonMark or GFM transformations.
  * Any match → fall through to the full micromark pipeline.
  * False positives (e.g. `-` used as text, not list) just use the slower path.
+ * Includes character references (`&amp;`, `&#123;`) and two-space hard line
+ * breaks, which micromark decodes / turns into <br> (#171).
  */
-const MARKDOWN_SYNTAX_RE = /[*_`#|~\[>\\\-+=]|!\[|\d+\./;
+const MARKDOWN_SYNTAX_RE =
+  /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
 const PLACEHOLDER_SPLIT_RE = /(<span data-tw="\d+"><\/span>)/;
 const PLACEHOLDER_IDX_RE = /^<span data-tw="(\d+)"><\/span>$/;

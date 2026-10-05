@@ -4,6 +4,7 @@ import { render } from 'preact';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { markdownToHtml } from '../../src/markup/markdown';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -183,5 +184,79 @@ describe('plain text fast path (issue #145)', () => {
       const el = renderMarkup('Para 1\n\nPara 2');
       expect(el.querySelectorAll('p').length).toBeGreaterThanOrEqual(2);
     });
+  });
+});
+
+describe('plain text fast path matches micromark (issue #171)', () => {
+  beforeEach(() => {
+    const store = useStoryStore.getState();
+    store.init(makeStoryData([makePassage(1, 'Start', 'Start')]));
+  });
+
+  /** Render plain text straight through micromark, for comparison. */
+  function micromarkHtml(text: string): string {
+    const el = document.createElement('div');
+    el.innerHTML = markdownToHtml(text).trim();
+    return el.innerHTML;
+  }
+
+  const cases = [
+    'Fish &amp; Chips',
+    'A&nbsp;B',
+    '&copy; 2024',
+    'Snowman &#9731; here',
+    'Smile &#x1F600; now',
+    'Smile &#X1f600; now',
+    'first  \nsecond',
+    'first   \nsecond',
+    'Fish & Chips',
+    'AT&T and R&D',
+    'a &unknown thing',
+    'first\nsecond',
+  ];
+
+  for (const text of cases) {
+    it(`renders ${JSON.stringify(text)} like micromark`, () => {
+      expect(renderMarkup(text).innerHTML).toBe(micromarkHtml(text));
+    });
+  }
+
+  it('decodes a named entity', () => {
+    const el = renderMarkup('Fish &amp; Chips', { nobr: true });
+    expect(el.textContent).toBe('Fish & Chips');
+  });
+
+  it('decodes numeric entities', () => {
+    const el = renderMarkup('&#65;&#x42;C', { nobr: true });
+    expect(el.textContent).toBe('ABC');
+  });
+
+  it('turns two trailing spaces into a hard break', () => {
+    const el = renderMarkup('first  \nsecond');
+    const p = el.querySelector('p')!;
+    expect(p.querySelector('br')).not.toBeNull();
+    expect(p.textContent).toBe('first\nsecond');
+  });
+
+  it('decodes entities next to a variable placeholder', () => {
+    useStoryStore.getState().setVariable('dish', 'Chips');
+    const el = renderMarkup('Fish &amp; {$dish}', { nobr: true });
+    expect(el.textContent).toBe('Fish & Chips');
+  });
+
+  it('keeps a hard break between variable placeholders', () => {
+    useStoryStore.getState().setVariable('a', 'Alpha');
+    useStoryStore.getState().setVariable('b', 'Beta');
+    const el = renderMarkup('A: {$a}  \nB: {$b}');
+    const p = el.querySelector('p')!;
+    expect(p.querySelector('br')).not.toBeNull();
+    expect(p.textContent).toBe('A: Alpha\nB: Beta');
+  });
+
+  it('keeps a hard break before a macro', () => {
+    const el = renderMarkup('Line one  \n{print 1 + 1}');
+    const p = el.querySelector('p')!;
+    expect(p.querySelector('br')).not.toBeNull();
+    expect(p.textContent).toBe('Line one\n2');
   });
 });
