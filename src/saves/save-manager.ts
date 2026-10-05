@@ -662,6 +662,9 @@ async function prepareImport(
   const record = deepClone(data.save);
   record.meta.id = crypto.randomUUID();
   record.meta.updatedAt = new Date().toISOString();
+  // The save now belongs to this story: it is listed, loaded and cleared
+  // with it, whatever its own metadata says
+  record.meta.ifid = ifid;
 
   // Ensure the playthrough exists
   const playthroughs = await backend.getPlaythroughsByIfid(ifid);
