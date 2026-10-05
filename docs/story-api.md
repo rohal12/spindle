@@ -27,6 +27,8 @@ Set one or more story variables. As with `Story.get()`, a leading `$` is optiona
 {/do}
 ```
 
+A dot path such as `Story.set("player.stats.str", 5)` goes through objects, class instances and array indices (`"inventory.0"`). A path through a missing object throws a `TypeError`. So does a write into a Map, Set, Date or RegExp, to a non-index key of an array, or through `__proto__`, since such a property would be lost on the next save.
+
 Writing a variable that is not declared in `StoryVariables` (or a `%` transient not declared in `StoryTransients`) still works, but logs a console warning once per name: passages cannot reference such a variable, so it is usually a typo. For dot-paths only the root name is checked.
 
 #### Transient variables
