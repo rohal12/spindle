@@ -304,6 +304,32 @@ describe('extended macro components', () => {
       // After act(), the re-render from the state update should have completed
       expect(el!.textContent).toContain('gone');
     });
+
+    it('shows an error for a @local outside a locals scope', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage('before {unset @foo} after');
+      });
+      spy.mockRestore();
+      expect(el.textContent).toContain('before');
+      expect(el.textContent).toContain('after');
+      const error = el.querySelector('.error');
+      expect(error).not.toBeNull();
+      expect(error!.textContent).toContain('{unset error');
+      expect(error!.textContent).toMatch(/@foo/);
+    });
+
+    it('shows an error for an argument that is not a variable', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const el = renderPassage('{unset foo}');
+      spy.mockRestore();
+      const error = el.querySelector('.error');
+      expect(error).not.toBeNull();
+      expect(error!.textContent).toContain(
+        'expects a variable ($name, _name, %name, or @name), got "foo"',
+      );
+    });
   });
 
   describe('{link}', () => {
