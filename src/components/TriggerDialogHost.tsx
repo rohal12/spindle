@@ -59,6 +59,7 @@ export function TriggerDialogHost() {
           panelClass={dialog.panelClass}
           onClose={handleClose}
           showCloseButton={dialog.showCloseButton}
+          dismissible={dialog.dismissible}
         />
       ))}
     </>
