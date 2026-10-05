@@ -52,6 +52,27 @@ function isStandaloneValue(token: string): boolean {
   return false;
 }
 
+/** True for a character that opens a string literal (`"`, `'` or a backtick). */
+function isQuote(ch: string): boolean {
+  return ch === '"' || ch === "'" || ch === '`';
+}
+
+/**
+ * Given the index of an opening quote, return the index just past its closing
+ * quote (or `raw.length` if unterminated). A backslash escapes the character
+ * after it, so a quote preceded by an even run of backslashes still closes the
+ * string, and one preceded by an odd run does not (#224).
+ */
+function skipString(raw: string, start: number): number {
+  const quote = raw[start];
+  for (let i = start + 1; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '\\') i++;
+    else if (ch === quote) return i + 1;
+  }
+  return raw.length;
+}
+
 /**
  * Try to split a raw string on whitespace at depth 0 (respecting quotes,
  * parentheses, brackets, and braces). Each resulting token must pass
@@ -61,20 +82,14 @@ function trySplitOnWhitespace(raw: string): string[] | null {
   const args: string[] = [];
   let current = '';
   let depth = 0;
-  let inString: string | null = null;
 
   for (let i = 0; i < raw.length; i++) {
     const ch = raw[i]!;
 
-    if (inString) {
-      current += ch;
-      if (ch === inString && raw[i - 1] !== '\\') inString = null;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === '`') {
-      inString = ch;
-      current += ch;
+    if (isQuote(ch)) {
+      const end = skipString(raw, i);
+      current += raw.slice(i, end);
+      i = end - 1;
       continue;
     }
 
@@ -123,21 +138,15 @@ export function splitArgs(raw: string): string[] {
   const args: string[] = [];
   let current = '';
   let depth = 0;
-  let inString: string | null = null;
   let hasComma = false;
 
   for (let i = 0; i < raw.length; i++) {
     const ch = raw[i]!;
 
-    if (inString) {
-      current += ch;
-      if (ch === inString && raw[i - 1] !== '\\') inString = null;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === '`') {
-      inString = ch;
-      current += ch;
+    if (isQuote(ch)) {
+      const end = skipString(raw, i);
+      current += raw.slice(i, end);
+      i = end - 1;
       continue;
     }
 
