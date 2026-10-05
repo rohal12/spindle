@@ -8,8 +8,18 @@ import { getMacro, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
-import { useInterpolate } from '../hooks/use-interpolate';
-import { splitTemplate } from '../interpolation';
+import { useTextScope } from '../hooks/use-interpolate';
+import {
+  hasInterpolation,
+  mapTextNodes,
+  parseText,
+  renderText,
+  type ParsedText,
+  type TextError,
+  type TextScope,
+} from '../interpolation';
+import { MacroError } from '../components/macros/MacroError';
+import { errorMessage } from '../utils/error-message';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -64,43 +74,14 @@ interface Placeholders {
   nonce: string;
   components: preact.ComponentChildren[];
   /**
-   * Per placeholder, the node as attribute text (image alt, link title):
-   * variables and expressions as interpolations, HTML elements as the text
-   * of their children. Macros have no text form and are dropped there, the
-   * way markdown drops tags from alt text.
+   * Per placeholder, its node, for use in an attribute (image alt text, a
+   * link title), where it stands for its text (see interpolation.ts).
    */
-  texts: AttributePart[][];
+  nodes: ASTNode[];
 }
-
-/** An attribute value as literal text and `{…}` interpolations. */
-type AttributePart = { literal: string } | { interpolation: string };
 
 function placeholderHtml(nonce: string, index: number): string {
   return `<span data-tw=${nonce}:${index}></span>`;
-}
-
-const SCOPE_SIGILS = {
-  variable: '$',
-  temporary: '_',
-  local: '@',
-  transient: '%',
-} as const;
-
-/** A node's text for use in an attribute value. */
-function attributeText(node: ASTNode): AttributePart[] {
-  switch (node.type) {
-    case 'text':
-      return [{ literal: node.value }];
-    case 'variable':
-      if (node.scope === 'local' && node.name === 'children') return [];
-      return [{ interpolation: `{${SCOPE_SIGILS[node.scope]}${node.name}}` }];
-    case 'expression':
-      return [{ interpolation: `{${node.expression}}` }];
-    case 'html':
-      return node.children.flatMap(attributeText);
-    default:
-      return [];
-  }
 }
 
 /**
@@ -155,8 +136,8 @@ function expandPlaceholderText(
 
 /**
  * An element whose attributes contain placeholders (a variable in image alt
- * text or a link title). The interpolations resolve against the store and
- * locals, so the attribute follows the variable as the component would.
+ * text or a link title). Each such attribute is evaluated as text against
+ * the store and locals, so it follows its variables as the component would.
  */
 function PlaceholderAttributes({
   tag,
@@ -166,19 +147,44 @@ function PlaceholderAttributes({
 }: {
   tag: string;
   props: Record<string, string>;
-  attributes: Record<string, AttributePart[]>;
+  attributes: Record<string, ASTNode[]>;
   children: preact.ComponentChildren[];
 }) {
-  const resolve = useInterpolate();
+  const scope = useTextScope();
   const resolved: Record<string, string> = { ...props };
-  for (const [name, parts] of Object.entries(attributes)) {
-    resolved[name] = parts
-      .map((p) =>
-        'literal' in p ? p.literal : (resolve(p.interpolation) ?? ''),
-      )
-      .join('');
+  const errors: AttributeError[] = [];
+  for (const [name, nodes] of Object.entries(attributes)) {
+    const result = renderText(nodes, scope);
+    resolved[name] = result.text;
+    for (const error of result.errors) errors.push([name, error]);
   }
-  return h(tag, resolved, ...children);
+  return withAttributeErrors(errors, h(tag, resolved, ...children));
+}
+
+/** An error met while evaluating the named attribute. */
+type AttributeError = [attribute: string, error: TextError];
+
+/**
+ * Show the errors met in an element's attributes in front of it, the way a
+ * failing macro shows its error in passage text.
+ */
+function withAttributeErrors(
+  errors: AttributeError[],
+  element: preact.ComponentChildren,
+): preact.ComponentChildren {
+  if (errors.length === 0) return element;
+  return (
+    <>
+      {errors.map(([name, { macro, error }], i) => (
+        <MacroError
+          key={i}
+          macro={macro}
+          error={new Error(`in attribute "${name}": ${errorMessage(error)}`)}
+        />
+      ))}
+      {element}
+    </>
+  );
 }
 
 /** The component index of a placeholder element of this call, or -1. */
@@ -243,7 +249,7 @@ function convertDomNode(
 
     // Convert attributes
     const props: Record<string, string> = {};
-    let withPlaceholders: Record<string, AttributePart[]> | undefined;
+    let withPlaceholders: Record<string, ASTNode[]> | undefined;
     for (const attr of Array.from(el.attributes)) {
       const parts = splitPlaceholderText(attr.value, ph);
       if (parts.every((part) => typeof part === 'string')) {
@@ -251,8 +257,11 @@ function convertDomNode(
         continue;
       }
       withPlaceholders ??= {};
-      withPlaceholders[attr.name] = parts.flatMap((part) =>
-        typeof part === 'string' ? [{ literal: part }] : ph.texts[part]!,
+      withPlaceholders[attr.name] = parts.map(
+        (part): ASTNode =>
+          typeof part === 'string'
+            ? { type: 'text', value: part }
+            : ph.nodes[part]!,
       );
     }
 
@@ -452,27 +461,52 @@ function decodeAttributeText(text: string): string {
   return decoded;
 }
 
+const attributeNodes = new Map<string, ParsedText>();
+const ATTRIBUTE_CACHE_LIMIT = 2000;
+
 /**
- * An author-written attribute value with its `{…}` interpolations resolved
- * and the character references in its literal text decoded. A reference
- * that decodes to a brace (`&#123;$x}`) stays literal, not an interpolation.
+ * Parse an author-written attribute value as text-only markup, with the
+ * character references in its literal text decoded (macro bodies included).
+ * Decoding follows parsing, so a reference that decodes to a brace
+ * (`&#123;$x}`) stays literal, and a variable's value is never decoded.
+ */
+function parseAttributeValue(value: string): ParsedText {
+  let parsed = attributeNodes.get(value);
+  if (parsed === undefined) {
+    parsed = parseText(value);
+    if ('nodes' in parsed && value.includes('&')) {
+      parsed = { nodes: mapTextNodes(parsed.nodes, decodeAttributeText) };
+    }
+    if (attributeNodes.size >= ATTRIBUTE_CACHE_LIMIT) attributeNodes.clear();
+    attributeNodes.set(value, parsed);
+  }
+  return parsed;
+}
+
+/**
+ * An author-written attribute value with its markup evaluated (see
+ * interpolation.ts) and its character references decoded. Errors are added
+ * to `errors`; a value whose markup doesn't parse is kept as written.
  */
 function resolveAttributeValue(
+  name: string,
   value: string,
-  resolve: (s: string | undefined) => string | undefined,
+  scope: TextScope,
+  errors: AttributeError[],
 ): string {
-  if (!value.includes('&')) return resolve(value) ?? value;
-  return splitTemplate(value)
-    .map((part) =>
-      'text' in part
-        ? decodeAttributeText(part.text)
-        : (resolve(`{${part.expr}}`) ?? ''),
-    )
-    .join('');
+  if (!hasInterpolation(value)) return decodeAttributeText(value);
+  const parsed = parseAttributeValue(value);
+  if ('error' in parsed) {
+    errors.push([name, { macro: 'markup', error: parsed.error }]);
+    return decodeAttributeText(value);
+  }
+  const result = renderText(parsed.nodes, scope);
+  for (const error of result.errors) errors.push([name, error]);
+  return result.text;
 }
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
-  const resolve = useInterpolate();
+  const scope = useTextScope();
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
   const inRaw = useContext(RawTextContext);
@@ -481,10 +515,11 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const tag = node.tag.toLowerCase();
   const isSvgRoot = tag === 'svg';
   const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
+  const errors: AttributeError[] = [];
   const resolved = Object.entries(node.attributes).map(
     ([k, v]): [string, string, string] => [
       k,
-      resolveAttributeValue(v, resolve),
+      resolveAttributeValue(k, v, scope, errors),
       v,
     ],
   );
@@ -526,10 +561,13 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   if (isSvgRoot && !inSvg) {
     element = <SvgContext.Provider value={true}>{element}</SvgContext.Provider>;
   }
-  return isRawRoot ? (
-    <RawTextContext.Provider value={true}>{element}</RawTextContext.Provider>
-  ) : (
-    element
+  return withAttributeErrors(
+    errors,
+    isRawRoot ? (
+      <RawTextContext.Provider value={true}>{element}</RawTextContext.Provider>
+    ) : (
+      element
+    ),
   );
 }
 
@@ -741,7 +779,7 @@ export function renderNodes(
   const ph: Placeholders = {
     nonce: Math.random().toString(36).slice(2, 10) || '0',
     components,
-    texts: [],
+    nodes: [],
   };
   let combined = '';
 
@@ -753,7 +791,7 @@ export function renderNodes(
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
-    ph.texts.push(attributeText(node));
+    ph.nodes.push(node);
     if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
     combined += placeholderHtml(ph.nonce, phIdx);
   }

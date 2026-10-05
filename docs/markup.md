@@ -46,6 +46,25 @@ Dot notation accesses nested fields:
 {#score.large $points}
 ```
 
+### Expressions
+
+A block that starts with a variable can hold a whole JavaScript expression, whose result is displayed:
+
+```
+{$gold * 2} coins
+{$health > 50 ? "strong" : "weak"}
+```
+
+An expression that doesn't start with a variable starts with `(` or `!`:
+
+```
+{!$door.open ? "The door is closed." : ""}
+{(Math.max($gold, 0))}
+{("Hello, " + $name)}
+```
+
+Any other `{` followed by something that isn't a variable, a macro name or `.`/`#` selectors is literal text: `{3}`, `{ x }` and `{"a": 1}` show as written. `{print …}` displays any expression too.
+
 ## Macros
 
 Macros use curly braces. Self-closing macros have no closing tag; block macros wrap content:
@@ -108,7 +127,9 @@ Backslashes before a brace pair up as in markdown, where `\\` displays one backs
 
 A backslash before a link or an HTML tag is shown as it is: `C:\[[Start]]` renders `C:\` followed by the link.
 
-Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute interpolations need no escaping: `{set $x = "}"}` stores `}`.
+Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute values need no escaping: `{set $x = "}"}` stores `}`.
+
+The same rule escapes braces in [attribute values](#markup-in-attribute-values), where the backslashes before a brace pair up the same way.
 
 ## HTML Tags
 
@@ -126,15 +147,32 @@ Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `
 </div>
 ```
 
-Variable references (`{$var}`, `{_var}`, `{@var}`, `{%var}`) inside HTML attributes are interpolated at render time:
+Tags not in the supported set are treated as plain text.
+
+### Markup in attribute values
+
+HTML attribute values take the same `{…}` markup as passage text: variables, expressions, and macros that produce text. The value updates when the variables it uses change.
 
 ```
 {set $color = "red"}
 <div class="{$color}">This div has the "red" class.</div>
 <span data-name="{$character.name}">Named span</span>
+<span class="{$hp > 0 ? 'alive' : 'dead'}">Status</span>
+<span class="{!$door.open ? 'closed' : 'open'}">Door</span>
+<div class="card {if $selected}active{/if}">Card</div>
+<span class="mood {switch $mood}{case "happy"}smile{default}flat{/switch}">:)</span>
+<span title="{for @item of $bag}{@item} {/for}">Bag</span>
 ```
 
-Tags not in the supported set are treated as plain text.
+These macros have a text form and work in attribute values: `{if}`/`{elseif}`/`{else}`, `{switch}`/`{case}`/`{default}`, `{for}` (with its `@locals`), `{print}`, `{nobr}`, `{span}` and `{story-title}`, plus widgets, which stand for the text of their body (`{@children}` included). Custom macros take part when they define a [text form](custom-macros.md#text-form-macros-in-attribute-values). Attributes inside a `{for}` loop or a widget body see its `@locals`.
+
+The value is plain text: no markdown, links or HTML tags, and line breaks are kept. Character references (`&amp;`, `&#123;`) in the attribute's own text are decoded, as in HTML; in a variable's value they are not, and a decoded `{` never starts markup.
+
+Macros that do something rather than produce text (`{set}`, `{do}`, `{goto}`, `{button}`, `{link}`, input macros, ...) can't be used in an attribute value. They don't run; an error is shown in front of the element instead, as are unknown macros, failing expressions and unclosed macros (an unclosed macro leaves the value as written). A boolean attribute whose markup yields nothing, such as `disabled="{if $locked}disabled{/if}"`, is left out.
+
+For literal braces in an attribute value, escape them as in passage text: `title="\{$x}"` shows `{$x}`. A backslash run before a brace pairs up (`\\` shows one backslash); other backslashes are kept as written. Braces that start no markup, such as a regex quantifier in `pattern="\d{3}"` or JSON in `data-config='{"a": 1}'`, need no escaping, but braces in inline JavaScript (`onclick="...{return x}"`) do when a letter, `/`, `(`, `!`, `.`, `#` or a variable sigil follows them.
+
+Button and dialog labels (`{button "Count: {$count}"}`) and selector-based classes and ids (`{.item-{$type} print $name}`) are resolved the same way; errors there are logged to the browser console. A selector can only hold variable references, since a selector is part of the macro's own `{…}`.
 
 The content of `<pre>`, `<textarea>` and `<svg>` is not processed as markdown: indentation and characters such as `#`, `*` and `-` are kept as written. Variables and macros still work inside them.
 
@@ -208,7 +246,7 @@ Standard markdown links and images work alongside Twine link syntax:
 ![Alt text](image.png)
 ```
 
-Variables and expressions work in link text, image alt text and link titles, and update with the variable: `![Portrait of {$name}](portrait.png "{$name}")`. Macros have no text form and show nothing in alt text or titles.
+Variables and expressions work in link text, image alt text and link titles, and update with the variable: `![Portrait of {$name}](portrait.png "{$name}")`. In alt text and titles, macros count as their text, as in [attribute values](#markup-in-attribute-values): `![{if $lit}A lit{else}A dark{/if} room](room.png)`.
 
 ## Line Breaks
 
