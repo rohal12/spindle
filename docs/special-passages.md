@@ -34,7 +34,7 @@ $inventory = ["sword", "torch"]
 $character = { strength: 5, dexterity: 5, intelligence: 5 }
 ```
 
-When this passage exists, Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses produce warnings in the browser console.
+When this passage exists, Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
 
 See [Variables](variables.md) for details.
 

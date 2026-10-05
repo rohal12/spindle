@@ -79,15 +79,17 @@ describe('awaitable Story.save / deleteSave / load', () => {
   });
 
   it('load() resolves after the loaded state is applied', async () => {
+    // Loads restore the moment's entry snapshot, so set hp before entering
     Story.set('hp', 42);
+    Story.goto('Room');
     await Story.save('slot-1');
     Story.set('hp', 1);
-    Story.goto('Room');
+    Story.goto('Start');
 
     await Story.load('slot-1');
 
     expect(Story.get('hp')).toBe(42);
-    expect(Story.passage).toBe('Start');
+    expect(Story.passage).toBe('Room');
   });
 
   it('load() of an empty slot resolves without changing state', async () => {

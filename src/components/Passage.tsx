@@ -6,7 +6,7 @@ import {
   useState,
 } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
-import { buildAST } from '../markup/ast';
+import { buildAST, type ASTNode } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
 import type { Passage as PassageData } from '../parser';
@@ -14,9 +14,27 @@ import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
 import { markPassageRendered } from '../passage-render-state';
 
+/**
+ * Parsed AST per passage. The renderer keys children by AST node identity,
+ * so re-rendering a passage (e.g. PassageReady on every PassageDisplay
+ * render) must reuse its AST — a fresh parse would remount every macro in
+ * it and re-run its {set}/{do} side effects (#175).
+ */
+const astCache = new WeakMap<
+  PassageData,
+  { content: string; ast: ASTNode[] }
+>();
+
+function parsePassage(passage: PassageData): ASTNode[] {
+  const cached = astCache.get(passage);
+  if (cached && cached.content === passage.content) return cached.ast;
+  const ast = buildAST(tokenize(passage.content));
+  astCache.set(passage, { content: passage.content, ast });
+  return ast;
+}
+
 export function renderPassageContent(passage: PassageData) {
-  const tokens = tokenize(passage.content);
-  const ast = buildAST(tokens);
+  const ast = parsePassage(passage);
   const nobr = passage.tags.includes('nobr');
   return renderNodes(ast, nobr ? { nobr: true } : undefined);
 }

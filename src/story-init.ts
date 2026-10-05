@@ -1,16 +1,33 @@
 import { h, render } from 'preact';
-import { useStoryStore } from './store';
+import { useStoryStore, recordStoryInitState } from './store';
 import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
 import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
 
+/** Hidden container holding the currently mounted StoryInit tree. */
+let storyInitContainer: HTMLElement | null = null;
+
+/**
+ * Unmount the current StoryInit tree (running its effect cleanups, e.g.
+ * pending {timed}/{repeat} timers) and remove its container.
+ */
+function unmountStoryInit(): void {
+  if (!storyInitContainer) return;
+  render(null, storyInitContainer);
+  storyInitContainer.remove();
+  storyInitContainer = null;
+}
+
 /**
  * Execute the StoryInit passage: tokenize, parse, and render all macros
  * into a detached DOM node so their side effects fire through the normal
  * Preact pipeline. This is macro-agnostic — any macro works in StoryInit.
+ * Re-executing (on restart) first unmounts the previous StoryInit tree.
  */
 export function executeStoryInit() {
+  unmountStoryInit();
+
   const state = useStoryStore.getState();
   if (!state.storyData) return;
 
@@ -19,16 +36,22 @@ export function executeStoryInit() {
     const tokens = tokenize(storyInit.content);
     const ast = buildAST(tokens);
 
-    // Mount into a persistent hidden container. We intentionally do NOT
-    // unmount — this lets async effects (useEffect, setTimeout, etc.)
-    // inside StoryInit macros fire through the normal Preact pipeline.
+    // Mount into a persistent hidden container. It stays mounted until the
+    // next execution (restart) — this lets async effects (useEffect,
+    // setTimeout, etc.) inside StoryInit macros fire through the normal
+    // Preact pipeline.
     const container = document.createElement('div');
     container.style.display = 'none';
     document.body.appendChild(container);
+    storyInitContainer = container;
     render(
       h(() => renderNodes(ast) as any, null),
       container,
     );
+
+    // The start moment was recorded before StoryInit ran; its synchronous
+    // changes ({set}, {do}) belong to it.
+    recordStoryInitState();
   }
 
   // Register SaveTitle passage if it exists

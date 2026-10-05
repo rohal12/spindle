@@ -94,3 +94,5 @@ Read a setting's current value from JavaScript:
 ## Persistence
 
 Settings are stored in `localStorage` keyed by the story's IFID. They persist across page refreshes and are independent of the save system.
+
+Settings can also be registered from Story JavaScript, which runs before the story data (and its IFID) is available. Persisted values are applied over the registered defaults as soon as the story is initialized.

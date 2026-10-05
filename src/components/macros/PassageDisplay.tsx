@@ -70,13 +70,21 @@ defineMacro({
   interpolate: true,
   render(_props, ctx) {
     const currentPassage = useStoryStore((s) => s.currentPassage);
+    const navigationId = useStoryStore((s) => s.navigationId);
     const storyData = useStoryStore((s) => s.storyData);
     const renderDeferred = useStoryStore((s) => s.renderDeferred);
 
-    // Render-gating: displayedPassage controls which passage is visually shown.
+    // Render-gating: displayed controls which passage is visually shown.
     // The store updates immediately, but the visual swap is deferred by the
-    // transition state machine.
-    const [displayedPassage, setDisplayedPassage] = useState(currentPassage);
+    // transition state machine. Identity is the navigation id, not the passage
+    // name, so revisiting/restarting/loading the same passage remounts it.
+    const [displayed, setDisplayed] = useState({
+      passage: currentPassage,
+      id: navigationId,
+    });
+    const displayedPassage = displayed.passage;
+    const setDisplayedPassage = (passage: string) =>
+      setDisplayed({ passage, id: navigationId });
 
     // Track the resolved transition type for the data-transition prop
     const resolvedTypeRef = useRef<string>('fade');
@@ -97,7 +105,7 @@ defineMacro({
       cleanupSnapshots(containerRef.current);
     }, []);
 
-    // State machine effect — triggers on passage change
+    // State machine effect — triggers on every navigation
     useEffect(() => {
       const store = useStoryStore.getState();
       const { history, historyIndex, transitionConfig } = store;
@@ -118,9 +126,8 @@ defineMacro({
         prevLen > 1 &&
         Math.abs(history.length - prevLen) > 1;
 
-      // If this is the same passage (initial render), just set it
-      if (currentPassage === displayedPassage) {
-        // Update prevHistoryLen on initial render
+      // Already showing this navigation (initial render)
+      if (navigationId === displayed.id) {
         return;
       }
 
@@ -244,7 +251,7 @@ defineMacro({
       // Fallback: unknown type, just mount
       setDisplayedPassage(currentPassage);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPassage]);
+    }, [navigationId]);
 
     // When render is deferred, show StoryLoading passage or nothing
     const effectivePassage = renderDeferred
@@ -270,7 +277,7 @@ defineMacro({
       >
         {!renderDeferred && readyPassage && (
           <div
-            key={`ready-${currentPassage}`}
+            key={`ready-${navigationId}`}
             hidden
           >
             {renderPassageContent(readyPassage)}
@@ -283,7 +290,7 @@ defineMacro({
           {effectivePassage && (
             <Passage
               passage={effectivePassage}
-              key={renderDeferred ? 'loading' : displayedPassage}
+              key={renderDeferred ? 'loading' : `nav-${displayed.id}`}
               dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
             />
           )}

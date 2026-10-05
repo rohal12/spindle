@@ -7,6 +7,7 @@ import {
   LocalsValuesContext,
   NobrContext,
 } from '../../markup/render';
+import { liveLocalsView } from '../../utils/live-locals';
 
 defineMacro({
   name: 'button',
@@ -29,7 +30,7 @@ defineMacro({
           { value: { update: ctx.update, getValues: ctx.getValues } },
           h(
             LocalsValuesContext.Provider,
-            { value: ctx.getValues() },
+            { value: liveLocalsView(ctx.getValues) },
             renderNodes(children),
           ),
         ),
