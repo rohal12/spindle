@@ -165,10 +165,19 @@ export async function createSave(
 }
 
 /**
- * Replace the payload of an existing save, keeping its ID and title. Pass the
- * current `playthroughId` when the new payload comes from the running game:
- * the save then holds that playthrough's state, so it is grouped and deleted
- * with it rather than with the playthrough that first created the save.
+ * Replace the payload of an existing save, keeping its ID and `createdAt`.
+ * Pass the current `playthroughId` when the new payload comes from the
+ * running game: the save then holds that playthrough's state, so it is
+ * grouped and deleted with it rather than with the playthrough that first
+ * created the save.
+ *
+ * Metadata describing the content follows the new payload: `passage`,
+ * `updatedAt` and the title. A generated title (SaveTitle passage, title
+ * generator or the default "passage - time") is generated again, exactly as
+ * for a fresh save, so it never names a passage or state the save no longer
+ * holds. A title the player gave the save (renameSave) is kept: it names the
+ * save itself rather than describing its content. `custom` is merged, as
+ * before, so slot keys and metadata not passed again are kept.
  */
 export async function overwriteSave(
   saveId: string,
@@ -191,6 +200,10 @@ export async function overwriteSave(
       ...existing.meta,
       ...(playthroughId ? { playthroughId } : {}),
       updatedAt: new Date().toISOString(),
+      title:
+        existing.meta.userTitle === true
+          ? existing.meta.title
+          : generateTitle(payload),
       passage: payload.passage,
       ...(custom != null
         ? { custom: { ...existing.meta.custom, ...custom } }
@@ -261,6 +274,7 @@ export async function renameSave(
     meta: {
       ...record.meta,
       title: newTitle,
+      userTitle: true,
       updatedAt: new Date().toISOString(),
     },
   };

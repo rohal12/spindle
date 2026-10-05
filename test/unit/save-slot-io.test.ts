@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { getBackend, resetBackend } from '../../src/saves/storage';
-import { populateKnownSaves } from '../../src/saves/save-manager';
+import { populateKnownSaves, renameSave } from '../../src/saves/save-manager';
 import type { StoryData, Passage } from '../../src/parser';
 import type { SaveExport } from '../../src/saves/types';
 
@@ -271,6 +271,52 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
       expect(Story.passage).toBe('Room');
     },
   );
+
+  it.each([
+    ['the default slot', undefined],
+    ['a named slot', 'slot-1'],
+  ])('overwriting %s refreshes its generated title', async (_, slot) => {
+    Story.saves.setTitleGenerator(
+      (p) => `${p.passage} with ${p.variables.hp} hp`,
+    );
+    try {
+      await Story.save(slot);
+      expect((await Story.getSaveInfo(slot))!.title).toBe('Start with 100 hp');
+
+      Story.set('hp', 20);
+      Story.goto('Room');
+      await Story.save(slot);
+
+      const info = (await Story.getSaveInfo(slot))!;
+      expect(info.title).toBe('Room with 20 hp');
+      expect(info.passage).toBe('Room');
+      // Survives a fresh read from the backend
+      const data = (await Story.exportSave(slot))!;
+      expect(data.save.meta.title).toBe('Room with 20 hp');
+    } finally {
+      Story.saves.setTitleGenerator(null as any);
+    }
+  });
+
+  it('overwriting a slot keeps a title the player renamed it to', async () => {
+    await Story.save('slot-1');
+    const { id } = (await Story.exportSave('slot-1'))!.save.meta;
+    await renameSave(id, 'My run');
+
+    Story.goto('Room');
+    await Story.save('slot-1');
+
+    const info = (await Story.getSaveInfo('slot-1'))!;
+    expect(info.title).toBe('My run');
+    expect(info.passage).toBe('Room');
+
+    // A renamed save exported and imported elsewhere stays renamed
+    const data = (await Story.exportSave('slot-1'))!;
+    await Story.importSave(data, 'slot-2');
+    Story.goto('Start');
+    await Story.save('slot-2');
+    expect((await Story.getSaveInfo('slot-2'))!.title).toBe('My run');
+  });
 
   it('creates an "Imported" playthrough for an unknown playthrough', async () => {
     await saveTo('slot-1');
