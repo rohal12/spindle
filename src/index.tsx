@@ -182,11 +182,12 @@ function boot() {
     }
   }
 
-  // Reset action ID counters on passage change
-  let prevPassage = '';
+  // Reset action ID counters on every navigation (the passage remounts even
+  // when its name is unchanged)
+  let prevNavigationId = useStoryStore.getState().navigationId;
   useStoryStore.subscribe((state) => {
-    if (state.currentPassage !== prevPassage) {
-      prevPassage = state.currentPassage;
+    if (state.navigationId !== prevNavigationId) {
+      prevNavigationId = state.navigationId;
       resetIdCounters();
     }
   });
