@@ -342,9 +342,11 @@ interface StrictScan {
   /** `cache.braces`, unless the scan has a `stop`. */
   braces?: Map<number, number>;
   /** `cache.checkpoints` for this kind of scan. */
-  checkpoints?: Map<number, number>;
+  checkpoints?: Map<CheckpointKey, number>;
+  /** `cache.parens` for this kind of scan. */
+  parens?: Map<number, number>;
   /** Checkpoints this scan passed, to record its result at. */
-  passed: number[];
+  passed: CheckpointKey[];
 }
 
 /** Characters that a scan checkpoint follows (`checkpointKey`). */
@@ -356,14 +358,36 @@ const CHECKPOINT_AFTER = new Set([
   '/',
   '\n',
   '\r',
-  ' ',
-  ' ',
+  '\u2028',
+  '\u2029',
+  ' ',
+  '\t',
 ]);
+
+/**
+ * How far into a scan its results start to be shared within brackets
+ * (`checkpointKey`, `knownParen`). Most scans end sooner, so they don't pay
+ * for recording results no other scan will use; a long one pays this much
+ * before it can use what earlier scans recorded, which keeps scans from
+ * many starts about linear.
+ */
+const SHARE_AFTER = 256;
+
+/**
+ * A scan checkpoint: a position and the scan state there (`checkpointKey`).
+ * A number at the top level, a string within brackets.
+ */
+type CheckpointKey = number | string;
 
 /** A frame result: it is still open at the end of the source. */
 const UNCLOSED = -1;
 /** A frame result: a lexical error inside it ends the scan. */
 const MALFORMED = -2;
+/** A frame result: the scan stops at index `s` inside it (`STOPPED - s`). */
+const STOPPED = -3;
+
+/** The closers whose search for their frame a frame result may depend on. */
+const CLOSERS = [')', ']', '}'] as const;
 const FRAME_KINDS: readonly Frame['kind'][] = [
   'block',
   'object',
@@ -406,19 +430,44 @@ export interface JsScanCache {
   /** The last search for the end of a block comment. */
   commentClose: NextMatch;
   /**
-   * How scans go on from points at the top level, by the kind of scan (its
-   * goal and how it ends) and then by the point and the scan state there:
-   * the index the scan ends at, `UNCLOSED` or `MALFORMED`. The points are
-   * just past a line break, a `}` or the end of a literal or comment. Scans
-   * from different starts soon pass such points in the same state, and from
-   * there on go the same way.
+   * How scans go on from points, by the kind of scan (its goal and how it
+   * ends) and then by the point and the scan state there, the brackets open
+   * around it included: the index the scan ends at, `UNCLOSED` or
+   * `MALFORMED`. The points are where no word is being read (see
+   * `checkpointKey`). Scans from different starts soon pass such points in
+   * the same state, and from there on go the same way.
    */
-  checkpoints: Map<string, Map<number, number>>;
+  checkpoints: Map<string, Map<CheckpointKey, number>>;
+  /**
+   * Ids of the stacks of open brackets that checkpoints have seen (see
+   * `scan`), by the id of the stack below the innermost bracket, the state
+   * of that one and the innermost bracket.
+   */
+  stacks: Map<string, number>;
+  /**
+   * How `(…)` and `[…]` frames end, by the kind of scan and then by the frame
+   * (`parenKey`): `end * 2 + 1` if it closes at `end` and the code inside
+   * started a function or class body (which replaced the one to come, and
+   * can't follow once the frame is closed), `end * 2` otherwise, or
+   * `UNCLOSED`, `MALFORMED` or `STOPPED - s`. Unlike braces, a stray closer inside may close a frame
+   * around them, so the code inside lexes the same only around frames for
+   * which the closers it met find nothing to close; the key says which
+   * closers met none.
+   */
+  parens: Map<string, Map<number, number>>;
+  /**
+   * How far into a scan its results start to be shared within brackets
+   * (`SHARE_AFTER`; tests set 0 to share them all).
+   */
+  shareAfter: number;
 }
 
 export function createJsScanCache(): JsScanCache {
   return {
     checkpoints: new Map(),
+    stacks: new Map(),
+    parens: new Map(),
+    shareAfter: SHARE_AFTER,
     braces: new Map(),
     brackets: new Map(),
     classes: new Map(),
@@ -577,6 +626,9 @@ export function findCodeEnd(
     let checkpoints = cache.checkpoints.get(kindKey);
     if (!checkpoints) cache.checkpoints.set(kindKey, (checkpoints = new Map()));
     strict.checkpoints = checkpoints;
+    let parens = cache.parens.get(kindKey);
+    if (!parens) cache.parens.set(kindKey, (parens = new Map()));
+    strict.parens = parens;
   }
   const ctx: ScanContext = {
     lookahead: true,
@@ -643,8 +695,133 @@ function scan(
 
   const strict = ctx.strict;
   const braces = strict?.braces;
+  const stacks = strict?.checkpoints && strict.cache?.stacks;
+  /**
+   * With checkpoints, per open frame the id of the stack up to it, found
+   * when a checkpoint needs it: the kind and flags of each frame, and the
+   * conditional-expression count of each but the innermost (which changes
+   * only while it is innermost, and is part of the checkpoint state). How a
+   * scan goes on depends on these, not on where the frames opened.
+   */
+  const stackIds: (number | undefined)[] | undefined = stacks ? [0] : undefined;
+
+  /** The id of the stack of open frames (`stackIds`). */
+  function stackId(): number {
+    let k = frames.length - 1;
+    while (stackIds![k] === undefined) k--;
+    for (k++; k < frames.length; k++) {
+      const f = frames[k]!;
+      const key =
+        `${stackIds![k - 1]} ${frames[k - 1]!.ternary} ${f.kind} ${f.closer}` +
+        ` ${+f.header}${+f.operand}${+f.interpolation}`;
+      let id = stacks!.get(key);
+      if (id === undefined) stacks!.set(key, (id = stacks!.size + 1));
+      stackIds![k] = id;
+    }
+    return stackIds![frames.length - 1]!;
+  }
   /** A `{…}` frame result found in `braces`, to skip to. */
   let skipTo: { frame: Frame; end: number } | undefined;
+
+  const parens = strict?.parens;
+  const shareAfter = strict?.cache?.shareAfter ?? SHARE_AFTER;
+  /**
+   * With `parens`, per open frame and per closer in `CLOSERS`: the lowest
+   * frame index the closer looked for its frame at, while this frame or one
+   * opened in it was innermost. Below a frame's own index, the code in it
+   * depended on what is around it. A frame's entry takes in those of the
+   * frames opened in it as they close.
+   */
+  const lowest: number[][] | undefined = parens
+    ? [[Infinity, Infinity, Infinity]]
+    : undefined;
+  /**
+   * How many function or class bodies to come the scan has started, and with
+   * `parens`, that count when each open frame opened. Code in a `(…)` or
+   * `[…]` that starts one replaces the one to come, and the new one can't
+   * follow once the frame is closed: none is to come then.
+   */
+  let bodyStarts = 0;
+  const startsAt: number[] | undefined = parens ? [0] : undefined;
+  /** A `(…)` or `[…]` frame result found in `parens`, to skip to. */
+  let parenTo: { frame: Frame; result: number } | undefined;
+
+  /** The closer `c` looked for its frame and found index `k`. */
+  function lookedFor(c: (typeof CLOSERS)[number], k: number) {
+    if (!lowest) return;
+    const entry = lowest[lowest.length - 1]!;
+    const n = CLOSERS.indexOf(c);
+    if (k < entry[n]!) entry[n] = k;
+  }
+
+  /** Take the entry of the frame at index `k` into the one below it. */
+  function foldLowest(k: number) {
+    const from = lowest![k]!;
+    const into = lowest![k - 1]!;
+    for (let n = 0; n < 3; n++) if (from[n]! < into[n]!) into[n] = from[n]!;
+  }
+
+  /** Key of a `(…)` or `[…]` frame result, but for the closers it met. */
+  const parenKey = (f: Frame) =>
+    (f.open * 3 + (f.closer === ']' ? 2 : +f.header)) * 8;
+
+  /**
+   * Record how the frame at index `k` ends, if it is a `(…)` or `[…]`, its
+   * `lowest` entry complete: under the closers that looked below it, which
+   * found nothing to close (else the frame was closed with them).
+   */
+  function recordParen(k: number, result: number) {
+    const f = frames[k]!;
+    if (k === 0 || (f.closer !== ')' && f.closer !== ']')) return;
+    if (f.open - start < shareAfter) return;
+    let met = 0;
+    for (let n = 0; n < 3; n++) if (lowest![k]![n]! < k) met |= 1 << n;
+    parens!.set(parenKey(f) + met, result);
+  }
+
+  /** Record how the open `(…)` and `[…]` frames end: the scan ends in them. */
+  function recordOpenParens(result: number) {
+    if (!lowest) return;
+    for (let k = frames.length - 1; k > 0; k--) {
+      recordParen(k, result);
+      foldLowest(k);
+    }
+  }
+
+  /**
+   * How an earlier scan found a `(…)` or `[…]` frame opening here to end,
+   * if it did: a result recorded under closers that find nothing to close
+   * around the frame here too. The frame is not open yet.
+   */
+  function knownParen(f: Frame): number | undefined {
+    if (!parens || f.open - start < shareAfter) return undefined;
+    // Where each closer would look for its frame, and whether it would find
+    // none to close (it is stray)
+    const at = [
+      Math.max(innermost(')'), innermost('}')),
+      Math.max(innermost(']'), innermost('}')),
+      innermost('}'),
+    ];
+    let stray = 0;
+    for (let n = 0; n < 3; n++) {
+      const k = at[n]!;
+      if (k === 0 || (n < 2 && frames[k]!.closer !== CLOSERS[n])) {
+        stray |= 1 << n;
+      }
+    }
+    const key = parenKey(f);
+    for (let met = stray; ; met = (met - 1) & stray) {
+      const result = parens.get(key + met);
+      if (result !== undefined) {
+        // The closers it met look here too
+        for (let n = 0; n < 3; n++) {
+          if (met & (1 << n)) lookedFor(CLOSERS[n]!, at[n]!);
+        }
+        return result;
+      }
+      if (met === 0) return undefined;
+    }
+  }
 
   /** Record how the open frames end, when the scan ends in them. */
   function recordOpen(result: number) {
@@ -667,28 +844,38 @@ function scan(
   /** End a strict scan at a lexical error. */
   const malformed = () => {
     recordOpen(MALFORMED);
+    recordOpenParens(MALFORMED);
     strict!.malformed = true;
     return src.length;
   };
 
   function push(f: Frame) {
+    stackIds?.push(undefined);
     closers[f.closer]?.push(frames.length);
     frames.push(f);
+    lowest?.push([Infinity, Infinity, Infinity]);
+    startsAt?.push(bodyStarts);
   }
 
   /**
-   * At the top level, just past a line break, a `}` or the end of a literal
-   * or comment: the key of the position and the whole scan state there,
-   * which decide how the scan goes on (or undefined elsewhere). No word is
-   * being read there, and the character before is no word character, so a
-   * quote after it starts a string in any scan.
+   * Just past a token or a space, line break or comment, but not within a
+   * word: the key of the position and the whole scan state there, the open
+   * frames included, which decide how the scan goes on (or undefined
+   * elsewhere). No word is being read there, and the character before is no
+   * word character, so a quote after it starts a string in any scan.
+   *
+   * Within brackets too, once the scan is long (`SHARE_AFTER`). Scans that
+   * never passed such a point in the same state each ran on to the end of
+   * the source, so many of them took quadratic time: inside an unclosed `(`
+   * in `{(}{(}{(…` (there was no point within brackets), or after the regex
+   * literals of `{a'</a </p>…` (there was no point after a space).
    */
-  function checkpointKey(): number | undefined {
-    const ternary = frames[0]!.ternary;
+  function checkpointKey(): CheckpointKey | undefined {
+    const ternary = top().ternary;
     if (
-      frames.length !== 1 ||
       ternary > 3 ||
-      !CHECKPOINT_AFTER.has(src.charAt(i - 1))
+      !CHECKPOINT_AFTER.has(src.charAt(i - 1)) ||
+      (frames.length > 1 && i - start < shareAfter)
     ) {
       return undefined;
     }
@@ -708,7 +895,11 @@ function scan(
     if (lastPunct === '=') state |= 1 << 13;
     // A run of dots: one or two (a spread may follow), three, or more
     if (lastPunct === '.') state |= Math.min(dots, 4) << 14;
-    return i * (1 << 17) + state;
+    const at = i * (1 << 17) + state;
+    if (frames.length === 1) return at;
+    // A function or class body to come may open at an outer level
+    const body = pendingBody ? frames.length - pendingBody.depth : '';
+    return `${at} ${stackId()} ${body}`;
   }
 
   /**
@@ -728,7 +919,13 @@ function scan(
 
   /** Close the frames from index `k` on. */
   function truncate(k: number) {
+    if (lowest) {
+      for (let j = frames.length - 1; j >= k; j--) foldLowest(j);
+      lowest.length = k;
+      startsAt!.length = k;
+    }
     frames.length = k;
+    if (stackIds) stackIds.length = k;
     for (const list of Object.values(closers)) {
       while (list.length && list[list.length - 1]! >= k) list.pop();
     }
@@ -761,6 +958,7 @@ function scan(
       const body = frame(keyword === 'class' ? 'class' : 'block', '}');
       body.operand = inOperandPosition;
       pendingBody = { depth: frames.length, frame: body };
+      bodyStarts++;
     }
     // `get name()`, `static _x = 1`: the property name is still to come
     keyNext =
@@ -862,13 +1060,21 @@ function scan(
    * closes the braces around it, and how a `{…}` ends depends only on the
    * code inside it.
    */
-  function close(c: string) {
+  function close(c: (typeof CLOSERS)[number]) {
     const k = Math.max(innermost(c), innermost('}'));
+    lookedFor(c, k);
     if (k === 0 || frames[k]!.closer !== c) {
       endPunct(c, c === '}');
       return;
     }
     const closed = frames[k]!;
+    if (lowest && c !== '}') {
+      // Its entry complete, with those of the frames still open in it
+      for (let j = frames.length - 1; j > k; j--) foldLowest(j);
+      // Whether code in it started a function or class body: none is to come
+      const bodyStarted = bodyStarts !== startsAt![k];
+      recordParen(k, i * 2 + +bodyStarted);
+    }
     truncate(k);
     if (c === ']' && !ctx.lookahead) ctx.brackets.set(closed.open, i);
     if (c === ')') {
@@ -895,17 +1101,16 @@ function scan(
     if (SPACE_RE.test(c)) return;
     const t = top();
     switch (c) {
-      case '(': {
-        const f = frame('expr', ')');
-        f.header = afterHeaderKeyword;
+      case '(':
+      case '[': {
+        const f = frame('expr', c === '(' ? ')' : ']', i);
+        f.header = c === '(' && afterHeaderKeyword;
         endPunct(c, true);
-        open(f);
+        const result = knownParen(f);
+        if (result === undefined) open(f);
+        else parenTo = { frame: f, result };
         break;
       }
-      case '[':
-        endPunct(c, true);
-        open(frame('expr', ']', i));
-        break;
       case '{':
         openBrace();
         break;
@@ -974,6 +1179,11 @@ function scan(
       const known = checkpoints!.get(key);
       if (known === undefined) {
         strict!.passed.push(key);
+      } else if (frames.length > 1 && known < 0) {
+        // The frames open here may close before the error or the end of the
+        // source, so their results are not known: none is recorded
+        strict!.malformed = known === MALFORMED;
+        return src.length;
       } else if (known === MALFORMED) {
         return malformed();
       } else if (known === UNCLOSED) {
@@ -1059,6 +1269,7 @@ function scan(
     }
 
     if (ch === '{' && strict?.stop?.(i)) {
+      recordOpenParens(STOPPED - i);
       strict.stopped = true;
       return i;
     }
@@ -1066,6 +1277,7 @@ function scan(
     // End of a template literal interpolation: the innermost `}` closer
     if (ch === '}') {
       const k = innermost('}');
+      lookedFor('}', k);
       if (frames[k]!.interpolation) {
         endWord();
         record(frames[k]!, i);
@@ -1195,10 +1407,38 @@ function scan(
       i++;
       continue;
     }
+    if (parenTo) {
+      // A `(…)` or `[…]` frame an earlier scan lexed: continue after it
+      const { frame: skipped, result } = parenTo;
+      parenTo = undefined;
+      if (result === MALFORMED) return malformed();
+      if (result === UNCLOSED) {
+        i = src.length;
+        break;
+      }
+      if (result <= STOPPED) {
+        recordOpenParens(result);
+        strict!.stopped = true;
+        return STOPPED - result;
+      }
+      i = Math.floor(result / 2);
+      if (result % 2 === 1) pendingBody = undefined;
+      if (skipped.closer === ')') {
+        endPunct(')', skipped.header);
+        stmtNext = skipped.header;
+      } else {
+        endPunct(']', false);
+      }
+      i++;
+      continue;
+    }
     code(ch, i);
     i++;
   }
-  if (i >= src.length) recordOpen(UNCLOSED);
+  if (i >= src.length) {
+    recordOpen(UNCLOSED);
+    recordOpenParens(UNCLOSED);
+  }
   if (!ctx.lookahead) {
     // Brackets left open here close at `i`: the end of `outer` or of `src`
     for (const f of frames) if (f.closer === ']') ctx.brackets.set(f.open, i);

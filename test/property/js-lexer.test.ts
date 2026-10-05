@@ -223,14 +223,47 @@ describe('findCodeEnd', () => {
         maxLength: 60,
       })
       .map((parts) => parts.join('')),
+    // A few tokens repeated: scans from the repeats pass the same points
+    // and frames, in the same or in different states
+    fc
+      .tuple(
+        fc.array(fc.constantFrom(...LEXICAL, '{/do}', '{a '), {
+          minLength: 1,
+          maxLength: 6,
+        }),
+        fc.integer({ min: 2, max: 8 }),
+      )
+      .map(([parts, n]) => parts.join('').repeat(n)),
+    // A function or class whose brackets hold functions and classes, then
+    // a `/` that is a regex after a block but division after a function
+    // expression: whether a `{` opens a function body depends on the code
+    // before it, inside the brackets too
+    fc
+      .tuple(
+        fc.constantFrom('', 'x =', 'return', '(', '{'),
+        fc.constantFrom('function f(', 'function (', 'class A extends ('),
+        fc.array(
+          fc.constantFrom(
+            ...['function(){}', 'function g() {', 'class {}', 'class', '}'],
+            ...['a', '=', ',', '(', ')', '[', ']', '{', '=>', '/'],
+          ),
+          { maxLength: 6 },
+        ),
+        fc.constantFrom(') {}', ')', ') {', ''),
+        fc.constantFrom('/}/ }', '/ 1 /', '}', ''),
+      )
+      .map(([a, b, inner, c, d]) => [a, b, ...inner, c, d].join(' ')),
   );
 
-  test.prop([scanText, fc.boolean()], fcOptions)(
+  // Scans share results within brackets only once they are long, which
+  // the short text here never is unless `shareAll` lifts that limit.
+  test.prop([scanText, fc.boolean(), fc.boolean()], fcOptions)(
     'answers the same with a shared cache as without',
-    (src, reversed) => {
+    (src, reversed, shareAll) => {
       const starts = [...Array(src.length + 1).keys()];
       if (reversed) starts.reverse();
       const cache = createJsScanCache();
+      if (shareAll) cache.shareAfter = 0;
       const stop = atCloser(src);
       const opts = { goal: 'statements' as const, stop };
       const shared = starts.map((start) => [
@@ -245,6 +278,48 @@ describe('findCodeEnd', () => {
     },
     Math.max(5000, NUM_RUNS * 100),
   );
+});
+
+describe('findCodeEnd running time', () => {
+  /**
+   * Code scanned from many starts with a shared cache, as the tokenizer
+   * scans the `{` blocks of a passage: scans that each ran on to the end of
+   * the source, never meeting a point an earlier scan passed in the same
+   * state. Each pattern's code starts just past `@`.
+   */
+  const PATTERNS = [
+    // Inside an unclosed `(`: no point within brackets was shared
+    '@(}{',
+    '@( a[[}',
+    '@(<a x="}',
+    // After regex literals with flags: no point after a space was shared
+    "@ </p>{a'</a",
+    '@ </b>',
+  ];
+
+  /** Milliseconds to scan `src` from each `@`, best of three. */
+  function time(src: string): number {
+    const starts: number[] = [];
+    for (let i = src.indexOf('@'); i !== -1; i = src.indexOf('@', i + 1)) {
+      starts.push(i + 1);
+    }
+    let best = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const cache = createJsScanCache();
+      const t0 = performance.now();
+      for (const start of starts) findCodeEnd(src, start, { cache });
+      best = Math.min(best, performance.now() - t0);
+    }
+    return best;
+  }
+
+  it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
+    const small = time(pattern.repeat(500));
+    const large = time(pattern.repeat(4000));
+    // 8× the input may take 8× the time; allow generous noise, but not the
+    // 64× of a quadratic scan.
+    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+  });
 });
 
 describe('lexJs running time', () => {
