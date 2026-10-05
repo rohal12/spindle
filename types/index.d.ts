@@ -541,11 +541,18 @@ export interface StoryAPI {
   /** Restart the story from the beginning. */
   restart(): void;
 
-  /** Save the current state. Pass `slot` for a named save, `custom` for metadata. */
-  save(slot?: string, custom?: Record<string, unknown>): void;
+  /**
+   * Save the current state. Pass `slot` for a named save, `custom` for metadata.
+   * Resolves once the save is persisted (after `aftersave` handlers ran and
+   * `hasSave(slot)` is true); rejects if persisting fails.
+   */
+  save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
 
-  /** Load a saved state (quick load). */
-  load(slot?: string): void;
+  /**
+   * Load a saved state (quick load). Resolves once the loaded state is applied
+   * (immediately if the slot is empty); rejects if loading fails.
+   */
+  load(slot?: string): Promise<void>;
 
   /** Check whether a save exists. */
   hasSave(slot?: string): boolean;
@@ -556,8 +563,11 @@ export interface StoryAPI {
   /** List metadata for all known save slots. */
   listSaves(): Promise<SaveInfo[]>;
 
-  /** Delete a save by slot name. */
-  deleteSave(slot?: string): void;
+  /**
+   * Delete a save by slot name. Resolves once the save is removed and
+   * `hasSave(slot)` is false; rejects if deleting fails.
+   */
+  deleteSave(slot?: string): Promise<void>;
 
   /**
    * Export the save in a slot as a portable object (plain JSON).

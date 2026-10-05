@@ -239,6 +239,13 @@ Story.save('my-slot'); // named slot
 Story.save('day-3', { day: 3, phase: 'morning' }); // with custom metadata
 ```
 
+Returns a `Promise<void>` that resolves once the save is persisted: `aftersave` handlers have run, `hasSave(slot)` is `true` and `listSaves()` includes it. It rejects if storage fails (the error is also logged). Ignoring the promise is fine — a failure then only shows up in the console.
+
+```javascript
+await Story.save('slot-2');
+renderSlots(await Story.listSaves()); // includes slot-2
+```
+
 ### `Story.load(slot?)`
 
 Load a saved game. When `slot` is provided, loads from the named slot.
@@ -247,6 +254,8 @@ Load a saved game. When `slot` is provided, loads from the named slot.
 Story.load(); // load from default slot
 Story.load('my-slot'); // load from named slot
 ```
+
+Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails.
 
 ### `Story.hasSave(slot?)`
 
@@ -292,6 +301,8 @@ Delete a save by slot name. Omit `slot` to delete the default autosave.
 Story.deleteSave(); // delete default save
 Story.deleteSave('my-slot'); // delete named slot
 ```
+
+Returns a `Promise<void>` that resolves once the save is removed (`hasSave(slot)` is `false`, `listSaves()` no longer lists it) and rejects if deleting fails.
 
 ### `Story.exportSave(slot?)`
 
