@@ -415,7 +415,7 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
  * breaks, which micromark decodes / turns into <br> (#171).
  */
 const MARKDOWN_SYNTAX_RE =
-  /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
+  /[*_`#|~\[>\\\-+=]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
 const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
 

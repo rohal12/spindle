@@ -213,6 +213,9 @@ describe('plain text fast path matches micromark (issue #171)', () => {
     'AT&T and R&D',
     'a &unknown thing',
     'first\nsecond',
+    // Found by property testing: `)` ordered list markers were missed.
+    '2) ',
+    '1) first item',
   ];
 
   for (const text of cases) {
