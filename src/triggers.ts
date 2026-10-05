@@ -125,70 +125,103 @@ function fireTrigger(trigger: Trigger): void {
 
 const MAX_RECHECK_DEPTH = 10;
 
+function runCheckLoop(): void {
+  for (let depth = 0; depth < MAX_RECHECK_DEPTH; depth++) {
+    let anyFired = false;
+
+    // Snapshot triggers list — firing may remove `once` triggers
+    const current = [...triggers];
+    for (const trigger of current) {
+      // Skip if removed during this cycle
+      if (!triggers.includes(trigger)) continue;
+
+      const result = evalCondition(trigger.condition);
+      const wasFalse = !trigger.lastResult;
+      trigger.lastResult = result;
+
+      if (result && wasFalse) {
+        anyFired = true;
+
+        if (trigger.options?.once) {
+          triggers = triggers.filter((t) => t.id !== trigger.id);
+        }
+
+        fireTrigger(trigger);
+      }
+    }
+
+    if (!anyFired) break;
+  }
+}
+
 export function checkTriggers(): void {
   if (checking) return;
   checking = true;
 
   try {
-    for (let depth = 0; depth < MAX_RECHECK_DEPTH; depth++) {
-      let anyFired = false;
-
-      // Snapshot triggers list — firing may remove `once` triggers
-      const current = [...triggers];
-      for (const trigger of current) {
-        // Skip if removed during this cycle
-        if (!triggers.includes(trigger)) continue;
-
-        const result = evalCondition(trigger.condition);
-        const wasFalse = !trigger.lastResult;
-        trigger.lastResult = result;
-
-        if (result && wasFalse) {
-          anyFired = true;
-
-          if (trigger.options?.once) {
-            triggers = triggers.filter((t) => t.id !== trigger.id);
-          }
-
-          fireTrigger(trigger);
-        }
-      }
-
-      if (!anyFired) break;
-    }
+    runCheckLoop();
   } finally {
     checking = false;
   }
 }
 
+/** Number of live connectTriggersToStore() subscriptions. */
+let connections = 0;
+
+/**
+ * Check watchers against a navigation that navigate() has just completed.
+ * Called by the store before it records the entered moment, so run actions
+ * become part of that moment. Runs even when the navigation itself came
+ * from a watcher (a check already in progress), since that check started
+ * before the navigation and cannot see it.
+ */
+export function checkTriggersOnNavigation(): void {
+  if (connections === 0) return;
+  const wasChecking = checking;
+  checking = true;
+
+  try {
+    runCheckLoop();
+  } finally {
+    checking = wasChecking;
+  }
+}
+
 /**
  * Re-evaluate watchers whenever a namespace their conditions can read
- * ($variables, _temporary, %transient) changes. History traversal and
- * loads that restore a different set of story variables reinitialize
- * watcher state instead of firing.
+ * ($variables, _temporary, %transient) changes. Navigation is left to the
+ * store: navigate() checks watchers once the new moment is complete
+ * (checkTriggersOnNavigation), while history traversal and loads
+ * reinitialize watcher state instead of firing.
  */
 export function connectTriggersToStore(): () => void {
   let prev = useStoryStore.getState();
-  return useStoryStore.subscribe((state) => {
+  connections++;
+  const unsubscribe = useStoryStore.subscribe((state) => {
     const before = prev;
     // Update before checking: run/goto actions re-enter this listener.
     prev = state;
 
-    const varsChanged = state.variables !== before.variables;
+    if (state.navigationId !== before.navigationId) return;
+
     if (
-      !varsChanged &&
+      state.variables === before.variables &&
       state.temporary === before.temporary &&
       state.transient === before.transient
     ) {
       return;
     }
 
-    if (varsChanged && state.historyIndex !== before.historyIndex) {
-      reinitTriggerState();
-    } else {
-      checkTriggers();
-    }
+    checkTriggers();
   });
+
+  let connected = true;
+  return () => {
+    if (!connected) return;
+    connected = false;
+    connections--;
+    unsubscribe();
+  };
 }
 
 export function reinitTriggerState(): void {

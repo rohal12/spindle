@@ -16,6 +16,9 @@ import {
 } from '../../src/triggers';
 import type { QueuedDialog, WatchOptions } from '../../src/triggers';
 import { useStoryStore } from '../../src/store';
+import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
+import { loadSession } from '../../src/saves/save-manager';
+import { initPRNG, resetPRNG, getPRNGPull } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -298,6 +301,130 @@ describe('triggers dialog queue', () => {
       addTrigger('$y === 5 && _t === 1', cb);
       useStoryStore.getState().setTransient('flag', 1);
       expect(useStoryStore.getState().variables.y).toBe(5);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('watchers and navigation', () => {
+    let disconnect: () => void;
+    const store = () => useStoryStore.getState();
+
+    beforeEach(() => {
+      resetEmitter();
+      sessionStorage.clear();
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Hello'),
+        makePassage(2, 'Cave', 'Cave'),
+        makePassage(3, 'Next', 'Next'),
+        makePassage(4, 'End', 'End'),
+      ]);
+      store().init(storyData, { torch: false, n: 0 });
+      disconnect = connectTriggersToStore();
+    });
+
+    afterEach(() => {
+      disconnect();
+      resetEmitter();
+    });
+
+    function sessionSnapshots(): unknown[] {
+      return loadSession('test')!.history.map((m) => m.variables);
+    }
+
+    function historySnapshots(): unknown[] {
+      return store().history.map((_, i) => store().getHistoryVariables(i));
+    }
+
+    it('records a run action fired by navigation in the entered moment', () => {
+      addTrigger("hasVisited('Cave')", { run: '$torch = true' });
+      store().navigate('Cave');
+      expect(store().variables.torch).toBe(true);
+      store().navigate('Next');
+
+      expect(store().getHistoryVariables(1)).toEqual({ torch: true, n: 0 });
+      expect(sessionSnapshots()).toEqual(historySnapshots());
+
+      store().goBack();
+      expect(store().currentPassage).toBe('Cave');
+      expect(store().variables.torch).toBe(true);
+    });
+
+    it('fires a goto action after the navigation that triggered it', () => {
+      const events: string[] = [];
+      emitterOn('afternavigate', (to: unknown) => events.push(to as string));
+      addTrigger("hasVisited('Cave')", { goto: 'Next' });
+      store().navigate('Cave');
+
+      expect(events).toEqual(['Cave', 'Next']);
+      expect(store().currentPassage).toBe('Next');
+      expect(store().history.map((m) => m.passage)).toEqual([
+        'Start',
+        'Cave',
+        'Next',
+      ]);
+      expect(sessionSnapshots()).toEqual(historySnapshots());
+    });
+
+    it('fires a goto action after the run actions of the same navigation', () => {
+      addTrigger("hasVisited('Cave')", { goto: 'Next', priority: 1 });
+      addTrigger("hasVisited('Cave')", { run: '$n = 1' });
+      store().navigate('Cave');
+
+      expect(store().currentPassage).toBe('Next');
+      expect(store().getHistoryVariables(1)).toEqual({ torch: false, n: 1 });
+      expect(sessionSnapshots()).toEqual(historySnapshots());
+    });
+
+    it('defers a navigation requested by a watcher callback', () => {
+      const events: string[] = [];
+      emitterOn('afternavigate', (to: unknown) => events.push(to as string));
+      addTrigger("hasVisited('Cave')", () => store().navigate('End'));
+      store().navigate('Cave');
+
+      expect(events).toEqual(['Cave', 'End']);
+      expect(store().history.map((m) => m.passage)).toEqual([
+        'Start',
+        'Cave',
+        'End',
+      ]);
+      expect(sessionSnapshots()).toEqual(historySnapshots());
+    });
+
+    it('records run actions for a navigation started by a watcher', () => {
+      addTrigger('$n > 0', { goto: 'Cave' });
+      addTrigger("hasVisited('Cave')", { run: '$torch = true' });
+      store().setVariable('n', 1);
+
+      expect(store().currentPassage).toBe('Cave');
+      expect(store().getHistoryVariables(1)).toEqual({ torch: true, n: 1 });
+      expect(sessionSnapshots()).toEqual(historySnapshots());
+    });
+
+    it('records PRNG pulls of a run action fired by navigation', () => {
+      initPRNG('seed', false);
+      addTrigger("hasVisited('Cave')", { run: '$n = random()' });
+      store().navigate('Cave');
+      expect(store().history[1]!.prng?.pull).toBe(getPRNGPull());
+      resetPRNG();
+    });
+
+    it('does not fire when a load restores variables', () => {
+      const cb = vi.fn();
+      store().navigate('Cave');
+      const payload = store().getSavePayload();
+      payload.variables = { torch: true, n: 0 };
+      addTrigger('$torch', cb);
+      store().loadFromPayload(payload);
+      expect(store().variables.torch).toBe(true);
+      expect(cb).not.toHaveBeenCalled();
+    });
+
+    it('still fires watchers changed later in the destination passage', () => {
+      const cb = vi.fn();
+      addTrigger('$n > 0', cb);
+      store().navigate('Cave');
+      expect(cb).not.toHaveBeenCalled();
+      store().setVariable('n', 1);
       expect(cb).toHaveBeenCalledTimes(1);
     });
   });

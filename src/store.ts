@@ -17,7 +17,11 @@ import type {
 import { isSaveExport } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { emit } from './event-emitter';
-import { resetTriggers } from './triggers';
+import {
+  resetTriggers,
+  checkTriggersOnNavigation,
+  reinitTriggerState,
+} from './triggers';
 import {
   initSaveSystem,
   startNewPlaythrough,
@@ -107,6 +111,19 @@ function computeVarPatches(
   return { forward: clonePatches(forward), inverse: clonePatches(inverse) };
 }
 
+/**
+ * Replace the variable snapshot recorded for the newest history moment
+ * (e.g. with changes made by watchers reacting to the navigation into it).
+ */
+function rerecordNewestMoment(vars: Record<string, unknown>): void {
+  const last = patchEntries.length - 1;
+  if (last < 0) {
+    variableBase = vars;
+  } else {
+    patchEntries[last] = computeVarPatches(reconstructVarsAt(last), vars);
+  }
+}
+
 /** Reconstruct variables at a given history moment by replaying patches. */
 function reconstructVarsAt(index: number): Record<string, unknown> {
   let vars: Record<string, unknown> = variableBase;
@@ -179,6 +196,12 @@ function persistSession(get: () => StoryState): void {
     prng: snapshotPRNG(),
   });
 }
+
+/** True while navigate() lets watchers react to the moment it entered. */
+let navigationTriggerPhase = false;
+
+/** Navigations requested during the trigger phase, run once it is over. */
+let deferredNavigations: string[] = [];
 
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
 function resetModuleState(base: Record<string, unknown>): void {
@@ -444,6 +467,13 @@ export const useStoryStore = create<StoryState>()(
     },
 
     navigate: (passageName: string) => {
+      // A watcher (goto action or callback) reacting to a navigation must not
+      // start another one before the first has recorded its moment.
+      if (navigationTriggerPhase) {
+        deferredNavigations.push(passageName);
+        return;
+      }
+
       const { storyData } = get();
       if (!storyData) return;
 
@@ -505,10 +535,35 @@ export const useStoryStore = create<StoryState>()(
           (state.renderCounts[passageName] ?? 0) + 1;
       });
 
+      // Watchers react to the completed transition (visit counts, cleared
+      // temporaries). Like beforenavigate changes, their run actions belong
+      // to the entered moment; navigations they request run afterwards.
+      const enteredVars = get().variables;
+      navigationTriggerPhase = true;
+      try {
+        checkTriggersOnNavigation();
+      } finally {
+        navigationTriggerPhase = false;
+      }
+      const deferred = deferredNavigations;
+      deferredNavigations = [];
+      if (get().variables !== enteredVars) {
+        rerecordNewestMoment(get().variables);
+      }
+      const prng = snapshotPRNG();
+      const recorded = get().history[get().historyIndex]!.prng;
+      if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
+        set((state) => {
+          state.history[state.historyIndex]!.prng = prng;
+        });
+      }
+
       lastNavigationVars = get().variables;
       persistSession(get);
 
       emit('afternavigate', passageName, previousPassage);
+
+      for (const next of deferred) get().navigate(next);
     },
 
     goBack: () => {
@@ -531,6 +586,8 @@ export const useStoryStore = create<StoryState>()(
         state.temporary = {};
       });
 
+      // Restored state is not a change watchers react to
+      reinitTriggerState();
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
@@ -558,6 +615,8 @@ export const useStoryStore = create<StoryState>()(
         state.temporary = {};
       });
 
+      // Restored state is not a change watchers react to
+      reinitTriggerState();
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
@@ -918,6 +977,9 @@ export const useStoryStore = create<StoryState>()(
         state.temporary = {};
         state.transient = deepClone(get().transientDefaults);
       });
+
+      // Loaded state is not a change watchers react to
+      reinitTriggerState();
 
       // The next navigate() diffs from the snapshot recorded for the current
       // moment, not from the live variables (which may hold later edits)
