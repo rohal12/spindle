@@ -133,7 +133,8 @@ function isImportablePayload(value: unknown): value is SavePayload {
 
   const { history, historyIndex } = value;
   if (!Array.isArray(history) || history.length === 0) return false;
-  if (!history.every(isSaveHistoryMoment)) return false;
+  // Array.from: every() skips the holes of a sparse array
+  if (!Array.from(history).every(isSaveHistoryMoment)) return false;
   if (
     typeof historyIndex !== 'number' ||
     !Number.isInteger(historyIndex) ||

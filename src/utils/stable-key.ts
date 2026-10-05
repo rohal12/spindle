@@ -1,6 +1,4 @@
-import { getClassName } from '../class-registry';
-
-type Constructor = new (...args: any[]) => any;
+import { registeredClassName } from '../class-registry';
 
 /**
  * Content-derived string key for a value, used to remount components when
@@ -67,7 +65,7 @@ function keyOf(val: unknown, ancestors: object[]): string {
     const body = Object.keys(record)
       .map((k) => `${JSON.stringify(k)}:${keyOf(record[k], ancestors)}`)
       .join(',');
-    const className = getClassName(obj.constructor as Constructor);
+    const className = registeredClassName(obj);
     return className === undefined
       ? `{${body}}`
       : `Class(${JSON.stringify(className)}){${body}}`;
