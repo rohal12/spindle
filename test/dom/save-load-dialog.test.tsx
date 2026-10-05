@@ -702,6 +702,65 @@ describe('SaveManagerContent', () => {
       expect(labels[0]!.textContent).toContain('(current)');
       expect(container.querySelectorAll('.save-slot')).toHaveLength(1);
     });
+
+    it('lists a save made right after a restart under the new playthrough', async () => {
+      const oldPt = useStoryStore.getState().playthroughId;
+      await useStoryStore.getState().save('before-restart');
+
+      useStoryStore.getState().restart();
+      await useStoryStore.getState().save('after-restart');
+      expect(useStoryStore.getState().playthroughId).not.toBe(oldPt);
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(() => saveModeBtn.click());
+      await flush();
+
+      // Save mode shows only the new playthrough, holding the new save
+      const labels = [...container.querySelectorAll('.playthrough-label')];
+      expect(labels).toHaveLength(1);
+      expect(labels[0]!.textContent).toContain('(current)');
+      const slots = [...container.querySelectorAll('.save-slot')];
+      expect(slots).toHaveLength(1);
+      const groups = await getSavesGrouped(IFID);
+      const current = groups.find(
+        (g) => g.playthrough.id === useStoryStore.getState().playthroughId,
+      )!;
+      expect(current.saves.map((s) => s.meta.custom.slot)).toEqual([
+        'after-restart',
+      ]);
+    });
+
+    it('"+ New Save" right after a restart saves into the new playthrough', async () => {
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(() => saveModeBtn.click());
+      await flush();
+
+      useStoryStore.getState().restart();
+      const newSaveBtn = container.querySelector(
+        '.save-slot-new',
+      ) as HTMLElement;
+      await act(async () => newSaveBtn.click());
+      await flush();
+      const newPt = useStoryStore.getState().playthroughId;
+
+      expect(container.querySelector('.saves-status')!.textContent).toContain(
+        'Save created',
+      );
+      const groups = await getSavesGrouped(IFID);
+      const group = groups.find((g) => g.playthrough.id === newPt)!;
+      expect(group.saves).toHaveLength(1);
+      expect(group.playthrough.label).not.toBe('Unknown Playthrough');
+    });
   });
 
   describe('save hooks', () => {

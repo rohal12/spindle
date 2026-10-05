@@ -71,12 +71,19 @@ export async function initSaveSystem(): Promise<void> {
 
 // --- Playthroughs ---
 
-export async function startNewPlaythrough(ifid: string): Promise<string> {
+/**
+ * Store a new playthrough and make it the story's current one. Pass `id` when
+ * the caller has already switched to the playthrough (restart() does, so
+ * saves issued before this resolves are tagged with it).
+ */
+export async function startNewPlaythrough(
+  ifid: string,
+  id: string = crypto.randomUUID(),
+): Promise<string> {
   const backend = await getBackend();
   const existing = await backend.getPlaythroughsByIfid(ifid);
   const num = existing.length + 1;
 
-  const id = crypto.randomUUID();
   const record: PlaythroughRecord = {
     id,
     ifid,

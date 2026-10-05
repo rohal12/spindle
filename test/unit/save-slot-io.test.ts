@@ -443,3 +443,157 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     expect(index).toEqual(['slot-3', 'slot-4']);
   });
 });
+
+describe.each(BACKENDS)(
+  'saves issued while a playthrough is being set up ($name)',
+  (backend) => {
+    let Story: StoryAPI;
+    let ifid: string;
+
+    async function playthroughs() {
+      const records = await (await getBackend()).getPlaythroughsByIfid(ifid);
+      return records
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .map((p) => [p.id, p.label]);
+    }
+
+    async function currentPlaythroughMeta() {
+      return (await getBackend()).getMeta<string>(
+        `currentPlaythroughId.${ifid}`,
+      );
+    }
+
+    async function initAndWait() {
+      useStoryStore.getState().init(makeStoryData(ifid), { hp: 100 });
+      await vi.waitFor(() =>
+        expect(useStoryStore.getState().playthroughId).not.toBe(''),
+      );
+      return useStoryStore.getState().playthroughId;
+    }
+
+    beforeEach(async () => {
+      for (const key of backend.hide) vi.stubGlobal(key, undefined);
+      resetBackend();
+      expect((await getBackend()).type).toBe(backend.name);
+
+      _resetRuntimePhase();
+      ifid = `pt-setup-${backend.name}-${++ifidCounter}`;
+      useStoryStore.setState({ knownSaves: {}, playthroughId: '' });
+      installStoryAPI();
+      Story = window.Story;
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      resetBackend();
+    });
+
+    it.each([
+      ['the default slot', undefined],
+      ['a named slot', 'slot-1'],
+    ])(
+      'a save to %s right after restart belongs to the new playthrough',
+      async (_, slot) => {
+        const oldPt = await initAndWait();
+        await Story.save(slot);
+
+        Story.restart();
+        const newPt = useStoryStore.getState().playthroughId;
+        expect(newPt).not.toBe(oldPt);
+        expect(newPt).not.toBe('');
+        await Story.save(slot);
+
+        const data = (await Story.exportSave(slot))!;
+        expect(data.save.meta.playthroughId).toBe(newPt);
+        // The playthrough record is stored by the time the save is
+        expect((await playthroughs()).map(([id]) => id)).toContain(newPt);
+        expect(await currentPlaythroughMeta()).toBe(newPt);
+
+        // Deleting the old playthrough keeps the new game's save
+        await Story.storage.deletePlaythrough(oldPt);
+        expect(Story.hasSave(slot)).toBe(true);
+      },
+    );
+
+    it('restart, save, restart: the save stays in the playthrough it was issued in', async () => {
+      const first = await initAndWait();
+
+      Story.restart();
+      const second = useStoryStore.getState().playthroughId;
+      const saved = Story.save('slot-1');
+      Story.restart();
+      const third = useStoryStore.getState().playthroughId;
+      await saved;
+
+      expect(new Set([first, second, third]).size).toBe(3);
+      const data = (await Story.exportSave('slot-1'))!;
+      expect(data.save.meta.playthroughId).toBe(second);
+
+      // Playthroughs are created in order, with distinct labels
+      await vi.waitFor(async () =>
+        expect(await currentPlaythroughMeta()).toBe(third),
+      );
+      expect(await playthroughs()).toEqual([
+        [first, 'Playthrough 1'],
+        [second, 'Playthrough 2'],
+        [third, 'Playthrough 3'],
+      ]);
+      expect(useStoryStore.getState().playthroughId).toBe(third);
+    });
+
+    it('a save issued before the initial playthrough is known is tagged with it', async () => {
+      useStoryStore.getState().init(makeStoryData(ifid), { hp: 100 });
+      expect(useStoryStore.getState().playthroughId).toBe('');
+
+      await Story.save('slot-1');
+
+      const pt = useStoryStore.getState().playthroughId;
+      expect(pt).not.toBe('');
+      const data = (await Story.exportSave('slot-1'))!;
+      expect(data.save.meta.playthroughId).toBe(pt);
+      expect(Story.hasSave('slot-1')).toBe(true);
+    });
+
+    it('a restart before the initial playthrough is known replaces it', async () => {
+      useStoryStore.getState().init(makeStoryData(ifid), { hp: 100 });
+      Story.restart();
+      const restartPt = useStoryStore.getState().playthroughId;
+      expect(restartPt).not.toBe('');
+
+      await Story.save('slot-1');
+
+      expect(useStoryStore.getState().playthroughId).toBe(restartPt);
+      expect(await currentPlaythroughMeta()).toBe(restartPt);
+      expect((await Story.exportSave('slot-1'))!.save.meta.playthroughId).toBe(
+        restartPt,
+      );
+      expect(await playthroughs()).toEqual([
+        [expect.any(String), 'Playthrough 1'],
+        [restartPt, 'Playthrough 2'],
+      ]);
+    });
+
+    it('a load issued while the playthrough is pending keeps the stored one', async () => {
+      const pt = await initAndWait();
+      Story.set('hp', 5);
+      // Recorded on entering Room, which is what a load restores
+      Story.goto('Room');
+      await Story.save('slot-1');
+
+      // Reload: init again and load at once
+      useStoryStore.setState({ knownSaves: {}, playthroughId: '' });
+      useStoryStore.getState().init(makeStoryData(ifid), { hp: 100 });
+      await Story.load('slot-1');
+      expect(Story.passage).toBe('Room');
+      expect(Story.get('hp')).toBe(5);
+
+      await Story.save('slot-2');
+      expect(useStoryStore.getState().playthroughId).toBe(pt);
+      expect((await Story.exportSave('slot-2'))!.save.meta.playthroughId).toBe(
+        pt,
+      );
+      expect(Story.hasSave('slot-1')).toBe(true);
+      expect(Story.hasSave('slot-2')).toBe(true);
+    });
+  },
+);

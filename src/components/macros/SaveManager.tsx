@@ -5,7 +5,7 @@ import {
   useRef,
   useContext,
 } from 'preact/hooks';
-import { useStoryStore } from '../../store';
+import { useStoryStore, resolvePlaythroughId } from '../../store';
 import { isSaveExport, type SaveRecord } from '../../saves/types';
 import {
   getSavesGrouped,
@@ -106,10 +106,20 @@ export function SaveManagerContent() {
 
   // Dialog saves are not slot saves, so the save hooks get no slot.
   const handleNewSave = async () => {
-    if (!ifid || !playthroughId) return;
+    if (!ifid) return;
+    // The playthrough current at the click, which a restart may have
+    // switched since this render
+    const playthrough = resolvePlaythroughId();
     try {
-      await saveWithHooks(undefined, undefined, getSavePayload, (payload) =>
-        createSave(ifid, playthroughId, payload),
+      await saveWithHooks(
+        undefined,
+        undefined,
+        getSavePayload,
+        async (payload) => {
+          const ptId = await playthrough;
+          if (!ptId) throw new Error('No playthrough');
+          return createSave(ifid, ptId, payload);
+        },
       );
       showStatus('Save created');
       await refresh();
@@ -119,13 +129,16 @@ export function SaveManagerContent() {
   };
 
   const handleOverwrite = async (saveId: string) => {
+    const playthrough = resolvePlaythroughId();
     try {
       await saveWithHooks(
         undefined,
         undefined,
         getSavePayload,
         async (payload) => {
-          if (!(await overwriteSave(saveId, payload))) {
+          // Only the current playthrough's saves offer "Save Here"
+          const ptId = (await playthrough) || undefined;
+          if (!(await overwriteSave(saveId, payload, undefined, ptId))) {
             throw new Error('Save not found');
           }
         },
