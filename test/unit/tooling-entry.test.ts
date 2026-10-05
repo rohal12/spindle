@@ -78,7 +78,7 @@ describe('pkg/tooling.js exists', () => {
   });
 
   it('tooling type declaration exists', () => {
-    const typesPath = resolve(__dirname, '../../pkg/types/tooling.d.ts');
+    const typesPath = resolve(__dirname, '../../types/tooling.d.ts');
     expect(existsSync(typesPath)).toBe(true);
   });
 });

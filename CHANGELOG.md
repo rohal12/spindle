@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `@rohal12/spindle/tooling` now ships the type declarations its `exports` entry points to (`types/tooling.d.ts` was missing from the package) and exports `parseStoryVariables`, so tests and tooling can validate `StoryVariables`/`StoryTransients` declarations with the same parser Spindle uses at boot
 - Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
 - `{timed}` macro CSS class/id applies per-section: each `{next}` branch's selectors only affect that branch, not the outer wrapper
 - Synchronous macro execution during render (Set, Unset, Computed update immediately rather than deferring)

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export { parseStoryVariables } from './story-variables.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load built-in macro metadata generated at build time
