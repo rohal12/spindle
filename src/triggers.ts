@@ -1,4 +1,5 @@
-import { evaluate, execute } from './expression';
+import { evaluate } from './expression';
+import { executeMutation } from './execute-mutation';
 import { useStoryStore } from './store';
 
 export interface WatchOptions {
@@ -100,8 +101,16 @@ function fireTrigger(trigger: Trigger): void {
   if (!options) return;
 
   if (options.run) {
-    const state = useStoryStore.getState();
-    execute(options.run, state.variables, state.temporary);
+    // Store state is frozen; go through the mutation pipeline so the run
+    // action works on clones and its changes are committed to the store.
+    try {
+      executeMutation(options.run, {}, () => {});
+    } catch (err) {
+      console.error(
+        `spindle: Error in watch run action for "${trigger.condition}":`,
+        err,
+      );
+    }
   }
 
   if (options.dialog) {

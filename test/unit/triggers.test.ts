@@ -13,7 +13,7 @@ import {
   closeCurrentDialog,
   isDialogShowing,
 } from '../../src/triggers';
-import type { QueuedDialog } from '../../src/triggers';
+import type { QueuedDialog, WatchOptions } from '../../src/triggers';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -139,6 +139,75 @@ describe('triggers dialog queue', () => {
       checkTriggers();
       const item = shiftDialogQueue();
       expect(item).toEqual({ passageName: 'MyDialog' });
+    });
+  });
+
+  describe('watch run actions', () => {
+    beforeEach(() => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Hello'),
+        makePassage(2, 'Next', 'Next'),
+      ]);
+      useStoryStore
+        .getState()
+        .init(
+          storyData,
+          { x: 0, y: 0, list: [1], gone: 1 },
+          { tflag: 0, tlist: [] },
+        );
+    });
+
+    function fire(condition: string, options: WatchOptions): void {
+      addTrigger(condition, options);
+      useStoryStore.getState().setVariable('x', 1);
+      checkTriggers();
+    }
+
+    it('assigns story variables', () => {
+      fire('$x > 0', { run: '$y = 5' });
+      expect(useStoryStore.getState().variables.y).toBe(5);
+    });
+
+    it('mutates collections in place', () => {
+      fire('$x > 0', { run: '$list.push(2); %tlist.push("a")' });
+      const state = useStoryStore.getState();
+      expect(state.variables.list).toEqual([1, 2]);
+      expect(state.transient.tlist).toEqual(['a']);
+    });
+
+    it('writes temporary and transient variables', () => {
+      fire('$x > 0', { run: '_t = 3; %tflag = 4' });
+      const state = useStoryStore.getState();
+      expect(state.temporary.t).toBe(3);
+      expect(state.transient.tflag).toBe(4);
+    });
+
+    it('deletes variables', () => {
+      fire('$x > 0', { run: 'delete $gone' });
+      expect('gone' in useStoryStore.getState().variables).toBe(false);
+    });
+
+    it('still runs dialog and goto after run', () => {
+      fire('$x > 0', { run: '$y = 1', dialog: 'Help', goto: 'Next' });
+      const state = useStoryStore.getState();
+      expect(state.variables.y).toBe(1);
+      expect(shiftDialogQueue()).toEqual({ passageName: 'Help' });
+      expect(state.currentPassage).toBe('Next');
+    });
+
+    it('logs a failing run action and still runs dialog', () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      fire('$x > 0', { run: 'undefinedFn()', dialog: 'Help' });
+      expect(err).toHaveBeenCalled();
+      expect(shiftDialogQueue()).toEqual({ passageName: 'Help' });
+      err.mockRestore();
+    });
+
+    it('re-checks other triggers after a run mutation', () => {
+      const cb = vi.fn();
+      addTrigger('$y === 5', cb);
+      fire('$x > 0', { run: '$y = 5' });
+      expect(cb).toHaveBeenCalledTimes(1);
     });
   });
 
