@@ -24,7 +24,8 @@ import {
   populateKnownSaves,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
-import { registerClass } from './class-registry';
+import { registerClass, deepClone } from './class-registry';
+import { getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
@@ -279,22 +280,30 @@ function createStoryAPI(): StoryAPI {
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
-      const names =
-        typeof nameOrVars === 'string' ? [nameOrVars] : Object.keys(nameOrVars);
-      for (const name of names) {
+      const entries: [string, unknown][] =
+        typeof nameOrVars === 'string'
+          ? [[nameOrVars, value]]
+          : Object.entries(nameOrVars);
+      for (const [name] of entries) {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
       }
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
-        if (typeof nameOrVars === 'string') {
-          setOne(draft, nameOrVars, value);
-        } else {
-          for (const [k, v] of Object.entries(nameOrVars)) {
-            setOne(draft, k, v);
-          }
-        }
+        for (const [k, v] of entries) setOne(draft, k, v);
       });
+      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+      // works on copies of the namespaces and commits changed roots when it
+      // finishes. Apply the write to those copies too, so the code sees it
+      // and the commit keeps it in program order alongside the code's own
+      // changes to the same root (#215). Values are copied: the store's are
+      // frozen, and the code must not change the store through them.
+      const scope = getActiveMutationScope();
+      if (scope) {
+        for (const [k, v] of entries) {
+          setOne(scope, k, deepClone(v, { keepUnregistered: true }));
+        }
+      }
     },
 
     goto(passageName: string): void {
