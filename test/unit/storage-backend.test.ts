@@ -84,6 +84,40 @@ function runBackendSuite(
         expect(loaded).toBeUndefined();
       });
 
+      // Found by the save model property test (test/property/saves-model):
+      // the memory backend handed out the stored objects themselves
+      it('stores copies: changing a record put or read changes nothing stored', async () => {
+        const ifid = `ifid-copies-${Date.now()}`;
+        const record = makeSaveRecord('s-copy', ifid, PT_ID);
+        await backend.putSave(record);
+        record.meta.title = 'changed after put';
+
+        const read = (await backend.getSave('s-copy'))!;
+        read.meta.custom.slot = 'changed after get';
+        read.payload.variables.hp = 0;
+        (await backend.getSavesByIfid(ifid))[0]!.meta.title = 'changed';
+
+        await backend.putPlaythrough(makePlaythroughRecord('pt-copy', ifid));
+        (await backend.getPlaythroughsByIfid(ifid))[0]!.label = 'changed';
+
+        const slots = ['a'];
+        await backend.setMeta('copies', slots);
+        slots.push('changed after set');
+        (await backend.getMeta<string[]>('copies'))!.push('changed after get');
+
+        expect((await backend.getSave('s-copy'))!.meta).toMatchObject({
+          title: 'Save s-copy',
+          custom: {},
+        });
+        expect((await backend.getSave('s-copy'))!.payload.variables.hp).toBe(
+          100,
+        );
+        expect((await backend.getPlaythroughsByIfid(ifid))[0]!.label).toBe(
+          'Playthrough pt-copy',
+        );
+        expect(await backend.getMeta('copies')).toEqual(['a']);
+      });
+
       it('getSavesByIfid filters correctly', async () => {
         const uniqueIfid = `ifid-filter-${Date.now()}`;
         const otherIfid = `ifid-other-${Date.now()}`;

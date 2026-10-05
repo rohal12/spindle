@@ -673,11 +673,18 @@ export interface StoryAPI {
     getInfo(): Promise<StorageInfo>;
     /** Get browser storage quota estimate. */
     getQuota(): Promise<StorageQuota>;
-    /** Delete all saves for the current game. */
+    /**
+     * Delete all saves and playthroughs of the current game and restart it.
+     * The restart happens at once; the promise settles once the data is
+     * deleted.
+     */
     clearGameData(): Promise<void>;
-    /** Delete all Spindle data across all games. */
+    /** Delete all Spindle data across all games and restart, as clearGameData. */
     clearAllData(): Promise<void>;
-    /** Delete a specific playthrough and its saves. */
+    /**
+     * Delete a specific playthrough and its saves. Deleting the current
+     * playthrough moves the running game to a new one.
+     */
     deletePlaythrough(playthroughId: string): Promise<void>;
     /** The active storage backend. */
     readonly backend: 'indexeddb' | 'localstorage' | 'memory';
@@ -733,7 +740,10 @@ export interface StoryAPI {
 
   /** Story configuration. */
   readonly config: {
-    /** Maximum number of history moments to retain. */
+    /**
+     * Maximum number of history moments to retain. Lowering it trims history
+     * at once, keeping the newest moments that include the current one.
+     */
     maxHistory: number;
     /**
      * Key that triggers a quick save (`KeyboardEvent.key`, default `'F6'`).

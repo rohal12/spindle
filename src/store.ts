@@ -23,9 +23,8 @@ import {
   reinitTriggerState,
 } from './triggers';
 import {
-  initSaveSystem,
+  establishPlaythrough,
   startNewPlaythrough,
-  getCurrentPlaythroughId,
   quickSave,
   saveWithHooks,
   loadQuickSave,
@@ -198,6 +197,34 @@ function persistSession(get: () => StoryState): void {
   });
 }
 
+/**
+ * Trim history to `state.maxHistory` moments: keep the newest moments that
+ * include the current one. After a navigation (the current moment is the
+ * newest) that drops the oldest; when the player has gone back further than
+ * the limit allows, the moments after the newest kept one are dropped too.
+ * Call it inside a store update; the module-level variable history
+ * (base, patches, session cache) is trimmed alongside.
+ */
+function trimHistory(state: {
+  history: HistoryMoment[];
+  historyIndex: number;
+  maxHistory: number;
+}): boolean {
+  const excess = state.history.length - state.maxHistory;
+  if (excess <= 0) return false;
+  const start = Math.min(state.historyIndex, excess);
+  const end = start + state.maxHistory;
+  // Advance base through trimmed transitions
+  for (let i = 0; i < start; i++) {
+    variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
+  }
+  state.history = state.history.slice(start, end);
+  patchEntries = patchEntries.slice(start, end - 1);
+  serializedHistory = serializedHistory.slice(start, end);
+  state.historyIndex -= start;
+  return true;
+}
+
 /** True while navigate() lets watchers react to the moment it entered. */
 let navigationTriggerPhase = false;
 
@@ -240,14 +267,19 @@ export function recordStoryInitState(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Settles once the latest playthrough setup (init's lookup or creation, or a
- * restart's creation) is stored, with that setup's playthrough ID ('' if
- * init could not establish one). Each setup chains on the previous one, so
- * playthroughs are created and numbered in the order the game started them.
+ * Settles once the latest playthrough setup (init's lookup or creation, a
+ * restart's creation, or the replacement of a deleted current playthrough)
+ * is stored, with the playthrough ID it leaves the game in ('' if init could
+ * not establish one). Setups are storage operations, which run in call
+ * order, so playthroughs are created and numbered in the order the game
+ * started them, and a save issued after a setup is stored after it.
  */
 let playthroughSetup: Promise<string> = Promise.resolve('');
 
-/** Bumped by every init()/restart(); a stale init must not adopt its ID. */
+/**
+ * Bumped by every init()/restart() and playthrough switch; a stale init must
+ * not adopt its ID.
+ */
 let playthroughGeneration = 0;
 
 /**
@@ -261,6 +293,26 @@ let playthroughGeneration = 0;
 export function resolvePlaythroughId(): Promise<string> {
   const current = useStoryStore.getState().playthroughId;
   return playthroughSetup.then((established) => current || established);
+}
+
+/**
+ * Move the running game to a new playthrough at once: saves issued from here
+ * on belong to it. Its record is stored by an operation queued now, after
+ * those already issued.
+ */
+function switchToNewPlaythrough(ifid: string): void {
+  const id = crypto.randomUUID();
+  ++playthroughGeneration;
+  useStoryStore.setState((state) => {
+    state.playthroughId = id;
+  });
+  playthroughSetup = startNewPlaythrough(ifid, id).then(
+    () => id,
+    (err) => {
+      console.error('spindle: failed to start new playthrough', err);
+      return id;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -409,9 +461,18 @@ export interface StoryState {
   deleteSave: (slot?: string) => Promise<void>;
   exportSave: (slot?: string) => Promise<SaveExport | null>;
   importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
-  clearGameData: () => void;
-  clearAllData: () => void;
-  deletePlaythrough: (playthroughId: string) => void;
+  /**
+   * Delete the story's saves and playthroughs and restart. The restart is
+   * immediate; the promise settles once the data is deleted.
+   */
+  clearGameData: () => Promise<void>;
+  /** As clearGameData, for all Spindle data (every story). */
+  clearAllData: () => Promise<void>;
+  /**
+   * Delete a playthrough and its saves. Deleting the current one moves the
+   * running game to a new playthrough.
+   */
+  deletePlaythrough: (playthroughId: string) => Promise<void>;
   getSavePayload: () => SavePayload;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
@@ -464,9 +525,13 @@ export const useStoryStore = create<StoryState>()(
     renderDeferred: false,
 
     setMaxHistory: (limit: number) => {
+      let trimmed = false;
       set((state) => {
         state.maxHistory = Math.max(1, Math.round(limit));
+        // A lower limit takes effect at once
+        trimmed = trimHistory(state);
       });
+      if (trimmed) persistSession(get);
     },
 
     setQuickSaveKey: (key: string | null) => {
@@ -521,30 +586,24 @@ export const useStoryStore = create<StoryState>()(
       // Update lastNavigationVars to the Immer-produced reference
       lastNavigationVars = get().variables;
 
-      // Init save system in the background. Saves issued meanwhile wait for
-      // it (see resolvePlaythroughId), so they are tagged with the
-      // playthrough it establishes and recorded after the known saves.
-      const ifid = storyData.ifid;
+      // Look up the story's playthrough and saves in the background, as a
+      // storage operation queued now: saves issued meanwhile are stored
+      // after it, tagged with the playthrough it establishes (see
+      // resolvePlaythroughId).
       const generation = ++playthroughGeneration;
-      playthroughSetup = initSaveSystem()
-        .then(async () => {
-          const id =
-            (await getCurrentPlaythroughId(ifid)) ??
-            (await startNewPlaythrough(ifid));
+      playthroughSetup = establishPlaythrough(storyData.ifid)
+        .then(({ id, knownSaves }) => {
           // A restart issued meanwhile has already switched playthroughs
           if (generation === playthroughGeneration) {
             set((state) => {
               state.playthroughId = id;
             });
           }
-
-          // Populate knownSaves from IDB so hasSave() works after reload
-          const saves = await populateKnownSaves(ifid);
-          if (Object.keys(saves).length > 0) {
-            set((state) => {
-              state.knownSaves = saves;
-            });
-          }
+          // So hasSave() works after a reload. Operations issued later
+          // update the cache after this.
+          set((state) => {
+            state.knownSaves = knownSaves;
+          });
           return id;
         })
         .catch((err) => {
@@ -603,19 +662,9 @@ export const useStoryStore = create<StoryState>()(
           prng: snapshotPRNG(),
         });
 
-        // Trim oldest entries if over the limit
-        const overflow = state.history.length - state.maxHistory;
-        if (overflow > 0) {
-          // Advance base through trimmed transitions
-          for (let i = 0; i < overflow; i++) {
-            variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
-          }
-          state.history = state.history.slice(overflow);
-          patchEntries = patchEntries.slice(overflow);
-          serializedHistory = serializedHistory.slice(overflow);
-        }
-
         state.historyIndex = state.history.length - 1;
+        // Trim oldest entries if over the limit
+        trimHistory(state);
         state.visitCounts[passageName] =
           (state.visitCounts[passageName] ?? 0) + 1;
         state.renderCounts[passageName] =
@@ -777,23 +826,8 @@ export const useStoryStore = create<StoryState>()(
 
       // Switch to the new playthrough now, after beforerestart (whose saves
       // belong to the game being left) and before StoryInit, so every save
-      // issued from here on belongs to the new game. Storing its record is
-      // queued after the previous playthrough setup.
-      const newPlaythroughId = crypto.randomUUID();
-      ++playthroughGeneration;
-      set((state) => {
-        state.playthroughId = newPlaythroughId;
-      });
-      const ifid = storyData.ifid;
-      playthroughSetup = playthroughSetup
-        .then(() => startNewPlaythrough(ifid, newPlaythroughId))
-        .then(
-          () => newPlaythroughId,
-          (err) => {
-            console.error('spindle: failed to start new playthrough', err);
-            return newPlaythroughId;
-          },
-        );
+      // issued from here on belongs to the new game.
+      switchToNewPlaythrough(storyData.ifid);
 
       const keepDeferred = get().renderDeferred;
 
@@ -852,14 +886,8 @@ export const useStoryStore = create<StoryState>()(
             set((state) => {
               state.saveError = null;
             });
-            const playthroughId = await playthrough;
-            await quickSave(
-              storyData.ifid,
-              playthroughId,
-              payload,
-              slot,
-              custom,
-            );
+            // Queued now, in call order with other storage operations
+            await quickSave(storyData.ifid, playthrough, payload, slot, custom);
             set((state) => {
               state.knownSaves = {
                 ...state.knownSaves,
@@ -959,50 +987,98 @@ export const useStoryStore = create<StoryState>()(
 
     clearGameData: () => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smClearGameData(storyData.ifid)
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear game data', err);
+      // Queue the clearing, then restart now: the new playthrough is stored
+      // after it, and operations issued from here on belong to the new game.
+      // The slot cache empties once the clearing is done, after operations
+      // issued before it have updated it.
+      const cleared = smClearGameData(storyData.ifid).then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear game data', err);
+          throw err;
+        }),
+      );
     },
 
     clearAllData: () => {
-      const { storyData } = get();
-      if (!storyData) return;
-
-      smClearAllData()
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear all data', err);
+      // As clearGameData: queue the clearing, then restart now
+      const cleared = smClearAllData().then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear all data', err);
+          throw err;
+        }),
+      );
     },
 
     deletePlaythrough: (playthroughId: string) => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smDeletePlaythroughData(storyData.ifid, playthroughId)
-        .then(async () => {
-          const known = await populateKnownSaves(storyData.ifid);
-          set((state) => {
-            state.knownSaves = known;
-          });
-        })
-        .catch((err) => {
-          console.error('spindle: failed to delete playthrough', err);
+      // The running game can't go on in a deleted playthrough: its later
+      // saves would belong to no playthrough. It moves to a new one, as on
+      // restart but keeping its state. While init is still looking up the
+      // game's playthrough (the store's ID is ''), the deletion checks the
+      // one it establishes.
+      const ifid = storyData.ifid;
+      const current = get().playthroughId;
+      const established = playthroughSetup;
+      const replacementId = crypto.randomUUID();
+      const deletion = smDeletePlaythroughData(ifid, playthroughId, {
+        current: current || established,
+        id: replacementId,
+      });
+      if (playthroughId !== '' && playthroughId === current) {
+        ++playthroughGeneration;
+        set((state) => {
+          state.playthroughId = replacementId;
         });
+        playthroughSetup = deletion.then(
+          () => replacementId,
+          () => replacementId,
+        );
+      } else if (current === '') {
+        const generation = ++playthroughGeneration;
+        playthroughSetup = deletion
+          .then(
+            (replaced) => (replaced ? replacementId : established),
+            () => established,
+          )
+          .then((id) => {
+            if (generation === playthroughGeneration) {
+              set((state) => {
+                state.playthroughId = id;
+              });
+            }
+            return id;
+          });
+      }
+
+      return handled(
+        deletion
+          .then(async () => {
+            const known = await populateKnownSaves(storyData.ifid);
+            set((state) => {
+              state.knownSaves = known;
+            });
+          })
+          .catch((err) => {
+            console.error('spindle: failed to delete playthrough', err);
+            throw err;
+          }),
+      );
     },
 
     getSavePayload: (): SavePayload => {
@@ -1093,6 +1169,8 @@ export const useStoryStore = create<StoryState>()(
           0,
           Math.min(payload.historyIndex, state.history.length - 1),
         );
+        // A save made under a higher limit keeps no more than the limit
+        trimHistory(state);
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
         state.temporary = {};

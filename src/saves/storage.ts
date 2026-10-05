@@ -4,7 +4,13 @@ import type { SaveRecord, PlaythroughRecord, StorageBackend } from './types';
 // Memory backend
 // ---------------------------------------------------------------------------
 
+/**
+ * In-memory storage. Like the other backends it stores copies: records and
+ * values go in and come out cloned, so changing a record after storing it,
+ * or one that was read, changes nothing stored.
+ */
 export function createMemoryBackend(): StorageBackend {
+  const copy = <T>(value: T): T => structuredClone(value);
   const saves = new Map<string, SaveRecord>();
   const playthroughs = new Map<string, PlaythroughRecord>();
   const meta = new Map<string, unknown>();
@@ -13,11 +19,12 @@ export function createMemoryBackend(): StorageBackend {
     type: 'memory',
 
     async putSave(record: SaveRecord): Promise<void> {
-      saves.set(record.meta.id, record);
+      saves.set(record.meta.id, copy(record));
     },
 
     async getSave(id: string): Promise<SaveRecord | undefined> {
-      return saves.get(id);
+      const record = saves.get(id);
+      return record && copy(record);
     },
 
     async deleteSave(id: string): Promise<void> {
@@ -25,7 +32,7 @@ export function createMemoryBackend(): StorageBackend {
     },
 
     async getSavesByIfid(ifid: string): Promise<SaveRecord[]> {
-      return [...saves.values()].filter((s) => s.meta.ifid === ifid);
+      return [...saves.values()].filter((s) => s.meta.ifid === ifid).map(copy);
     },
 
     async deleteSavesByIfid(ifid: string): Promise<void> {
@@ -48,11 +55,13 @@ export function createMemoryBackend(): StorageBackend {
     },
 
     async putPlaythrough(record: PlaythroughRecord): Promise<void> {
-      playthroughs.set(record.id, record);
+      playthroughs.set(record.id, copy(record));
     },
 
     async getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]> {
-      return [...playthroughs.values()].filter((p) => p.ifid === ifid);
+      return [...playthroughs.values()]
+        .filter((p) => p.ifid === ifid)
+        .map(copy);
     },
 
     async deletePlaythroughsByIfid(ifid: string): Promise<void> {
@@ -67,11 +76,11 @@ export function createMemoryBackend(): StorageBackend {
     },
 
     async getMeta<T = unknown>(key: string): Promise<T | undefined> {
-      return meta.get(key) as T | undefined;
+      return copy(meta.get(key)) as T | undefined;
     },
 
     async setMeta(key: string, value: unknown): Promise<void> {
-      meta.set(key, value);
+      meta.set(key, copy(value));
     },
 
     async deleteMeta(key: string): Promise<void> {
