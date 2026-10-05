@@ -27,7 +27,7 @@ Set one or more story variables. As with `Story.get()`, a leading `$` is optiona
 {/do}
 ```
 
-A dot path such as `Story.set("player.stats.str", 5)` goes through objects, class instances and array indices (`"inventory.0"`). A path through a missing object throws a `TypeError`. So does a write into a Map, Set, Date or RegExp, to a non-index key of an array, or through `__proto__`, since such a property would be lost on the next save.
+A dot path such as `Story.set("player.stats.str", 5)` goes through objects, class instances and array indices (`"inventory.0"`). A path through a missing object throws a `TypeError`. So does a write into a Map, Set, Date or RegExp, to a non-index key of an array, or through `__proto__`, since such a property would be lost on the next save. A variable named `__proto__` throws a `TypeError` in `Story.get()` and `Story.set()` alike (see [Variable Names](variables.md#variable-names)); names such as `constructor` or `toString` are ordinary variables.
 
 Writing a variable that is not declared in `StoryVariables` (or a `%` transient not declared in `StoryTransients`) still works, but logs a console warning once per name: passages cannot reference such a variable, so it is usually a typo. For dot-paths only the root name is checked.
 
@@ -62,6 +62,10 @@ Navigate to a passage.
 ```
 
 Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
+
+The same holds for everything else running code sets off: a `{link}`, `{button}`, input or menubar action it performs with `Story.performAction()` (or a click or input event it dispatches), and the `{set}`, `{unset}`, `{computed}` and `{goto}` in a link or button body that runs. Their writes take effect at that point, as if the code had made them: the code reads them next, and a later write of the code's own wins over them, while one made before them does not.
+
+Watchers, `variableChanged` handlers and anything else reading story state while the code runs see the state at that point in the code: before such a write reaches the story, the code's own assignments so far do (and stay, even if the code throws afterwards). In `{do}$a = 1; Story.set("b", 2){/do}`, `variableChanged` reports the change of `$a` and then that of `$b`, and a handler of the latter reads `$a` as 1. A `Story.watch()` called by the code starts from the code's state.
 
 ### `Story.back()`
 

@@ -3,8 +3,9 @@
  * Model test of the mutation merge (execute-mutation.ts): mutation code
  * runs on working copies of the store namespaces and commits the paths it
  * changed with a three-way merge, while writes made elsewhere during the
- * run (Story.set, nested mutations, direct store updates) are mirrored into
- * the copies, and Story.get/goto/back/forward/save act in program order.
+ * run (Story.set, nested mutations, any other store update) are made in
+ * the code's state and mirrored into the copies, and
+ * Story.get/goto/back/forward/save act in program order.
  *
  * All of that must be indistinguishable from the simple reference model
  * here: one plain state that every write is applied to in program order.
@@ -20,6 +21,8 @@ import {
   deserialize,
 } from '../../src/class-registry';
 import { getBackend, resetBackend } from '../../src/saves/storage';
+import { deleteByPath, setByPath } from '../../src/utils/object-path';
+import { createNamespace } from '../../src/utils/namespace';
 import { resetEmitter } from '../../src/event-emitter';
 import {
   addTrigger,
@@ -45,7 +48,17 @@ type Spec =
   | { k: 'counter'; n: number }
   | { k: 'map'; entries: [string, number][] };
 
-const KEYS = ['a', 'b', 'c'];
+/**
+ * Property keys. `valueOf` is an Object.prototype member: an object holds
+ * it only as an own property, like any other key.
+ */
+const KEYS = ['a', 'b', 'c', 'valueOf'];
+
+/**
+ * Names of new variables. Those of Object.prototype members are variables
+ * like any other (the namespaces have no prototype).
+ */
+const NEW_ROOTS = ['q', 'r', 'constructor', 'toString', 'hasOwnProperty'];
 
 const specArb: fc.Arbitrary<Spec> = fc.letrec<{ spec: Spec }>((tie) => ({
   spec: fc.oneof(
@@ -121,14 +134,24 @@ type Op =
       entries: { ns: number; walk: number[]; last: number; v: Spec }[];
     }
   | { k: 'get'; ns: number; walk: number[]; last: number }
-  | { k: 'direct'; key: string; v: Spec }
+  | {
+      k: 'direct';
+      ns: number;
+      walk: number[];
+      last: number;
+      /** A value to write, or a delete. */
+      v: Spec | null;
+      /** Which store write path makes it (see plan()). */
+      via: number;
+    }
   | { k: 'nested'; ops: Op[] }
   | { k: 'watch'; ops: Op[] }
   | { k: 'goto' }
   | { k: 'back' }
   | { k: 'forward' }
   | { k: 'restart' }
-  | { k: 'save' };
+  | { k: 'save' }
+  | { k: 'gate'; pick: number; open: boolean };
 
 /** Small choices, so that operations meet on the same objects often. */
 const choice = fc.nat({ max: 11 });
@@ -170,11 +193,20 @@ function opsArb(withSaves: boolean): fc.Arbitrary<Op[]> {
       ],
       [3, fc.record({ k: fc.constant('get' as const), ...pathOp })],
       [
-        1,
+        4,
         fc.record({
           k: fc.constant('direct' as const),
-          key: fc.constantFrom(...KEYS),
-          v: specArb,
+          ...pathOp,
+          v: fc.option(specArb, { freq: 4, nil: null }),
+          via: fc.nat(3),
+        }),
+      ],
+      [
+        3,
+        fc.record({
+          k: fc.constant('gate' as const),
+          pick: choice,
+          open: fc.boolean(),
         }),
       ],
       [3, fc.constant({ k: 'goto' as const })],
@@ -222,8 +254,11 @@ const PREFIX: Record<NsName, string> = {
   transient: '%',
 };
 
-/** Roots only the harness writes: random operations leave them alone. */
-const isProtectedRoot = (name: string) => name === 'ext' || /^f\d+$/.test(name);
+/** Watcher flags and gates: only the harness writes them (see 'watch'). */
+const isProtectedRoot = (name: string) => /^[fg]\d+$/.test(name);
+
+/** Watchers share these gates, which the code writes (see 'gate'). */
+const GATES = 3;
 
 const isWalkable = (v: unknown): v is Rec =>
   typeof v === 'object' &&
@@ -258,7 +293,7 @@ function resolvePath(ns: Rec, walk: number[], last: number): string[] {
     node = (node ?? ns)[key] as Rec;
   }
   let options: string[];
-  if (!node) options = [...roots, 'q', 'r'];
+  if (!node) options = [...new Set([...roots, ...NEW_ROOTS])];
   else if (Array.isArray(node))
     options = Object.keys(node).concat(String(node.length));
   else options = [...new Set([...Object.keys(node), ...KEYS])];
@@ -304,9 +339,15 @@ const nsOf = (n: number, withTemps: boolean): NsName =>
 
 // --- Planning: run the model and write the program ---
 
-/** A watcher: `$<flag> == 1`, once, running `ops` as its run action. */
+/**
+ * A watcher: `$<flag> == 1 && $<gate> !== 1`, once, running `ops` as its
+ * run action. The flag is set by Story.set, the gate by plain assignments
+ * in the code, which the store takes only when the code commits: the
+ * watcher must act on the program-order state all the same.
+ */
 interface Watcher {
   flag: string;
+  gate: string;
   ops: Op[];
   /** Its condition's value at the last check (see triggers.ts). */
   last: boolean;
@@ -345,6 +386,10 @@ interface Engine {
   restarted: boolean;
 }
 
+/** A watcher's condition in the model state. */
+const holds = (model: Model, w: Watcher) =>
+  model.variables[w.flag] === 1 && model.variables[w.gate] !== 1;
+
 /** Plan a watcher check pass (triggers.ts runCheckLoop). */
 function checkWatchers(model: Model, engine: Engine, p: Plan): void {
   for (let depth = 0; depth < 10; depth++) {
@@ -352,7 +397,7 @@ function checkWatchers(model: Model, engine: Engine, p: Plan): void {
     for (let i = 0; i < p.watchers.length; i++) {
       const w = p.watchers[i]!;
       if (w.fired || w.removed) continue;
-      const result = model.variables[w.flag] === 1;
+      const result = holds(model, w);
       const wasFalse = !w.last;
       w.last = result;
       if (result && wasFalse) {
@@ -373,7 +418,7 @@ function navigate(model: Model, engine: Engine, p: Plan): void {
     return;
   }
   model.history = model.history.slice(0, model.index + 1);
-  model.temporary = {};
+  model.temporary = createNamespace();
   model.history.push(deepClone(model.variables));
   model.index = model.history.length - 1;
 
@@ -407,10 +452,10 @@ function traverse(model: Model, engine: Engine, p: Plan, step: number): void {
   finishEntered(model, engine);
   model.index = to;
   model.variables = deepClone(model.history[to]!);
-  model.temporary = {};
+  model.temporary = createNamespace();
   // Restored state is not a change watchers react to
   for (const w of p.watchers) {
-    if (!w.fired) w.last = model.variables[w.flag] === 1;
+    if (!w.fired) w.last = holds(model, w);
   }
 }
 
@@ -420,6 +465,17 @@ function traverse(model: Model, engine: Engine, p: Plan, step: number): void {
  */
 function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
   const lines: string[] = [];
+  /**
+   * The store takes the code's pending writes (as at every store update
+   * the code sets off, and when it finishes) and watchers react to the
+   * state, unless a check is in progress.
+   */
+  const sync = () => {
+    if (engine.checking) return;
+    engine.checking = true;
+    checkWatchers(model, engine, p);
+    engine.checking = false;
+  };
   const extCall = (fn: () => void) => {
     p.ext.push(fn);
     lines.push(`ext(${p.ext.length - 1});`);
@@ -475,6 +531,7 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'storySet': {
+        sync();
         const entries: [string, Spec][] = [];
         for (const e of op.entries) {
           const ns = nsOf(e.ns, false);
@@ -517,16 +574,53 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'direct': {
-        // A store update that is not Story.set (not mirrored into running
-        // code) keeps what it writes only where the code does not write:
-        // the `ext` root, which nothing else writes or reads
-        (model.variables.ext as Rec)[op.key] = build(op.v);
-        const { key, v } = op;
-        extCall(() =>
-          useStoryStore.getState().updateVariables((d) => {
-            (d.variables.ext as Rec)[key] = build(v);
-          }),
+        // A store update other than Story.set (an input binding, {computed},
+        // {unset}, a store action): made in program order like any write
+        sync();
+        const ns = nsOf(op.ns, true);
+        // Store actions name a variable: a root
+        const path = resolvePath(
+          model[ns],
+          op.via === 3 ? [] : op.walk,
+          op.last,
         );
+        const { v, via } = op;
+        if (v === null) {
+          delete (getAt(model[ns], path.slice(0, -1)) as Rec)[
+            path[path.length - 1]!
+          ];
+        } else {
+          setAt(model[ns], path, build(v));
+        }
+        const write = (draft: Rec) => {
+          if (v === null) deleteByPath(draft, path);
+          else setByPath(draft, path, build(v), { createMissing: via === 2 });
+        };
+        extCall(() => {
+          const store = useStoryStore.getState();
+          if (via === 0) {
+            store.updateVariables((d) => write(d[ns]));
+          } else if (via === 1 || via === 2) {
+            // As input bindings write (with createMissing)
+            useStoryStore.setState((s) => write(s[ns]));
+          } else {
+            const name = path[0]!;
+            const value = v === null ? undefined : build(v);
+            if (ns === 'variables') {
+              if (v === null) store.deleteVariable(name);
+              else store.setVariable(name, value);
+            } else if (ns === 'temporary') {
+              if (v === null) store.deleteTemporary(name);
+              else store.setTemporary(name, value);
+            } else if (v === null) store.deleteTransient(name);
+            else store.setTransient(name, value);
+          }
+        });
+        if (!engine.checking) {
+          engine.checking = true;
+          checkWatchers(model, engine, p);
+          engine.checking = false;
+        }
         break;
       }
       case 'nested': {
@@ -537,10 +631,12 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'watch': {
-        // A watcher whose condition a Story.set here makes true
+        // A watcher whose flag a Story.set here sets
+        sync();
         const flag = `f${p.watchers.length}`;
         p.watchers.push({
           flag,
+          gate: `g${p.watchers.length % GATES}`,
           ops: op.ops,
           last: false,
           fired: false,
@@ -556,21 +652,31 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         }
         break;
       }
+      case 'gate': {
+        // A plain assignment: the store takes it when the code commits
+        const gate = `g${op.pick % GATES}`;
+        model.variables[gate] = op.open ? 0 : 1;
+        lines.push(`$${gate} = ${op.open ? 0 : 1};`);
+        break;
+      }
       case 'goto':
+        sync();
         lines.push('Story.goto("Room");');
         navigate(model, engine, p);
         break;
       case 'back':
       case 'forward':
+        sync();
         lines.push(`Story.${op.k}();`);
         traverse(model, engine, p, op.k === 'back' ? -1 : 1);
         break;
       case 'restart':
         // Back to the defaults, with a new history; watchers are removed
+        sync();
         lines.push('Story.restart();');
-        model.variables = variableDefaults();
-        model.transient = transientDefaults();
-        model.temporary = {};
+        model.variables = createNamespace(variableDefaults());
+        model.transient = createNamespace(transientDefaults());
+        model.temporary = createNamespace();
         model.history = [deepClone(model.variables)];
         model.index = 0;
         engine.entered = false;
@@ -578,10 +684,12 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         for (const w of p.watchers) if (!w.fired) w.removed = true;
         break;
       case 'save': {
+        sync();
         const slot = `s${p.saves.length}`;
+        // Saved as plain data
         const entry: Plan['saves'][number] = {
           slot,
-          expected: deepClone(model.variables),
+          expected: { ...deepClone(model.variables) },
         };
         p.saves.push(entry);
         extCall(() => {
@@ -591,6 +699,8 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
       }
     }
   }
+  // The code's commit when it finishes
+  sync();
   return lines.join('\n');
 }
 
@@ -620,7 +730,6 @@ const variableDefaults = (): Rec => ({
   arr: [1, 2],
   m: new Map([['a', 1]]),
   n: 0,
-  ext: {},
 });
 
 const transientDefaults = (): Rec => ({
@@ -666,10 +775,11 @@ async function setUp(withSaves: boolean): Promise<void> {
 
 async function check(ops: Op[], withSaves: boolean): Promise<void> {
   await setUp(withSaves);
+  // The store's namespaces have no prototype: neither have the model's
   const model: Model = {
-    variables: variableDefaults(),
-    temporary: {},
-    transient: transientDefaults(),
+    variables: createNamespace(variableDefaults()),
+    temporary: createNamespace(),
+    transient: createNamespace(transientDefaults()),
     history: [],
     index: 0,
   };
@@ -689,7 +799,7 @@ async function check(ops: Op[], withSaves: boolean): Promise<void> {
   g.unexpected = (flag: string) => unexpected.push(flag);
   for (const w of p.watchers) {
     const run = w.fired ? w.code : `unexpected(${JSON.stringify(w.flag)})`;
-    addTrigger(`$${w.flag} == 1`, { run, once: true });
+    addTrigger(`$${w.flag} == 1 && $${w.gate} !== 1`, { run, once: true });
   }
   const errors: unknown[] = [];
   const errorSpy = vi

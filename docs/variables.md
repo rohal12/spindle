@@ -91,6 +91,20 @@ When `StoryVariables` is present, Spindle validates all `$variable` references a
 
 Only real references are checked: `{$var}` displays, macro arguments, `{do}` bodies, and `{$var}` interpolations inside strings and HTML attributes. A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
 
+## Variable Names
+
+A variable name is any word after its sigil: letters, digits and `_` (for `%` transients, a JavaScript identifier). Every such name is a variable of its own, including names that JavaScript objects also use for built-in methods: `$constructor`, `_toString`, `%valueOf` and `@hasOwnProperty` are ordinary variables, and while one is not set it reads as `undefined` like any other.
+
+```
+{set $constructor = "Ada"}
+{$constructor}            → Ada
+{if $toString}set{else}not set{/if}   → not set
+```
+
+The one exception is `__proto__`, which no namespace can hold (`$__proto__`, `___proto__`, `%__proto__`, `@__proto__`). Using it is an error wherever a name appears: in code (`{set}`, `{do}`, `{print}`, conditions), displays (`{$__proto__}`), `StoryVariables`/`StoryTransients` declarations, `{for}` and widget locals, `{computed}`, `{unset}`, input macros and `Story.get()`/`Story.set()`. Story state never holds a property named `__proto__` at any depth, since saves could not restore it.
+
+The variable records themselves (`ctx.merged` in custom macros, for example) have no prototype, so use `Object.hasOwn(vars, "name")` or `"name" in vars` rather than `vars.hasOwnProperty("name")`. Save payloads hold plain objects.
+
 ## Dot Notation
 
 Access nested fields on objects and arrays with dot notation:

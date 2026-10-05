@@ -543,6 +543,8 @@ Watchers are **edge-triggered** — they fire only on a `false → true` transit
 
 Conditions are re-checked whenever a story (`$`), temporary (`_`) or transient (`%`) variable changes, and after each navigation to a passage (so conditions such as `hasVisited('Cave')` fire on arrival). Variables changed by a watcher fired by navigation are recorded in the history moment of the passage being entered, and a `goto` fired by navigation happens after that navigation has completed. Moving back or forward through history, or loading a save, re-syncs watchers to the restored variables without firing them.
 
+Inside running code (`{do}`, `{set}`, a run action) the code's own assignments reach the story when it finishes, or earlier when it writes story state another way (`Story.set()`, a performed action, navigation): its assignments so far are applied first, and watchers react to the state as it is at that point in the code. With `{watch '$a == 1 && $b == 2' run '...'}`, the code `{do}$a = 1; Story.set("b", 2); $a = 3{/do}` fires the watcher at the `Story.set()`, and its run action sees `$a` as 1. Assignments applied this way stay even if the code throws an error afterwards.
+
 Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough. Revisiting a passage does not add a second copy of a watcher that is still registered with the same condition and options; a `once` watcher that has already fired (or one removed with `{unwatch}`) is registered again.
 
 ### `{unwatch}`

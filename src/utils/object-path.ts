@@ -1,6 +1,15 @@
 import { isDraft } from 'immer';
 
-/** Traverse dot-path segments on an object and return the nested value. */
+const hasOwn = (obj: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+/**
+ * Traverse dot-path segments on an object and return the nested value.
+ * Members of Object.prototype (`constructor`, `toString`, `__proto__`, ...)
+ * are not story state: unless an object holds one as its own property, it
+ * reads as missing, as setByPath() treats it. Other inherited properties
+ * (class getters, `size` of a Map) are read.
+ */
 export function getByPath(
   obj: Record<string, unknown>,
   segments: readonly string[],
@@ -8,13 +17,11 @@ export function getByPath(
   let current: unknown = obj;
   for (const seg of segments) {
     if (current == null || typeof current !== 'object') return undefined;
+    if (seg in Object.prototype && !hasOwn(current, seg)) return undefined;
     current = (current as Record<string, unknown>)[seg];
   }
   return current;
 }
-
-const hasOwn = (obj: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(obj, key);
 
 /** Array indices ("0", "1", …) and "length": the keys an array holds. */
 const isArrayKey = (key: string): boolean =>

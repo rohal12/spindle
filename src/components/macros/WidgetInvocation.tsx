@@ -18,6 +18,11 @@ import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
 import { endsWithOperator, isWhitespace, splitTopLevel } from './arg-utils';
+import {
+  checkVariableName,
+  createNamespace,
+  withEntry,
+} from '../../utils/namespace';
 
 interface WidgetInvocationProps {
   body: ASTNode[];
@@ -116,7 +121,7 @@ function WidgetBody({
   );
 
   const localState = useMemo(
-    () => ({ ...parentValues, ...ownKeys, ...localMutations }),
+    () => createNamespace(parentValues, ownKeys, localMutations),
     [parentValues, ownKeys, localMutations],
   );
 
@@ -128,7 +133,8 @@ function WidgetBody({
     // Apply synchronously so later macros in the same render pass (e.g. a
     // second {set}) read the new value via getValues(); the state update
     // then re-renders consumers of LocalsValuesContext.
-    valuesRef.current = { ...valuesRef.current, [key]: value };
+    checkVariableName(key, `@${key}`);
+    valuesRef.current = withEntry(valuesRef.current, key, value);
     setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
@@ -190,7 +196,7 @@ export function WidgetInvocation({
   }
 
   const ownKeys = useMemo(() => {
-    const keys: Record<string, unknown> = {};
+    const keys = createNamespace();
     for (let i = 0; i < params.length; i++) {
       keys[params[i]!.startsWith('@') ? params[i]!.slice(1) : params[i]!] =
         values[i];

@@ -1,9 +1,17 @@
-import { current as currentDraft, freeze, isDraft } from 'immer';
+import {
+  Immer,
+  current as currentDraft,
+  freeze,
+  isDraft,
+  type Draft,
+  type Patch,
+} from 'immer';
 import { useStoryStore } from './store';
-import type { VariableNamespaces } from './store';
+import type { StoryState, VariableNamespaces } from './store';
 import { execute } from './expression';
 import { deepClone, deepEqual } from './class-registry';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
+import { asNamespace } from './utils/namespace';
 
 type NamespaceName = keyof VariableNamespaces;
 
@@ -21,10 +29,10 @@ type PathChange =
 /**
  * The state of one executing mutation. The code reads and writes `work`.
  * `base` is what `work` started as, with every write made elsewhere during
- * execution (Story.set, the commits of nested mutations) applied to both,
- * so diffing `work` against `base` yields exactly the code's own changes,
- * and a write made elsewhere after the code's own write to the same path
- * leaves no difference there: the later write wins.
+ * execution (any other store update, the commits of nested mutations)
+ * applied to both, so diffing `work` against `base` yields exactly the
+ * code's own changes, and a write made elsewhere after the code's own write
+ * to the same path leaves no difference there: the later write wins.
  */
 interface MutationScope {
   work: VariableNamespaces;
@@ -41,6 +49,19 @@ const activeScopes: MutationScope[] = [];
  */
 export function getActiveMutationScope(): VariableNamespaces | undefined {
   return activeScopes[activeScopes.length - 1]?.work;
+}
+
+/**
+ * The story state in program order: the store's, with the variable
+ * namespaces of the innermost running mutation, which hold its pending
+ * writes, while mutation code runs. Readers that can run in the middle of
+ * mutation code (watcher conditions, {computed}, input bindings) read this,
+ * so they never see the store without the code's writes so far.
+ */
+export function readState(): StoryState {
+  const state = useStoryStore.getState();
+  const scope = getActiveMutationScope();
+  return scope ? { ...state, ...scope } : state;
 }
 
 const cloneValue = <T>(value: T): T =>
@@ -92,6 +113,9 @@ function diff(
     const w = work[key];
     if (!hasOwn(base, key)) {
       changes.push({ path: [...path, key], deleted: false, value: w });
+    } else if (Object.is(b, w)) {
+      // The same value (an untouched subtree of an Immer update)
+      continue;
     } else if (
       isMergeable(b) &&
       isMergeable(w) &&
@@ -165,57 +189,165 @@ function mirror(
   }
 }
 
-/** A Story.set write: `value` at `path` of a namespace. */
-export interface PathWrite {
-  ns: 'variables' | 'transient';
-  path: string[];
-  value: unknown;
+const NAMESPACE_KEYS: ReadonlySet<string> = new Set(NAMESPACES);
+
+/**
+ * Runs store updates on the running code's working copies. They stay the
+ * code's own, so nothing may freeze them.
+ */
+const scratch = new Immer({ autoFreeze: false });
+
+/** Set while commitScopes() hands its commit to the store. */
+let committing = false;
+
+/**
+ * The path below a namespace that an Immer patch at `segments` changed, as
+ * the merge sees values: arrays, Map, Set, Date and RegExp change as a
+ * whole (see isMergeable), so a patch inside one is a change of it.
+ */
+function changedPath(
+  ns: Record<string, unknown>,
+  segments: readonly (string | number)[],
+): string[] {
+  const path: string[] = [];
+  let node: unknown = ns;
+  for (const segment of segments) {
+    if (!isMergeable(node)) break;
+    const key = String(segment);
+    path.push(key);
+    node = hasOwn(node, key) ? node[key] : undefined;
+  }
+  return path;
+}
+
+/** The change that brings `path` to what it holds in `ns`. */
+function changeTo(ns: Record<string, unknown>, path: string[]): PathChange {
+  const parent = getByPath(ns, path.slice(0, -1));
+  const key = path[path.length - 1]!;
+  return isMergeable(parent) && hasOwn(parent, key)
+    ? { path, deleted: false, value: parent[key] }
+    : { path, deleted: true };
 }
 
 /**
- * Make Story.set writes while mutation code runs, inside the store update
- * (`draft`) that carries them. Returns false, writing nothing, when no
- * mutation code runs.
- *
- * The code sees its own pending writes, so in program order a Story.set
- * path is resolved in the running code's state, not the store's: a path
- * the code's state cannot take (the code replaced or deleted an object on
- * it) throws a TypeError before anything is written, as an assignment
- * would. Each write then reaches the store at once, for watchers; where
- * the store's state cannot take the path, the code's state of the whole
- * root is written instead. Finally it is mirrored into every executing
- * mutation (see mirror()).
+ * The property paths of a namespace that an update wrote (Immer `patches`
+ * from `before` to `after`), each with what it holds afterwards: where the
+ * update assigned an object, the whole object is the change, so a write
+ * replaces exactly what it replaced in program order.
  */
-export function writeInActiveScopes(
-  draft: VariableNamespaces,
-  writes: readonly PathWrite[],
-): boolean {
-  const inner = activeScopes[activeScopes.length - 1];
-  if (!inner) return false;
+function writtenPaths(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  patches: readonly Patch[],
+): PathChange[] {
+  if (patches.some((p) => p.path.length === 1)) {
+    // The namespace itself was replaced: each root that differs
+    const roots = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return [...roots]
+      .filter((root) => !hasOwn(before, root) || before[root] !== after[root])
+      .map((root) => changeTo(after, [root]));
+  }
+  const seen = new Set<string>();
+  const changes: PathChange[] = [];
+  for (const patch of patches) {
+    const path = changedPath(after, patch.path.slice(1));
+    const key = JSON.stringify(path);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    changes.push(changeTo(after, path));
+  }
+  return changes;
+}
 
-  // Try all paths on copies of the roots they write first, so that a
-  // failing write leaves nothing half done
-  const trial: Record<string, Record<string, unknown>> = {};
-  for (const { ns, path, value } of writes) {
-    const root = path[0]!;
-    trial[ns] ??= { ...inner.work[ns] };
-    if (trial[ns][root] === inner.work[ns][root]) {
-      trial[ns][root] = cloneValue(inner.work[ns][root]);
-    }
-    setByPath(trial[ns], path, value);
+/**
+ * Route a store update made while mutation code runs into program order.
+ * The store calls this for every update (see storyStateGuard in store.ts);
+ * it returns undefined, leaving the update as it is, when no mutation code
+ * runs or the update is a commit of mutation code. Otherwise the update is
+ * one made by something the code called: Story.set, an input binding or a
+ * {computed}/{unset} the code set off, a direct store action, a watcher.
+ *
+ * In program order such an update happens after the code's writes so far,
+ * so those are committed first, in one store update: subscribers (watchers,
+ * variableChanged handlers) see the program-order state before this write,
+ * and an error the code throws later does not undo them. The update then
+ * happens to the running code's state: its recipe runs on the innermost
+ * mutation's working copies (so it reads the code's state, and a path the
+ * code's state cannot take throws before this write is made, as an
+ * assignment would). The property paths it wrote there are written to the
+ * code's working copy at once, so the code reads them next, and are
+ * returned as the recipe for the store: each write reaches the store at
+ * once (should the store's state not take the path, the code's state of
+ * the whole root is written instead). Each write is also mirrored into
+ * every executing mutation (see mirror()), so their commits neither drop
+ * nor revert it. Changes to the rest of the store state are applied as
+ * they are.
+ */
+export function routeStoreUpdate<S extends VariableNamespaces>(
+  recipe: (draft: Draft<S>) => void,
+): ((draft: Draft<S>) => void) | undefined {
+  if (committing) {
+    committing = false;
+    return undefined;
+  }
+  if (activeScopes.length === 0) return undefined;
+
+  // The store first takes the code's pending writes, which came before this
+  // one, so it goes from one program-order state to the next (watchers that
+  // commit fires run before this write, as they would in program order)
+  commitScopes(running());
+  const inner = activeScopes[activeScopes.length - 1]!;
+  const view = {
+    ...(useStoryStore.getState() as unknown as S),
+    variables: inner.work.variables,
+    temporary: inner.work.temporary,
+    transient: inner.work.transient,
+  };
+  const [next, patches] = scratch.produceWithPatches(
+    view,
+    recipe as (draft: Draft<S>) => void,
+  );
+  const changes = NAMESPACES.map((ns) => {
+    const own = patches.filter((p) => p.path[0] === ns);
+    return [
+      ns,
+      own.length ? writtenPaths(view[ns], next[ns], own) : [],
+    ] as const;
+  });
+  const owned = (change: PathChange): PathChange =>
+    change.deleted ? change : { ...change, value: cloneValue(change.value) };
+  for (const [ns, list] of changes) {
+    for (const change of list) applyChange(inner.work[ns], owned(change));
   }
 
-  for (const { ns, path, value } of writes) {
-    const root = path[0]!;
-    setByPath(inner.work[ns], path, cloneValue(value));
-    try {
-      setByPath(draft[ns], path, value);
-    } catch {
-      draft[ns][root] = cloneValue(inner.work[ns][root]);
+  return (draft) => {
+    const target = draft as unknown as Record<string, unknown>;
+    for (const key of Object.keys(next)) {
+      const value = (next as unknown as Record<string, unknown>)[key];
+      if (
+        !NAMESPACE_KEYS.has(key) &&
+        value !== (view as unknown as Record<string, unknown>)[key]
+      ) {
+        target[key] = value;
+      }
     }
-    mirror(draft, ns, { path, deleted: false, value });
-  }
-  return true;
+    const namespaces = draft as unknown as VariableNamespaces;
+    for (const [ns, list] of changes) {
+      for (const change of list) {
+        const root = change.path[0]!;
+        try {
+          applyChange(namespaces[ns], owned(change));
+        } catch {
+          if (hasOwn(inner.work[ns], root)) {
+            namespaces[ns][root] = cloneValue(inner.work[ns][root]);
+          } else {
+            delete namespaces[ns][root];
+          }
+        }
+        mirror(namespaces, ns, change);
+      }
+    }
+  };
 }
 
 const cloneNamespaces = (from: VariableNamespaces): VariableNamespaces => ({
@@ -224,58 +356,90 @@ const cloneNamespaces = (from: VariableNamespaces): VariableNamespaces => ({
   transient: deepClone(from.transient),
 });
 
-/**
- * Commit the property paths `scope`'s code changed (work vs base) on top of
- * the current store state, so writes made elsewhere during execution to
- * other paths of the same objects survive, and hand them to the `enclosing`
- * mutations. With `keepRunning`, the code goes on running after the commit:
- * its working copy must stay its own (the store freezes what it is given),
- * and its base is moved up to the working copy so nothing commits twice.
- */
-function commitScope(
-  scope: MutationScope,
-  enclosing: readonly MutationScope[],
-  keepRunning: boolean,
-): void {
-  const changes = NAMESPACES.map((ns) => {
-    const list: PathChange[] = [];
-    diff(scope.base[ns], scope.work[ns], [], list, new Set());
-    return [ns, list] as const;
-  });
-  if (changes.every(([, list]) => list.length === 0)) return;
-  // Before the store update: watchers it fires may commit again (a goto)
-  if (keepRunning) scope.base = cloneNamespaces(scope.work);
-  const own = <T>(value: T): T => (keepRunning ? cloneValue(value) : value);
-  const current = useStoryStore.getState();
-
-  // One store update for everything: watchers must see the whole mutation,
-  // and a watcher's run action must not be overwritten by paths this commit
-  // writes after it fired.
-  current.updateVariables((draft) => {
-    for (const [ns, list] of changes) {
-      const replaced = new Set<string>();
-      for (const change of list) {
-        const root = change.path[0]!;
-        // A changed path already holding the value keeps its reference
-        if (replaced.has(root) || isApplied(current[ns], change)) continue;
-        try {
-          applyChange(
-            draft[ns],
-            change.deleted ? change : { ...change, value: own(change.value) },
-          );
-        } catch {
-          // An intermediate object the code wrote into is gone from the
-          // store: the code's view of the whole root wins.
-          draft[ns][root] = own(scope.work[ns][root]);
-          replaced.add(root);
-        }
-      }
-      // Hand the changes to the mutations this one runs inside, before
-      // watchers fired by this update run.
-      for (const change of list) mirror(draft, ns, change, enclosing);
-    }
-  });
+/** A mutation to commit, and whether its code goes on running after. */
+interface Commit {
+  scope: MutationScope;
+  keepRunning: boolean;
 }
+
+/**
+ * Commit the property paths each mutation's code changed (work vs base) on
+ * top of the current store state, so writes made elsewhere during execution
+ * to other paths of the same objects survive. `commits` lists running
+ * mutations from the outermost in: each one's changes are applied after
+ * those of the mutations it runs inside (which it started from, so they
+ * came first in program order) and handed to them. All of it is one store
+ * update, so the store goes from one program-order state to another:
+ * watchers and other subscribers never see some pending writes without
+ * the ones made before them.
+ *
+ * A mutation whose code goes on running (`keepRunning`) keeps its working
+ * copy its own (the store freezes what it is given), and its base is moved
+ * up to the working copy so nothing commits twice.
+ */
+function commitScopes(commits: readonly Commit[]): void {
+  const all = commits.map(({ scope, keepRunning }) => ({
+    scope,
+    keepRunning,
+    changes: NAMESPACES.map((ns) => {
+      const list: PathChange[] = [];
+      diff(scope.base[ns], scope.work[ns], [], list, new Set());
+      return [ns, list] as const;
+    }),
+  }));
+  const changed = all.filter(({ changes }) =>
+    changes.some(([, list]) => list.length > 0),
+  );
+  if (changed.length === 0) return;
+  // Before the store update: watchers it fires may commit again (a goto)
+  for (const { scope, keepRunning } of changed) {
+    if (keepRunning) scope.base = cloneNamespaces(scope.work);
+  }
+
+  // One store update for everything: watchers must see the whole state,
+  // and a watcher's run action must not be overwritten by paths this commit
+  // writes after it fired. It is the commit itself, not an update made by
+  // running code (see routeStoreUpdate).
+  committing = true;
+  try {
+    useStoryStore.getState().updateVariables(commitRecipe);
+  } finally {
+    committing = false;
+  }
+
+  function commitRecipe(draft: VariableNamespaces): void {
+    all.forEach(({ scope, keepRunning, changes }, i) => {
+      const own = <T>(value: T): T => (keepRunning ? cloneValue(value) : value);
+      for (const [ns, list] of changes) {
+        const replaced = new Set<string>();
+        for (const change of list) {
+          const root = change.path[0]!;
+          // A changed path already holding the value keeps its reference
+          if (replaced.has(root) || isApplied(draft[ns], change)) continue;
+          try {
+            applyChange(
+              draft[ns],
+              change.deleted ? change : { ...change, value: own(change.value) },
+            );
+          } catch {
+            // An intermediate object the code wrote into is gone from the
+            // store: the code's view of the whole root wins.
+            draft[ns][root] = own(scope.work[ns][root]);
+            replaced.add(root);
+          }
+        }
+        // Hand the changes to the mutations this one runs inside, before
+        // watchers fired by this update run.
+        const enclosing = all.slice(0, i).map((c) => c.scope);
+        for (const change of list) mirror(draft, ns, change, enclosing);
+      }
+    });
+  }
+}
+
+/** Every running mutation, to commit with its code going on. */
+const running = (): Commit[] =>
+  activeScopes.map((scope) => ({ scope, keepRunning: true }));
 
 /**
  * Bring a suspended mutation's copies up to the store after an action
@@ -309,11 +473,7 @@ function resync(scope: MutationScope): void {
  */
 export function runWithCommittedMutations<T>(action: () => T): T {
   if (activeScopes.length === 0) return action();
-  const scopes = [...activeScopes];
-  // Innermost first: each commit hands its changes to the enclosing ones
-  for (let i = scopes.length - 1; i >= 0; i--) {
-    commitScope(scopes[i]!, scopes.slice(0, i), true);
-  }
+  commitScopes(running());
   const suspended = activeScopes.splice(0);
   try {
     return action();
@@ -341,7 +501,9 @@ export function executeMutation(
   // mutated in place would keep its reference, so a nested assignment
   // (`@item.name = "x"`) would be lost or never reach the scope updater.
   // Unregistered class instances (DOM nodes etc.) stay shared by reference.
-  const localsClone = deepClone(mergedLocals, { keepUnregistered: true });
+  const localsClone = asNamespace(
+    deepClone(mergedLocals, { keepUnregistered: true }),
+  );
 
   activeScopes.push(scope);
   try {
@@ -356,7 +518,9 @@ export function executeMutation(
     activeScopes.pop();
   }
 
-  commitScope(scope, activeScopes, false);
+  // With the pending writes of the mutations this one runs inside, which
+  // came before its own
+  commitScopes([...running(), { scope, keepRunning: false }]);
 
   for (const key of Object.keys(localsClone)) {
     if (!deepEqual(localsClone[key], mergedLocals[key])) {
@@ -366,7 +530,7 @@ export function executeMutation(
 
   // Detect deleted locals
   for (const key of Object.keys(mergedLocals)) {
-    if (!(key in localsClone)) {
+    if (!hasOwn(localsClone, key)) {
       scopeUpdate(key, undefined);
     }
   }
