@@ -14,6 +14,7 @@ export interface QueuedDialog {
   passageName: string;
   panelClass?: string;
   showCloseButton?: boolean;
+  dismissible?: boolean;
 }
 
 interface Trigger {

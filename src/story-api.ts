@@ -199,7 +199,11 @@ export interface StoryAPI {
   unwatch(name: string): void;
   openDialog(
     passageName: string,
-    options?: { panelClass?: string; showCloseButton?: boolean },
+    options?: {
+      panelClass?: string;
+      showCloseButton?: boolean;
+      dismissible?: boolean;
+    },
   ): void;
   closeDialog(): void;
   closeAllDialogs(): void;
@@ -494,12 +498,17 @@ function createStoryAPI(): StoryAPI {
 
     openDialog(
       passageName: string,
-      options?: { panelClass?: string; showCloseButton?: boolean },
+      options?: {
+        panelClass?: string;
+        showCloseButton?: boolean;
+        dismissible?: boolean;
+      },
     ): void {
       pushDialog({
         passageName,
         panelClass: options?.panelClass,
         showCloseButton: options?.showCloseButton,
+        dismissible: options?.dismissible,
       });
     },
 
