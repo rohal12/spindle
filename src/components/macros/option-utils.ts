@@ -5,7 +5,8 @@ export function parseVarArgs(rawArgs: string): {
   varName: string;
   placeholder: string;
 } {
-  const match = rawArgs.match(/^\s*(["']?\$[\w.]+["']?)\s*(["'].*["'])?\s*$/);
+  // `s`: a quoted placeholder may span lines.
+  const match = rawArgs.match(/^\s*(["']?\$[\w.]+["']?)\s*(["'].*["'])?\s*$/s);
   if (!match) {
     return { varName: rawArgs.trim(), placeholder: '' };
   }
@@ -28,7 +29,7 @@ export function extractOptions(children: ASTNode[]): string[] {
       const raw = node.rawArgs.trim();
       // Strip surrounding quotes so {option "Long Sword"} gives "Long Sword"
       const stripped =
-        readWholeQuoted(raw) ?? raw.replace(/^(["'])(.+)\1$/, '$2');
+        readWholeQuoted(raw) ?? raw.replace(/^(["'])(.+)\1$/s, '$2');
       options.push(stripped);
     }
   }

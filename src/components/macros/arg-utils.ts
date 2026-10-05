@@ -75,7 +75,7 @@ export function readWholeQuoted(src: string): string | null {
  * lenient fallback for labels that are not one well-formed quoted string.
  */
 export function stripLooseQuotes(src: string): string {
-  return /^["']?(.+?)["']?$/.exec(src)?.[1] ?? src;
+  return /^["']?(.+?)["']?$/s.exec(src)?.[1] ?? src;
 }
 
 /** An operator character, or an operator keyword, at the end of code. */

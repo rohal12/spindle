@@ -1,8 +1,9 @@
 import { defineMacro } from '../../define-macro';
 import { readWholeQuoted, stripLooseQuotes } from './arg-utils';
 
-function parseLabel(rawArgs: string): string {
-  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+(.+?)\s*$/);
+export function parseCheckboxLabel(rawArgs: string): string {
+  // `s`: a quoted label may span lines.
+  const match = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+(.+?)\s*$/s);
   if (!match) return '';
   const rest = match[1]!;
   return readWholeQuoted(rest) ?? stripLooseQuotes(rest);
@@ -12,7 +13,7 @@ defineMacro({
   name: 'checkbox',
   storeVar: true,
   render({ rawArgs }, ctx) {
-    const label = parseLabel(rawArgs);
+    const label = parseCheckboxLabel(rawArgs);
 
     ctx.useAction({
       type: 'checkbox',
