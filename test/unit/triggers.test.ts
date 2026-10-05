@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   addTrigger,
   checkTriggers,
+  connectTriggersToStore,
   resetTriggers,
   shiftDialogQueue,
   dialogQueueLength,
@@ -207,6 +208,96 @@ describe('triggers dialog queue', () => {
       const cb = vi.fn();
       addTrigger('$y === 5', cb);
       fire('$x > 0', { run: '$y = 5' });
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('store subscription', () => {
+    let disconnect: () => void;
+
+    beforeEach(() => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Hello'),
+        makePassage(2, 'Next', 'Next'),
+        makePassage(3, 'End', 'End'),
+      ]);
+      useStoryStore.getState().init(storyData, { x: 0, y: 0 }, { flag: 0 });
+      disconnect = connectTriggersToStore();
+    });
+
+    afterEach(() => {
+      disconnect();
+    });
+
+    it('fires when a story variable changes', () => {
+      const cb = vi.fn();
+      addTrigger('$x > 0', cb);
+      useStoryStore.getState().setVariable('x', 1);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires when a transient variable changes', () => {
+      const cb = vi.fn();
+      addTrigger('%flag > 0', cb);
+      useStoryStore.getState().setTransient('flag', 1);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires when a temporary variable changes', () => {
+      const cb = vi.fn();
+      addTrigger('_t > 0', cb);
+      useStoryStore.getState().setTemporary('t', 1);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires on deleting a temporary or transient variable', () => {
+      const cb = vi.fn();
+      addTrigger('_t === undefined && %flag === undefined', cb);
+      useStoryStore.getState().setTemporary('t', 1);
+      useStoryStore.getState().deleteTemporary('t');
+      expect(cb).not.toHaveBeenCalled();
+      useStoryStore.getState().deleteTransient('flag');
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-arms temporary conditions when navigation clears temporaries', () => {
+      const cb = vi.fn();
+      addTrigger('_t > 0', cb);
+      useStoryStore.getState().setTemporary('t', 1);
+      expect(cb).toHaveBeenCalledTimes(1);
+      useStoryStore.getState().navigate('Next');
+      useStoryStore.getState().setTemporary('t', 1);
+      expect(cb).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not fire when history traversal restores variables', () => {
+      const cb = vi.fn();
+      useStoryStore.getState().setVariable('x', 1);
+      useStoryStore.getState().navigate('Next');
+      addTrigger('$x === 0', cb);
+      useStoryStore.getState().goBack();
+      expect(useStoryStore.getState().variables.x).toBe(0);
+      expect(cb).not.toHaveBeenCalled();
+      useStoryStore.getState().setVariable('x', 1);
+      useStoryStore.getState().setVariable('x', 0);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('runs every watcher on the same edge when one navigates', () => {
+      const cb = vi.fn();
+      addTrigger('%flag > 0', { goto: 'End', priority: 1 });
+      addTrigger('%flag > 0', cb);
+      useStoryStore.getState().setTransient('flag', 1);
+      expect(useStoryStore.getState().currentPassage).toBe('End');
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-checks watchers after a run action mutates state', () => {
+      const cb = vi.fn();
+      addTrigger('%flag > 0', { run: '$y = 5; _t = 1' });
+      addTrigger('$y === 5 && _t === 1', cb);
+      useStoryStore.getState().setTransient('flag', 1);
+      expect(useStoryStore.getState().variables.y).toBe(5);
       expect(cb).toHaveBeenCalledTimes(1);
     });
   });

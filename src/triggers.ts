@@ -161,6 +161,36 @@ export function checkTriggers(): void {
   }
 }
 
+/**
+ * Re-evaluate watchers whenever a namespace their conditions can read
+ * ($variables, _temporary, %transient) changes. History traversal and
+ * loads that restore a different set of story variables reinitialize
+ * watcher state instead of firing.
+ */
+export function connectTriggersToStore(): () => void {
+  let prev = useStoryStore.getState();
+  return useStoryStore.subscribe((state) => {
+    const before = prev;
+    // Update before checking: run/goto actions re-enter this listener.
+    prev = state;
+
+    const varsChanged = state.variables !== before.variables;
+    if (
+      !varsChanged &&
+      state.temporary === before.temporary &&
+      state.transient === before.transient
+    ) {
+      return;
+    }
+
+    if (varsChanged && state.historyIndex !== before.historyIndex) {
+      reinitTriggerState();
+    } else {
+      checkTriggers();
+    }
+  });
+}
+
 export function reinitTriggerState(): void {
   for (const trigger of triggers) {
     trigger.lastResult = evalCondition(trigger.condition);
