@@ -38,18 +38,53 @@ export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
  * Components rendered for the non-text nodes of one renderNodes() call. Each
- * stands in the markdown source as `<span data-tw="NONCE:INDEX"></span>`.
+ * stands in the markdown source as `<span data-tw=NONCE:INDEX></span>`.
  * The per-call random nonce means author text that merely looks like a
  * placeholder (e.g. decoded from `&lt;span data-tw=...&gt;`) is never
- * swapped for a component.
+ * swapped for a component. The attribute value is unquoted so a placeholder
+ * can sit inside a quoted markdown link title or image alt text.
  */
 interface Placeholders {
   nonce: string;
   components: preact.ComponentChildren[];
+  /**
+   * Per placeholder, the node as attribute text (image alt, link title):
+   * variables and expressions as interpolations, HTML elements as the text
+   * of their children. Macros have no text form and are dropped there, the
+   * way markdown drops tags from alt text.
+   */
+  texts: AttributePart[][];
 }
 
+/** An attribute value as literal text and `{…}` interpolations. */
+type AttributePart = { literal: string } | { interpolation: string };
+
 function placeholderHtml(nonce: string, index: number): string {
-  return `<span data-tw="${nonce}:${index}"></span>`;
+  return `<span data-tw=${nonce}:${index}></span>`;
+}
+
+const SCOPE_SIGILS = {
+  variable: '$',
+  temporary: '_',
+  local: '@',
+  transient: '%',
+} as const;
+
+/** A node's text for use in an attribute value. */
+function attributeText(node: ASTNode): AttributePart[] {
+  switch (node.type) {
+    case 'text':
+      return [{ literal: node.value }];
+    case 'variable':
+      if (node.scope === 'local' && node.name === 'children') return [];
+      return [{ interpolation: `{${SCOPE_SIGILS[node.scope]}${node.name}}` }];
+    case 'expression':
+      return [{ interpolation: `{${node.expression}}` }];
+    case 'html':
+      return node.children.flatMap(attributeText);
+    default:
+      return [];
+  }
 }
 
 /**
@@ -61,7 +96,7 @@ function placeholderHtml(nonce: string, index: number): string {
  * ESCAPE_GUARD in front of the placeholder.
  */
 const PLACEHOLDER_TEXT_RE =
-  /(?:(?<=\\)\uE000)?<span data-tw="([0-9a-z]+):(\d+)"><\/span>/g;
+  /(?:(?<=\\)\uE000)?<span data-tw=([0-9a-z]+):(\d+)><\/span>/g;
 
 /**
  * Emitted between author text ending in a backslash and a placeholder, so
@@ -71,22 +106,63 @@ const PLACEHOLDER_TEXT_RE =
  */
 const ESCAPE_GUARD = '\uE000';
 
+/**
+ * Split text into literal strings and the indexes of this call's
+ * placeholders in it.
+ */
+function splitPlaceholderText(
+  text: string,
+  ph: Placeholders,
+): (string | number)[] {
+  if (!text.includes('<span data-tw=')) return [text];
+  const parts: (string | number)[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
+    if (m[1] !== ph.nonce) continue;
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(parseInt(m[2]!, 10));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 /** Split text into literal parts and the components its placeholders name. */
 function expandPlaceholderText(
   text: string,
   ph: Placeholders,
 ): preact.ComponentChildren[] {
-  if (!text.includes('<span data-tw="')) return [text];
-  const parts: preact.ComponentChildren[] = [];
-  let last = 0;
-  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
-    if (m[1] !== ph.nonce) continue;
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(ph.components[parseInt(m[2]!, 10)]);
-    last = m.index + m[0].length;
+  return splitPlaceholderText(text, ph).map((part) =>
+    typeof part === 'number' ? ph.components[part] : part,
+  );
+}
+
+/**
+ * An element whose attributes contain placeholders (a variable in image alt
+ * text or a link title). The interpolations resolve against the store and
+ * locals, so the attribute follows the variable as the component would.
+ */
+function PlaceholderAttributes({
+  tag,
+  props,
+  attributes,
+  children,
+}: {
+  tag: string;
+  props: Record<string, string>;
+  attributes: Record<string, AttributePart[]>;
+  children: preact.ComponentChildren[];
+}) {
+  const resolve = useInterpolate();
+  const resolved: Record<string, string> = { ...props };
+  for (const [name, parts] of Object.entries(attributes)) {
+    resolved[name] = parts
+      .map((p) =>
+        'literal' in p ? p.literal : (resolve(p.interpolation) ?? ''),
+      )
+      .join('');
   }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+  return h(tag, resolved, ...children);
 }
 
 /** The component index of a placeholder element of this call, or -1. */
@@ -150,9 +226,18 @@ function convertDomNode(
     }
 
     // Convert attributes
-    const props: Record<string, string | number> = { key };
+    const props: Record<string, string> = {};
+    let withPlaceholders: Record<string, AttributePart[]> | undefined;
     for (const attr of Array.from(el.attributes)) {
-      props[attr.name] = attr.value;
+      const parts = splitPlaceholderText(attr.value, ph);
+      if (parts.every((part) => typeof part === 'string')) {
+        props[attr.name] = attr.value;
+        continue;
+      }
+      withPlaceholders ??= {};
+      withPlaceholders[attr.name] = parts.flatMap((part) =>
+        typeof part === 'string' ? [{ literal: part }] : ph.texts[part]!,
+      );
     }
 
     // Convert children recursively
@@ -160,7 +245,18 @@ function convertDomNode(
       convertDomNode(child, i, ph),
     );
 
-    return h(tag, props, ...children);
+    if (withPlaceholders) {
+      return (
+        <PlaceholderAttributes
+          key={key}
+          tag={tag}
+          props={props}
+          attributes={withPlaceholders}
+          children={children}
+        />
+      );
+    }
+    return h(tag, { ...props, key }, ...children);
   }
   return null;
 }
@@ -417,7 +513,7 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
 const MARKDOWN_SYNTAX_RE =
   /[*_`#|~\[>\\\-+=]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
-const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
+const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
 
 /** Whitespace that markdown strips at the start and end of a paragraph. */
 const LEADING_WS_RE = /^[ \t\r\n]*/;
@@ -484,6 +580,7 @@ export function renderNodes(
   const ph: Placeholders = {
     nonce: Math.random().toString(36).slice(2, 10) || '0',
     components,
+    texts: [],
   };
   let combined = '';
 
@@ -495,6 +592,7 @@ export function renderNodes(
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
+    ph.texts.push(attributeText(node));
     if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
     combined += placeholderHtml(ph.nonce, phIdx);
   }
