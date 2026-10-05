@@ -550,8 +550,13 @@ Subscribe to story events. Returns an unsubscribe function.
 
 ```js
 // Navigation events
-var unsub = Story.on('navigate', function (to, from) {
+var unsub = Story.on('afternavigate', function (to, from) {
   console.log('Navigated from ' + from + ' to ' + to);
+});
+
+// The passage's DOM is in the document (see "Render events" below)
+Story.on('passagerender', function (passage, el) {
+  initPager(el);
 });
 
 // Action registry changes (components mount/unmount)
@@ -575,6 +580,26 @@ Story.on('variableChanged', function (changed) {
 // Later: stop listening
 unsub();
 ```
+
+#### Render events
+
+`afternavigate` fires as soon as the story state changes, before the new passage is rendered (with a `fade-through` transition the new passage mounts only after the outgoing fade). Code that needs the rendered DOM — pagers, drag-and-drop, focus, third-party widgets — listens for the render events instead:
+
+| Event           | Arguments                            | Fires when                                                                                                                                                                             |
+| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot. |
+| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                    |
+
+Both fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
+
+```js
+Story.on('dialogrender', function (passage, panel) {
+  if (passage === 'Inventory') initDragAndDrop(panel);
+});
+Story.openDialog('Inventory');
+```
+
+Content that re-renders _inside_ a passage or dialog because a variable changed does not fire these events. For DOM work tied to such content, use a [custom macro](custom-macros.md#stateful-macros-with-hooks) with `ctx.hooks.useEffect`, which runs after the macro's own content is committed.
 
 ### `Story.waitForActions()`
 

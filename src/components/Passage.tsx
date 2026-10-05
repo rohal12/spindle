@@ -1,10 +1,17 @@
-import { useMemo, useEffect, useState } from 'preact/hooks';
+import {
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
+import { emitFromRender } from '../event-emitter';
 
 export function renderPassageContent(passage: PassageData) {
   const tokens = tokenize(passage.content);
@@ -90,10 +97,21 @@ export function Passage({ passage, dataTransition }: PassageProps) {
     }
   }, [doneReady, donePassage?.content]);
 
+  // Signal that this passage's DOM is committed (after descendants' layout
+  // effects, before paint). Runs once per mount: PassageDisplay keys the
+  // Passage so every navigation that shows a passage mounts a new one.
+  const elRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (elRef.current) {
+      emitFromRender('passagerender', passage.name, elRef.current);
+    }
+  }, [passage.name]);
+
   const nobr = passage.tags.includes('nobr');
 
   const inner = (
     <div
+      ref={elRef}
       class="passage"
       data-passage={passage.name}
       data-tags={passage.tags.join(' ')}

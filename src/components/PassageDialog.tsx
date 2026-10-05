@@ -1,9 +1,10 @@
 import { createContext } from 'preact';
-import { useCallback, useMemo, useRef } from 'preact/hooks';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderNodes } from '../markup/render';
 import { useStoryStore } from '../store';
+import { emitFromRender } from '../event-emitter';
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
@@ -59,6 +60,14 @@ export function PassageDialog({
     }
   }, [markup]);
 
+  // Signal that the dialog's DOM is committed (once per open).
+  const panelRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (panelRef.current) {
+      emitFromRender('dialogrender', passageName ?? '', panelRef.current);
+    }
+  }, []);
+
   const handleBackdrop = (e: MouseEvent) => {
     if (!dismissible) return;
     if ((e.target as HTMLElement).classList.contains('dialog-overlay')) {
@@ -74,7 +83,10 @@ export function PassageDialog({
         class="dialog-overlay"
         onClick={handleBackdrop}
       >
-        <div class={cls}>
+        <div
+          ref={panelRef}
+          class={cls}
+        >
           {showCloseButton && (
             <button
               class="dialog-close"
