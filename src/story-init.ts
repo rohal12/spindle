@@ -1,5 +1,5 @@
 import { h, render } from 'preact';
-import { useStoryStore } from './store';
+import { useStoryStore, recordStoryInitState } from './store';
 import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
 import { renderNodes } from './markup/render';
@@ -48,6 +48,10 @@ export function executeStoryInit() {
       h(() => renderNodes(ast) as any, null),
       container,
     );
+
+    // The start moment was recorded before StoryInit ran; its synchronous
+    // changes ({set}, {do}) belong to it.
+    recordStoryInitState();
   }
 
   // Register SaveTitle passage if it exists

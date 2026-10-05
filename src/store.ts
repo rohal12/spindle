@@ -211,6 +211,27 @@ function resetModuleState(base: Record<string, unknown>): void {
   serializedHistory = [];
 }
 
+/**
+ * Record the state StoryInit left behind as the start moment: its variable
+ * snapshot (the history base) and PRNG state. Called by executeStoryInit()
+ * after the StoryInit passage has rendered; init()/restart() record the
+ * start moment before StoryInit runs. A no-op once the story has moved on.
+ */
+export function recordStoryInitState(): void {
+  const { history, historyIndex, variables } = useStoryStore.getState();
+  if (history.length !== 1 || historyIndex !== 0) return;
+
+  variableBase = variables;
+  patchEntries = [];
+  lastNavigationVars = variables;
+  serializedHistory = [];
+
+  const prng = snapshotPRNG();
+  useStoryStore.setState((state) => {
+    state.history[0]!.prng = prng;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Runtime handler cleanup (auto-unsub on restart)
 // ---------------------------------------------------------------------------
