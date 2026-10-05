@@ -32,7 +32,8 @@ import {
   startNewPlaythrough,
   quickSave,
   saveWithHooks,
-  loadQuickSave,
+  loadSlotSave,
+  adoptPlaythrough,
   populateKnownSaves,
   getSlotSaveInfo,
   listSlotSaves,
@@ -333,52 +334,137 @@ export function recordStoryInitState(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Settles once the latest playthrough setup (init's lookup or creation, a
- * restart's creation, or the replacement of a deleted current playthrough)
- * is stored, with the playthrough ID it leaves the game in ('' if init could
- * not establish one). Setups are storage operations, which run in call
- * order, so playthroughs are created and numbered in the order the game
- * started them, and a save issued after a setup is stored after it.
+ * Settles once the latest playthrough switch (init's lookup or creation, a
+ * restart's creation, the replacement of a deleted current playthrough, a
+ * load making the loaded save's playthrough current) is stored, with the
+ * playthrough ID it leaves the game in ('' if init could not establish one).
+ * Switches are storage operations, which run in call order, so playthroughs
+ * are created and numbered in the order the game started them, and a save
+ * issued after a switch is stored after it, in the playthrough it switched
+ * to.
  */
 let playthroughSetup: Promise<string> = Promise.resolve('');
 
 /**
- * Bumped by every init()/restart() and playthrough switch; a stale init must
- * not adopt its ID.
+ * Bumped by every playthrough switch; a switch that settles after a later
+ * one was issued must not set its ID.
  */
 let playthroughGeneration = 0;
+
+/**
+ * Whether the latest switch is to a playthrough not known until a storage
+ * operation has run: the one init looks up, the playthrough of the save a
+ * load from a slot reads, or (while one of those is pending) the one a
+ * playthrough deletion leaves the game in. Meanwhile the store's
+ * `playthroughId` is the one before ('' at boot), and saves issued take the
+ * one the switch establishes.
+ */
+let playthroughPending = false;
+
+/** The game's playthrough now, or '' while a pending switch decides it. */
+function knownPlaythroughId(): string {
+  return playthroughPending ? '' : useStoryStore.getState().playthroughId;
+}
 
 /**
  * The playthrough a save issued now belongs to, once its record is stored.
  * Read synchronously at the call: restart() switches the store's
  * `playthroughId` at once, so a save issued after it (even before the new
  * playthrough is stored) belongs to the new playthrough, and a later restart
- * doesn't move it. Before init() has looked up the stored playthrough the
- * store's ID is '', and the save takes the one init establishes.
+ * doesn't move it. While a switch whose playthrough is not known yet is
+ * pending (init's lookup, a load from a slot), the save takes the one that
+ * switch establishes.
  */
 export function resolvePlaythroughId(): Promise<string> {
-  const current = useStoryStore.getState().playthroughId;
+  const current = knownPlaythroughId();
   return playthroughSetup.then((established) => current || established);
 }
 
-/**
- * Move the running game to a new playthrough at once: saves issued from here
- * on belong to it. Its record is stored by an operation queued now, after
- * those already issued.
- */
-function switchToNewPlaythrough(ifid: string): void {
-  const id = crypto.randomUUID();
-  ++playthroughGeneration;
+function setPlaythroughId(id: string): void {
+  if (useStoryStore.getState().playthroughId === id) return;
   useStoryStore.setState((state) => {
     state.playthroughId = id;
   });
-  playthroughSetup = startNewPlaythrough(ifid, id).then(
+}
+
+/**
+ * Switch to the playthrough `lookup` (a storage operation queued now)
+ * resolves to. Saves issued meanwhile belong to it; the store's
+ * `playthroughId` is set once it is known, unless a later switch was issued.
+ */
+function switchToLookedUpPlaythrough(lookup: Promise<string>): Promise<string> {
+  const generation = ++playthroughGeneration;
+  playthroughPending = true;
+  playthroughSetup = lookup.then((id) => {
+    if (generation === playthroughGeneration) {
+      playthroughPending = false;
+      setPlaythroughId(id);
+    }
+    return id;
+  });
+  return playthroughSetup;
+}
+
+/**
+ * Move the running game to the playthrough `id` at once: saves issued from
+ * here on belong to it. `stored` is the storage operation recording the
+ * switch, queued now, after those already issued (its failure is reported
+ * by the caller).
+ */
+function switchToPlaythrough(id: string, stored: Promise<unknown>): void {
+  ++playthroughGeneration;
+  playthroughPending = false;
+  playthroughSetup = stored.then(
     () => id,
-    (err) => {
-      console.error('spindle: failed to start new playthrough', err);
-      return id;
-    },
+    () => id,
   );
+  setPlaythroughId(id);
+}
+
+/** Move the running game to a new playthrough at once (see restart). */
+function switchToNewPlaythrough(ifid: string): void {
+  const id = crypto.randomUUID();
+  const stored = startNewPlaythrough(ifid, id).catch((err) => {
+    console.error('spindle: failed to start new playthrough', err);
+  });
+  switchToPlaythrough(id, stored);
+}
+
+/**
+ * Move the running game to the playthrough of a save it loads, at once. A
+ * no-op if the game is in it already.
+ */
+function switchToLoadedPlaythrough(ifid: string, id: string): void {
+  if (knownPlaythroughId() === id) return;
+  const stored = adoptPlaythrough(ifid, id).catch((err) => {
+    console.error('spindle: failed to switch to the loaded playthrough', err);
+  });
+  switchToPlaythrough(id, stored);
+}
+
+// ---------------------------------------------------------------------------
+// Superseded loads
+// ---------------------------------------------------------------------------
+
+/**
+ * A load from a slot reads the save in the order of storage operations and
+ * applies it when the read completes. A restart, a boot or a direct load
+ * (loadFromPayload) issued after it replaces the game state at once; the
+ * slot load, completing later, must not undo that. Every replacement of the
+ * game state takes a number in call order, and a slot load applies only if
+ * no replacement issued after it has been applied. Loads from slots apply in
+ * call order anyway (their reads are queued), so they never supersede one
+ * another.
+ */
+let stateReplacementsIssued = 0;
+let latestStateApplied = 0;
+
+/** The number of the slot load that is calling loadFromPayload. */
+let slotLoadApplying: number | null = null;
+
+/** A replacement of the game state applied at its call. */
+function replaceStateNow(): void {
+  latestStateApplied = ++stateReplacementsIssued;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +570,12 @@ export interface StoryState {
   visitCounts: Record<string, number>;
   renderCounts: Record<string, number>;
   knownSaves: Record<string, true>;
+  /**
+   * The playthrough the running game is in: its saves are grouped under it.
+   * Set by boot (the stored current playthrough), restart (a new one),
+   * loading a save (the save's) and deleting the current playthrough (a new
+   * one). '' until boot has looked it up.
+   */
   playthroughId: string;
   maxHistory: number;
   quickSaveKey: string | null;
@@ -520,6 +612,12 @@ export interface StoryState {
   trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string, custom?: Record<string, unknown>) => Promise<void>;
+  /**
+   * Load the save in a slot and move the game to its playthrough. The switch
+   * takes effect in call order (a save issued after the load belongs to the
+   * loaded playthrough); the state is applied when the save has been read,
+   * unless a restart or another direct load was issued after this load.
+   */
   load: (slot?: string) => Promise<void>;
   hasSave: (slot?: string) => boolean;
   getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
@@ -542,9 +640,15 @@ export interface StoryState {
   getSavePayload: () => SavePayload;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
-   * passed to the `beforeload`/`afterload` events.
+   * passed to the `beforeload`/`afterload` events. Pass the save's
+   * `playthroughId` when loading a save: the game moves to that playthrough
+   * (no change if it is the current one). Restoring the session passes none.
    */
-  loadFromPayload: (payload: SavePayload, slot?: string) => void;
+  loadFromPayload: (
+    payload: SavePayload,
+    slot?: string,
+    playthroughId?: string,
+  ) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
@@ -573,6 +677,10 @@ function keepNamespacesBare(draft: Draft<StoryState>): void {
  * watcher), they act in program order: the code's writes so far are
  * committed first, and the code goes on from the state they leave (see
  * runWithCommittedMutations). Outside mutation code they just run.
+ *
+ * A load from a slot (`load`) takes its place among the save operations
+ * (and switches playthroughs) at the call, but applies the save when its
+ * read completes, after the code has run.
  */
 const PROGRAM_ORDER_ACTIONS = [
   'navigate',
@@ -580,6 +688,7 @@ const PROGRAM_ORDER_ACTIONS = [
   'goForward',
   'restart',
   'save',
+  'load',
   'getSavePayload',
   'loadFromPayload',
 ] as const;
@@ -735,30 +844,29 @@ export const useStoryStore = create<StoryState>()(
       // Update lastNavigationVars to the Immer-produced reference
       lastNavigationVars = get().variables;
 
+      replaceStateNow();
+
       // Look up the story's playthrough and saves in the background, as a
       // storage operation queued now: saves issued meanwhile are stored
       // after it, tagged with the playthrough it establishes (see
-      // resolvePlaythroughId).
-      const generation = ++playthroughGeneration;
-      playthroughSetup = establishPlaythrough(storyData.ifid)
-        .then(({ id, knownSaves }) => {
-          // A restart issued meanwhile has already switched playthroughs
-          if (generation === playthroughGeneration) {
+      // resolvePlaythroughId). The current playthrough is stored, so a page
+      // refresh stays in the playthrough the game was in, also after a load
+      // switched to the loaded save's.
+      switchToLookedUpPlaythrough(
+        establishPlaythrough(storyData.ifid)
+          .then(({ id, knownSaves }) => {
+            // So hasSave() works after a reload. Operations issued later
+            // update the cache after this.
             set((state) => {
-              state.playthroughId = id;
+              state.knownSaves = knownSaves;
             });
-          }
-          // So hasSave() works after a reload. Operations issued later
-          // update the cache after this.
-          set((state) => {
-            state.knownSaves = knownSaves;
-          });
-          return id;
-        })
-        .catch((err) => {
-          console.error('spindle: failed to init save system', err);
-          return '';
-        });
+            return id;
+          })
+          .catch((err) => {
+            console.error('spindle: failed to init save system', err);
+            return '';
+          }),
+      );
     },
 
     navigate: (passageName: string) => {
@@ -977,6 +1085,8 @@ export const useStoryStore = create<StoryState>()(
       // belong to the game being left) and before StoryInit, so every save
       // issued from here on belongs to the new game.
       switchToNewPlaythrough(storyData.ifid);
+      // A load from a slot issued before the restart must not apply
+      replaceStateNow();
 
       const keepDeferred = get().renderDeferred;
 
@@ -1061,11 +1171,30 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.loadError = null;
       });
+      // The game moves to the loaded save's playthrough in call order: the
+      // read, queued now, makes it the stored current playthrough, and saves
+      // issued after the load belong to it (a later restart or load moves
+      // the game on, as usual). An empty slot leaves the playthrough as it
+      // is.
+      const previous = resolvePlaythroughId();
+      const read = loadSlotSave(storyData.ifid, slot);
+      const switched = switchToLookedUpPlaythrough(
+        Promise.all([previous, read.catch(() => undefined)]).then(
+          ([prev, loaded]) => loaded?.playthroughId || prev,
+        ),
+      );
+      const replacement = ++stateReplacementsIssued;
       return handled(
-        loadQuickSave(storyData.ifid, slot)
-          .then((payload) => {
-            if (!payload) return;
-            get().loadFromPayload(payload, slot);
+        read
+          .then(async (loaded) => {
+            // The store names the loaded playthrough before the loaded
+            // state is applied (and `afterload` fires)
+            await switched;
+            if (!loaded) return;
+            // A restart, boot or direct load issued after this one won
+            if (latestStateApplied > replacement) return;
+            slotLoadApplying = replacement;
+            get().loadFromPayload(loaded.payload, slot);
           })
           .catch((err) => {
             console.error('spindle: failed to load save', err);
@@ -1178,11 +1307,11 @@ export const useStoryStore = create<StoryState>()(
 
       // The running game can't go on in a deleted playthrough: its later
       // saves would belong to no playthrough. It moves to a new one, as on
-      // restart but keeping its state. While init is still looking up the
-      // game's playthrough (the store's ID is ''), the deletion checks the
-      // one it establishes.
+      // restart but keeping its state. While the game's playthrough is not
+      // known yet (init is looking it up, or a load from a slot is reading
+      // the save that decides it), the deletion checks the one established.
       const ifid = storyData.ifid;
-      const current = get().playthroughId;
+      const current = knownPlaythroughId();
       const established = playthroughSetup;
       const replacementId = crypto.randomUUID();
       const deletion = smDeletePlaythroughData(ifid, playthroughId, {
@@ -1190,29 +1319,14 @@ export const useStoryStore = create<StoryState>()(
         id: replacementId,
       });
       if (playthroughId !== '' && playthroughId === current) {
-        ++playthroughGeneration;
-        set((state) => {
-          state.playthroughId = replacementId;
-        });
-        playthroughSetup = deletion.then(
-          () => replacementId,
-          () => replacementId,
-        );
+        switchToPlaythrough(replacementId, deletion);
       } else if (current === '') {
-        const generation = ++playthroughGeneration;
-        playthroughSetup = deletion
-          .then(
+        switchToLookedUpPlaythrough(
+          deletion.then(
             (replaced) => (replaced ? replacementId : established),
             () => established,
-          )
-          .then((id) => {
-            if (generation === playthroughGeneration) {
-              set((state) => {
-                state.playthroughId = id;
-              });
-            }
-            return id;
-          });
+          ),
+        );
       }
 
       return handled(
@@ -1266,13 +1380,28 @@ export const useStoryStore = create<StoryState>()(
       };
     },
 
-    loadFromPayload: (payload: SavePayload, slot?: string) => {
+    loadFromPayload: (
+      payload: SavePayload,
+      slot?: string,
+      playthroughId?: string,
+    ) => {
+      const replacement = slotLoadApplying ?? ++stateReplacementsIssued;
+      slotLoadApplying = null;
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
+      latestStateApplied = replacement;
 
       emit('beforeload', slot);
+
+      // Loading a save moves the game to the save's playthrough, after the
+      // `beforeload` handlers (whose saves belong to the game being left).
+      // Restoring the session passes none: the game stays in its playthrough.
+      const ifid = get().storyData?.ifid;
+      if (playthroughId && ifid) {
+        switchToLoadedPlaythrough(ifid, playthroughId);
+      }
 
       // Restore the state on entering the saved passage, not the payload's
       // live variables: the passage remounts and runs its {set}/{do} again,

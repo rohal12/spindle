@@ -7,7 +7,11 @@
  *
  * Modelled behaviour:
  * - A save belongs to the playthrough current when it is made (restart
- *   switches playthroughs at once). Loading a save does not switch.
+ *   switches playthroughs at once).
+ * - Loading a save moves the game to the save's playthrough (no change if it
+ *   is the current one); a playthrough without a record (deleted since the
+ *   save was read) is recorded again as "Imported". A refresh keeps the
+ *   playthrough the game is in.
  * - A load restores the saved history and the variables recorded on
  *   entering the saved passage (docs/saves.md, "What a Load Restores").
  * - Overwriting a save generates its title again unless the player named it.
@@ -141,10 +145,22 @@ export function modelSave(
   };
 }
 
-/** A load: the saved history, at the saved passage's entry snapshot. */
+/**
+ * A load: the saved history, at the saved passage's entry snapshot, in the
+ * save's playthrough.
+ */
 export function modelLoad(m: SavesModel, rec: SaveRec): void {
   m.game = cloneVars(rec.game);
   m.game.live = cloneVars(m.game.moments[m.game.index]!.vars);
+  modelSwitchTo(m, rec.pt);
+}
+
+/** The game moves to the playthrough of a save it loads. */
+export function modelSwitchTo(m: SavesModel, pt: string): void {
+  m.current = pt;
+  if (!m.pts.some((p) => p.id === pt)) {
+    m.pts.push({ id: pt, label: 'Imported' });
+  }
 }
 
 export function modelGoto(m: SavesModel, passage: PassageName): void {

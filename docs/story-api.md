@@ -267,7 +267,11 @@ Story.load(); // load from default slot
 Story.load('my-slot'); // load from named slot
 ```
 
-Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails.
+Loading moves the game to the playthrough of the loaded save, so saves made afterwards are grouped with it (no change if the save belongs to the current playthrough). The switch takes effect in call order: `Story.load('a'); Story.save('b');` puts `b` in the playthrough of the save in `a`. See [Playthroughs](saves.md#playthroughs).
+
+Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails. A restart called after `load()` (before the save has been read) wins over it: the promise then resolves without loading, and no `beforeload`/`afterload` events fire.
+
+Inside running code, `Story.load()` takes its place among the save operations at the call, like `Story.save()` (the code's writes so far are applied first), but the loaded state replaces the game once the save has been read, after the code has finished.
 
 ### `Story.hasSave(slot?)`
 
@@ -620,7 +624,9 @@ Story.on('variableChanged', function (changed) {
 
 // Loading a game: `slot` is the named slot passed to Story.load(slot),
 // or undefined for the default slot, the saves dialog, and session
-// restore after a page refresh
+// restore after a page refresh. A save made in `beforeload` belongs to
+// the playthrough being left; when `afterload` fires, the game is in the
+// loaded save's playthrough
 Story.on('beforeload', function (slot) {
   console.log('Loading ' + (slot || 'game'));
 });

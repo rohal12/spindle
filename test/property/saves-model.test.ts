@@ -282,7 +282,11 @@ class DialogLoad extends Base {
     const t = await pickTarget(m, this.k);
     if (!t) return;
     const data = await exportSave(t.id);
-    store().loadFromPayload(deserializePayload(data!.save.payload));
+    store().loadFromPayload(
+      deserializePayload(data!.save.payload),
+      undefined,
+      data!.save.meta.playthroughId,
+    );
     modelLoad(m, t.rec);
   }
   toString = () => `DialogLoad(${this.k})`;
