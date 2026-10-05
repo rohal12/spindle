@@ -519,7 +519,7 @@ Watchers are **edge-triggered** — they fire only on a `false → true` transit
 
 Conditions are re-checked whenever a story (`$`), temporary (`_`) or transient (`%`) variable changes, and after each navigation to a passage (so conditions such as `hasVisited('Cave')` fire on arrival). Variables changed by a watcher fired by navigation are recorded in the history moment of the passage being entered, and a `goto` fired by navigation happens after that navigation has completed. Moving back or forward through history, or loading a save, re-syncs watchers to the restored variables without firing them.
 
-Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough.
+Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough. Revisiting a passage does not add a second copy of a watcher that is still registered with the same condition and options; a `once` watcher that has already fired (or one removed with `{unwatch}`) is registered again.
 
 ### `{unwatch}`
 
