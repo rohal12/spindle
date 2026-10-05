@@ -123,7 +123,19 @@ describe('tokenizer and AST builder robustness', () => {
     .tuple(
       fc.array(
         fc.constantFrom(
-          ...['{a', '{$a', '`', '${', '"', "'", '[[', '<a ', 'x="', '{.a'],
+          ...[
+            '{a',
+            '{$a',
+            '`',
+            '${',
+            '"',
+            "'",
+            '[[',
+            '<a ',
+            'x="',
+            'x=',
+            '{.a',
+          ],
           ...['\\', '{do}', ' ', '}', '{/a}'],
         ),
         { minLength: 1, maxLength: 4 },
@@ -212,6 +224,23 @@ describe('tokenize running time', () => {
     '"if(b="{if',
     "[[({if''",
     '{a\n//\\{$a',
+    // Unclosed tags: an unquoted value takes in the next `<`, so each tag's
+    // attribute scan used to run over all the tags after it
+    '<a ',
+    '<a x',
+    '<a x=',
+    '<a x=y',
+    '<a a=a ',
+    '<a x={',
+    '<a x={$a}',
+    '<a x="',
+    "<a x='y' z=",
+    '<a x="{$a',
+    '<a x="{a"',
+    '<div class=a\n',
+    '<a onclick=',
+    '<a x=< ',
+    '</a ',
   ];
 
   /** Milliseconds to tokenize `src`, best of three. */

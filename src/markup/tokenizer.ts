@@ -228,7 +228,7 @@ function parseHtmlAttributes(
   // As in HTML, the first of attributes with the same (case-insensitive)
   // name wins. Defined as own properties so `__proto__` is kept too.
   const seen = new Set<string>();
-  function addAttribute(name: string, value: string) {
+  const endIdx = scanAttributes(input, j, memo, (name, value) => {
     const lower = name.toLowerCase();
     if (seen.has(lower)) return;
     seen.add(lower);
@@ -238,11 +238,40 @@ function parseHtmlAttributes(
       writable: true,
       configurable: true,
     });
-  }
+  });
+  return { attributes, endIdx };
+}
 
+/**
+ * Scan the attributes of a tag from position j, handing each to `add` when
+ * given. Returns the position after the last attribute.
+ *
+ * Where the attributes end depends only on where an attribute starts, so
+ * without `add` the result is recorded for every attribute start passed (in
+ * `memo.tag`) and a recorded one is used instead of scanning on. An unquoted
+ * value takes in a `<`, so in `<a x=<a x=<a x=…` each opener's scan would
+ * otherwise run over all the openers after it, taking quadratic time. A tag
+ * whose attributes end in its `>` is consumed, so collecting the attributes
+ * of those (with `add`, unrecorded) reads each character once.
+ */
+function scanAttributes(
+  input: string,
+  j: number,
+  memo: ScanMemo,
+  add?: (name: string, value: string) => void,
+): number {
+  const passed: number[] = [];
   while (j < input.length) {
     // Skip whitespace
     while (j < input.length && /\s/.test(input[j]!)) j++;
+    if (!add) {
+      const known = memo.tag.get(j);
+      if (known !== undefined) {
+        j = known;
+        break;
+      }
+      passed.push(j);
+    }
     // End of tag?
     if (
       j >= input.length ||
@@ -296,21 +325,21 @@ function parseHtmlAttributes(
           } else if (input[j] === quote) break;
           j++;
         }
-        addAttribute(attrName, input.slice(valStart, j));
+        add?.(attrName, input.slice(valStart, j));
         if (j < input.length) j++; // skip closing quote
       } else {
         // Unquoted value
         const valStart = j;
         while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
-        addAttribute(attrName, input.slice(valStart, j));
+        add?.(attrName, input.slice(valStart, j));
       }
     } else {
       // Boolean attribute
-      addAttribute(attrName, '');
+      add?.(attrName, '');
     }
   }
-
-  return { attributes, endIdx: j };
+  for (const at of passed) memo.tag.set(at, j);
+  return j;
 }
 
 /**
@@ -336,6 +365,8 @@ export interface ScanMemo {
   name: { from: number; to: number };
   /** Link scan results (`scanLinkClose`). */
   link: Map<number, number>;
+  /** Where the attributes of a tag end, by attribute start (`scanAttributes`). */
+  tag: Map<number, number>;
   /**
    * The last search for a raw-body closer, by macro name: the first one
    * from `from` on is at `at` (-1 for none).
@@ -351,6 +382,7 @@ export function createScanMemo(): ScanMemo {
     template: new Map(),
     name: { from: 0, to: -1 },
     link: new Map(),
+    tag: new Map(),
     rawClose: new Map(),
   };
 }
@@ -1307,9 +1339,10 @@ export function tokenize(
             continue;
           }
         } else {
-          // Opening or self-closing tag: parse attributes
-          const parsed = parseHtmlAttributes(input, j, memo);
-          j = parsed.endIdx;
+          // Opening or self-closing tag: find where its attributes end, and
+          // read them only if the tag closes there
+          const attrsStart = j;
+          j = scanAttributes(input, attrsStart, memo);
 
           let isSelfClose = HTML_VOID_TAGS.has(tagLower);
           if (input[j] === '/') {
@@ -1323,7 +1356,8 @@ export function tokenize(
             tokens.push({
               type: 'html',
               tag,
-              attributes: parsed.attributes,
+              attributes: parseHtmlAttributes(input, attrsStart, memo)
+                .attributes,
               isClose: false,
               isSelfClose,
               start,
