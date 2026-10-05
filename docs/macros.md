@@ -529,6 +529,12 @@ An edge-triggered watcher that monitors a condition and fires an action when it 
 | `name`     | Name the watcher for later removal via `{unwatch}` |
 | `priority` | Numeric priority (higher fires first)              |
 
+Inside the quoted condition and option values, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash; other backslash sequences are kept as written:
+
+```
+{watch "$name == \"Bob\"" run "$greeting = \"Hi, Bob\""}
+```
+
 Watchers are **edge-triggered** — they fire only on a `false → true` transition of the condition. A condition that is already true when the watcher is registered will not fire until it becomes false and then true again.
 
 Conditions are re-checked whenever a story (`$`), temporary (`_`) or transient (`%`) variable changes, and after each navigation to a passage (so conditions such as `hasVisited('Cave')` fire on arrival). Variables changed by a watcher fired by navigation are recorded in the history moment of the passage being entered, and a `goto` fired by navigation happens after that navigation has completed. Moving back or forward through history, or loading a save, re-syncs watchers to the restored variables without firing them.

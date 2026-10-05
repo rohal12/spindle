@@ -98,4 +98,55 @@ describe('{watch}', () => {
     store().setVariable('x', 1);
     expect(store().variables.count).toBe(2);
   });
+
+  it('reads a condition containing escaped quotes', () => {
+    store().setVariable('name', 'Ann');
+    visit(
+      makePassage(
+        2,
+        'Room',
+        String.raw`{watch "$name == \"Bob\"" run "$count += 1"}`,
+      ),
+    );
+    store().setVariable('name', 'Bob');
+    expect(store().variables.count).toBe(1);
+  });
+
+  it('runs code containing escaped quotes', () => {
+    visit(
+      makePassage(
+        2,
+        'Room',
+        String.raw`{watch '$x > 0' run "$msg = \"a \\\"quoted\\\" b\"" once}`,
+      ),
+    );
+    store().setVariable('x', 1);
+    expect(store().variables.msg).toBe('a "quoted" b');
+  });
+
+  it('reads options after a value ending in an escaped backslash', () => {
+    visit(
+      makePassage(
+        2,
+        'Room',
+        String.raw`{watch '$x > 0' name "C:\\" run "$count += 1" once}`,
+      ),
+    );
+    store().setVariable('x', 1);
+    store().setVariable('x', 0);
+    store().setVariable('x', 1);
+    expect(store().variables.count).toBe(1);
+  });
+
+  it('{unwatch} removes a watcher whose name has escaped quotes', () => {
+    visit(
+      makePassage(
+        2,
+        'Room',
+        String.raw`{watch '$x > 0' name "say \"hi\"" run "$count += 1"}{unwatch "say \"hi\""}`,
+      ),
+    );
+    store().setVariable('x', 1);
+    expect(store().variables.count).toBe(0);
+  });
 });
