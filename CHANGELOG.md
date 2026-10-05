@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Story.config.quickSaveKey` and `Story.config.quickLoadKey` rebind the built-in quick save / quick load shortcuts (default `'F6'` / `'F9'`), or disable them with `null`. The `{quicksave}` / `{quickload}` button tooltips follow the configured keys.
 - `Story.exportSave(slot?)` and `Story.importSave(data, slot?)` export a save slot as a portable `SaveExport` object and import one into a slot. Import replaces the slot's previous save, rejects files from other stories (IFID check), creates the "Imported" playthrough when needed, and updates `Story.hasSave()`. Both work with the IndexedDB, localStorage and memory backends. `SaveExport`, `SaveRecord` and `SaveMeta` are now in the published types.
 - `dismissible` option for `Story.openDialog()`: `Story.openDialog(name, { dismissible: false })` opens a dialog the player cannot close by clicking the backdrop and hides the `✕` button by default. Close it from code with `Story.closeDialog()` / `Story.closeAllDialogs()`.
 - Transient variables (`%var`): reactive Zustand-backed variables that are excluded from all persistence (history snapshots, save payloads, session storage). Declared in a `StoryTransients` passage with `%name = value` syntax. Ideal for large derived state projected from external engines. Accessible via `{%var}` in passages, `{set %var = expr}`, and `Story.set('%var', value)` / `Story.get('%var')` in the API. ([#137](https://github.com/rohal12/spindle/issues/137))

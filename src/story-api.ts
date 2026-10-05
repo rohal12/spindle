@@ -221,6 +221,8 @@ export interface StoryAPI {
   randomInt(min: number, max: number): number;
   readonly config: {
     maxHistory: number;
+    quickSaveKey: string | null;
+    quickLoadKey: string | null;
   };
   readonly prng: {
     init(seed?: string, useEntropy?: boolean): void;
@@ -581,6 +583,18 @@ function createStoryAPI(): StoryAPI {
       },
       set maxHistory(limit: number) {
         useStoryStore.getState().setMaxHistory(limit);
+      },
+      get quickSaveKey(): string | null {
+        return useStoryStore.getState().quickSaveKey;
+      },
+      set quickSaveKey(key: string | null) {
+        useStoryStore.getState().setQuickSaveKey(key);
+      },
+      get quickLoadKey(): string | null {
+        return useStoryStore.getState().quickLoadKey;
+      },
+      set quickLoadKey(key: string | null) {
+        useStoryStore.getState().setQuickLoadKey(key);
       },
     },
 
