@@ -157,10 +157,17 @@ export async function createSave(
   return record;
 }
 
+/**
+ * Replace the payload of an existing save, keeping its ID and title. Pass the
+ * current `playthroughId` when the new payload comes from the running game:
+ * the save then holds that playthrough's state, so it is grouped and deleted
+ * with it rather than with the playthrough that first created the save.
+ */
 export async function overwriteSave(
   saveId: string,
   payload: SavePayload,
   custom?: Record<string, unknown>,
+  playthroughId?: string,
 ): Promise<SaveRecord | undefined> {
   const backend = await getBackend();
   const existing = await backend.getSave(saveId);
@@ -175,6 +182,7 @@ export async function overwriteSave(
   const updated: SaveRecord = {
     meta: {
       ...existing.meta,
+      ...(playthroughId ? { playthroughId } : {}),
       updatedAt: new Date().toISOString(),
       passage: payload.passage,
       ...(custom != null
@@ -426,7 +434,12 @@ export function quickSave(
     const existingId = await backend.getMeta<string>(metaKey);
 
     if (existingId) {
-      const updated = await overwriteSave(existingId, payload, custom);
+      const updated = await overwriteSave(
+        existingId,
+        payload,
+        custom,
+        playthroughId,
+      );
       if (updated) return updated;
     }
 

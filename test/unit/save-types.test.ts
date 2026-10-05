@@ -228,6 +228,44 @@ describe('isSaveExport', () => {
     expect(isSaveExport(renders)).toBe(false);
   });
 
+  const malformedMap = {
+    __spindle_class__: '__Map__',
+    __spindle_data__: { entries: 42 },
+  };
+
+  it('returns false for a malformed encoded value in the live variables', () => {
+    const data = makeValidExport();
+    (data as any).save.payload.variables = { inventory: malformedMap };
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('returns false for a malformed encoded value in a history moment', () => {
+    const data = makeValidExport();
+    (data as any).save.payload.history = [
+      { passage: 'Room', variables: { deep: [malformedMap] }, timestamp: 1 },
+      { passage: 'Start', variables: {}, timestamp: 2 },
+    ];
+    (data as any).save.payload.historyIndex = 1;
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('accepts well-formed encoded built-in values', () => {
+    const data = makeValidExport();
+    const variables = {
+      seen: {
+        __spindle_class__: '__Set__',
+        __spindle_data__: { entries: ['Start'] },
+      },
+      at: {
+        __spindle_class__: '__Date__',
+        __spindle_data__: { iso: '2024-01-02T03:04:05.000Z' },
+      },
+    };
+    (data as any).save.payload.variables = variables;
+    (data as any).save.payload.history[0].variables = variables;
+    expect(isSaveExport(data)).toBe(true);
+  });
+
   it('accepts a multi-moment history with PRNG snapshots', () => {
     const data = makeValidExport();
     (data as any).save.payload = {

@@ -679,6 +679,29 @@ describe('SaveManagerContent', () => {
       expect(status).not.toBeNull();
       expect(status!.textContent).toContain('Save overwritten');
     });
+
+    it('lists a slot save overwritten after a restart under the current playthrough', async () => {
+      const slot = 'restart-overwrite-slot';
+      await useStoryStore.getState().save(slot);
+      const newPt = await startNewPlaythrough(IFID);
+      useStoryStore.setState({ playthroughId: newPt });
+      await useStoryStore.getState().save(slot);
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(() => saveModeBtn.click());
+      await flush();
+
+      // Save mode shows only the current playthrough
+      const labels = [...container.querySelectorAll('.playthrough-label')];
+      expect(labels.map((l) => l.textContent)).toHaveLength(1);
+      expect(labels[0]!.textContent).toContain('(current)');
+      expect(container.querySelectorAll('.save-slot')).toHaveLength(1);
+    });
   });
 
   describe('save hooks', () => {

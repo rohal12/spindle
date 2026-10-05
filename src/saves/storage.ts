@@ -154,6 +154,14 @@ export function createLocalStorageBackend(): StorageBackend {
 
     async putSave(record: SaveRecord): Promise<void> {
       const id = record.meta.id;
+      // A save rewritten under another playthrough (an overwrite after a
+      // restart) leaves its old playthrough's index
+      const previous = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
+      if (previous && previous.meta.playthroughId !== record.meta.playthroughId)
+        lsIndexRemove(
+          `${LS_IDX_SAVES_PT_PREFIX}${previous.meta.playthroughId}`,
+          id,
+        );
       lsSet(`${LS_SAVE_PREFIX}${id}`, record);
       lsIndexAdd(`${LS_IDX_SAVES_PREFIX}${record.meta.ifid}`, id);
       lsIndexAdd(`${LS_IDX_SAVES_PT_PREFIX}${record.meta.playthroughId}`, id);

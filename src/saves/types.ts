@@ -1,4 +1,5 @@
 import type { PRNGSnapshot } from '../prng';
+import { isDeserializable } from '../class-registry';
 
 /** History moment as persisted in saves (full variable snapshots). */
 export interface SaveHistoryMoment {
@@ -97,11 +98,16 @@ function isOptionalPRNGSnapshot(value: unknown): boolean {
   );
 }
 
+/** A variable container whose values deserialize() can restore. */
+function isSerializedVariables(value: unknown): boolean {
+  return isRecord(value) && isDeserializable(value);
+}
+
 function isSaveHistoryMoment(value: unknown): value is SaveHistoryMoment {
   return (
     isRecord(value) &&
     typeof value.passage === 'string' &&
-    isRecord(value.variables) &&
+    isSerializedVariables(value.variables) &&
     typeof value.timestamp === 'number' &&
     isOptionalPRNGSnapshot(value.prng)
   );
@@ -109,14 +115,16 @@ function isSaveHistoryMoment(value: unknown): value is SaveHistoryMoment {
 
 /**
  * Full check of a payload from outside the running story (an imported save):
- * every history moment is well formed, and `historyIndex` is an integer that
- * points at a moment of the payload's passage. Anything that passes can be
- * stored and later loaded.
+ * every history moment is well formed, `historyIndex` is an integer that
+ * points at a moment of the payload's passage, and the encoded values (Map,
+ * Set, Date, RegExp, class instances) in the live variables and every
+ * moment's variables have the shape deserialize() expects. Anything that
+ * passes can be stored and later loaded.
  */
 function isImportablePayload(value: unknown): value is SavePayload {
   if (!isRecord(value)) return false;
   if (typeof value.passage !== 'string') return false;
-  if (!isRecord(value.variables)) return false;
+  if (!isSerializedVariables(value.variables)) return false;
 
   const { history, historyIndex } = value;
   if (!Array.isArray(history) || history.length === 0) return false;

@@ -313,3 +313,79 @@ export function deserialize<T>(value: T): T {
 
   return deser(value) as T;
 }
+
+// --- Validate ---
+
+function isDataRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether `value` is serialized data that deserialize() can restore: every
+ * tagged value has the shape serialize() writes for its tag (a valid ISO
+ * date, a compilable RegExp, Map entries as `[key, value]` pairs, Set
+ * entries as an array, class data as an object), at any depth. Use it on
+ * data from outside the running story, such as an imported save, before
+ * storing it. Tags of unregistered classes pass; they load as plain objects.
+ */
+export function isDeserializable(value: unknown): boolean {
+  // Objects on the current path; JSON can't hold cycles, and deserialize()
+  // can't restore them
+  const path = new Set<object>();
+
+  function check(val: unknown): boolean {
+    if (val === null || typeof val !== 'object') return true;
+    if (path.has(val)) return false;
+    path.add(val);
+    const ok = checkObject(val);
+    path.delete(val);
+    return ok;
+  }
+
+  function checkObject(val: object): boolean {
+    if (Array.isArray(val)) return val.every(check);
+
+    const obj = val as Record<string, unknown>;
+    if (!(CLASS_TAG in obj && DATA_TAG in obj)) {
+      return Object.keys(obj).every((key) => check(obj[key]));
+    }
+
+    const name = obj[CLASS_TAG];
+    const data = obj[DATA_TAG];
+    if (typeof name !== 'string' || !isDataRecord(data)) return false;
+
+    switch (name) {
+      case '__Date__':
+        return (
+          typeof data.iso === 'string' &&
+          !Number.isNaN(new Date(data.iso).getTime())
+        );
+      case '__RegExp__':
+        if (typeof data.source !== 'string' || typeof data.flags !== 'string')
+          return false;
+        try {
+          new RegExp(data.source, data.flags);
+          return true;
+        } catch {
+          return false;
+        }
+      case '__Map__':
+        return (
+          Array.isArray(data.entries) &&
+          data.entries.every(
+            (entry: unknown) =>
+              Array.isArray(entry) &&
+              entry.length === 2 &&
+              check(entry[0]) &&
+              check(entry[1]),
+          )
+        );
+      case '__Set__':
+        return Array.isArray(data.entries) && data.entries.every(check);
+      default:
+        return Object.keys(data).every((key) => check(data[key]));
+    }
+  }
+
+  return check(value);
+}
