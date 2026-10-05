@@ -2,9 +2,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from 'preact/test-utils';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
-import { executeStoryInit } from '../../src/story-init';
+import { executeStoryInit, initializeStory } from '../../src/story-init';
 import { loadSession } from '../../src/saves/save-manager';
 import { installStoryAPI } from '../../src/story-api';
+import { on } from '../../src/event-emitter';
 import { isPRNGEnabled, getPRNGPull, resetPRNG } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -291,5 +292,112 @@ describe('start moment snapshot', () => {
     expect(store().variables).toEqual(before.vars);
     expect(snapshots()).toEqual(before.history);
     expect(snapshots()[0]).toEqual({ gold: 100 });
+  });
+});
+
+describe('storyinit handler changes in the start moment', () => {
+  const store = () => useStoryStore.getState();
+  let unsubs: Array<() => void> = [];
+
+  function storyData(init?: string): StoryData {
+    const passages = [
+      makePassage(1, 'Start', 'Hello'),
+      makePassage(2, 'B', 'B'),
+    ];
+    if (init !== undefined) passages.push(makePassage(3, 'StoryInit', init));
+    return makeStoryData(passages);
+  }
+
+  function snapshots(): Record<string, unknown>[] {
+    return store().history.map((_, i) => store().getHistoryVariables(i));
+  }
+
+  /** Register a storyinit handler that adds 5 gold, as Story.set() would. */
+  function addGoldOnInit(): void {
+    unsubs.push(
+      on('storyinit', () => {
+        store().setVariable('gold', (store().variables.gold as number) + 5);
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    _resetRuntimePhase();
+    sessionStorage.clear();
+    resetPRNG();
+  });
+
+  afterEach(() => {
+    for (const unsub of unsubs) unsub();
+    unsubs = [];
+  });
+
+  it('includes handler changes when going back, without a StoryInit passage', () => {
+    addGoldOnInit();
+    store().init(storyData(), { gold: 0 });
+    initializeStory();
+    expect(store().variables).toEqual({ gold: 5 });
+    store().navigate('B');
+    store().goBack();
+    expect(store().variables).toEqual({ gold: 5 });
+  });
+
+  it('includes handler changes when going back, with a StoryInit passage', () => {
+    addGoldOnInit();
+    store().init(storyData('{set $hp = 3}'), { gold: 0 });
+    initializeStory();
+    store().navigate('B');
+    store().goBack();
+    expect(store().variables).toEqual({ gold: 5, hp: 3 });
+    expect(loadSession('test-ifid')!.history[0]!.variables).toEqual({
+      gold: 5,
+      hp: 3,
+    });
+  });
+
+  it('includes handler changes in a save made at the start moment', () => {
+    addGoldOnInit();
+    store().init(storyData('{set $hp = 3}'), { gold: 0 });
+    initializeStory();
+    const payload = store().getSavePayload();
+    expect(payload.history[0]!.variables).toEqual({ gold: 5, hp: 3 });
+
+    store().navigate('B');
+    store().setVariable('gold', 99);
+    store().loadFromPayload(payload);
+    expect(store().currentPassage).toBe('Start');
+    expect(store().variables).toEqual({ gold: 5, hp: 3 });
+  });
+
+  it('includes handler changes after a restart', () => {
+    addGoldOnInit();
+    store().init(storyData(), { gold: 0 });
+    initializeStory();
+    store().navigate('B');
+    store().setVariable('gold', 42);
+    store().restart();
+    expect(store().variables).toEqual({ gold: 5 });
+    store().navigate('B');
+    store().goBack();
+    expect(store().variables).toEqual({ gold: 5 });
+    expect(store().getSavePayload().history[0]!.variables).toEqual({
+      gold: 5,
+    });
+  });
+
+  it('does not record handler changes over a restored session', () => {
+    addGoldOnInit();
+    store().init(storyData(), { gold: 0 });
+    initializeStory();
+    // Loading a save made at the start leaves a one-moment session behind
+    const payload = store().getSavePayload();
+    store().navigate('B');
+    store().loadFromPayload(payload);
+    expect(loadSession('test-ifid')!.history).toHaveLength(1);
+
+    // Refresh: boot re-inits and restores the session, then storyinit fires
+    store().init(storyData(), { gold: 0 });
+    initializeStory(loadSession('test-ifid'));
+    expect(snapshots()).toEqual([{ gold: 5 }]);
   });
 });
