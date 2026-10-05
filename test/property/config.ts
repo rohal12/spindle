@@ -3,7 +3,8 @@
  *
  * CI runs a modest number of cases per property to keep the suite fast. Set
  * FC_NUM_RUNS (e.g. `FC_NUM_RUNS=100000 npx vitest run test/property`) for a
- * deep local run, and FC_SEED to replay a reported failure.
+ * deep local run (it also lifts the per-test timeout, see vitest.config.ts),
+ * and FC_SEED to replay a reported failure.
  */
 const env = typeof process === 'undefined' ? {} : process.env;
 

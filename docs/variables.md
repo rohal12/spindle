@@ -180,7 +180,14 @@ Variable sigils inside string literals are preserved as-is. This means `$`, `_`,
 {if $label === "$special"}
 ```
 
-In the second example, the literal `$` before `${$cost}` is kept, while `$cost` inside the template interpolation is resolved to the variable.
+In the second example, the literal `$` before `${$cost}` is kept, while `$cost` inside the template interpolation is resolved to the variable. The same goes for comments and regular expression literals.
+
+A sigil only starts a variable where a JavaScript identifier starts. Names that merely contain `$` or `_` (`a$b`, `max_hp`), property names after a dot (`$player._id`, `$obj.$key`), object literal keys (`{ _id: 1 }`, `{ _heal() {} }`) and class member names (`_hp = 0`, `get _dead()`) are left as they are:
+
+```
+{set $item = { _id: 7, name: "Lamp" }}
+{print $item._id}
+```
 
 ### Passage tracking functions
 

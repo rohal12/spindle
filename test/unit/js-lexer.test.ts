@@ -1,40 +1,45 @@
 import { describe, it, expect } from 'vitest';
 import { lexJs, lexTemplate, scanStringLiteral } from '../../src/js-lexer';
+import type { JsGoal } from '../../src/js-lexer';
 
 type Piece = [
-  kind: 'code' | 'literal' | 'transient',
+  kind: 'code' | 'literal' | 'variable',
   text: string,
   nest: number,
 ];
 
 /** Lex `src`, merging adjacent code characters into one piece. */
-function pieces(src: string): Piece[] {
+function pieces(src: string, goal?: JsGoal): Piece[] {
   const out: Piece[] = [];
-  lexJs(src, {
-    code(ch, _i, nesting) {
-      const last = out[out.length - 1];
-      if (last && last[0] === 'code' && last[2] === nesting) last[1] += ch;
-      else out.push(['code', ch, nesting]);
+  lexJs(
+    src,
+    {
+      code(ch, _i, nesting) {
+        const last = out[out.length - 1];
+        if (last && last[0] === 'code' && last[2] === nesting) last[1] += ch;
+        else out.push(['code', ch, nesting]);
+      },
+      literal(text, _i, nesting) {
+        out.push(['literal', text, nesting]);
+      },
+      variable(sigil, name, _i, nesting) {
+        out.push(['variable', sigil + name, nesting]);
+      },
     },
-    literal(text, _i, nesting) {
-      out.push(['literal', text, nesting]);
-    },
-    transient(name, _i, nesting) {
-      out.push(['transient', name, nesting]);
-    },
-  });
+    goal,
+  );
   return out;
 }
 
 /** Literal pieces at top level. */
-const literals = (src: string) =>
-  pieces(src)
+const literals = (src: string, goal?: JsGoal) =>
+  pieces(src, goal)
     .filter(([kind, , nest]) => kind === 'literal' && nest === 0)
     .map(([, text]) => text);
 
 describe('lexJs', () => {
   it('reports every character exactly once, in order', () => {
-    const src = 'a = /x"/g.test(`${%t + "}"}`) // c\n%u / 2';
+    const src = 'a = /x"/g.test(`${%t + "}" + $v}`) // c\n%u / _w + @l';
     let rebuilt = '';
     let next = 0;
     lexJs(src, {
@@ -48,9 +53,9 @@ describe('lexJs', () => {
         rebuilt += text;
         next = i + text.length;
       },
-      transient(name, i) {
+      variable(sigil, name, i) {
         expect(i).toBe(next);
-        rebuilt += '%' + name;
+        rebuilt += sigil + name;
         next = i + 1 + name.length;
       },
     });
@@ -82,21 +87,24 @@ describe('lexJs', () => {
   });
 
   it('reads a slash after a block as the start of a regex', () => {
-    expect(literals('if (x) {}\n/a"/.test(s)')).toEqual(['/a"/']);
-    expect(literals('{}\n/a"/.test(s)')).toEqual(['/a"/']);
-    expect(literals('f = () => {}\n/a"/.test(s)')).toEqual(['/a"/']);
-    expect(literals('if (x) {} else {}\n/a"/.test(s)')).toEqual(['/a"/']);
-    expect(literals('do {} while (x); try {} finally {}\n/a"/')).toEqual([
-      '/a"/',
-    ]);
-    expect(literals('function f() {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    // Blocks only exist in statement lists ({do} bodies); in an expression
+    // `{}` is an object literal and a following `/` is division.
+    const regex = (src: string) => literals(src, 'statements');
+    expect(regex('if (x) {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(regex('{}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(regex('f = () => {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(regex('if (x) {} else {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(regex('do {} while (x); try {} finally {}\n/a"/')).toEqual(['/a"/']);
+    expect(regex('function f() {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    // As an expression, `{} / a` is division, so the `"` opens a string.
+    expect(literals('{}\n/a"/.test(s)')).toEqual(['"/.test(s)']);
   });
 
   it('reads a % after an object literal as modulo', () => {
     expect(pieces('[{} %n]')).toEqual([['code', '[{} %n]', 0]]);
-    expect(pieces('if (x) {} %n = 1')).toEqual([
+    expect(pieces('if (x) {} %n = 1', 'statements')).toEqual([
       ['code', 'if (x) {} ', 0],
-      ['transient', 'n', 0],
+      ['variable', '%n', 0],
       ['code', ' = 1', 0],
     ]);
   });
@@ -126,7 +134,7 @@ describe('lexJs', () => {
 
   it('reports transient references in operand position only', () => {
     expect(pieces('%a % 2')).toEqual([
-      ['transient', 'a', 0],
+      ['variable', '%a', 0],
       ['code', ' % 2', 0],
     ]);
   });
@@ -161,5 +169,34 @@ describe('scanStringLiteral', () => {
       end: 6,
       closed: false,
     });
+  });
+});
+
+describe('lexJs nesting', () => {
+  it('lexes deeply nested template literals without recursion', () => {
+    const depth = 5000;
+    const src = '`${'.repeat(depth) + '$a' + '}`'.repeat(depth);
+    let maxNesting = 0;
+    let variables = 0;
+    lexJs(src, {
+      variable(_sigil, _name, _i, nesting) {
+        variables++;
+        maxNesting = Math.max(maxNesting, nesting);
+      },
+    });
+    expect(variables).toBe(1);
+    expect(maxNesting).toBe(depth);
+  });
+
+  it('keeps a stray closer in an interpolation from closing outer brackets', () => {
+    expect(pieces('(`${)}`) / 2')).toEqual([
+      ['code', '(', 0],
+      ['literal', '`', 0],
+      ['literal', '${', 0],
+      ['code', ')', 1],
+      ['literal', '}', 0],
+      ['literal', '`', 0],
+      ['code', ') / 2', 0],
+    ]);
   });
 });

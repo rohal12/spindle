@@ -86,7 +86,7 @@ const TRAILING_OPERATOR_RE =
  * Whether `src` ends with an operator that still needs an operand (`$a +`,
  * `$a+`, `$x ==`, `typeof`), so it cannot be a complete value on its own.
  * Only code counts: the closing `/` of a regex literal is not division, a
- * `%name` transient reference is an operand, trailing comments are skipped,
+ * variable reference (`$a`, `%name`, ...) is an operand, trailing comments are skipped,
  * and a postfix `++` or `--` completes its operand.
  */
 export function endsWithOperator(src: string): boolean {
@@ -101,7 +101,7 @@ export function endsWithOperator(src: string): boolean {
       const comment = text.startsWith('//') || text.startsWith('/*');
       if (nesting === 0 && !comment) end = -1;
     },
-    transient(_name, _i, nesting) {
+    variable(_sigil, _name, _i, nesting) {
       if (nesting === 0) end = -1;
     },
   });
