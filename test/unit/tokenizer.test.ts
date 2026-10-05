@@ -563,6 +563,30 @@ describe('tokenize', () => {
       ]);
     });
 
+    it('parses .{%transient} selector with transient var interpolation', () => {
+      // Found by property testing: selectors accepted {$ {_ {@ but not {%.
+      expect(tokenize('{.a-{%_}.a $A}')).toEqual([
+        {
+          type: 'variable',
+          name: 'A',
+          scope: 'variable',
+          className: 'a-{%_} a',
+          start: 0,
+          end: 14,
+        },
+      ]);
+      expect(tokenize('[[.a-{%a}.a a]]')).toEqual([
+        {
+          type: 'link',
+          display: 'a',
+          target: 'a',
+          className: 'a-{%a} a',
+          start: 0,
+          end: 15,
+        },
+      ]);
+    });
+
     it('parses [[.{$cls} link]] with interpolation in link selector', () => {
       const tokens = tokenize('[[.{$cls} Go|Start]]');
       expect(tokens).toEqual([

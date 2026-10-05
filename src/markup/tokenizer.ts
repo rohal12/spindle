@@ -84,6 +84,9 @@ const HTML_VOID_TAGS = new Set([
   'wbr',
 ]);
 
+/** Variable sigils: story ($), temporary (_), local (@), transient (%). */
+const SIGIL_CHARS = new Set(['$', '_', '@', '%']);
+
 /** Macros whose body is JavaScript source, kept verbatim instead of tokenized. */
 const RAW_BODY_MACROS = new Set(['do']);
 
@@ -172,11 +175,8 @@ function parseSelectors(
       if (/[a-zA-Z0-9_-]/.test(input[i]!)) {
         name += input[i];
         i++;
-      } else if (
-        input[i] === '{' &&
-        (input[i + 1] === '$' || input[i + 1] === '_' || input[i + 1] === '@')
-      ) {
-        // Consume interpolation: {$var}, {_var}, {@var} (with optional dot paths)
+      } else if (input[i] === '{' && SIGIL_CHARS.has(input[i + 1]!)) {
+        // Consume interpolation: {$var}, {_var}, {@var}, {%var} (with optional dot paths)
         const braceStart = i;
         i += 2; // skip { and prefix
         while (i < input.length && /[\w.]/.test(input[i]!)) i++;
