@@ -44,7 +44,16 @@ export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
  * with no CommonMark re-implementation to drift from it.
  */
 const ESCAPED_PLACEHOLDER = '<span data-tw="';
-const ESCAPED_PLACEHOLDER_SPLIT_RE = /<span data-tw="(\d+)"><\/span>/;
+const ESCAPED_PLACEHOLDER_SPLIT_RE =
+  /(?:(?<=\\)\uE000)?<span data-tw="(\d+)"><\/span>/;
+
+/**
+ * Emitted between author text ending in a backslash and a placeholder, so
+ * the backslash cannot escape the placeholder's `<` and leak it as text. A
+ * backslash before a non-punctuation character stays literal in CommonMark,
+ * matching what the author wrote. Removed again when converting text nodes.
+ */
+const ESCAPE_GUARD = '\uE000';
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -76,7 +85,14 @@ function convertDomNode(
   components: preact.ComponentChildren[],
 ): preact.ComponentChildren {
   if (node.nodeType === Node.TEXT_NODE) {
-    const text = node.textContent ?? '';
+    let text = node.textContent ?? '';
+    // Drop the escape guard in front of a placeholder element.
+    if (
+      text.endsWith(`\\${ESCAPE_GUARD}`) &&
+      isPlaceholderElement(node.nextSibling)
+    ) {
+      text = text.slice(0, -1);
+    }
     if (!text.includes(ESCAPED_PLACEHOLDER)) return text;
     // Swap escaped placeholders for their components; the split puts
     // captured indices at odd positions.
@@ -110,6 +126,14 @@ function convertDomNode(
     return h(tag, props, ...children);
   }
   return null;
+}
+
+function isPlaceholderElement(node: Node | null): boolean {
+  return (
+    node != null &&
+    node.nodeType === Node.ELEMENT_NODE &&
+    (node as Element).hasAttribute('data-tw')
+  );
 }
 
 /** Inline elements where block-level markdown (lists, headings) is invalid. */
@@ -439,6 +463,7 @@ export function renderNodes(
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
+    if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
     combined += `<span data-tw="${phIdx}"></span>`;
   }
 
