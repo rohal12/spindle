@@ -80,6 +80,13 @@ describe('macro components', () => {
       expect(el.textContent).toContain('10');
     });
 
+    it('evaluates compact modulo after a closing parenthesis (#205)', () => {
+      useStoryStore.getState().setVariable('n', 10);
+      const el = renderPassage('{print ($n)%3}|{$n%4}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toContain('1|2');
+    });
+
     it('shows error for invalid expression', () => {
       const el = renderPassage('{print $x +}');
       const error = el.querySelector('.error');
