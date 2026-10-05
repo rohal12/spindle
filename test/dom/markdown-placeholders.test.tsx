@@ -101,10 +101,29 @@ describe('backslash before a placeholder', () => {
   });
 
   it('treats \\{ before a variable as the Twine brace escape', () => {
-    // `\{` is consumed by the tokenizer, so no text node can end in a
-    // backslash right before a variable or macro; `&#92;` gives a backslash.
+    expect(renderPassage('\\{$x}').textContent).toBe('{$x}');
     expect(renderPassage('C:\\{$dir}').textContent).toBe('C:{$dir}');
     expect(renderPassage('C:&#92;{$dir}').textContent).toBe('C:\\D');
+  });
+
+  it('renders \\\\ before a variable as a backslash and the live value', () => {
+    const el = renderPassage('C:\\\\{$dir}');
+    expectNoLeak(el);
+    expect(el.textContent).toBe('C:\\D');
+    act(() => {
+      useStoryStore.getState().setVariable('dir', 'E');
+    });
+    expect(el.textContent).toBe('C:\\E');
+  });
+
+  it('escapes the brace with the last backslash of an odd run', () => {
+    expect(renderPassage('C:\\\\\\{$dir}').textContent).toBe('C:\\{$dir}');
+  });
+
+  it('runs a macro after an even backslash run', () => {
+    const el = renderPassage('a\\\\{if true}yes{/if}');
+    expectNoLeak(el);
+    expect(el.textContent).toBe('a\\yes');
   });
 });
 
