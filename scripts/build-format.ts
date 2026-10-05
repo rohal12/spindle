@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
+import preact from '@preact/preset-vite';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -97,3 +98,29 @@ await build({
 });
 
 console.log('Built dist/pkg/story-variables.js (tooling)');
+
+// Bundle the headless entry point (`@rohal12/spindle/headless`): boots a
+// compiled story inside a caller-provided DOM (happy-dom/jsdom) in Node.
+// Runtime dependencies stay external so the consumer's single copy is used.
+const RUNTIME_DEPS = /^(preact|zustand|immer|micromark)(\/|-|$)/;
+await build({
+  configFile: false,
+  logLevel: 'warn',
+  plugins: [preact()],
+  build: {
+    outDir: pkgDir,
+    emptyOutDir: false,
+    target: 'es2022',
+    minify: false,
+    lib: {
+      entry: resolve(projectRoot, 'src/headless.ts'),
+      formats: ['es'],
+      fileName: () => 'headless.js',
+    },
+    rollupOptions: {
+      external: (id) => RUNTIME_DEPS.test(id),
+    },
+  },
+});
+
+console.log('Built dist/pkg/headless.js (headless)');

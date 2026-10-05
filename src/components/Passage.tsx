@@ -12,6 +12,7 @@ import { useStoryStore } from '../store';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
+import { markPassageRendered } from '../passage-render-state';
 
 export function renderPassageContent(passage: PassageData) {
   const tokens = tokenize(passage.content);
@@ -102,6 +103,7 @@ export function Passage({ passage, dataTransition }: PassageProps) {
   // Passage so every navigation that shows a passage mounts a new one.
   const elRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    markPassageRendered(passage.name);
     if (elRef.current) {
       emitFromRender('passagerender', passage.name, elRef.current);
     }

@@ -91,3 +91,15 @@ const _exampleMacro: PublishedMacroDefinition = {
     );
   },
 };
+
+// Headless entry point (`@rohal12/spindle/headless`): types/headless.d.ts must
+// match src/headless.ts.
+import type { bootStory as SourceBootStory } from './headless';
+import type { bootStory as PublishedBootStory } from '../types/headless';
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _bootSourceToPublished: typeof PublishedBootStory =
+  {} as typeof SourceBootStory;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _bootPublishedToSource: typeof SourceBootStory =
+  {} as typeof PublishedBootStory;
