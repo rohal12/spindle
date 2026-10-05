@@ -5,6 +5,7 @@ import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetBackend } from '../../src/saves/storage';
 import { loadSession } from '../../src/saves/save-manager';
 import { resetEmitter } from '../../src/event-emitter';
+import { initPRNG, random } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -176,6 +177,77 @@ describe('load pipeline', () => {
 
       expectTyped(Story.get('data'), 1);
       expectTyped(useStoryStore.getState().getHistoryVariables(1).data, 1);
+    });
+  });
+
+  describe('session persistence after load (#165)', () => {
+    it('refresh right after a load restores the loaded game', async () => {
+      initPRNG('seed', false);
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+      random();
+      random();
+      await saveTo('slot');
+      const savedPrng = useStoryStore.getState().getSavePayload().prng!;
+
+      Story.goto('C');
+      Story.set('data', { n: 3 });
+      random();
+
+      await loadFrom('slot');
+      expect(Story.get('data')).toEqual({ n: 2 });
+
+      refresh();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe('B');
+      expect(Story.get('data')).toEqual({ n: 2 });
+      expect(state.history.map((m) => m.passage)).toEqual(['A', 'B']);
+      expect(state.historyIndex).toBe(1);
+      expect(state.getHistoryVariables(1).data).toEqual({ n: 1 });
+      expect(Story.prng.pull).toBe(savedPrng.pull);
+      expect(Story.prng.seed).toBe(savedPrng.seed);
+    });
+
+    it('refresh after loading a save made mid-history keeps every moment', async () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+      Story.goto('C');
+      useStoryStore.getState().goBack();
+      await saveTo('mid');
+
+      useStoryStore.getState().goForward();
+      await loadFrom('mid');
+      refresh();
+
+      const state = useStoryStore.getState();
+      expect(state.currentPassage).toBe('B');
+      expect(state.historyIndex).toBe(1);
+      expect(state.history.map((m) => m.passage)).toEqual(['A', 'B', 'C']);
+      expect(Story.get('data')).toEqual({ n: 1 });
+      expect(state.getHistoryVariables(1).data).toEqual({ n: 1 });
+      expect(state.getHistoryVariables(2).data).toEqual({ n: 2 });
+
+      state.goForward();
+      expect(Story.get('data')).toEqual({ n: 2 });
+    });
+
+    it('refresh right after a dialog-style loadFromPayload restores it', () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      const payload = useStoryStore.getState().getSavePayload();
+      Story.goto('C');
+
+      useStoryStore.getState().loadFromPayload(payload);
+      refresh();
+
+      expect(useStoryStore.getState().currentPassage).toBe('B');
+      expect(useStoryStore.getState().history.map((m) => m.passage)).toEqual([
+        'A',
+        'B',
+      ]);
     });
   });
 });

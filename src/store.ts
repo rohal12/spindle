@@ -856,7 +856,15 @@ export const useStoryStore = create<StoryState>()(
 
       variableBase = deepClone(base);
       patchEntries = newPatchEntries;
-      serializedHistory = [];
+      // Seed the session cache from the payload's own snapshots: the current
+      // variables can differ from the last moment's (set after entering it,
+      // or historyIndex < last), so persistSession must not rebuild them.
+      serializedHistory = payload.history.map((m) => ({
+        passage: m.passage,
+        variables: serialize(m.variables),
+        timestamp: m.timestamp,
+        prng: m.prng,
+      }));
 
       set((state) => {
         state.currentPassage = payload.passage;
@@ -883,6 +891,9 @@ export const useStoryStore = create<StoryState>()(
       } else {
         resetPRNG();
       }
+
+      // Write the loaded game to the session so a refresh restores it
+      persistSession(get);
 
       emit('afterload', undefined);
     },
