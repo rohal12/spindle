@@ -10,8 +10,9 @@ import {
  * Includes GFM table and strikethrough extensions.
  *
  * When `inline` is true, block-level constructs (lists, headings, blockquotes,
- * thematic breaks) are disabled.  This is used when rendering content inside
- * inline HTML elements like `<span>` where block-level output is invalid.
+ * thematic breaks, fenced code, tables) are disabled.  This is used when
+ * rendering content inside inline HTML elements like `<span>` where
+ * block-level output is invalid. Fences then read as code spans.
  */
 export function markdownToHtml(
   text: string,
@@ -25,6 +26,8 @@ export function markdownToHtml(
       'setextUnderline',
       'thematicBreak',
       'blockQuote',
+      'codeFenced',
+      'table',
     );
   }
   return micromark(text, {
