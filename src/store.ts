@@ -233,6 +233,9 @@ function finishEnteredMoment(
   if (get().variables !== moment.variables) {
     rerecordNewestMoment(get().variables);
   }
+  // The next navigate() diffs from this recorded snapshot. A watcher that
+  // left the moment has set it to the snapshot of the one it went to.
+  lastNavigationVars = get().variables;
   const prng = snapshotPRNG();
   const recorded = get().history[get().historyIndex]!.prng;
   if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
@@ -676,8 +679,6 @@ export const useStoryStore = create<StoryState>()(
       const deferred = deferredNavigations;
       deferredNavigations = [];
       finishEnteredMoment(get, set);
-
-      lastNavigationVars = get().variables;
       persistSession(get);
 
       emit('afternavigate', passageName, previousPassage);
