@@ -243,6 +243,19 @@ function parseHtmlAttributes(
 }
 
 /**
+ * Index just past the attributes of a tag that start at `j` (after its
+ * name), where its `>` or `/>` goes. Pass the same memo to repeated scans of
+ * one input to share their work.
+ */
+export function scanTagAttributes(
+  input: string,
+  j: number,
+  memo: ScanMemo = createScanMemo(),
+): number {
+  return scanAttributes(input, j, memo);
+}
+
+/**
  * Scan the attributes of a tag from position j, handing each to `add` when
  * given. Returns the position after the last attribute.
  *
@@ -297,40 +310,21 @@ function scanAttributes(
         const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
-        // A code attribute's value is no markup (`isCodeAttribute`): only
-        // `{` and a sigil open a reference, other braces and backslashes
-        // are text, as `splitSigilTemplate` reads them.
-        const code = isCodeAttribute(attrName);
-        while (j < input.length) {
-          if (!code && input[j] === '\\') {
-            // A brace after an odd backslash run is escaped (`\{`) and opens
-            // no interpolation, as in passage text.
-            let k = j + 1;
-            while (input[k] === '\\') k++;
-            const brace = input[k] === '{' || input[k] === '}';
-            j = brace && (k - j) % 2 === 1 ? k + 1 : k;
-            continue;
-          }
-          if (input[j] === '{') {
-            // Skip a whole {…} interpolation so quotes inside it don't end the value
-            const closeIdx = !code
-              ? scanBlockClose(input, j, memo)
-              : SIGIL_CHARS.has(input[j + 1]!)
-                ? scanBalancedBrace(input, j + 1, memo)
-                : -1;
-            if (closeIdx !== -1) {
-              j = closeIdx + 1;
-              continue;
-            }
-          } else if (input[j] === quote) break;
-          j++;
-        }
+        j = scanQuotedValue(input, j, quote, isCodeAttribute(attrName), memo);
         add?.(attrName, input.slice(valStart, j));
         if (j < input.length) j++; // skip closing quote
       } else {
-        // Unquoted value
+        // Unquoted value, up to whitespace or `>`. It takes in a `<`, so in
+        // `<a:=<a:=<a:=…` it holds every tag after it: the last run of such
+        // characters found is kept, as each tag's value ends where it does.
         const valStart = j;
-        while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
+        const run = memo.unquoted;
+        if (j < run.from || j > run.to) {
+          run.from = j;
+          while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
+          run.to = j;
+        }
+        j = run.to;
         add?.(attrName, input.slice(valStart, j));
       }
     } else {
@@ -339,6 +333,65 @@ function scanAttributes(
     }
   }
   for (const at of passed) memo.tag.set(at, j);
+  return j;
+}
+
+/**
+ * Index of the quote ending the attribute value that starts at `j`, or the
+ * end of the input. A `{…}` interpolation in it is skipped whole, so quotes
+ * inside it don't end the value. A code attribute's value is no markup
+ * (`isCodeAttribute`): only `{` and a sigil open a reference, other braces
+ * and backslashes are text, as `splitSigilTemplate` reads them.
+ *
+ * The value reads the same from just past an interpolation, however the scan
+ * got there, so the end is recorded there (in `memo.value`), and a recorded
+ * one is used. An unclosed value that skips interpolations to the end of
+ * the input (`<a x="}<a x={<a x="}…`) is then read once, not once per tag.
+ */
+function scanQuotedValue(
+  input: string,
+  j: number,
+  quote: string,
+  code: boolean,
+  memo: ScanMemo,
+): number {
+  const variant = (quote === '"' ? 0 : 2) + (code ? 1 : 0);
+  const passed: number[] = [];
+  let checkpoint = true;
+  while (j < input.length) {
+    if (checkpoint) {
+      const known = memo.value.get(j * 4 + variant);
+      if (known !== undefined) {
+        j = known;
+        break;
+      }
+      passed.push(j * 4 + variant);
+      checkpoint = false;
+    }
+    if (!code && input[j] === '\\') {
+      // A brace after an odd backslash run is escaped (`\{`) and opens
+      // no interpolation, as in passage text.
+      let k = j + 1;
+      while (input[k] === '\\') k++;
+      const brace = input[k] === '{' || input[k] === '}';
+      j = brace && (k - j) % 2 === 1 ? k + 1 : k;
+      continue;
+    }
+    if (input[j] === '{') {
+      const closeIdx = !code
+        ? scanBlockClose(input, j, memo)
+        : SIGIL_CHARS.has(input[j + 1]!)
+          ? scanBalancedBrace(input, j + 1, memo)
+          : -1;
+      if (closeIdx !== -1) {
+        j = closeIdx + 1;
+        checkpoint = true;
+        continue;
+      }
+    } else if (input[j] === quote) break;
+    j++;
+  }
+  for (const at of passed) memo.value.set(at, j);
   return j;
 }
 
@@ -361,12 +414,18 @@ export interface ScanMemo {
   brace: Map<number, number>;
   /** Lenient template literal scan results. */
   template: Map<number, number>;
+  /** Lenient template literal scan results, by a point in its text. */
+  templateText: Map<number, number>;
   /** The last macro name run found: no whitespace or } in [from, to). */
   name: { from: number; to: number };
+  /** The last unquoted attribute value run: no whitespace or > in [from, to). */
+  unquoted: { from: number; to: number };
   /** Link scan results (`scanLinkClose`). */
   link: Map<number, number>;
   /** Where the attributes of a tag end, by attribute start (`scanAttributes`). */
   tag: Map<number, number>;
+  /** Where quoted attribute values end, by checkpoint (`scanQuotedValue`). */
+  value: Map<number, number>;
   /**
    * The last search for a raw-body closer, by macro name: the first one
    * from `from` on is at `at` (-1 for none).
@@ -380,9 +439,12 @@ export function createScanMemo(): ScanMemo {
     js: createJsScanCache(),
     brace: new Map(),
     template: new Map(),
+    templateText: new Map(),
     name: { from: 0, to: -1 },
+    unquoted: { from: 0, to: -1 },
     link: new Map(),
     tag: new Map(),
+    value: new Map(),
     rawClose: new Map(),
   };
 }
@@ -537,6 +599,11 @@ interface LenientScan {
    * depth whose scans end where the depth does.
    */
   levels: number[][];
+  /**
+   * For a template literal, the points in its text it passed (just past its
+   * backtick, an escape or an interpolation), whose scans end where it does.
+   */
+  passed?: number[];
 }
 
 /**
@@ -562,17 +629,34 @@ function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
     const scan = stack[stack.length - 1]!;
     let end: number | undefined; // set when `scan` is done
     if (scan.template) {
+      // Template text reads the same from such a point, however the scan got
+      // there: in `` `\`\`\`… `` each backtick a scan from an earlier one
+      // reads as escaped starts a template that reads the same rest.
+      let point = true;
       while (end === undefined && i < input.length) {
+        if (point) {
+          const known = memo.templateText.get(i);
+          if (known !== undefined) {
+            end = known;
+            break;
+          }
+          scan.passed!.push(i);
+          point = false;
+        }
         const c = input[i];
         if (c === '\\') {
           i += 2;
+          point = true;
         } else if (c === '`') {
           end = i + 1;
         } else if (c === '$' && input[i + 1] === '{') {
           const inner = memo.brace.get(i + 2);
           if (inner === undefined) break; // scan the ${…} first
           if (inner === -1) end = -1;
-          else i = inner + 1;
+          else {
+            i = inner + 1;
+            point = true;
+          }
         } else {
           i++;
         }
@@ -626,7 +710,7 @@ function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
         }
       }
       if (end === undefined && i < input.length) {
-        stack.push({ template: true, start: i, levels: [] });
+        stack.push({ template: true, start: i, levels: [], passed: [] });
         i++;
         continue;
       }
@@ -640,6 +724,7 @@ function scanBraceLenient(input: string, i: number, memo: ScanMemo): number {
     // `scan` is done: hand its result to the scan that started it
     stack.pop();
     (scan.template ? memo.template : memo.brace).set(scan.start, end);
+    for (const at of scan.passed ?? []) memo.templateText.set(at, end);
     const parent = stack[stack.length - 1];
     if (!parent) return end;
     if (parent.template) {
