@@ -185,3 +185,11 @@ describe('interpolate — braces inside strings (#169)', () => {
     );
   });
 });
+
+describe('interpolate — unclosed template literals', () => {
+  // Same exponential scan as the tokenizer (see tokenizer.test.ts).
+  it('leaves nested unclosed template literals as text quickly', () => {
+    const template = '{$a`${'.repeat(60);
+    expect(interpolate(template, { a: 1 }, {}, {})).toBe(template);
+  });
+});

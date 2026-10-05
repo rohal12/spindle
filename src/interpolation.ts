@@ -1,5 +1,5 @@
 import { evaluate } from './expression';
-import { scanBalancedBrace } from './markup/tokenizer';
+import { createScanMemo, scanBalancedBrace } from './markup/tokenizer';
 
 /** Detects any {…} block that starts with a sigil ($, _, @, %). */
 const INTERP_TEST = /\{[\$_@%]\w/;
@@ -70,10 +70,45 @@ export function interpolate(
   locals: Record<string, unknown>,
   transient: Record<string, unknown> = {},
 ): string {
-  // Manual scan: process {…} blocks containing sigils.
   // Simple dot-path refs use the fast resolver; everything else falls back
   // to the full expression evaluator.
   let result = '';
+  for (const part of splitTemplate(template)) {
+    if ('text' in part) {
+      result += part.text;
+    } else if (/^[\$_@%][\w.]+$/.test(part.expr)) {
+      result += resolveSimple(
+        part.expr,
+        variables,
+        temporary,
+        locals,
+        transient,
+      );
+    } else {
+      result += interpolateExpression(
+        part.expr,
+        variables,
+        temporary,
+        locals,
+        transient,
+      );
+    }
+  }
+  return result;
+}
+
+/** Literal text, or the source of one `{…}` interpolation (without braces). */
+export type TemplatePart = { text: string } | { expr: string };
+
+/**
+ * Split a template into literal text and its {…} blocks that start with a
+ * sigil. Braces inside strings don't close a block; an unclosed block is
+ * text.
+ */
+export function splitTemplate(template: string): TemplatePart[] {
+  const parts: TemplatePart[] = [];
+  const memo = createScanMemo();
+  let text = '';
   let i = 0;
 
   while (i < template.length) {
@@ -81,10 +116,10 @@ export function interpolate(
       // Accumulate plain text
       const nextBrace = template.indexOf('{', i);
       if (nextBrace === -1) {
-        result += template.slice(i);
+        text += template.slice(i);
         break;
       }
-      result += template.slice(i, nextBrace);
+      text += template.slice(i, nextBrace);
       i = nextBrace;
       continue;
     }
@@ -94,36 +129,26 @@ export function interpolate(
 
     const sigil = template[i];
     if (sigil !== '$' && sigil !== '_' && sigil !== '@' && sigil !== '%') {
-      // Not an interpolation — emit the { as text
-      result += '{';
+      // Not an interpolation — keep the { as text
+      text += '{';
       continue;
     }
 
     // Scan for balanced closing }, ignoring braces inside strings
-    const j = scanBalancedBrace(template, i);
+    const j = scanBalancedBrace(template, i, memo);
 
     if (j === -1) {
-      // Unbalanced — emit as text
-      result += '{';
+      // Unbalanced — keep as text
+      text += '{';
       continue;
     }
 
-    const inner = template.slice(i, j);
+    if (text) parts.push({ text });
+    text = '';
+    parts.push({ expr: template.slice(i, j) });
     i = j + 1; // skip past closing }
-
-    // Try simple dot-path match first
-    if (/^[\$_@%][\w.]+$/.test(inner)) {
-      result += resolveSimple(inner, variables, temporary, locals, transient);
-    } else {
-      result += interpolateExpression(
-        inner,
-        variables,
-        temporary,
-        locals,
-        transient,
-      );
-    }
   }
 
-  return result;
+  if (text) parts.push({ text });
+  return parts;
 }

@@ -208,6 +208,8 @@ Standard markdown links and images work alongside Twine link syntax:
 ![Alt text](image.png)
 ```
 
+Variables and expressions work in link text, image alt text and link titles, and update with the variable: `![Portrait of {$name}](portrait.png "{$name}")`. Macros have no text form and show nothing in alt text or titles.
+
 ## Line Breaks
 
 End a line with two trailing spaces to insert a `<br>`:

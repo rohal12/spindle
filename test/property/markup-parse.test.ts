@@ -1,0 +1,164 @@
+import { describe, expect } from 'vitest';
+import { test, fc } from '@fast-check/vitest';
+import { tokenize, type Token } from '../../src/markup/tokenizer';
+import { buildAST } from '../../src/markup/ast';
+import { fcOptions } from './config';
+import {
+  linkArb,
+  markupNoise,
+  mutatedPassage,
+  normalizeAST,
+  passageArb,
+  propTimeout,
+} from './markup-arbitraries';
+
+/** One or more redundant void-element closers, which the tokenizer drops. */
+const VOID_CLOSER =
+  /^(?:<\/(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*>)+$/i;
+
+/** The only errors buildAST may throw: messages naming a source position. */
+const PARSE_ERROR =
+  /^(Unexpected closing .*|Expected .* but found .*|\{.*\} without matching \{.*\}) \(at character (\d+)\)$|^Unclosed .* \(opened at character (\d+)\)$/s;
+
+/**
+ * Tokens tile the input in order: each starts where the previous ended,
+ * except for dropped redundant void-element closers (`</br>`). Text tokens
+ * hold their exact source slice, apart from escaped braces (`\{` → `{`).
+ */
+function expectTokensTileInput(input: string, tokens: Token[]) {
+  let pos = 0;
+  for (const t of tokens) {
+    expect(t.start).toBeGreaterThanOrEqual(pos);
+    if (t.start > pos) expect(input.slice(pos, t.start)).toMatch(VOID_CLOSER);
+    expect(t.end).toBeGreaterThan(t.start);
+    expect(t.end).toBeLessThanOrEqual(input.length);
+    if (t.type === 'text') {
+      const slice = input.slice(t.start, t.end);
+      if (slice !== t.value) {
+        expect(slice).toMatch(/^\\[{}]$/);
+        expect(t.value).toBe(slice[1]);
+      }
+    }
+    pos = t.end;
+  }
+  if (pos < input.length) expect(input.slice(pos)).toMatch(VOID_CLOSER);
+}
+
+function expectParsesOrReportsPosition(input: string) {
+  const tokens = tokenize(input);
+  expectTokensTileInput(input, tokens);
+  try {
+    buildAST(tokens);
+  } catch (err) {
+    expect(err).toBeInstanceOf(Error);
+    const m = PARSE_ERROR.exec((err as Error).message);
+    expect(m, (err as Error).message).not.toBeNull();
+    const at = Number(m![2] ?? m![3]);
+    // The reported position is the start of the offending tag or macro.
+    expect(tokens.some((t) => t.start === at && t.type !== 'text')).toBe(true);
+    expect('{<').toContain(input[at]);
+  }
+}
+
+describe('tokenizer and AST builder robustness', () => {
+  test.prop([markupNoise], fcOptions)(
+    'arbitrary input tokenizes into in-order tokens covering the source',
+    (input) => {
+      expectParsesOrReportsPosition(input);
+    },
+    propTimeout(5),
+  );
+
+  // Repeating a few unclosed openers builds deep nesting of unfinished
+  // constructs (`${, strings, links, tags). Before scan results were
+  // memoized, nested unclosed template literals took exponential time.
+  const repeatedOpeners = fc
+    .tuple(
+      fc.array(
+        fc.constantFrom(
+          ...['{a', '{$a', '`', '${', '"', "'", '[[', '<a ', 'x="', '{.a'],
+          ...['\\', '{do}', ' ', '}', '{/a}'],
+        ),
+        { minLength: 1, maxLength: 4 },
+      ),
+      fc.integer({ min: 1, max: 100 }),
+    )
+    .map(([frags, n]) => frags.join('').repeat(n));
+
+  test.prop([repeatedOpeners], fcOptions)(
+    'repeated unclosed openers tokenize in bounded time',
+    (input) => {
+      const t0 = performance.now();
+      try {
+        buildAST(tokenize(input));
+      } catch {
+        // Parse errors are checked by expectParsesOrReportsPosition below.
+      }
+      // Generous bound: inputs are at most a few KB and take a few ms, so
+      // anything slower is super-polynomial blowup, not machine noise.
+      expect(performance.now() - t0).toBeLessThan(500);
+      expectParsesOrReportsPosition(input);
+    },
+    propTimeout(5),
+  );
+
+  test.prop([mutatedPassage], fcOptions)(
+    'mutated passages only fail with positioned parse errors',
+    (input) => {
+      expectParsesOrReportsPosition(input);
+    },
+    propTimeout(5),
+  );
+});
+
+describe('grammar round trip', () => {
+  test.prop([passageArb], fcOptions)(
+    'well-formed passages parse to the AST they were generated from',
+    ({ src, ast }) => {
+      const tokens = tokenize(src);
+      expectTokensTileInput(src, tokens);
+      expect(normalizeAST(buildAST(tokens))).toEqual(normalizeAST(ast));
+    },
+    propTimeout(5),
+  );
+
+  test.prop([linkArb], fcOptions)(
+    'links keep their display text and target',
+    ({ src, display, target }) => {
+      const tokens = tokenize(src);
+      expect(tokens).toHaveLength(1);
+      expect(tokens[0]).toMatchObject({ type: 'link', display, target });
+    },
+    propTimeout(5),
+  );
+});
+
+describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
+  const opener = fc.constantFrom(
+    '{$x}',
+    '{_t}',
+    '{@l}',
+    '{%tr}',
+    '{print 1}',
+    '{.c $x}',
+  );
+
+  test.prop([fc.nat({ max: 12 }), opener], fcOptions)(
+    'an odd backslash run escapes the brace, an even one does not',
+    (n, markup) => {
+      const src = `a${'\\'.repeat(n)}${markup}`;
+      const ast = normalizeAST(buildAST(tokenize(src)));
+      if (n % 2 === 1) {
+        // The last backslash is consumed; the rest stays for markdown.
+        expect(ast).toEqual([
+          { type: 'text', value: `a${'\\'.repeat(n - 1)}${markup}` },
+        ]);
+      } else {
+        expect(ast[0]).toEqual({ type: 'text', value: `a${'\\'.repeat(n)}` });
+        expect(ast).toHaveLength(2);
+        expect(ast[1]!.type).not.toBe('text');
+      }
+    },
+    propTimeout(5),
+  );
+});

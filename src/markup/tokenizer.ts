@@ -84,6 +84,9 @@ const HTML_VOID_TAGS = new Set([
   'wbr',
 ]);
 
+/** Variable sigils: story ($), temporary (_), local (@), transient (%). */
+const SIGIL_CHARS = new Set(['$', '_', '@', '%']);
+
 /** Macros whose body is JavaScript source, kept verbatim instead of tokenized. */
 const RAW_BODY_MACROS = new Set(['do']);
 
@@ -172,11 +175,8 @@ function parseSelectors(
       if (/[a-zA-Z0-9_-]/.test(input[i]!)) {
         name += input[i];
         i++;
-      } else if (
-        input[i] === '{' &&
-        (input[i + 1] === '$' || input[i + 1] === '_' || input[i + 1] === '@')
-      ) {
-        // Consume interpolation: {$var}, {_var}, {@var} (with optional dot paths)
+      } else if (input[i] === '{' && SIGIL_CHARS.has(input[i + 1]!)) {
+        // Consume interpolation: {$var}, {_var}, {@var}, {%var} (with optional dot paths)
         const braceStart = i;
         i += 2; // skip { and prefix
         while (i < input.length && /[\w.]/.test(input[i]!)) i++;
@@ -211,8 +211,23 @@ function parseSelectors(
 function parseHtmlAttributes(
   input: string,
   j: number,
+  memo: ScanMemo,
 ): { attributes: Record<string, string>; endIdx: number } {
   const attributes: Record<string, string> = {};
+  // As in HTML, the first of attributes with the same (case-insensitive)
+  // name wins. Defined as own properties so `__proto__` is kept too.
+  const seen = new Set<string>();
+  function addAttribute(name: string, value: string) {
+    const lower = name.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    Object.defineProperty(attributes, name, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
 
   while (j < input.length) {
     // Skip whitespace
@@ -245,7 +260,7 @@ function parseHtmlAttributes(
         while (j < input.length) {
           if (input[j] === '{') {
             // Skip a whole {…} interpolation so quotes inside it don't end the value
-            const closeIdx = scanBalancedBrace(input, j + 1);
+            const closeIdx = scanBalancedBrace(input, j + 1, memo);
             if (closeIdx !== -1) {
               j = closeIdx + 1;
               continue;
@@ -253,17 +268,17 @@ function parseHtmlAttributes(
           } else if (input[j] === quote) break;
           j++;
         }
-        attributes[attrName] = input.slice(valStart, j);
+        addAttribute(attrName, input.slice(valStart, j));
         if (j < input.length) j++; // skip closing quote
       } else {
         // Unquoted value
         const valStart = j;
         while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
-        attributes[attrName] = input.slice(valStart, j);
+        addAttribute(attrName, input.slice(valStart, j));
       }
     } else {
       // Boolean attribute
-      attributes[attrName] = '';
+      addAttribute(attrName, '');
     }
   }
 
@@ -289,10 +304,36 @@ function skipQuoted(input: string, i: number): number {
 }
 
 /**
+ * Results of brace and template scans on one input, by start position. A
+ * scan's result depends only on the input and where it starts, so caching
+ * it is exact. Without the cache, each unclosed template literal is scanned
+ * once as a template and again as plain text, so nested unclosed ones
+ * (`` {$a`${$a`${… ``) took time exponential in their depth.
+ * A memo must only be reused for scans of the same input string.
+ */
+export interface ScanMemo {
+  brace: Map<number, number>;
+  template: Map<number, number>;
+}
+
+export function createScanMemo(): ScanMemo {
+  return { brace: new Map(), template: new Map() };
+}
+
+/**
  * Skip a `…` template literal opening at i, including ${…} parts.
  * Returns the index just past the closing backtick, or -1 if unclosed.
  */
-function skipTemplate(input: string, i: number): number {
+function skipTemplate(input: string, i: number, memo: ScanMemo): number {
+  let end = memo.template.get(i);
+  if (end === undefined) {
+    end = scanTemplate(input, i, memo);
+    memo.template.set(i, end);
+  }
+  return end;
+}
+
+function scanTemplate(input: string, i: number, memo: ScanMemo): number {
   let j = i + 1;
   while (j < input.length) {
     const c = input[j];
@@ -301,7 +342,7 @@ function skipTemplate(input: string, i: number): number {
     } else if (c === '`') {
       return j + 1;
     } else if (c === '$' && input[j + 1] === '{') {
-      const closeIdx = scanBalancedBrace(input, j + 2);
+      const closeIdx = scanBalancedBrace(input, j + 2, memo);
       if (closeIdx === -1) return -1;
       j = closeIdx + 1;
     } else {
@@ -321,9 +362,23 @@ const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
  * Scan for the balanced closing } starting at position i (just past the {).
  * Braces inside string and template literals are ignored. A quote that
  * can't start a string (apostrophe, escaped, unterminated) counts as text.
- * Returns the index of the closing } or -1 if unbalanced.
+ * Returns the index of the closing } or -1 if unbalanced. Pass the same
+ * memo to repeated scans of one input to share their work.
  */
-export function scanBalancedBrace(input: string, i: number): number {
+export function scanBalancedBrace(
+  input: string,
+  i: number,
+  memo: ScanMemo = createScanMemo(),
+): number {
+  let end = memo.brace.get(i);
+  if (end === undefined) {
+    end = scanBrace(input, i, memo);
+    memo.brace.set(i, end);
+  }
+  return end;
+}
+
+function scanBrace(input: string, i: number, memo: ScanMemo): number {
   let depth = 1;
   while (i < input.length) {
     const c = input[i]!;
@@ -341,7 +396,7 @@ export function scanBalancedBrace(input: string, i: number): number {
         continue;
       }
     } else if (c === '`') {
-      const end = skipTemplate(input, i);
+      const end = skipTemplate(input, i, memo);
       if (end !== -1) {
         i = end;
         continue;
@@ -358,6 +413,7 @@ export function scanBalancedBrace(input: string, i: number): number {
  */
 export function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
+  const memo = createScanMemo();
   let i = 0;
   let textStart = 0;
 
@@ -518,7 +574,7 @@ export function tokenize(input: string): Token[] {
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx$ = scanBalancedBrace(input, nameStart);
+          const closeIdx$ = scanBalancedBrace(input, nameStart, memo);
           if (closeIdx$ !== -1) {
             const expression = input.slice(afterSelectors, closeIdx$);
             i = closeIdx$ + 1;
@@ -563,7 +619,7 @@ export function tokenize(input: string): Token[] {
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_ = scanBalancedBrace(input, nameStart);
+          const closeIdx_ = scanBalancedBrace(input, nameStart, memo);
           if (closeIdx_ !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_);
             i = closeIdx_ + 1;
@@ -608,7 +664,7 @@ export function tokenize(input: string): Token[] {
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_at = scanBalancedBrace(input, nameStart);
+          const closeIdx_at = scanBalancedBrace(input, nameStart, memo);
           if (closeIdx_at !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_at);
             i = closeIdx_at + 1;
@@ -653,7 +709,7 @@ export function tokenize(input: string): Token[] {
             continue;
           }
           // Complex expression — scan for balanced closing }
-          const closeIdx_pct = scanBalancedBrace(input, nameStart);
+          const closeIdx_pct = scanBalancedBrace(input, nameStart, memo);
           if (closeIdx_pct !== -1) {
             const expression = input.slice(afterSelectors, closeIdx_pct);
             i = closeIdx_pct + 1;
@@ -679,7 +735,7 @@ export function tokenize(input: string): Token[] {
           // {.class#id macroName args}
           // Scan to closing }, tracking brace nesting and string literals
           const contentStart = afterSelectors;
-          const closeIdx = scanBalancedBrace(input, contentStart);
+          const closeIdx = scanBalancedBrace(input, contentStart, memo);
 
           if (closeIdx === -1) {
             i = start + 1;
@@ -734,7 +790,7 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart);
+        const closeIdx = scanBalancedBrace(input, nameStart, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -774,7 +830,7 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart);
+        const closeIdx = scanBalancedBrace(input, nameStart, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -814,7 +870,7 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart);
+        const closeIdx = scanBalancedBrace(input, nameStart, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -854,7 +910,7 @@ export function tokenize(input: string): Token[] {
           continue;
         }
         // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart);
+        const closeIdx = scanBalancedBrace(input, nameStart, memo);
         if (closeIdx !== -1) {
           const expression = input.slice(start + 1, closeIdx);
           i = closeIdx + 1;
@@ -884,7 +940,7 @@ export function tokenize(input: string): Token[] {
         // Scan to closing }, tracking brace nesting (object literals)
         // and string literals
         const contentStart = i + 1;
-        const closeIdx = scanBalancedBrace(input, contentStart);
+        const closeIdx = scanBalancedBrace(input, contentStart, memo);
 
         if (closeIdx === -1) {
           // Unclosed macro — treat as text
@@ -959,7 +1015,7 @@ export function tokenize(input: string): Token[] {
           }
         } else {
           // Opening or self-closing tag: parse attributes
-          const parsed = parseHtmlAttributes(input, j);
+          const parsed = parseHtmlAttributes(input, j, memo);
           j = parsed.endIdx;
 
           let isSelfClose = HTML_VOID_TAGS.has(tagLower);

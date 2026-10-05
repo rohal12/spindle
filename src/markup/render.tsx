@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext } from 'preact/hooks';
+import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
@@ -9,6 +9,7 @@ import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useInterpolate } from '../hooks/use-interpolate';
+import { splitTemplate } from '../interpolation';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -41,24 +42,65 @@ export const InlineContext = createContext(false);
  */
 export const RawTextContext = createContext(false);
 
+/**
+ * True inside an `<svg>` element. SVG attributes are case-sensitive and have
+ * no live form properties, so they are set as written (see splitAttributes).
+ */
+const SvgContext = createContext(false);
+
 /** Elements whose content is literal text, not markdown. */
 const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea']);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
  * Components rendered for the non-text nodes of one renderNodes() call. Each
- * stands in the markdown source as `<span data-tw="NONCE:INDEX"></span>`.
+ * stands in the markdown source as `<span data-tw=NONCE:INDEX></span>`.
  * The per-call random nonce means author text that merely looks like a
  * placeholder (e.g. decoded from `&lt;span data-tw=...&gt;`) is never
- * swapped for a component.
+ * swapped for a component. The attribute value is unquoted so a placeholder
+ * can sit inside a quoted markdown link title or image alt text.
  */
 interface Placeholders {
   nonce: string;
   components: preact.ComponentChildren[];
+  /**
+   * Per placeholder, the node as attribute text (image alt, link title):
+   * variables and expressions as interpolations, HTML elements as the text
+   * of their children. Macros have no text form and are dropped there, the
+   * way markdown drops tags from alt text.
+   */
+  texts: AttributePart[][];
 }
 
+/** An attribute value as literal text and `{…}` interpolations. */
+type AttributePart = { literal: string } | { interpolation: string };
+
 function placeholderHtml(nonce: string, index: number): string {
-  return `<span data-tw="${nonce}:${index}"></span>`;
+  return `<span data-tw=${nonce}:${index}></span>`;
+}
+
+const SCOPE_SIGILS = {
+  variable: '$',
+  temporary: '_',
+  local: '@',
+  transient: '%',
+} as const;
+
+/** A node's text for use in an attribute value. */
+function attributeText(node: ASTNode): AttributePart[] {
+  switch (node.type) {
+    case 'text':
+      return [{ literal: node.value }];
+    case 'variable':
+      if (node.scope === 'local' && node.name === 'children') return [];
+      return [{ interpolation: `{${SCOPE_SIGILS[node.scope]}${node.name}}` }];
+    case 'expression':
+      return [{ interpolation: `{${node.expression}}` }];
+    case 'html':
+      return node.children.flatMap(attributeText);
+    default:
+      return [];
+  }
 }
 
 /**
@@ -70,7 +112,7 @@ function placeholderHtml(nonce: string, index: number): string {
  * ESCAPE_GUARD in front of the placeholder.
  */
 const PLACEHOLDER_TEXT_RE =
-  /(?:(?<=\\)\uE000)?<span data-tw="([0-9a-z]+):(\d+)"><\/span>/g;
+  /(?:(?<=\\)\uE000)?<span data-tw=([0-9a-z]+):(\d+)><\/span>/g;
 
 /**
  * Emitted between author text ending in a backslash and a placeholder, so
@@ -80,22 +122,63 @@ const PLACEHOLDER_TEXT_RE =
  */
 const ESCAPE_GUARD = '\uE000';
 
+/**
+ * Split text into literal strings and the indexes of this call's
+ * placeholders in it.
+ */
+function splitPlaceholderText(
+  text: string,
+  ph: Placeholders,
+): (string | number)[] {
+  if (!text.includes('<span data-tw=')) return [text];
+  const parts: (string | number)[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
+    if (m[1] !== ph.nonce) continue;
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(parseInt(m[2]!, 10));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 /** Split text into literal parts and the components its placeholders name. */
 function expandPlaceholderText(
   text: string,
   ph: Placeholders,
 ): preact.ComponentChildren[] {
-  if (!text.includes('<span data-tw="')) return [text];
-  const parts: preact.ComponentChildren[] = [];
-  let last = 0;
-  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
-    if (m[1] !== ph.nonce) continue;
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(ph.components[parseInt(m[2]!, 10)]);
-    last = m.index + m[0].length;
+  return splitPlaceholderText(text, ph).map((part) =>
+    typeof part === 'number' ? ph.components[part] : part,
+  );
+}
+
+/**
+ * An element whose attributes contain placeholders (a variable in image alt
+ * text or a link title). The interpolations resolve against the store and
+ * locals, so the attribute follows the variable as the component would.
+ */
+function PlaceholderAttributes({
+  tag,
+  props,
+  attributes,
+  children,
+}: {
+  tag: string;
+  props: Record<string, string>;
+  attributes: Record<string, AttributePart[]>;
+  children: preact.ComponentChildren[];
+}) {
+  const resolve = useInterpolate();
+  const resolved: Record<string, string> = { ...props };
+  for (const [name, parts] of Object.entries(attributes)) {
+    resolved[name] = parts
+      .map((p) =>
+        'literal' in p ? p.literal : (resolve(p.interpolation) ?? ''),
+      )
+      .join('');
   }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+  return h(tag, resolved, ...children);
 }
 
 /** The component index of a placeholder element of this call, or -1. */
@@ -159,9 +242,18 @@ function convertDomNode(
     }
 
     // Convert attributes
-    const props: Record<string, string | number> = { key };
+    const props: Record<string, string> = {};
+    let withPlaceholders: Record<string, AttributePart[]> | undefined;
     for (const attr of Array.from(el.attributes)) {
-      props[attr.name] = attr.value;
+      const parts = splitPlaceholderText(attr.value, ph);
+      if (parts.every((part) => typeof part === 'string')) {
+        props[attr.name] = attr.value;
+        continue;
+      }
+      withPlaceholders ??= {};
+      withPlaceholders[attr.name] = parts.flatMap((part) =>
+        typeof part === 'string' ? [{ literal: part }] : ph.texts[part]!,
+      );
     }
 
     // Convert children recursively
@@ -169,7 +261,18 @@ function convertDomNode(
       convertDomNode(child, i, ph),
     );
 
-    return h(tag, props, ...children);
+    if (withPlaceholders) {
+      return (
+        <PlaceholderAttributes
+          key={key}
+          tag={tag}
+          props={props}
+          attributes={withPlaceholders}
+          children={children}
+        />
+      );
+    }
+    return h(tag, { ...props, key }, ...children);
   }
   return null;
 }
@@ -212,9 +315,19 @@ const INLINE_ELEMENTS = new Set([
 ]);
 
 /**
- * HTML boolean attributes. Their presence means "on", but a parsed bare or
- * `=""` attribute has the value '', which Preact would assign to the DOM
- * property as a falsy value — so present ones are passed as `true` (#177).
+ * Attributes that Preact keeps as DOM properties on author HTML elements:
+ * the live state of form controls and media, which then follows its
+ * variable even after the reader changed it. Boolean ones written bare or
+ * as `=""` are passed as `true`, since '' is falsy (#177); one that only
+ * resolves to '' through an interpolation stays ''.
+ */
+const LIVE_PROPERTIES = new Set(['value', 'checked', 'selected', 'muted']);
+
+/**
+ * HTML boolean attributes: present means on. Written bare or with a value
+ * they are present, as in HTML; one whose interpolation resolves to ''
+ * (`disabled="{$locked ? 'disabled' : ''}"`) is left out, so a variable can
+ * switch it off.
  */
 const BOOLEAN_ATTRIBUTES = new Set([
   'allowfullscreen',
@@ -244,8 +357,114 @@ const BOOLEAN_ATTRIBUTES = new Set([
   'selected',
 ]);
 
-function isPresentBooleanAttribute(name: string, value: string): boolean {
-  return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+/** Names Preact consumes instead of setting (case-sensitive). */
+const PREACT_RESERVED = new Set([
+  'key',
+  'ref',
+  'children',
+  'dangerouslySetInnerHTML',
+]);
+
+/** Attribute names setAttribute accepts (`@click` is parsed, not settable). */
+const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
+
+/**
+ * Set an attribute exactly as written, also one whose name setAttribute
+ * rejects but the HTML parser accepts: such an attribute is parsed and its
+ * node copied over.
+ */
+function setRawAttribute(el: Element, name: string, value: string) {
+  if (SETTABLE_NAME.test(name)) {
+    el.setAttribute(name, value);
+    return;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = `<i ${name}=""></i>`;
+  const parsed = (template.content.firstChild as Element).attributes[0];
+  if (!parsed) return;
+  const attr = parsed.cloneNode() as Attr;
+  attr.value = value;
+  el.setAttributeNode(attr);
+}
+
+/**
+ * Split author attributes into Preact props and attributes to set directly.
+ *
+ * Author HTML means attributes, but as props Preact assigns names of DOM
+ * properties to the property (so `draggable="false"` and
+ * `spellcheck="false"` meant true), registers `on…` as event listeners (an
+ * `onclick="…"` string threw) and consumes `key`, `ref` (a string threw),
+ * `children` and `dangerouslySetInnerHTML`; preact/compat, which spindle
+ * loads, also drops an empty `class` and `translate="no"`.
+ *
+ * On HTML elements an upper-case prop name avoids all of these, and
+ * setAttribute lower-cases it back. Names compat matches in any case
+ * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
+ * whose names are case-sensitive, Preact's reserved names are set directly
+ * instead.
+ */
+function splitAttributes(
+  attributes: [name: string, value: string, written: string][],
+  svg: boolean,
+): { props: Record<string, unknown>; direct: [string, string][] } {
+  const props: Record<string, unknown> = {};
+  const direct: [string, string][] = [];
+  for (const [name, value, written] of attributes) {
+    const lower = name.toLowerCase();
+    if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
+      continue;
+    } else if (!svg && LIVE_PROPERTIES.has(lower)) {
+      props[lower] = lower !== 'value' && written === '' ? true : value;
+    } else if (
+      !SETTABLE_NAME.test(name) ||
+      lower.startsWith('on') ||
+      lower === 'translate' ||
+      (svg && (PREACT_RESERVED.has(name) || name === '__proto__'))
+    ) {
+      direct.push([name, value]);
+    } else {
+      props[svg ? name : name.toUpperCase()] = value;
+    }
+  }
+  return { props, direct };
+}
+
+const decodedAttributeText = new Map<string, string>();
+
+/**
+ * Decode character references (`&amp;`, `&#123;`) in attribute text the way
+ * the HTML parser decodes an attribute value, by letting it parse one.
+ */
+function decodeAttributeText(text: string): string {
+  if (!text.includes('&')) return text;
+  let decoded = decodedAttributeText.get(text);
+  if (decoded === undefined) {
+    const template = document.createElement('template');
+    template.innerHTML = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
+    decoded =
+      (template.content.firstChild as Element).getAttribute('title') ?? text;
+    decodedAttributeText.set(text, decoded);
+  }
+  return decoded;
+}
+
+/**
+ * An author-written attribute value with its `{…}` interpolations resolved
+ * and the character references in its literal text decoded. A reference
+ * that decodes to a brace (`&#123;$x}`) stays literal, not an interpolation.
+ */
+function resolveAttributeValue(
+  value: string,
+  resolve: (s: string | undefined) => string | undefined,
+): string {
+  if (!value.includes('&')) return resolve(value) ?? value;
+  return splitTemplate(value)
+    .map((part) =>
+      'text' in part
+        ? decodeAttributeText(part.text)
+        : (resolve(`{${part.expr}}`) ?? ''),
+    )
+    .join('');
 }
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
@@ -253,13 +472,30 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
   const inRaw = useContext(RawTextContext);
+  const inSvg = useContext(SvgContext);
   const parentInline = useContext(InlineContext);
-  const attrs: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
-  }
   const tag = node.tag.toLowerCase();
-  const isRawRoot = !inRaw && (tag === 'svg' || PREFORMATTED_ELEMENTS.has(tag));
+  const isSvgRoot = tag === 'svg';
+  const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
+  const resolved = Object.entries(node.attributes).map(
+    ([k, v]): [string, string, string] => [
+      k,
+      resolveAttributeValue(v, resolve),
+      v,
+    ],
+  );
+  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
+  const elementRef = useRef<Element>(null);
+  const directKey = JSON.stringify(direct);
+  useLayoutEffect(() => {
+    const el = elementRef.current;
+    if (!el || direct.length === 0) return;
+    for (const [name, value] of direct) setRawAttribute(el, name, value);
+    return () => {
+      for (const [name] of direct) el.removeAttribute(name);
+    };
+  }, [directKey]);
+  if (direct.length > 0) props.ref = elementRef;
   const isInline = INLINE_ELEMENTS.has(tag);
   // Inside SVG and preformatted elements, skip markdown processing entirely
   // (see RawTextContext).
@@ -282,7 +518,10 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       }
     }
   }
-  const element = h(node.tag, attrs, children);
+  let element = h(node.tag, props, children);
+  if (isSvgRoot && !inSvg) {
+    element = <SvgContext.Provider value={true}>{element}</SvgContext.Provider>;
+  }
   return isRawRoot ? (
     <RawTextContext.Provider value={true}>{element}</RawTextContext.Provider>
   ) : (
@@ -426,22 +665,29 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
  * breaks, which micromark decodes / turns into <br> (#171).
  */
 const MARKDOWN_SYNTAX_RE =
-  /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
+  /[*_`#|~\[>\\\-+=]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
-const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
+const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
+
+/** Whitespace that markdown strips at the start and end of a paragraph. */
+const LEADING_WS_RE = /^[ \t\r\n]*/;
+const TRAILING_WS_RE = /[ \t\r\n]*$/;
 
 /**
  * Build Preact vnodes from a combined string that contains only plain text
- * and placeholders. No micromark, no innerHTML.
+ * and placeholders. No micromark, no innerHTML. The text is the content of
+ * one paragraph, so like micromark it drops spaces and tabs around line
+ * endings; its edges are already split off by the caller.
  */
 function buildPlainTextVnodes(
-  combined: string,
+  core: string,
   ph: Placeholders,
   unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
-  const children = expandPlaceholderText(combined, ph).filter(
-    (part) => part !== '',
-  );
+  const children = expandPlaceholderText(
+    core.replace(/[ \t]*\n[ \t]*/g, '\n'),
+    ph,
+  ).filter((part) => part !== '');
   return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
@@ -491,6 +737,7 @@ export function renderNodes(
   const ph: Placeholders = {
     nonce: Math.random().toString(36).slice(2, 10) || '0',
     components,
+    texts: [],
   };
   let combined = '';
 
@@ -502,6 +749,7 @@ export function renderNodes(
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
+    ph.texts.push(attributeText(node));
     if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
     combined += placeholderHtml(ph.nonce, phIdx);
   }
@@ -512,14 +760,33 @@ export function renderNodes(
   // produce the same text they started with (issue #145).
   // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
   const unwrapParagraphs = !!(options?.nobr || options?.inline);
+
+  // Markdown strips whitespace at paragraph edges. Without <p> wrappers that
+  // whitespace separates this content from its neighbours (as in
+  // `<span>*HP*: </span>{$hp}`), so it is kept around the output there.
+  const lead = LEADING_WS_RE.exec(combined)![0];
+  const trail =
+    lead.length === combined.length ? '' : TRAILING_WS_RE.exec(combined)![0];
+  const core = combined.slice(lead.length, combined.length - trail.length);
+  const edges = (content: preact.ComponentChildren) =>
+    unwrapParagraphs && (lead || trail) ? (
+      <>
+        {lead}
+        {content}
+        {trail}
+      </>
+    ) : (
+      content
+    );
+
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, ph, unwrapParagraphs);
+    return edges(buildPlainTextVnodes(core, ph, unwrapParagraphs));
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, ph, unwrapParagraphs);
+  return edges(htmlToPreact(html, ph, unwrapParagraphs));
 }

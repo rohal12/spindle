@@ -563,6 +563,30 @@ describe('tokenize', () => {
       ]);
     });
 
+    it('parses .{%transient} selector with transient var interpolation', () => {
+      // Found by property testing: selectors accepted {$ {_ {@ but not {%.
+      expect(tokenize('{.a-{%_}.a $A}')).toEqual([
+        {
+          type: 'variable',
+          name: 'A',
+          scope: 'variable',
+          className: 'a-{%_} a',
+          start: 0,
+          end: 14,
+        },
+      ]);
+      expect(tokenize('[[.a-{%a}.a a]]')).toEqual([
+        {
+          type: 'link',
+          display: 'a',
+          target: 'a',
+          className: 'a-{%a} a',
+          start: 0,
+          end: 15,
+        },
+      ]);
+    });
+
     it('parses [[.{$cls} link]] with interpolation in link selector', () => {
       const tokens = tokenize('[[.{$cls} Go|Start]]');
       expect(tokens).toEqual([
@@ -1248,6 +1272,29 @@ describe('tokenize — raw {do} bodies (#176)', () => {
   });
 });
 
+describe('tokenize — duplicate attributes', () => {
+  // Found by property testing: the last duplicate won, where HTML keeps
+  // the first (names compare case-insensitively).
+  it('keeps the first of duplicate attribute names', () => {
+    const [token] = tokenize('<span id="a" ID="b" title=x title=y>');
+    expect(token).toMatchObject({ type: 'html' });
+    expect((token as { attributes: object }).attributes).toEqual({
+      id: 'a',
+      title: 'x',
+    });
+  });
+
+  it('keeps an attribute named __proto__ as an own property', () => {
+    const [token] = tokenize('<span __proto__="p">');
+    const attributes = (token as { attributes: Record<string, string> })
+      .attributes;
+    expect(Object.keys(attributes)).toEqual(['__proto__']);
+    expect(
+      Object.getOwnPropertyDescriptor(attributes, '__proto__')!.value,
+    ).toBe('p');
+  });
+});
+
 describe('tokenize — whitespace around attribute equals (#219)', () => {
   it.each([
     ['before and after', '<div id = "attrs">x</div>'],
@@ -1353,5 +1400,29 @@ describe('tokenize — backslash runs before braces', () => {
     const tokens = tokenize('\\\\{if true}y{/if}');
     expect(tokens[0]).toMatchObject({ type: 'text', value: '\\\\' });
     expect(tokens[1]).toMatchObject({ type: 'macro', name: 'if' });
+  });
+});
+
+describe('tokenize — unclosed template literals', () => {
+  // Found by property testing: each unclosed `${ was scanned once as a
+  // template and again as plain text, so nesting them took time exponential
+  // in their depth (depth 25 took seconds; this one would never finish).
+  it('scans nested unclosed template literals in polynomial time', () => {
+    const input = '{$a`${'.repeat(60);
+    const tokens = tokenize(input);
+    expect(tokens.every((t) => t.type === 'text')).toBe(true);
+    expect(tokens.map((t) => (t.type === 'text' ? t.value : '')).join('')).toBe(
+      input,
+    );
+  });
+
+  it('still balances nested closed template literals', () => {
+    const tokens = tokenize('{print `a${`b${1}c`}d`}!');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      name: 'print',
+      rawArgs: '`a${`b${1}c`}d`',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: '!' });
   });
 });
