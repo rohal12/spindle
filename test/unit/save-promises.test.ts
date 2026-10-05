@@ -201,3 +201,104 @@ describe('awaitable Story.save / deleteSave / load', () => {
     }
   });
 });
+
+// Shrunk counterexamples of the save race property test
+// (test/property/saves-race): storage operations issued together, without
+// awaiting, take effect in the order they were called.
+describe('storage operations run in call order', () => {
+  let Story: StoryAPI;
+  let ifid: string;
+
+  function boot(): void {
+    resetEmitter();
+    _resetRuntimePhase();
+    useStoryStore.getState().init(makeStoryData(ifid), { hp: 100 });
+  }
+
+  beforeEach(async () => {
+    resetBackend();
+    await getBackend();
+    useStoryStore.setState({ knownSaves: {}, playthroughId: '' });
+    ifid = `save-order-${++ifidCounter}`;
+    boot();
+    await vi.waitFor(() =>
+      expect(useStoryStore.getState().playthroughId).not.toBe(''),
+    );
+    installStoryAPI();
+    Story = window.Story;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    resetBackend();
+  });
+
+  it('a delete issued right after a save deletes it', async () => {
+    const saved = Story.save('b');
+    const deleted = Story.deleteSave('b');
+    await Promise.all([saved, deleted]);
+
+    expect(Story.hasSave('b')).toBe(false);
+    expect(await Story.listSaves()).toEqual([]);
+  });
+
+  it('a load issued right after a save loads it', async () => {
+    Story.set('hp', 7);
+    Story.goto('Room');
+    const saved = Story.save();
+    Story.goto('Start');
+    const loaded = Story.load();
+    await Promise.all([saved, loaded]);
+
+    expect(Story.passage).toBe('Room');
+    expect(Story.get('hp')).toBe(7);
+  });
+
+  it('a rename issued during an overwrite keeps both', async () => {
+    await Story.save('a');
+    const id = (await Story.exportSave('a'))!.save.meta.id;
+    // Hold the overwrite's read of the record until the rename has run
+    const backend = await getBackend();
+    const getSave = backend.getSave.bind(backend);
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    vi.spyOn(backend, 'getSave').mockImplementationOnce(async (saveId) => {
+      const record = await getSave(saveId);
+      await held;
+      return record;
+    });
+
+    Story.goto('Room');
+    const saved = Story.save('a');
+    const renamed = saveManager.renameSave(id, 'Mine');
+    setTimeout(release, 10);
+    await Promise.all([saved, renamed]);
+
+    const data = await Story.exportSave('a');
+    expect(data!.save.meta.title).toBe('Mine');
+    expect(data!.save.payload.passage).toBe('Room');
+  });
+
+  it('deleting the playthrough a booting game looks up replaces it', async () => {
+    await Story.save('a');
+    const old = useStoryStore.getState().playthroughId;
+
+    // A page refresh: the store has no playthrough until init looks it up
+    boot();
+    expect(useStoryStore.getState().playthroughId).toBe('');
+    const deleted = Story.storage.deletePlaythrough(old);
+    const saved = Story.save('b');
+    await Promise.all([deleted, saved]);
+
+    const current = useStoryStore.getState().playthroughId;
+    expect(current).not.toBe(old);
+    const groups = await saveManager.getSavesGrouped(ifid);
+    expect(
+      groups.map((g) => [
+        g.playthrough.id,
+        g.playthrough.label,
+        g.saves.map((s) => s.meta.custom.slot),
+      ]),
+    ).toEqual([[current, 'Playthrough 2', ['b']]]);
+  });
+});

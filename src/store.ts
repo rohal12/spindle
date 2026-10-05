@@ -23,9 +23,8 @@ import {
   reinitTriggerState,
 } from './triggers';
 import {
-  initSaveSystem,
+  establishPlaythrough,
   startNewPlaythrough,
-  getCurrentPlaythroughId,
   quickSave,
   saveWithHooks,
   loadQuickSave,
@@ -239,14 +238,19 @@ export function recordStoryInitState(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Settles once the latest playthrough setup (init's lookup or creation, or a
- * restart's creation) is stored, with that setup's playthrough ID ('' if
- * init could not establish one). Each setup chains on the previous one, so
- * playthroughs are created and numbered in the order the game started them.
+ * Settles once the latest playthrough setup (init's lookup or creation, a
+ * restart's creation, or the replacement of a deleted current playthrough)
+ * is stored, with the playthrough ID it leaves the game in ('' if init could
+ * not establish one). Setups are storage operations, which run in call
+ * order, so playthroughs are created and numbered in the order the game
+ * started them, and a save issued after a setup is stored after it.
  */
 let playthroughSetup: Promise<string> = Promise.resolve('');
 
-/** Bumped by every init()/restart(); a stale init must not adopt its ID. */
+/**
+ * Bumped by every init()/restart() and playthrough switch; a stale init must
+ * not adopt its ID.
+ */
 let playthroughGeneration = 0;
 
 /**
@@ -264,8 +268,8 @@ export function resolvePlaythroughId(): Promise<string> {
 
 /**
  * Move the running game to a new playthrough at once: saves issued from here
- * on belong to it. Storing its record is queued after the previous
- * playthrough setup, so playthroughs are numbered in the order they start.
+ * on belong to it. Its record is stored by an operation queued now, after
+ * those already issued.
  */
 function switchToNewPlaythrough(ifid: string): void {
   const id = crypto.randomUUID();
@@ -273,15 +277,13 @@ function switchToNewPlaythrough(ifid: string): void {
   useStoryStore.setState((state) => {
     state.playthroughId = id;
   });
-  playthroughSetup = playthroughSetup
-    .then(() => startNewPlaythrough(ifid, id))
-    .then(
-      () => id,
-      (err) => {
-        console.error('spindle: failed to start new playthrough', err);
-        return id;
-      },
-    );
+  playthroughSetup = startNewPlaythrough(ifid, id).then(
+    () => id,
+    (err) => {
+      console.error('spindle: failed to start new playthrough', err);
+      return id;
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -546,30 +548,24 @@ export const useStoryStore = create<StoryState>()(
       // Update lastNavigationVars to the Immer-produced reference
       lastNavigationVars = get().variables;
 
-      // Init save system in the background. Saves issued meanwhile wait for
-      // it (see resolvePlaythroughId), so they are tagged with the
-      // playthrough it establishes and recorded after the known saves.
-      const ifid = storyData.ifid;
+      // Look up the story's playthrough and saves in the background, as a
+      // storage operation queued now: saves issued meanwhile are stored
+      // after it, tagged with the playthrough it establishes (see
+      // resolvePlaythroughId).
       const generation = ++playthroughGeneration;
-      playthroughSetup = initSaveSystem()
-        .then(async () => {
-          const id =
-            (await getCurrentPlaythroughId(ifid)) ??
-            (await startNewPlaythrough(ifid));
+      playthroughSetup = establishPlaythrough(storyData.ifid)
+        .then(({ id, knownSaves }) => {
           // A restart issued meanwhile has already switched playthroughs
           if (generation === playthroughGeneration) {
             set((state) => {
               state.playthroughId = id;
             });
           }
-
-          // Populate knownSaves from IDB so hasSave() works after reload
-          const saves = await populateKnownSaves(ifid);
-          if (Object.keys(saves).length > 0) {
-            set((state) => {
-              state.knownSaves = saves;
-            });
-          }
+          // So hasSave() works after a reload. Operations issued later
+          // update the cache after this.
+          set((state) => {
+            state.knownSaves = knownSaves;
+          });
           return id;
         })
         .catch((err) => {
@@ -862,14 +858,8 @@ export const useStoryStore = create<StoryState>()(
             set((state) => {
               state.saveError = null;
             });
-            const playthroughId = await playthrough;
-            await quickSave(
-              storyData.ifid,
-              playthroughId,
-              payload,
-              slot,
-              custom,
-            );
+            // Queued now, in call order with other storage operations
+            await quickSave(storyData.ifid, playthrough, payload, slot, custom);
             set((state) => {
               state.knownSaves = {
                 ...state.knownSaves,
@@ -1006,14 +996,46 @@ export const useStoryStore = create<StoryState>()(
       if (!storyData) return Promise.resolve();
 
       // The running game can't go on in a deleted playthrough: its later
-      // saves would belong to no playthrough. It moves to a new one, as
-      // on restart but keeping its state.
-      if (playthroughId !== '' && playthroughId === get().playthroughId) {
-        switchToNewPlaythrough(storyData.ifid);
+      // saves would belong to no playthrough. It moves to a new one, as on
+      // restart but keeping its state. While init is still looking up the
+      // game's playthrough (the store's ID is ''), the deletion checks the
+      // one it establishes.
+      const ifid = storyData.ifid;
+      const current = get().playthroughId;
+      const established = playthroughSetup;
+      const replacementId = crypto.randomUUID();
+      const deletion = smDeletePlaythroughData(ifid, playthroughId, {
+        current: current || established,
+        id: replacementId,
+      });
+      if (playthroughId !== '' && playthroughId === current) {
+        ++playthroughGeneration;
+        set((state) => {
+          state.playthroughId = replacementId;
+        });
+        playthroughSetup = deletion.then(
+          () => replacementId,
+          () => replacementId,
+        );
+      } else if (current === '') {
+        const generation = ++playthroughGeneration;
+        playthroughSetup = deletion
+          .then(
+            (replaced) => (replaced ? replacementId : established),
+            () => established,
+          )
+          .then((id) => {
+            if (generation === playthroughGeneration) {
+              set((state) => {
+                state.playthroughId = id;
+              });
+            }
+            return id;
+          });
       }
 
       return handled(
-        smDeletePlaythroughData(storyData.ifid, playthroughId)
+        deletion
           .then(async () => {
             const known = await populateKnownSaves(storyData.ifid);
             set((state) => {

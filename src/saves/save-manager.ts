@@ -69,6 +69,30 @@ export async function initSaveSystem(): Promise<void> {
   initialized = true;
 }
 
+// --- Operation order ---
+
+/** Tail of the queue every storage operation runs through. */
+let operationQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Run a storage operation once every operation issued before it has
+ * finished, so operations take effect in the order they are called. Each
+ * one reads and writes several records (a slot's pointer, the save, the
+ * slot index, playthrough records) as a unit; run concurrently they would
+ * interleave: a delete issued after a save could run before it, a rename
+ * could write a save's old payload back over an overwrite, or a playthrough
+ * deletion could miss a save being written.
+ *
+ * Exported operations queue themselves; the `...Now` helpers they share run
+ * inside an operation and must not be called from outside one. An operation
+ * must never wait for another operation queued after it.
+ */
+function inOrder<T>(op: () => Promise<T>): Promise<T> {
+  const run = operationQueue.then(op);
+  operationQueue = run.catch(() => {});
+  return run;
+}
+
 // --- Playthroughs ---
 
 /**
@@ -76,9 +100,16 @@ export async function initSaveSystem(): Promise<void> {
  * the caller has already switched to the playthrough (restart() does, so
  * saves issued before this resolves are tagged with it).
  */
-export async function startNewPlaythrough(
+export function startNewPlaythrough(
   ifid: string,
   id: string = crypto.randomUUID(),
+): Promise<string> {
+  return inOrder(() => startNewPlaythroughNow(ifid, id));
+}
+
+async function startNewPlaythroughNow(
+  ifid: string,
+  id: string,
 ): Promise<string> {
   const backend = await getBackend();
   const num = await nextPlaythroughNumber(ifid);
@@ -92,7 +123,7 @@ export async function startNewPlaythrough(
 
   await backend.putPlaythrough(record);
   await backend.setMeta(playthroughCountKey(ifid), num);
-  await backend.setMeta(`currentPlaythroughId.${ifid}`, id);
+  await backend.setMeta(currentPlaythroughKey(ifid), id);
   return id;
 }
 
@@ -119,10 +150,33 @@ async function nextPlaythroughNumber(ifid: string): Promise<number> {
   return highest + 1;
 }
 
-export async function getCurrentPlaythroughId(
+function currentPlaythroughKey(ifid: string): string {
+  return `currentPlaythroughId.${ifid}`;
+}
+
+export function getCurrentPlaythroughId(
   ifid: string,
 ): Promise<string | undefined> {
-  return (await getBackend()).getMeta<string>(`currentPlaythroughId.${ifid}`);
+  return inOrder(async () =>
+    (await getBackend()).getMeta<string>(currentPlaythroughKey(ifid)),
+  );
+}
+
+/**
+ * Set up the save system for a story that boots: the story's current
+ * playthrough (a new one if it has none) and the slots holding saves (see
+ * populateKnownSaves), looked up together in one operation.
+ */
+export function establishPlaythrough(
+  ifid: string,
+): Promise<{ id: string; knownSaves: Record<string, true> }> {
+  return inOrder(async () => {
+    const backend = await getBackend();
+    const id =
+      (await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
+      (await startNewPlaythroughNow(ifid, crypto.randomUUID()));
+    return { id, knownSaves: await populateKnownSavesNow(ifid) };
+  });
 }
 
 // --- Save Hooks ---
@@ -157,11 +211,20 @@ export function saveWithHooks<T>(
 
 // --- Save CRUD ---
 
-export async function createSave(
+export function createSave(
   ifid: string,
   playthroughId: string,
   payload: SavePayload,
   custom: Record<string, unknown> = {},
+): Promise<SaveRecord> {
+  return inOrder(() => createSaveNow(ifid, playthroughId, payload, custom));
+}
+
+async function createSaveNow(
+  ifid: string,
+  playthroughId: string,
+  payload: SavePayload,
+  custom: Record<string, unknown>,
 ): Promise<SaveRecord> {
   const now = new Date().toISOString();
   const meta: SaveMeta = {
@@ -202,7 +265,18 @@ export async function createSave(
  * save itself rather than describing its content. `custom` is merged, as
  * before, so slot keys and metadata not passed again are kept.
  */
-export async function overwriteSave(
+export function overwriteSave(
+  saveId: string,
+  payload: SavePayload,
+  custom?: Record<string, unknown>,
+  playthroughId?: string,
+): Promise<SaveRecord | undefined> {
+  return inOrder(() =>
+    overwriteSaveNow(saveId, payload, custom, playthroughId),
+  );
+}
+
+async function overwriteSaveNow(
   saveId: string,
   payload: SavePayload,
   custom?: Record<string, unknown>,
@@ -255,9 +329,11 @@ export function deserializePayload(payload: SavePayload): SavePayload {
   };
 }
 
-export async function loadSave(
-  saveId: string,
-): Promise<SavePayload | undefined> {
+export function loadSave(saveId: string): Promise<SavePayload | undefined> {
+  return inOrder(() => loadSaveNow(saveId));
+}
+
+async function loadSaveNow(saveId: string): Promise<SavePayload | undefined> {
   const record = await (await getBackend()).getSave(saveId);
   if (!record) return undefined;
   return deserializePayload(record.payload);
@@ -267,41 +343,40 @@ export async function loadSave(
  * Delete a save record. If the default slot or a named slot holds it, that
  * slot is cleared as well (pointer and slot index), as `deleteSlotSave` would.
  */
-export async function deleteSaveById(saveId: string): Promise<void> {
-  const backend = await getBackend();
-  const record = await backend.getSave(saveId);
-  await backend.deleteSave(saveId);
-  if (!record) return;
+export function deleteSaveById(saveId: string): Promise<void> {
+  return inOrder(async () => {
+    const backend = await getBackend();
+    const record = await backend.getSave(saveId);
+    await backend.deleteSave(saveId);
+    if (!record) return;
 
-  const ifid = record.meta.ifid;
-  const slots = [undefined, ...(await getIndexedSlots(ifid))];
-  for (const slot of slots) {
-    const metaKey = slotMetaKey(ifid, slot);
-    await withSlot(metaKey, async () => {
-      if ((await backend.getMeta<string>(metaKey)) !== saveId) return;
+    const ifid = record.meta.ifid;
+    const slots = [undefined, ...(await getIndexedSlots(ifid))];
+    for (const slot of slots) {
+      const metaKey = slotMetaKey(ifid, slot);
+      if ((await backend.getMeta<string>(metaKey)) !== saveId) continue;
       await backend.deleteMeta(metaKey);
       await removeFromSlotIndex(ifid, slot);
-    });
-  }
+    }
+  });
 }
 
-export async function renameSave(
-  saveId: string,
-  newTitle: string,
-): Promise<void> {
-  const backend = await getBackend();
-  const record = await backend.getSave(saveId);
-  if (!record) return;
-  const updated: SaveRecord = {
-    ...record,
-    meta: {
-      ...record.meta,
-      title: newTitle,
-      userTitle: true,
-      updatedAt: new Date().toISOString(),
-    },
-  };
-  await backend.putSave(updated);
+export function renameSave(saveId: string, newTitle: string): Promise<void> {
+  return inOrder(async () => {
+    const backend = await getBackend();
+    const record = await backend.getSave(saveId);
+    if (!record) return;
+    const updated: SaveRecord = {
+      ...record,
+      meta: {
+        ...record.meta,
+        title: newTitle,
+        userTitle: true,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    await backend.putSave(updated);
+  });
 }
 
 // --- Grouped Retrieval ---
@@ -311,9 +386,11 @@ export interface PlaythroughGroup {
   saves: SaveRecord[];
 }
 
-export async function getSavesGrouped(
-  ifid: string,
-): Promise<PlaythroughGroup[]> {
+export function getSavesGrouped(ifid: string): Promise<PlaythroughGroup[]> {
+  return inOrder(() => getSavesGroupedNow(ifid));
+}
+
+async function getSavesGroupedNow(ifid: string): Promise<PlaythroughGroup[]> {
   const backend = await getBackend();
   const [allSaves, allPlaythroughs] = await Promise.all([
     backend.getSavesByIfid(ifid),
@@ -392,45 +469,16 @@ function slotMetaKey(ifid: string, slot?: string): string {
     : `${AUTOSAVE_KEY_PREFIX}${ifid}`;
 }
 
-/** Tail of each slot's operation queue, keyed by the slot's meta key. */
-const slotQueues = new Map<string, Promise<unknown>>();
-
-/**
- * Run a complete operation on one slot (save, import, delete) after the ones
- * already queued for it. Each operation reads the slot pointer and writes the
- * record and pointer as a unit, so concurrent operations on the same slot
- * apply in call order instead of each creating its own record.
- */
-function withSlot<T>(metaKey: string, op: () => Promise<T>): Promise<T> {
-  const run = (slotQueues.get(metaKey) ?? Promise.resolve()).then(op);
-  const tail = run.catch(() => {});
-  slotQueues.set(metaKey, tail);
-  void tail.then(() => {
-    if (slotQueues.get(metaKey) === tail) slotQueues.delete(metaKey);
-  });
-  return run;
-}
-
-/** Tail of the queue that serializes slot index updates. */
-let slotIndexQueue: Promise<unknown> = Promise.resolve();
-
-/**
- * Read-modify-write the per-story slot index. Updates are queued so that
- * concurrent saves, imports and deletes can't overwrite each other's change.
- */
-function updateSlotIndex(
+/** Read-modify-write the per-story slot index. */
+async function updateSlotIndex(
   ifid: string,
   update: (slots: string[]) => string[],
 ): Promise<void> {
-  const run = slotIndexQueue.then(async () => {
-    const backend = await getBackend();
-    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
-    const updated = update(existing);
-    if (updated !== existing) await backend.setMeta(indexKey, updated);
-  });
-  slotIndexQueue = run.catch(() => {});
-  return run;
+  const backend = await getBackend();
+  const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+  const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
+  const updated = update(existing);
+  if (updated !== existing) await backend.setMeta(indexKey, updated);
 }
 
 /** Record a named slot in the per-story slot index (no-op for the default slot). */
@@ -465,30 +513,32 @@ function toSaveInfo(record: SaveRecord, slot?: string): SaveInfo {
   };
 }
 
+/**
+ * Save `payload` to a slot (the default slot when `slot` is omitted),
+ * overwriting the save it holds. `playthroughId` may be a promise of the ID
+ * (settled by operations issued before this call), so the save takes its
+ * place in the order of operations when it is called.
+ */
 export function quickSave(
   ifid: string,
-  playthroughId: string,
+  playthroughId: string | PromiseLike<string>,
   payload: SavePayload,
   slot?: string,
   custom?: Record<string, unknown>,
 ): Promise<SaveRecord> {
   const metaKey = slotMetaKey(ifid, slot);
-  return withSlot(metaKey, async () => {
+  return inOrder(async () => {
+    const ptId = await playthroughId;
     const backend = await getBackend();
     const existingId = await backend.getMeta<string>(metaKey);
 
     if (existingId) {
-      const updated = await overwriteSave(
-        existingId,
-        payload,
-        custom,
-        playthroughId,
-      );
+      const updated = await overwriteSaveNow(existingId, payload, custom, ptId);
       if (updated) return updated;
     }
 
     // Create new save
-    const record = await createSave(ifid, playthroughId, payload, {
+    const record = await createSaveNow(ifid, ptId, payload, {
       isAutosave: !isNamedSlot(slot),
       ...(isNamedSlot(slot) ? { slot } : {}),
       ...custom,
@@ -500,10 +550,11 @@ export function quickSave(
   });
 }
 
-export async function hasQuickSave(
-  ifid: string,
-  slot?: string,
-): Promise<boolean> {
+export function hasQuickSave(ifid: string, slot?: string): Promise<boolean> {
+  return inOrder(() => hasQuickSaveNow(ifid, slot));
+}
+
+async function hasQuickSaveNow(ifid: string, slot?: string): Promise<boolean> {
   const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
   const existingId = await backend.getMeta<string>(metaKey);
@@ -512,34 +563,42 @@ export async function hasQuickSave(
   return record !== undefined;
 }
 
-export async function loadQuickSave(
+export function loadQuickSave(
   ifid: string,
   slot?: string,
 ): Promise<SavePayload | undefined> {
-  const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await (await getBackend()).getMeta<string>(metaKey);
-  if (!existingId) return undefined;
-  return loadSave(existingId);
+  return inOrder(async () => {
+    const metaKey = slotMetaKey(ifid, slot);
+    const existingId = await (await getBackend()).getMeta<string>(metaKey);
+    if (!existingId) return undefined;
+    return loadSaveNow(existingId);
+  });
 }
 
 /**
  * Check storage for all known saves and return a map of slot keys to true.
  * The default (autosave) slot uses empty string as key.
  */
-export async function populateKnownSaves(
+export function populateKnownSaves(
+  ifid: string,
+): Promise<Record<string, true>> {
+  return inOrder(() => populateKnownSavesNow(ifid));
+}
+
+async function populateKnownSavesNow(
   ifid: string,
 ): Promise<Record<string, true>> {
   // No prototype, so a slot named '__proto__' is recorded as an entry
   const result = Object.create(null) as Record<string, true>;
 
   // Check default autosave
-  if (await hasQuickSave(ifid)) {
+  if (await hasQuickSaveNow(ifid)) {
     result[''] = true;
   }
 
   // Check named slots from the index
   for (const slot of await getIndexedSlots(ifid)) {
-    if (await hasQuickSave(ifid, slot)) {
+    if (await hasQuickSaveNow(ifid, slot)) {
       result[slot] = true;
     }
   }
@@ -551,7 +610,14 @@ export async function populateKnownSaves(
  * Get metadata for a specific save slot.
  * Returns null if no save exists for that slot.
  */
-export async function getSlotSaveInfo(
+export function getSlotSaveInfo(
+  ifid: string,
+  slot?: string,
+): Promise<SaveInfo | null> {
+  return inOrder(() => getSlotSaveInfoNow(ifid, slot));
+}
+
+async function getSlotSaveInfoNow(
   ifid: string,
   slot?: string,
 ): Promise<SaveInfo | null> {
@@ -567,20 +633,22 @@ export async function getSlotSaveInfo(
 /**
  * List metadata for all known save slots (default + named).
  */
-export async function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
-  const result: SaveInfo[] = [];
+export function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
+  return inOrder(async () => {
+    const result: SaveInfo[] = [];
 
-  // Check default autosave
-  const defaultInfo = await getSlotSaveInfo(ifid);
-  if (defaultInfo) result.push(defaultInfo);
+    // Check default autosave
+    const defaultInfo = await getSlotSaveInfoNow(ifid);
+    if (defaultInfo) result.push(defaultInfo);
 
-  // Check named slots from the index
-  for (const slot of await getIndexedSlots(ifid)) {
-    const info = await getSlotSaveInfo(ifid, slot);
-    if (info) result.push(info);
-  }
+    // Check named slots from the index
+    for (const slot of await getIndexedSlots(ifid)) {
+      const info = await getSlotSaveInfoNow(ifid, slot);
+      if (info) result.push(info);
+    }
 
-  return result;
+    return result;
+  });
 }
 
 /**
@@ -588,7 +656,7 @@ export async function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
  */
 export function deleteSlotSave(ifid: string, slot?: string): Promise<void> {
   const metaKey = slotMetaKey(ifid, slot);
-  return withSlot(metaKey, async () => {
+  return inOrder(async () => {
     const backend = await getBackend();
     const existingId = await backend.getMeta<string>(metaKey);
     if (!existingId) return;
@@ -642,9 +710,11 @@ export function clearSession(ifid: string): void {
 
 // --- Export / Import ---
 
-export async function exportSave(
-  saveId: string,
-): Promise<SaveExport | undefined> {
+export function exportSave(saveId: string): Promise<SaveExport | undefined> {
+  return inOrder(() => exportSaveNow(saveId));
+}
+
+async function exportSaveNow(saveId: string): Promise<SaveExport | undefined> {
   const record = await (await getBackend()).getSave(saveId);
   if (!record) return undefined;
 
@@ -703,28 +773,32 @@ async function prepareImport(
   return record;
 }
 
-export async function importSave(
+export function importSave(
   data: SaveExport,
   ifid: string,
 ): Promise<SaveRecord> {
-  const record = await prepareImport(data, ifid);
-  await (await getBackend()).putSave(record);
-  return record;
+  return inOrder(async () => {
+    const record = await prepareImport(data, ifid);
+    await (await getBackend()).putSave(record);
+    return record;
+  });
 }
 
 /**
  * Export the save held in a slot (default autosave slot when `slot` is omitted).
  * Returns undefined if the slot is empty.
  */
-export async function exportSlotSave(
+export function exportSlotSave(
   ifid: string,
   slot?: string,
 ): Promise<SaveExport | undefined> {
-  const saveId = await (
-    await getBackend()
-  ).getMeta<string>(slotMetaKey(ifid, slot));
-  if (!saveId) return undefined;
-  return exportSave(saveId);
+  return inOrder(async () => {
+    const saveId = await (
+      await getBackend()
+    ).getMeta<string>(slotMetaKey(ifid, slot));
+    if (!saveId) return undefined;
+    return exportSaveNow(saveId);
+  });
 }
 
 /**
@@ -739,7 +813,7 @@ export function importSlotSave(
   slot?: string,
 ): Promise<SaveInfo> {
   const metaKey = slotMetaKey(ifid, slot);
-  return withSlot(metaKey, async () => {
+  return inOrder(async () => {
     const record = await prepareImport(data, ifid);
 
     // The slot keys in `custom` describe where the save lives, so they follow
@@ -765,7 +839,11 @@ export function importSlotSave(
 
 // --- Storage Management ---
 
-export async function getStorageInfo(ifid: string): Promise<StorageInfo> {
+export function getStorageInfo(ifid: string): Promise<StorageInfo> {
+  return inOrder(() => getStorageInfoNow(ifid));
+}
+
+async function getStorageInfoNow(ifid: string): Promise<StorageInfo> {
   const backend = await getBackend();
   const saves = await backend.getSavesByIfid(ifid);
   const playthroughs = await backend.getPlaythroughsByIfid(ifid);
@@ -791,15 +869,21 @@ export async function getStorageInfo(ifid: string): Promise<StorageInfo> {
   };
 }
 
-export async function clearGameData(ifid: string): Promise<void> {
-  const backend = await getBackend();
-  await backend.deleteSavesByIfid(ifid);
-  await backend.deletePlaythroughsByIfid(ifid);
-  await backend.deleteMetaByIfid(ifid);
-  clearSession(ifid);
+export function clearGameData(ifid: string): Promise<void> {
+  return inOrder(async () => {
+    const backend = await getBackend();
+    await backend.deleteSavesByIfid(ifid);
+    await backend.deletePlaythroughsByIfid(ifid);
+    await backend.deleteMetaByIfid(ifid);
+    clearSession(ifid);
+  });
 }
 
-export async function clearAllData(): Promise<void> {
+export function clearAllData(): Promise<void> {
+  return inOrder(clearAllDataNow);
+}
+
+async function clearAllDataNow(): Promise<void> {
   const backend = await getBackend();
   await backend.destroy();
   resetBackend();
@@ -815,30 +899,47 @@ export async function clearAllData(): Promise<void> {
   }
 }
 
-export async function deletePlaythroughData(
+/**
+ * Delete a playthrough with its saves, emptying the slots that held them.
+ *
+ * `replacement` is for deleting the playthrough a running game is in:
+ * `current` is (a promise of) that game's playthrough, settled by operations
+ * issued before this call. If it is the deleted one, the playthrough
+ * `replacement.id` is started in the same operation, before any operation
+ * issued later. Resolves to whether it was.
+ */
+export function deletePlaythroughData(
   ifid: string,
   playthroughId: string,
-): Promise<void> {
-  const backend = await getBackend();
-  const deletedSaveIds = await backend.deleteSavesByPlaythrough(playthroughId);
-  await backend.deletePlaythroughById(playthroughId);
+  replacement?: { current: string | PromiseLike<string>; id: string },
+): Promise<boolean> {
+  return inOrder(async () => {
+    const backend = await getBackend();
+    const deletedSaveIds =
+      await backend.deleteSavesByPlaythrough(playthroughId);
+    await backend.deletePlaythroughById(playthroughId);
 
-  // Clean up slot/autosave meta keys pointing to deleted saves
-  const deletedSet = new Set(deletedSaveIds);
-  const allKeys = await backend.getAllMetaKeys();
-  for (const key of allKeys) {
-    if (key.startsWith('slot.') || key.startsWith('autosave.')) {
-      const value = await backend.getMeta<string>(key);
+    // Clear the slots that held deleted saves (pointer and slot index)
+    const deletedSet = new Set(deletedSaveIds);
+    for (const slot of [undefined, ...(await getIndexedSlots(ifid))]) {
+      const metaKey = slotMetaKey(ifid, slot);
+      const value = await backend.getMeta<string>(metaKey);
       if (value && deletedSet.has(value)) {
-        await backend.deleteMeta(key);
+        await backend.deleteMeta(metaKey);
+        await removeFromSlotIndex(ifid, slot);
       }
     }
-  }
 
-  // Clear currentPlaythroughId if it was this one
-  const currentPtKey = `currentPlaythroughId.${ifid}`;
-  const currentPt = await backend.getMeta<string>(currentPtKey);
-  if (currentPt === playthroughId) {
-    await backend.deleteMeta(currentPtKey);
-  }
+    if (replacement && (await replacement.current) === playthroughId) {
+      await startNewPlaythroughNow(ifid, replacement.id);
+      return true;
+    }
+
+    // Clear currentPlaythroughId if it was this one
+    const currentPtKey = currentPlaythroughKey(ifid);
+    if ((await backend.getMeta<string>(currentPtKey)) === playthroughId) {
+      await backend.deleteMeta(currentPtKey);
+    }
+    return false;
+  });
 }

@@ -250,6 +250,8 @@ await Story.save('slot-2');
 renderSlots(await Story.listSaves()); // includes slot-2
 ```
 
+Save operations (`save`, `load`, `deleteSave`, `getSaveInfo`, `listSaves`, `exportSave`, `importSave` and `Story.storage`'s) take effect in the order they are called, whether or not their promises are awaited: `Story.save('a'); Story.deleteSave('a');` leaves slot `a` empty, and a `load()` called after a `save()` loads that save.
+
 ### `Story.load(slot?)`
 
 Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage: variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
