@@ -16,6 +16,7 @@ import {
   exportSave,
   importSave,
   deserializePayload,
+  saveWithHooks,
   type PlaythroughGroup,
 } from '../../saves/save-manager';
 import { DialogCloseContext } from '../PassageDialog';
@@ -102,11 +103,13 @@ export function SaveManagerContent() {
     });
   };
 
+  // Dialog saves are not slot saves, so the save hooks get no slot.
   const handleNewSave = async () => {
     if (!ifid || !playthroughId) return;
     try {
-      const payload = getSavePayload();
-      await createSave(ifid, playthroughId, payload);
+      await saveWithHooks(undefined, undefined, getSavePayload, (payload) =>
+        createSave(ifid, playthroughId, payload),
+      );
       showStatus('Save created');
       await refresh();
     } catch {
@@ -116,8 +119,16 @@ export function SaveManagerContent() {
 
   const handleOverwrite = async (saveId: string) => {
     try {
-      const payload = getSavePayload();
-      await overwriteSave(saveId, payload);
+      await saveWithHooks(
+        undefined,
+        undefined,
+        getSavePayload,
+        async (payload) => {
+          if (!(await overwriteSave(saveId, payload))) {
+            throw new Error('Save not found');
+          }
+        },
+      );
       showStatus('Save overwritten');
       await refresh();
     } catch {

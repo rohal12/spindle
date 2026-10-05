@@ -23,6 +23,7 @@ import {
   startNewPlaythrough,
   getCurrentPlaythroughId,
   quickSave,
+  saveWithHooks,
   loadQuickSave,
   populateKnownSaves,
   getSlotSaveInfo,
@@ -655,30 +656,29 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
-      emit('beforesave', slot, custom);
-
-      const payload = get().getSavePayload();
-
-      set((state) => {
-        state.saveError = null;
-      });
-      quickSave(storyData.ifid, playthroughId, payload, slot, custom)
-        .then(() => {
+      saveWithHooks(
+        slot,
+        custom,
+        () => get().getSavePayload(),
+        async (payload) => {
+          set((state) => {
+            state.saveError = null;
+          });
+          await quickSave(storyData.ifid, playthroughId, payload, slot, custom);
           set((state) => {
             state.knownSaves = {
               ...state.knownSaves,
               [slot ?? '']: true,
             };
           });
-          emit('aftersave', slot);
-        })
-        .catch((err) => {
-          console.error('spindle: failed to save', err);
-          set((state) => {
-            state.saveError =
-              err instanceof Error ? err.message : 'Failed to save';
-          });
+        },
+      ).catch((err) => {
+        console.error('spindle: failed to save', err);
+        set((state) => {
+          state.saveError =
+            err instanceof Error ? err.message : 'Failed to save';
         });
+      });
     },
 
     load: (slot?: string) => {
