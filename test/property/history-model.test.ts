@@ -80,7 +80,9 @@ function assertMatches(m: HistoryModel): void {
   expect(s.historyIndex).toBe(m.index);
   expect(s.maxHistory).toBe(m.maxHistory);
   expect(s.history.length).toBeLessThanOrEqual(s.maxHistory);
-  expect(s.variables).toStrictEqual(m.live);
+  // Namespaces have no prototype (the model's plain copies do)
+  expect(Object.getPrototypeOf(s.variables)).toBe(null);
+  expect({ ...s.variables }).toStrictEqual(m.live);
   expect(s.visitCounts).toEqual(m.visitCounts);
 
   // Back/forward availability
@@ -93,11 +95,12 @@ function assertMatches(m: HistoryModel): void {
   // the variables changed since (no aliasing between moments and live state)
   for (let i = 0; i < m.moments.length; i++) {
     const vars = s.getHistoryVariables(i);
-    expect(vars).toStrictEqual(m.moments[i]!.vars);
+    expect(Object.getPrototypeOf(vars)).toBe(null);
+    expect({ ...vars }).toStrictEqual(m.moments[i]!.vars);
     // The returned snapshot is a copy: changing it changes no moment
     if (vars.pet instanceof Pet) vars.pet.feed(1000);
     (vars.nested as { a: { b: number[] } } | undefined)?.a?.b?.push(1000);
-    expect(s.getHistoryVariables(i)).toStrictEqual(m.moments[i]!.vars);
+    expect({ ...s.getHistoryVariables(i) }).toStrictEqual(m.moments[i]!.vars);
   }
 }
 

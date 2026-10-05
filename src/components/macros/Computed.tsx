@@ -4,6 +4,7 @@ import { deepEqual } from '../../class-registry';
 import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
+import { checkVariableName } from '../../utils/namespace';
 
 function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   const trimmed = rawArgs.trim();
@@ -29,6 +30,7 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
         );
       }
 
+      checkVariableName(target.slice(1), target);
       return { target, expr };
     }
   }

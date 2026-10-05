@@ -20,6 +20,7 @@ import {
   deserialize,
 } from '../../src/class-registry';
 import { getBackend, resetBackend } from '../../src/saves/storage';
+import { createNamespace } from '../../src/utils/namespace';
 import { resetEmitter } from '../../src/event-emitter';
 import {
   addTrigger,
@@ -373,7 +374,7 @@ function navigate(model: Model, engine: Engine, p: Plan): void {
     return;
   }
   model.history = model.history.slice(0, model.index + 1);
-  model.temporary = {};
+  model.temporary = createNamespace();
   model.history.push(deepClone(model.variables));
   model.index = model.history.length - 1;
 
@@ -407,7 +408,7 @@ function traverse(model: Model, engine: Engine, p: Plan, step: number): void {
   finishEntered(model, engine);
   model.index = to;
   model.variables = deepClone(model.history[to]!);
-  model.temporary = {};
+  model.temporary = createNamespace();
   // Restored state is not a change watchers react to
   for (const w of p.watchers) {
     if (!w.fired) w.last = model.variables[w.flag] === 1;
@@ -568,9 +569,9 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
       case 'restart':
         // Back to the defaults, with a new history; watchers are removed
         lines.push('Story.restart();');
-        model.variables = variableDefaults();
-        model.transient = transientDefaults();
-        model.temporary = {};
+        model.variables = createNamespace(variableDefaults());
+        model.transient = createNamespace(transientDefaults());
+        model.temporary = createNamespace();
         model.history = [deepClone(model.variables)];
         model.index = 0;
         engine.entered = false;
@@ -579,9 +580,10 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       case 'save': {
         const slot = `s${p.saves.length}`;
+        // Saved as plain data
         const entry: Plan['saves'][number] = {
           slot,
-          expected: deepClone(model.variables),
+          expected: { ...deepClone(model.variables) },
         };
         p.saves.push(entry);
         extCall(() => {
@@ -666,10 +668,11 @@ async function setUp(withSaves: boolean): Promise<void> {
 
 async function check(ops: Op[], withSaves: boolean): Promise<void> {
   await setUp(withSaves);
+  // The store's namespaces have no prototype: neither have the model's
   const model: Model = {
-    variables: variableDefaults(),
-    temporary: {},
-    transient: transientDefaults(),
+    variables: createNamespace(variableDefaults()),
+    temporary: createNamespace(),
+    transient: createNamespace(transientDefaults()),
     history: [],
     index: 0,
   };

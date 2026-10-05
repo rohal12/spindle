@@ -28,6 +28,7 @@ import {
   runWithCommittedMutations,
 } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
+import { checkVariableName } from './utils/namespace';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -81,8 +82,9 @@ let variableChangedSubActive = false;
 function ensureVariableChangedSubscription(): void {
   if (variableChangedSubActive) return;
   variableChangedSubActive = true;
-  let prevVars = { ...useStoryStore.getState().variables };
-  let prevTrans = { ...useStoryStore.getState().transient };
+  // Store namespaces are immutable snapshots: keep the references
+  let prevVars = useStoryStore.getState().variables;
+  let prevTrans = useStoryStore.getState().transient;
   useStoryStore.subscribe((state) => {
     const changed: Record<string, { from: unknown; to: unknown }> = {};
     let hasChanges = false;
@@ -111,8 +113,8 @@ function ensureVariableChangedSubscription(): void {
       }
     }
 
-    prevVars = { ...state.variables };
-    prevTrans = { ...state.transient };
+    prevVars = state.variables;
+    prevTrans = state.transient;
     if (hasChanges) {
       emit('variableChanged', changed);
     }
@@ -233,15 +235,17 @@ export function _resetDeclaredVariables(): void {
 /**
  * Split an API variable name into namespace and key. Accepts the bare name
  * (`hp`), the `$` sigil authors use in passages (`$hp`), and `%` for
- * transients (`%npcs`). Dot-paths are kept in the key.
+ * transients (`%npcs`). Dot-paths are kept in the key. A variable named
+ * `__proto__` throws a TypeError (see utils/namespace.ts).
  */
 function parseName(name: string): {
   isTransient: boolean;
   key: string;
 } {
-  if (name.startsWith('%')) return { isTransient: true, key: name.slice(1) };
-  if (name.startsWith('$')) return { isTransient: false, key: name.slice(1) };
-  return { isTransient: false, key: name };
+  const isTransient = name.startsWith('%');
+  const key = isTransient || name.startsWith('$') ? name.slice(1) : name;
+  checkVariableName(key.split('.')[0]!, name);
+  return { isTransient, key };
 }
 
 function warnIfUndeclared(isTransient: boolean, key: string): void {

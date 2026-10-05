@@ -4,6 +4,7 @@ import type { VariableNamespaces } from './store';
 import { execute } from './expression';
 import { deepClone, deepEqual } from './class-registry';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
+import { asNamespace, createNamespace } from './utils/namespace';
 
 type NamespaceName = keyof VariableNamespaces;
 
@@ -198,7 +199,7 @@ export function writeInActiveScopes(
   const trial: Record<string, Record<string, unknown>> = {};
   for (const { ns, path, value } of writes) {
     const root = path[0]!;
-    trial[ns] ??= { ...inner.work[ns] };
+    trial[ns] ??= createNamespace(inner.work[ns]);
     if (trial[ns][root] === inner.work[ns][root]) {
       trial[ns][root] = cloneValue(inner.work[ns][root]);
     }
@@ -341,7 +342,9 @@ export function executeMutation(
   // mutated in place would keep its reference, so a nested assignment
   // (`@item.name = "x"`) would be lost or never reach the scope updater.
   // Unregistered class instances (DOM nodes etc.) stay shared by reference.
-  const localsClone = deepClone(mergedLocals, { keepUnregistered: true });
+  const localsClone = asNamespace(
+    deepClone(mergedLocals, { keepUnregistered: true }),
+  );
 
   activeScopes.push(scope);
   try {
@@ -366,7 +369,7 @@ export function executeMutation(
 
   // Detect deleted locals
   for (const key of Object.keys(mergedLocals)) {
-    if (!(key in localsClone)) {
+    if (!hasOwn(localsClone, key)) {
       scopeUpdate(key, undefined);
     }
   }

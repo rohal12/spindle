@@ -1,6 +1,7 @@
 import type { Passage } from './parser';
 import { tokenize } from './markup/tokenizer';
 import { errorMessage } from './utils/error-message';
+import { createNamespace, RESERVED_NAME } from './utils/namespace';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -78,6 +79,11 @@ export function parseStoryVariables(
     }
 
     const [, name, expr] = match as [string, string, string];
+    if (name === RESERVED_NAME) {
+      throw new Error(
+        `${passageName}: "${sigil}${name}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`,
+      );
+    }
     let value: unknown;
     try {
       value = new Function('return (' + expr + ')')();
@@ -126,6 +132,10 @@ function validateRef(
 ): string | null {
   const parts = ref.split('.');
   const rootName = parts[0]!;
+
+  if (rootName === RESERVED_NAME) {
+    return `"$${rootName}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`;
+  }
 
   // Skip for-loop locals
   if (forLocals.has(rootName)) return null;
@@ -373,12 +383,13 @@ export function validatePassages(
 }
 
 /**
- * Extract default values from the schema as a plain object.
+ * Extract default values from the schema as a record without a prototype,
+ * like the namespaces it initializes (see utils/namespace.ts).
  */
 export function extractDefaults(
   schema: Map<string, VariableSchema>,
 ): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
+  const defaults = createNamespace();
   for (const [name, varSchema] of schema) {
     defaults[name] = varSchema.default;
   }

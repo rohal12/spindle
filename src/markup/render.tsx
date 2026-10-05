@@ -10,6 +10,7 @@ import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useInterpolate } from '../hooks/use-interpolate';
 import { splitTemplate } from '../interpolation';
+import { EMPTY_NAMESPACE } from '../utils/namespace';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -22,10 +23,11 @@ const defaultUpdater: LocalsUpdater = {
       `Cannot set @${key} — local variables require a {for}, widget, {link}, or {button} scope`,
     );
   },
-  getValues: () => ({}),
+  getValues: () => EMPTY_NAMESPACE,
 };
 
-export const LocalsValuesContext = createContext<Record<string, unknown>>({});
+export const LocalsValuesContext =
+  createContext<Record<string, unknown>>(EMPTY_NAMESPACE);
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
 /**

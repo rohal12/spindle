@@ -25,6 +25,7 @@ import { executeMutation } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
+import { RESERVED_NAME } from './utils/namespace';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -186,6 +187,13 @@ export function defineMacro(
 
       const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
       const segments = varExpr.split('.');
+      if (segments.includes(RESERVED_NAME)) {
+        return h(
+          'span',
+          { class: 'error' },
+          `{${config.name}}: "$${varExpr}" cannot be bound: ${RESERVED_NAME} is reserved`,
+        );
+      }
       ctx.varName = varExpr;
       ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
       ctx.getValue = () =>

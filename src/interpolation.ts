@@ -1,5 +1,6 @@
 import { evaluate } from './expression';
 import { createScanMemo, scanBalancedBrace } from './markup/tokenizer';
+import { checkVariableName, ownValue } from './utils/namespace';
 
 /** Detects any {…} block that starts with a sigil ($, _, @, %). */
 const INTERP_TEST = /\{[\$_@%]\w/;
@@ -44,16 +45,18 @@ function resolveSimple(
   const path = ref.slice(1);
   const parts = path.split('.');
   const root = parts[0]!;
+  checkVariableName(root, prefix + root);
 
+  // Own entries only, as the expression engine reads them
   let value: unknown;
   if (prefix === '$') {
-    value = variables[root];
+    value = ownValue(variables, root);
   } else if (prefix === '_') {
-    value = temporary[root];
+    value = ownValue(temporary, root);
   } else if (prefix === '%') {
-    value = transient[root];
+    value = ownValue(transient, root);
   } else {
-    value = locals[root];
+    value = ownValue(locals, root);
   }
 
   if (parts.length > 1) {
