@@ -26,7 +26,8 @@ import {
   clearGameData,
   deletePlaythroughData,
 } from '../../src/saves/save-manager';
-import type { SavePayload } from '../../src/saves/types';
+import type { SavePayload, SaveExport } from '../../src/saves/types';
+import { getBackend } from '../../src/saves/storage';
 
 // In Node there's no IndexedDB, so idb.ts uses in-memory fallback.
 // We need to reset the fallback between tests by re-importing.
@@ -145,6 +146,41 @@ describe('save-manager', () => {
       await deleteSaveById(record.meta.id);
       const loaded = await loadSave(record.meta.id);
       expect(loaded).toBeUndefined();
+    });
+
+    it('clears only the slot that holds the deleted save', async () => {
+      const freshIfid = 'delete-by-id-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      const auto = await quickSave(freshIfid, ptId, makePayload());
+      const held = await quickSave(freshIfid, ptId, makePayload(), 'held');
+      await quickSave(freshIfid, ptId, makePayload(), 'other');
+      const loose = await createSave(freshIfid, ptId, makePayload());
+
+      await deleteSaveById(loose.meta.id);
+      expect(await populateKnownSaves(freshIfid)).toEqual({
+        '': true,
+        held: true,
+        other: true,
+      });
+
+      await deleteSaveById(held.meta.id);
+      expect(await hasQuickSave(freshIfid, 'held')).toBe(false);
+      expect((await listSlotSaves(freshIfid)).map((s) => s.slot)).toEqual([
+        '',
+        'other',
+      ]);
+
+      await deleteSaveById(auto.meta.id);
+      expect(await getSlotSaveInfo(freshIfid)).toBeNull();
+      expect(await populateKnownSaves(freshIfid)).toEqual({ other: true });
+
+      // The slot pointers and the index entry are gone, not just dangling
+      const backend = await getBackend();
+      expect(await backend.getMeta(`autosave.${freshIfid}`)).toBeUndefined();
+      expect(await backend.getMeta(`slot.held.${freshIfid}`)).toBeUndefined();
+      expect(await backend.getMeta(`slotIndex.${freshIfid}`)).toEqual([
+        'other',
+      ]);
     });
   });
 
@@ -336,6 +372,9 @@ describe('save-manager', () => {
       const payload = makePayload({
         passage: 'Room',
         variables: { gold: 999, name: 'Hero' },
+        history: [
+          { passage: 'Room', variables: { gold: 999 }, timestamp: Date.now() },
+        ],
       });
       const record = await createSave(IFID, playthroughId, payload);
       const exported = await exportSave(record.meta.id);
@@ -553,6 +592,20 @@ describe('save-manager', () => {
       );
       expect(await getSlotSaveInfo(IFID, 'keep')).toEqual(before);
     });
+
+    it('importSlotSave validates the history before touching the slot', async () => {
+      await quickSave(IFID, playthroughId, makePayload(), 'keep-history');
+      const before = await getSlotSaveInfo(IFID, 'keep-history');
+      const exported = (await exportSlotSave(IFID, 'keep-history'))!;
+      const malformed = structuredClone(exported);
+      (malformed.save.payload as { history: unknown[] }).history = [null];
+
+      await expect(
+        importSlotSave(malformed, IFID, 'keep-history'),
+      ).rejects.toThrow('Invalid save file format');
+      expect(await getSlotSaveInfo(IFID, 'keep-history')).toEqual(before);
+      expect(await loadQuickSave(IFID, 'keep-history')).toBeDefined();
+    });
   });
 
   describe('named slot saves', () => {
@@ -632,6 +685,86 @@ describe('save-manager', () => {
 
       const loaded = await loadQuickSave(freshIfid, 'my-slot');
       expect(loaded!.passage).toBe('New');
+    });
+  });
+
+  describe('concurrent writes to one slot', () => {
+    async function storedSaves(ifid: string) {
+      return (await getSavesGrouped(ifid)).flatMap((g) => g.saves);
+    }
+
+    it('concurrent saves to an empty slot keep a single record', async () => {
+      const freshIfid = 'slot-race-save-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await Promise.all([
+        quickSave(freshIfid, ptId, makePayload({ passage: 'A' }), 'same'),
+        quickSave(freshIfid, ptId, makePayload({ passage: 'B' }), 'same'),
+      ]);
+
+      expect(await listSlotSaves(freshIfid)).toHaveLength(1);
+      expect(await storedSaves(freshIfid)).toHaveLength(1);
+      // Writes apply in call order: the last one wins
+      expect((await loadQuickSave(freshIfid, 'same'))!.passage).toBe('B');
+    });
+
+    it('concurrent saves to the empty default slot keep a single record', async () => {
+      const freshIfid = 'slot-race-default-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await Promise.all([
+        quickSave(freshIfid, ptId, makePayload()),
+        quickSave(freshIfid, ptId, makePayload()),
+      ]);
+
+      expect(await storedSaves(freshIfid)).toHaveLength(1);
+    });
+
+    it('concurrent imports into one slot keep a single record', async () => {
+      const freshIfid = 'slot-race-import-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      await quickSave(freshIfid, ptId, makePayload(), 'src');
+      const exported = (await exportSlotSave(freshIfid, 'src'))!;
+
+      await Promise.all([
+        importSlotSave(exported, freshIfid, 'dst'),
+        importSlotSave(exported, freshIfid, 'dst'),
+      ]);
+
+      expect(await storedSaves(freshIfid)).toHaveLength(2);
+    });
+
+    it('a delete issued after a save removes the record the save created', async () => {
+      const freshIfid = 'slot-race-delete-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+
+      await Promise.all([
+        quickSave(freshIfid, ptId, makePayload(), 'gone'),
+        deleteSlotSave(freshIfid, 'gone'),
+      ]);
+
+      expect(await hasQuickSave(freshIfid, 'gone')).toBe(false);
+      expect(await storedSaves(freshIfid)).toHaveLength(0);
+      expect(await listSlotSaves(freshIfid)).toEqual([]);
+    });
+
+    it('a failed write does not block later writes to the slot', async () => {
+      const freshIfid = 'slot-race-fail-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      const bad = {
+        version: 1,
+        ifid: 'other-story',
+        exportedAt: '',
+        save: {},
+      } as unknown as SaveExport;
+
+      const results = await Promise.allSettled([
+        importSlotSave(bad, freshIfid, 'slot'),
+        quickSave(freshIfid, ptId, makePayload({ passage: 'After' }), 'slot'),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
+      expect((await loadQuickSave(freshIfid, 'slot'))!.passage).toBe('After');
     });
   });
 

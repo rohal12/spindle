@@ -1,5 +1,6 @@
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
+import { deepEqual } from '../../class-registry';
 import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
@@ -37,23 +38,6 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   );
 }
 
-function valuesEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (
-    typeof a === 'object' &&
-    a !== null &&
-    typeof b === 'object' &&
-    b !== null
-  ) {
-    try {
-      return JSON.stringify(a) === JSON.stringify(b);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
 function computeAndApply(
   expr: string,
   name: string,
@@ -78,7 +62,7 @@ function computeAndApply(
     return;
   }
 
-  if (!valuesEqual(prevRef.current, newValue)) {
+  if (!deepEqual(prevRef.current, newValue)) {
     prevRef.current = newValue;
     if (isLocal) {
       try {

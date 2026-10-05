@@ -7,7 +7,7 @@ import type {
   SaveExport,
   StorageInfo,
 } from './types';
-import { isSavePayload } from './types';
+import { isSaveExport, isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
 import { deepClone, serialize, deserialize } from '../class-registry';
 import { emit } from '../event-emitter';
@@ -102,6 +102,10 @@ export async function getCurrentPlaythroughId(
  * before `getPayload()` captures the state, so data a hook sets is part of the
  * save; `aftersave` fires once `write` has stored it. Every user-facing save
  * path goes through here.
+ *
+ * The hook and capture run synchronously, but an error they throw (a failing
+ * hook, an unserializable payload) rejects the returned promise like a failed
+ * write rather than escaping to the caller.
  */
 export function saveWithHooks<T>(
   slot: string | undefined,
@@ -109,12 +113,16 @@ export function saveWithHooks<T>(
   getPayload: () => SavePayload,
   write: (payload: SavePayload) => Promise<T>,
 ): Promise<T> {
-  emit('beforesave', slot, custom);
-  const payload = getPayload();
-  return write(payload).then((result) => {
-    emit('aftersave', slot);
-    return result;
-  });
+  try {
+    emit('beforesave', slot, custom);
+    const payload = getPayload();
+    return write(payload).then((result) => {
+      emit('aftersave', slot);
+      return result;
+    });
+  } catch (err) {
+    return Promise.reject(err);
+  }
 }
 
 // --- Save CRUD ---
@@ -204,8 +212,26 @@ export async function loadSave(
   return deserializePayload(record.payload);
 }
 
+/**
+ * Delete a save record. If the default slot or a named slot holds it, that
+ * slot is cleared as well (pointer and slot index), as `deleteSlotSave` would.
+ */
 export async function deleteSaveById(saveId: string): Promise<void> {
-  await (await getBackend()).deleteSave(saveId);
+  const backend = await getBackend();
+  const record = await backend.getSave(saveId);
+  await backend.deleteSave(saveId);
+  if (!record) return;
+
+  const ifid = record.meta.ifid;
+  const slots = [undefined, ...(await getIndexedSlots(ifid))];
+  for (const slot of slots) {
+    const metaKey = slotMetaKey(ifid, slot);
+    await withSlot(metaKey, async () => {
+      if ((await backend.getMeta<string>(metaKey)) !== saveId) return;
+      await backend.deleteMeta(metaKey);
+      await removeFromSlotIndex(ifid, slot);
+    });
+  }
 }
 
 export async function renameSave(
@@ -314,6 +340,25 @@ function slotMetaKey(ifid: string, slot?: string): string {
     : `${AUTOSAVE_KEY_PREFIX}${ifid}`;
 }
 
+/** Tail of each slot's operation queue, keyed by the slot's meta key. */
+const slotQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * Run a complete operation on one slot (save, import, delete) after the ones
+ * already queued for it. Each operation reads the slot pointer and writes the
+ * record and pointer as a unit, so concurrent operations on the same slot
+ * apply in call order instead of each creating its own record.
+ */
+function withSlot<T>(metaKey: string, op: () => Promise<T>): Promise<T> {
+  const run = (slotQueues.get(metaKey) ?? Promise.resolve()).then(op);
+  const tail = run.catch(() => {});
+  slotQueues.set(metaKey, tail);
+  void tail.then(() => {
+    if (slotQueues.get(metaKey) === tail) slotQueues.delete(metaKey);
+  });
+  return run;
+}
+
 /** Tail of the queue that serializes slot index updates. */
 let slotIndexQueue: Promise<unknown> = Promise.resolve();
 
@@ -368,32 +413,34 @@ function toSaveInfo(record: SaveRecord, slot?: string): SaveInfo {
   };
 }
 
-export async function quickSave(
+export function quickSave(
   ifid: string,
   playthroughId: string,
   payload: SavePayload,
   slot?: string,
   custom?: Record<string, unknown>,
 ): Promise<SaveRecord> {
-  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await backend.getMeta<string>(metaKey);
+  return withSlot(metaKey, async () => {
+    const backend = await getBackend();
+    const existingId = await backend.getMeta<string>(metaKey);
 
-  if (existingId) {
-    const updated = await overwriteSave(existingId, payload, custom);
-    if (updated) return updated;
-  }
+    if (existingId) {
+      const updated = await overwriteSave(existingId, payload, custom);
+      if (updated) return updated;
+    }
 
-  // Create new save
-  const record = await createSave(ifid, playthroughId, payload, {
-    isAutosave: !isNamedSlot(slot),
-    ...(isNamedSlot(slot) ? { slot } : {}),
-    ...custom,
+    // Create new save
+    const record = await createSave(ifid, playthroughId, payload, {
+      isAutosave: !isNamedSlot(slot),
+      ...(isNamedSlot(slot) ? { slot } : {}),
+      ...custom,
+    });
+    await backend.setMeta(metaKey, record.meta.id);
+    await addToSlotIndex(ifid, slot);
+
+    return record;
   });
-  await backend.setMeta(metaKey, record.meta.id);
-  await addToSlotIndex(ifid, slot);
-
-  return record;
 }
 
 export async function hasQuickSave(
@@ -425,7 +472,8 @@ export async function loadQuickSave(
 export async function populateKnownSaves(
   ifid: string,
 ): Promise<Record<string, true>> {
-  const result: Record<string, true> = {};
+  // No prototype, so a slot named '__proto__' is recorded as an entry
+  const result = Object.create(null) as Record<string, true>;
 
   // Check default autosave
   if (await hasQuickSave(ifid)) {
@@ -481,20 +529,19 @@ export async function listSlotSaves(ifid: string): Promise<SaveInfo[]> {
 /**
  * Delete a save by slot name. Removes from slot index if named.
  */
-export async function deleteSlotSave(
-  ifid: string,
-  slot?: string,
-): Promise<void> {
-  const backend = await getBackend();
+export function deleteSlotSave(ifid: string, slot?: string): Promise<void> {
   const metaKey = slotMetaKey(ifid, slot);
-  const existingId = await backend.getMeta<string>(metaKey);
-  if (!existingId) return;
+  return withSlot(metaKey, async () => {
+    const backend = await getBackend();
+    const existingId = await backend.getMeta<string>(metaKey);
+    if (!existingId) return;
 
-  await backend.deleteSave(existingId);
-  await backend.deleteMeta(metaKey);
+    await backend.deleteSave(existingId);
+    await backend.deleteMeta(metaKey);
 
-  // Remove from slot index if named
-  await removeFromSlotIndex(ifid, slot);
+    // Remove from slot index if named
+    await removeFromSlotIndex(ifid, slot);
+  });
 }
 
 // --- Session Persistence (survives F5, cleared on tab close) ---
@@ -569,6 +616,11 @@ async function prepareImport(
       `Save is from a different story (expected IFID ${ifid}, got ${data.ifid})`,
     );
   }
+  // Callers may pass parsed JSON; check the full structure before anything
+  // is stored or replaced
+  if (!isSaveExport(data)) {
+    throw new Error('Invalid save file format');
+  }
 
   const backend = await getBackend();
 
@@ -624,32 +676,34 @@ export async function exportSlotSave(
  * validation as `importSave` (version, IFID) and keeps the playthrough record
  * and slot index consistent.
  */
-export async function importSlotSave(
+export function importSlotSave(
   data: SaveExport,
   ifid: string,
   slot?: string,
 ): Promise<SaveInfo> {
-  const record = await prepareImport(data, ifid);
-
-  // The slot keys in `custom` describe where the save lives, so they follow
-  // the target slot rather than the slot the save was exported from.
-  const { slot: _exportedSlot, ...custom } = record.meta.custom ?? {};
-  record.meta.custom = {
-    ...custom,
-    isAutosave: !isNamedSlot(slot),
-    ...(isNamedSlot(slot) ? { slot } : {}),
-  };
-
-  const backend = await getBackend();
   const metaKey = slotMetaKey(ifid, slot);
-  const previousId = await backend.getMeta<string>(metaKey);
+  return withSlot(metaKey, async () => {
+    const record = await prepareImport(data, ifid);
 
-  await backend.putSave(record);
-  await backend.setMeta(metaKey, record.meta.id);
-  await addToSlotIndex(ifid, slot);
-  if (previousId) await backend.deleteSave(previousId);
+    // The slot keys in `custom` describe where the save lives, so they follow
+    // the target slot rather than the slot the save was exported from.
+    const { slot: _exportedSlot, ...custom } = record.meta.custom ?? {};
+    record.meta.custom = {
+      ...custom,
+      isAutosave: !isNamedSlot(slot),
+      ...(isNamedSlot(slot) ? { slot } : {}),
+    };
 
-  return toSaveInfo(record, slot);
+    const backend = await getBackend();
+    const previousId = await backend.getMeta<string>(metaKey);
+
+    await backend.putSave(record);
+    await backend.setMeta(metaKey, record.meta.id);
+    await addToSlotIndex(ifid, slot);
+    if (previousId) await backend.deleteSave(previousId);
+
+    return toSaveInfo(record, slot);
+  });
 }
 
 // --- Storage Management ---

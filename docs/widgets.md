@@ -78,7 +78,7 @@ Comma-separated arguments also work and are required when arguments contain oper
 {StatLine "Damage", $strength * 2, 100}
 ```
 
-Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
+Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared (including none at all), the extra parameters are `undefined` — they shadow any outer `@` locals of the same name rather than inheriting them.
 
 ## Block Widgets (Wrapping Content)
 
@@ -147,6 +147,8 @@ Block widgets can be nested inside each other:
 
 The presence of `{@children}` in the widget body is the signal — no extra syntax is needed in the definition header. Widgets without `{@children}` remain self-closing and work exactly as before.
 
+Block widgets defined in `StoryInit` or in `[widget]`-tagged passages are detected at startup, before any passage is parsed. They can therefore be invoked from any passage, and other widget definitions can use them, in any definition order.
+
 ### Notes
 
 - `@children` is a reserved name and cannot be used as a widget parameter name.
@@ -162,6 +164,7 @@ When you define a widget, its body is stored as an AST (parsed content). When yo
 - Widgets re-render when variables they reference change
 - Widgets can contain any markup: links, macros, HTML, other widgets
 - Arguments are evaluated at invocation time and scoped to the widget body
+- Arguments are copies: `{set @arg.x = 1}` changes `@arg` inside the widget body but not the variable that was passed in
 
 ## Example
 

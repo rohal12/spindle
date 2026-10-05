@@ -67,6 +67,19 @@ describe('macro components', () => {
       expect(el.textContent).toContain('Hero');
     });
 
+    it('displays built-in properties of primitives (#204)', () => {
+      useStoryStore.getState().setVariable('name', 'hero');
+      const el = renderPassage('{print $name.toUpperCase()} {$name.length}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toContain('HERO 4');
+    });
+
+    it('displays primitive properties inside a code span (#204)', () => {
+      useStoryStore.getState().setVariable('name', 'hero');
+      const el = renderPassage('`len {$name.length}`');
+      expect(el.textContent).toContain('len 4');
+    });
+
     it('displays empty string for undefined variable', () => {
       const el = renderPassage('Value: {$missing}.');
       expect(el.textContent).toContain('Value: .');
@@ -78,6 +91,13 @@ describe('macro components', () => {
       useStoryStore.getState().setVariable('x', 5);
       const el = renderPassage('{print $x * 2}');
       expect(el.textContent).toContain('10');
+    });
+
+    it('evaluates compact modulo after a closing parenthesis (#205)', () => {
+      useStoryStore.getState().setVariable('n', 10);
+      const el = renderPassage('{print ($n)%3}|{$n%4}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toContain('1|2');
     });
 
     it('shows error for invalid expression', () => {

@@ -177,6 +177,38 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     expect(Story.hasSave('slot-1')).toBe(false);
   });
 
+  it('rejects malformed history and keeps the save it would replace', async () => {
+    // Loads restore the moment's entry snapshot, so set hp before entering
+    Story.set('hp', 42);
+    Story.goto('Room');
+    await saveTo('slot-1');
+    const before = await Story.getSaveInfo('slot-1');
+    const data = (await Story.exportSave('slot-1'))!;
+    const malformed = structuredClone(data);
+    (malformed.save.payload as { history: unknown[] }).history = [null];
+
+    await expect(Story.importSave(malformed, 'slot-1')).rejects.toThrow(
+      'Invalid save file format',
+    );
+    expect(await Story.getSaveInfo('slot-1')).toEqual(before);
+    Story.set('hp', 1);
+    await expect(Story.load('slot-1')).resolves.toBeUndefined();
+    expect(Story.get('hp')).toBe(42);
+    expect(Story.passage).toBe('Room');
+  });
+
+  it('rejects an out-of-range history index', async () => {
+    await saveTo('slot-1');
+    const data = (await Story.exportSave('slot-1'))!;
+    const malformed = structuredClone(data);
+    malformed.save.payload.historyIndex = 5;
+
+    await expect(Story.importSave(malformed, 'slot-2')).rejects.toThrow(
+      'Invalid save file format',
+    );
+    expect(Story.hasSave('slot-2')).toBe(false);
+  });
+
   it('creates an "Imported" playthrough for an unknown playthrough', async () => {
     await saveTo('slot-1');
     const data = (await Story.exportSave('slot-1'))!;
@@ -259,6 +291,28 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
     for (const info of listed) Story.deleteSave(info.slot);
     await vi.waitFor(async () => expect(await Story.listSaves()).toEqual([]));
+  });
+
+  it('agrees with storage for slot names found on Object.prototype', async () => {
+    expect(Story.hasSave('constructor')).toBe(false);
+    expect(await Story.getSaveInfo('constructor')).toBeNull();
+    expect(Story.hasSave('toString')).toBe(false);
+    expect(await Story.getSaveInfo('toString')).toBeNull();
+
+    await Story.save('constructor');
+    await Story.save('__proto__');
+    expect(Story.hasSave('constructor')).toBe(true);
+    expect(Story.hasSave('__proto__')).toBe(true);
+    expect(Story.hasSave('toString')).toBe(false);
+
+    // After a reload, known saves are rebuilt from the slot index
+    const known = await populateKnownSaves(ifid);
+    expect(Object.keys(known).sort()).toEqual(['__proto__', 'constructor']);
+    expect(Object.prototype.hasOwnProperty.call(known, 'toString')).toBe(false);
+
+    await Story.deleteSave('__proto__');
+    expect(Story.hasSave('__proto__')).toBe(false);
+    expect(Story.hasSave('constructor')).toBe(true);
   });
 
   it('indexes every slot when saving to new slots concurrently', async () => {

@@ -27,7 +27,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-export function deepClone<T>(value: T): T {
+export interface DeepCloneOptions {
+  /**
+   * Return instances of unregistered classes (DOM nodes, promises, other
+   * library objects) by reference instead of copying their own keys into a
+   * plain object, which would lose their prototype and identity.
+   */
+  keepUnregistered?: boolean;
+}
+
+export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
   const seen = new Map<object, object>();
 
   function clone(val: unknown): unknown {
@@ -83,6 +92,7 @@ export function deepClone<T>(value: T): T {
     }
 
     // Plain object (or unregistered class — treat as plain)
+    if (!isPlainObject(val) && options.keepUnregistered) return val;
     if (isPlainObject(val) || typeof val === 'object') {
       const copy: Record<string, unknown> = {};
       seen.set(obj, copy);
@@ -96,6 +106,58 @@ export function deepClone<T>(value: T): T {
   }
 
   return clone(value) as T;
+}
+
+// --- Deep Equal ---
+
+/**
+ * Structural equality over the value types deepClone() supports: primitives,
+ * arrays, plain objects, class instances, Date, RegExp, Map and Set (nested
+ * at any depth). Map and Set entries are compared in insertion order.
+ */
+export function deepEqual(
+  a: unknown,
+  b: unknown,
+  seen: Map<object, object> = new Map(),
+): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    a === null ||
+    b === null ||
+    typeof a !== 'object' ||
+    typeof b !== 'object'
+  ) {
+    return false;
+  }
+  if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+  if (seen.get(a) === b) return true;
+  seen.set(a, b);
+
+  if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
+  if (a instanceof RegExp) return String(a) === String(b);
+  if (a instanceof Map || a instanceof Set) {
+    const bc = b as Map<unknown, unknown> | Set<unknown>;
+    if (a.size !== bc.size) return false;
+    const ai = a.entries();
+    const bi = bc.entries();
+    for (
+      let x = ai.next(), y = bi.next();
+      !x.done;
+      x = ai.next(), y = bi.next()
+    ) {
+      if (!deepEqual(x.value, y.value, seen)) return false;
+    }
+    return true;
+  }
+
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const keys = Object.keys(ao);
+  if (keys.length !== Object.keys(bo).length) return false;
+  for (const key of keys) {
+    if (!(key in bo) || !deepEqual(ao[key], bo[key], seen)) return false;
+  }
+  return true;
 }
 
 // --- Serialize ---

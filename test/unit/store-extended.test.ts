@@ -77,6 +77,18 @@ describe('store extended coverage', () => {
       expect(useStoryStore.getState().hasSave('slot-2')).toBe(false);
       expect(useStoryStore.getState().hasSave()).toBe(false);
     });
+
+    it('hasSave ignores names inherited from Object.prototype', () => {
+      useStoryStore.setState({ knownSaves: {} });
+      for (const slot of [
+        'constructor',
+        'toString',
+        'hasOwnProperty',
+        '__proto__',
+      ]) {
+        expect(useStoryStore.getState().hasSave(slot)).toBe(false);
+      }
+    });
   });
 
   describe('restart', () => {

@@ -26,6 +26,13 @@ const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
 
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
+/** Boxed sample values whose members a primitive of each type can access. */
+const PRIMITIVE_SAMPLES: Partial<Record<VarType, object>> = {
+  string: Object(''),
+  number: Object(0),
+  boolean: Object(false),
+};
+
 function inferSchema(value: unknown): FieldSchema {
   if (Array.isArray(value)) {
     return { type: 'array' };
@@ -137,6 +144,17 @@ function validateRef(
     // Arrays have built-in methods/properties (push, find, length, etc.)
     // so any field access on an array is allowed.
     if (current.type === 'array') return null;
+
+    // Primitives expose their wrapper's built-ins (length, toUpperCase,
+    // toFixed, etc.). Keep validating past properties of primitive type.
+    const sample = PRIMITIVE_SAMPLES[current.type];
+    if (sample && part in sample) {
+      const member: unknown = sample[part as keyof typeof sample];
+      const memberType = typeof member;
+      if (!VALID_VAR_TYPES.has(memberType)) return null;
+      current = { type: memberType as VarType };
+      continue;
+    }
 
     if (current.type !== 'object' || !current.fields) {
       return `Cannot access field "${part}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;

@@ -72,6 +72,51 @@ describe('action registration', () => {
     });
   });
 
+  // Issue #200: quotes in bracket-link values ended the synthesized args
+  describe('wiki-link values containing quotes', () => {
+    beforeEach(() => {
+      useStoryStore
+        .getState()
+        .init(
+          makeStoryData([
+            makePassage(1, 'Start', 'Start'),
+            makePassage(2, 'B', 'Second passage'),
+            makePassage(3, 'The "End"', 'Fin'),
+            makePassage(4, 'C:\\dir\\', 'Path'),
+          ]),
+        );
+    });
+
+    function linkFor(markup: string) {
+      const el = renderPassage(markup);
+      const action = getActions().find((a) => a.type === 'link');
+      return { el, action };
+    }
+
+    it.each([
+      ['[[Say "hello"->B]]', 'Say "hello"', 'B'],
+      ['[[Say "hello"|B]]', 'Say "hello"', 'B'],
+      ['[[B<-Say "hello"]]', 'Say "hello"', 'B'],
+      ['[[Go->The "End"]]', 'Go', 'The "End"'],
+      ['[[Go|The "End"]]', 'Go', 'The "End"'],
+      ['[[The "End"<-Go]]', 'Go', 'The "End"'],
+      ['[[The "End"]]', 'The "End"', 'The "End"'],
+      ['[["Quoted" \'mixed\'->The "End"]]', '"Quoted" \'mixed\'', 'The "End"'],
+      ['[[Path \\ "x\\"->C:\\dir\\]]', 'Path \\ "x\\"', 'C:\\dir\\'],
+    ])('%s keeps label and target (#200)', (markup, label, target) => {
+      const { el, action } = linkFor(markup);
+      expect(el.querySelector('a.macro-link')!.textContent).toBe(label);
+      expect(action!.label).toBe(label);
+      expect(action!.target).toBe(target);
+    });
+
+    it('navigates to the target when clicked (#200)', () => {
+      const { el } = linkFor('[[Say "hello"->B]]');
+      (el.querySelector('a.macro-link') as HTMLElement).click();
+      expect(useStoryStore.getState().currentPassage).toBe('B');
+    });
+  });
+
   describe('multiple links to same passage', () => {
     it('generates unique IDs with suffix', () => {
       renderPassage('[[Go|Forest]] [[Also go|Forest]]');

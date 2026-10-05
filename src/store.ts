@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
 import {
   enablePatches,
@@ -214,8 +214,10 @@ function resetModuleState(base: Record<string, unknown>): void {
 /**
  * Record the state StoryInit left behind as the start moment: its variable
  * snapshot (the history base) and PRNG state. Called by executeStoryInit()
- * after the StoryInit passage has rendered; init()/restart() record the
- * start moment before StoryInit runs. A no-op once the story has moved on.
+ * after the StoryInit passage has rendered, and again after the `storyinit`
+ * handlers have run at boot (unless a session was restored) and on restart;
+ * init()/restart() record the start moment before StoryInit runs. A no-op
+ * once the story has moved on.
  */
 export function recordStoryInitState(): void {
   const { history, historyIndex, variables } = useStoryStore.getState();
@@ -777,6 +779,8 @@ export const useStoryStore = create<StoryState>()(
       executeStoryInit();
       clearSession(storyData.ifid);
       emit('storyinit');
+      // The storyinit handlers' changes belong to the start moment too
+      recordStoryInitState();
 
       // Start a new playthrough on restart
       startNewPlaythrough(storyData.ifid)
@@ -855,7 +859,8 @@ export const useStoryStore = create<StoryState>()(
     hasSave: (slot?: string) => {
       const { storyData, knownSaves } = get();
       if (!storyData) return false;
-      return (slot ?? '') in knownSaves;
+      // Own entries only: slot names like 'constructor' are not inherited saves
+      return Object.prototype.hasOwnProperty.call(knownSaves, slot ?? '');
     },
 
     getSaveInfo: async (slot?: string): Promise<SaveInfo | null> => {

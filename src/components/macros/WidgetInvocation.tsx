@@ -230,7 +230,9 @@ export function WidgetInvocation({
 
   const childrenValue = invocationChildren?.length ? invocationChildren : null;
 
-  if (params.length === 0 || !rawArgs) {
+  // Parameterized widgets always get their own local scope, even when invoked
+  // without arguments: missing parameters shadow outer locals as undefined.
+  if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
         {renderNodes(body, { nobr, locals: parentValues })}
@@ -238,7 +240,7 @@ export function WidgetInvocation({
     );
   }
 
-  const argExprs = splitArgs(rawArgs);
+  const argExprs = rawArgs ? splitArgs(rawArgs) : [];
   const values: unknown[] = [];
 
   for (let i = 0; i < params.length; i++) {

@@ -167,6 +167,88 @@ describe('isSaveExport', () => {
     (data as any).save.payload.history = [];
     expect(isSaveExport(data)).toBe(false);
   });
+
+  it.each([
+    ['null', null],
+    ['a string', 'Start'],
+    ['missing passage', { variables: {}, timestamp: 1 }],
+    ['null variables', { passage: 'Start', variables: null, timestamp: 1 }],
+    ['array variables', { passage: 'Start', variables: [], timestamp: 1 }],
+    ['missing timestamp', { passage: 'Start', variables: {} }],
+    [
+      'malformed prng',
+      { passage: 'Start', variables: {}, timestamp: 1, prng: { seed: 1 } },
+    ],
+  ])('returns false for a history moment that is %s', (_, moment) => {
+    const data = makeValidExport();
+    (data as any).save.payload.history = [moment];
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('returns false when any history moment is malformed', () => {
+    const data = makeValidExport();
+    (data as any).save.payload.history = [
+      { passage: 'Room', variables: {}, timestamp: 1 },
+      null,
+      { passage: 'Start', variables: {}, timestamp: 2 },
+    ];
+    (data as any).save.payload.historyIndex = 2;
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it.each([
+    ['negative', -1],
+    ['past the end', 1],
+    ['fractional', 0.5],
+    ['NaN', NaN],
+  ])('returns false for a %s historyIndex', (_, index) => {
+    const data = makeValidExport();
+    (data as any).save.payload.historyIndex = index;
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it("returns false when the current moment is not the payload's passage", () => {
+    const data = makeValidExport();
+    (data as any).save.payload.passage = 'Room';
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('returns false for a malformed payload.prng', () => {
+    const data = makeValidExport();
+    (data as any).save.payload.prng = 'seed';
+    expect(isSaveExport(data)).toBe(false);
+  });
+
+  it('returns false for non-object visit or render counts', () => {
+    const visits = makeValidExport();
+    (visits as any).save.payload.visitCounts = 3;
+    expect(isSaveExport(visits)).toBe(false);
+    const renders = makeValidExport();
+    (renders as any).save.payload.renderCounts = null;
+    expect(isSaveExport(renders)).toBe(false);
+  });
+
+  it('accepts a multi-moment history with PRNG snapshots', () => {
+    const data = makeValidExport();
+    (data as any).save.payload = {
+      passage: 'Start',
+      variables: { hp: 100 },
+      history: [
+        { passage: 'Room', variables: {}, timestamp: 1, prng: null },
+        {
+          passage: 'Start',
+          variables: { hp: 100 },
+          timestamp: 2,
+          prng: { seed: 'abc', pull: 3 },
+        },
+      ],
+      historyIndex: 1,
+      visitCounts: { Start: 1, Room: 1 },
+      renderCounts: { Start: 1, Room: 1 },
+      prng: { seed: 'abc', pull: 4 },
+    };
+    expect(isSaveExport(data)).toBe(true);
+  });
 });
 
 describe('isSavePayload', () => {

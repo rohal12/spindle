@@ -14,12 +14,13 @@ function parseArgs(rawArgs: string): {
   display: string;
   passage: string | null;
 } {
-  // {link "text" "Passage"} or {link "text"}
+  // {link "text" "Passage"} or {link "text"}. A backslash escapes a quote
+  // or another backslash inside a quoted argument (#200).
   const parts: string[] = [];
-  const re = /(["'])(.*?)\1/g;
+  const re = /(["'])((?:\\[^]|(?!\1)[^\\])*)\1/g;
   let m;
   while ((m = re.exec(rawArgs)) !== null) {
-    parts.push(m[2]!);
+    parts.push(m[2]!.replace(/\\(["'\\])/g, '$1'));
   }
   if (parts.length >= 2) {
     return { display: parts[0]!, passage: parts[1]! };

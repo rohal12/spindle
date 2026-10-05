@@ -4,6 +4,7 @@ import {
   getClassName,
   clearRegistry,
   deepClone,
+  deepEqual,
   serialize,
   deserialize,
 } from '../../src/class-registry';
@@ -136,6 +137,20 @@ describe('class-registry', () => {
       expect(cloned).not.toBe(player);
       expect(cloned instanceof Player).toBe(false);
       expect((cloned as any).name).toBe('Test');
+    });
+
+    it('keeps unregistered class instances by reference with keepUnregistered', () => {
+      registerClass('Inventory', Inventory);
+      const player = new Player({ name: 'Test' });
+      const inv = new Inventory();
+      const obj = { player, inv, data: { n: 1 } };
+      const cloned = deepClone(obj, { keepUnregistered: true });
+
+      expect(cloned.player).toBe(player);
+      expect(cloned.inv).not.toBe(inv);
+      expect(cloned.inv instanceof Inventory).toBe(true);
+      expect(cloned.data).not.toBe(obj.data);
+      expect(cloned.data).toEqual({ n: 1 });
     });
 
     it('handles circular references', () => {
@@ -469,6 +484,37 @@ describe('class-registry', () => {
       expect(restored.pattern instanceof RegExp).toBe(true);
       expect(restored.items[0] instanceof Date).toBe(true);
       expect(restored.items[1] instanceof RegExp).toBe(true);
+    });
+  });
+
+  describe('deepEqual', () => {
+    it('compares Map, Set and RegExp by contents (#202)', () => {
+      expect(deepEqual(new Map([['n', 0]]), new Map([['n', 0]]))).toBe(true);
+      expect(deepEqual(new Map([['n', 0]]), new Map([['n', 1]]))).toBe(false);
+      expect(deepEqual(new Set([0]), new Set([0]))).toBe(true);
+      expect(deepEqual(new Set([0]), new Set([1]))).toBe(false);
+      expect(deepEqual(/a/g, /a/g)).toBe(true);
+      expect(deepEqual(/a/g, /a/i)).toBe(false);
+      expect(deepEqual(new Map(), new Set())).toBe(false);
+    });
+
+    it('compares built-ins nested inside plain objects and arrays', () => {
+      const make = (n: number) => ({ list: [new Map([['n', new Set([n])]])] });
+      expect(deepEqual(make(0), make(0))).toBe(true);
+      expect(deepEqual(make(0), make(1))).toBe(false);
+    });
+
+    it('treats invalid Dates as equal to each other', () => {
+      expect(deepEqual(new Date(NaN), new Date(NaN))).toBe(true);
+      expect(deepEqual(new Date(0), new Date(1))).toBe(false);
+    });
+
+    it('handles cycles', () => {
+      const a: Record<string, unknown> = { x: 1 };
+      a.self = a;
+      const b: Record<string, unknown> = { x: 1 };
+      b.self = b;
+      expect(deepEqual(a, b)).toBe(true);
     });
   });
 });

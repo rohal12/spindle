@@ -102,6 +102,8 @@ console.log('Built dist/pkg/story-variables.js (tooling)');
 // Bundle the headless entry point (`@rohal12/spindle/headless`): boots a
 // compiled story inside a caller-provided DOM (happy-dom/jsdom) in Node.
 // Runtime dependencies stay external so the consumer's single copy is used.
+// Nothing here may import `react`: the store binds `zustand/vanilla` to Preact
+// (src/preact-store.ts), so plain Node resolution works without an alias.
 const RUNTIME_DEPS = /^(preact|zustand|immer|micromark)(\/|-|$)/;
 await build({
   configFile: false,

@@ -3,13 +3,6 @@ import preact from '@preact/preset-vite';
 
 export default defineConfig({
   plugins: [preact()],
-  resolve: {
-    alias: {
-      react: 'preact/compat',
-      'react-dom': 'preact/compat',
-      'react/jsx-runtime': 'preact/jsx-runtime',
-    },
-  },
   test: {
     environment: 'node',
     setupFiles: ['./src/macros/register-builtins.ts'],
@@ -20,11 +13,6 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.d.ts'],
       reporter: ['text', 'json', 'json-summary'],
-    },
-    server: {
-      deps: {
-        inline: [/zustand/],
-      },
     },
   },
 });

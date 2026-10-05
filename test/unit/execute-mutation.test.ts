@@ -140,6 +140,72 @@ describe('executeMutation', () => {
   });
 });
 
+describe('executeMutation locals (#203)', () => {
+  beforeEach(() => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'Start', '')]), {
+        items: [{ name: 'old' }],
+      });
+    installStoryAPI();
+  });
+
+  function run(code: string, locals: Record<string, unknown>) {
+    const updates: [string, unknown][] = [];
+    executeMutation(code, locals, (key, value) => updates.push([key, value]));
+    return updates;
+  }
+
+  it('commits a nested change to a frozen local copied from story state', () => {
+    const item = (useStoryStore.getState().variables.items as object[])[0]!;
+    expect(Object.isFrozen(item)).toBe(true);
+    const updates = run('@item.name = "new"', { item });
+    expect(updates).toEqual([['item', { name: 'new' }]]);
+    expect(useStoryStore.getState().variables.items).toEqual([{ name: 'old' }]);
+  });
+
+  it('commits a nested change to an unfrozen local as a new reference', () => {
+    const obj = { n: 1 };
+    const updates = run('@obj.n = 2', { obj });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]![0]).toBe('obj');
+    expect(updates[0]![1]).toEqual({ n: 2 });
+    expect(updates[0]![1]).not.toBe(obj);
+    expect(obj).toEqual({ n: 1 });
+  });
+
+  it('detects in-place changes to Map and Set locals', () => {
+    const updates = run('@m.set("a", 2); @s.add(2)', {
+      m: new Map([['a', 1]]),
+      s: new Set([1]),
+    });
+    const byKey = Object.fromEntries(updates);
+    expect((byKey.m as Map<string, number>).get('a')).toBe(2);
+    expect([...(byKey.s as Set<number>)]).toEqual([1, 2]);
+  });
+
+  it('does not notify for untouched object locals', () => {
+    const updates = run('@x = 1', { x: 0, obj: { n: 1 }, list: [1] });
+    expect(updates).toEqual([['x', 1]]);
+  });
+
+  it('keeps unregistered class instances in locals by reference', () => {
+    class Thing {
+      n = 1;
+    }
+    const thing = new Thing();
+    const updates = run('@x = 1', { x: 0, thing });
+    expect(updates).toEqual([['x', 1]]);
+    const assigned = run('@copy = @thing', { thing });
+    expect(assigned).toEqual([['copy', thing]]);
+    expect(assigned[0]![1]).toBe(thing);
+  });
+
+  it('still reports deleted locals', () => {
+    expect(run('delete @obj', { obj: { n: 1 } })).toEqual([['obj', undefined]]);
+  });
+});
+
 describe('executeMutation commit', () => {
   let disconnect: () => void;
 

@@ -214,6 +214,14 @@ If only one quoted string is given, it's used as both display and passage:
 {link "North Room"}{/link}
 ```
 
+Inside a quoted string, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash:
+
+```
+{link "Say \"hello\"" "Greeting"}{/link}
+```
+
+Bracket links need no escaping: `[[Say "hello"->Greeting]]` keeps its quotes.
+
 ### `{goto}`
 
 Navigate to a passage immediately (no user interaction).
@@ -454,6 +462,8 @@ Add `inline` to skip markdown processing and render the passage content as inlin
 ```
 {include "RawData" inline}
 ```
+
+The flag must stand on its own, separated by a space from the passage expression. The word inside a quoted name or an expression is not the flag, so `{include "inline"}` includes the passage named `inline`.
 
 ### `{nobr}`
 

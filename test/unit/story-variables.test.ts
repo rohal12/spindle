@@ -158,6 +158,38 @@ describe('validatePassages', () => {
     expect(errors).toEqual([]);
   });
 
+  it('allows built-in properties and methods on primitives (#204)', () => {
+    const decls =
+      '$name = "hero"\n$n = 3.14159\n$flag = true\n$player = { name: "Hero" }';
+    const schema = parseStoryVariables(decls);
+    const passages = makePassages(
+      ['StoryVariables', decls],
+      [
+        'Start',
+        '{print $name.toUpperCase()}{$name.length}{print $n.toFixed(2)}' +
+          '{print $flag.toString()}{$player.name.length}{$name.length.toFixed}',
+      ],
+    );
+    const errors = validatePassages(passages, schema);
+    expect(errors).toEqual([]);
+  });
+
+  it('catches invalid access past a primitive built-in (#204)', () => {
+    const schema = parseStoryVariables('$name = "hero"');
+    const passages = makePassages(
+      ['StoryVariables', '$name = "hero"'],
+      ['Start', '{$name.length.bogus}{$name.bogus}'],
+    );
+    const errors = validatePassages(passages, schema);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatch(
+      /Cannot access field "bogus" on \$name\.length \(type: number\)/,
+    );
+    expect(errors[1]).toMatch(
+      /Cannot access field "bogus" on \$name \(type: string\)/,
+    );
+  });
+
   it('catches field access on non-object types', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(

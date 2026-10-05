@@ -4,6 +4,8 @@ import { tokenize } from './markup/tokenizer';
 import { buildAST } from './markup/ast';
 import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
+import { emit } from './event-emitter';
+import type { SavePayload } from './saves/types';
 
 /** Hidden container holding the currently mounted StoryInit tree. */
 let storyInitContainer: HTMLElement | null = null;
@@ -58,5 +60,26 @@ export function executeStoryInit() {
   const saveTitlePassage = state.storyData.passages.get('SaveTitle');
   if (saveTitlePassage) {
     setSaveTitlePassage(saveTitlePassage.content);
+  }
+}
+
+/**
+ * Initialize a freshly booted story: run StoryInit, restore `session` (the
+ * state a page refresh left behind) if there is one, then fire `storyinit`
+ * once all state is settled. Without a session, what the `storyinit`
+ * handlers set synchronously belongs to the start moment, like StoryInit's
+ * changes; a restored session keeps the history it recorded.
+ */
+export function initializeStory(session?: SavePayload): void {
+  executeStoryInit();
+
+  if (session) {
+    useStoryStore.getState().loadFromPayload(session);
+  }
+
+  emit('storyinit');
+
+  if (!session) {
+    recordStoryInitState();
   }
 }
