@@ -15,6 +15,7 @@ import {
   renameSave,
   exportSave,
   importSave,
+  deserializePayload,
   type PlaythroughGroup,
 } from '../../saves/save-manager';
 import { DialogCloseContext } from '../PassageDialog';
@@ -126,7 +127,8 @@ export function SaveManagerContent() {
 
   const handleLoad = async (save: SaveRecord) => {
     try {
-      loadFromPayload(save.payload);
+      // Stored records hold serialized variables; the store expects live ones
+      loadFromPayload(deserializePayload(save.payload));
       showStatus('Game loaded');
       if (closeDialog) setTimeout(closeDialog, 500);
     } catch {

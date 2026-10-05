@@ -224,6 +224,17 @@ export function deserialize<T>(value: T): T {
       return instance;
     }
 
+    // Already-live built-in — pass through as-is, so deserializing an
+    // already-deserialized value is a no-op instead of flattening it to {}
+    if (
+      val instanceof Date ||
+      val instanceof RegExp ||
+      val instanceof Map ||
+      val instanceof Set
+    ) {
+      return val;
+    }
+
     // Already-live registered class instance — pass through as-is
     const ctor = (obj as object).constructor as Constructor;
     if (ctorToName.has(ctor)) {

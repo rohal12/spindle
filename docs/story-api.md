@@ -570,6 +570,16 @@ Story.on('variableChanged', function (changed) {
   }
 });
 
+// Loading a game: `slot` is the named slot passed to Story.load(slot),
+// or undefined for the default slot, the saves dialog, and session
+// restore after a page refresh
+Story.on('beforeload', function (slot) {
+  console.log('Loading ' + (slot || 'game'));
+});
+Story.on('afterload', function (slot) {
+  console.log('Loaded', Story.get('health'));
+});
+
 // Later: stop listening
 unsub();
 ```

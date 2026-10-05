@@ -36,7 +36,7 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { deepClone, serialize, deserialize } from './class-registry';
+import { deepClone, serialize } from './class-registry';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -302,7 +302,11 @@ export interface StoryState {
   clearAllData: () => void;
   deletePlaythrough: (playthroughId: string) => void;
   getSavePayload: () => SavePayload;
-  loadFromPayload: (payload: SavePayload) => void;
+  /**
+   * Replace the game state with a live (deserialized) payload. `slot` is
+   * passed to the `beforeload`/`afterload` events.
+   */
+  loadFromPayload: (payload: SavePayload, slot?: string) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
@@ -687,7 +691,7 @@ export const useStoryStore = create<StoryState>()(
       loadQuickSave(storyData.ifid, slot)
         .then((payload) => {
           if (!payload) return;
-          get().loadFromPayload(payload);
+          get().loadFromPayload(payload, slot);
         })
         .catch((err) => {
           console.error('spindle: failed to load save', err);
@@ -835,41 +839,42 @@ export const useStoryStore = create<StoryState>()(
       };
     },
 
-    loadFromPayload: (payload: SavePayload) => {
+    loadFromPayload: (payload: SavePayload, slot?: string) => {
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
 
-      emit('beforeload', undefined);
+      emit('beforeload', slot);
 
+      // The payload is already live (deserialized at the storage boundary by
+      // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
-      const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const base = deepClone(payload.history[0]?.variables ?? {});
       const newPatchEntries: PatchEntry[] = [];
 
       let prevVars: Record<string, unknown> = base;
       for (let i = 1; i < payload.history.length; i++) {
-        const currVars = deserialize(payload.history[i]!.variables) as Record<
-          string,
-          unknown
-        >;
+        const currVars = deepClone(payload.history[i]!.variables);
         newPatchEntries.push(computeVarPatches(prevVars, currVars));
         prevVars = currVars;
       }
 
       variableBase = deepClone(base);
       patchEntries = newPatchEntries;
-      serializedHistory = [];
+      // Seed the session cache from the payload's own snapshots: the current
+      // variables can differ from the last moment's (set after entering it,
+      // or historyIndex < last), so persistSession must not rebuild them.
+      serializedHistory = payload.history.map((m) => ({
+        passage: m.passage,
+        variables: serialize(m.variables),
+        timestamp: m.timestamp,
+        prng: m.prng,
+      }));
 
       set((state) => {
         state.currentPassage = payload.passage;
-        state.variables = deserialize(payload.variables) as Record<
-          string,
-          unknown
-        >;
+        state.variables = deepClone(payload.variables);
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
@@ -885,7 +890,9 @@ export const useStoryStore = create<StoryState>()(
         state.transient = deepClone(get().transientDefaults);
       });
 
-      lastNavigationVars = get().variables;
+      // The next navigate() diffs from the snapshot recorded for the current
+      // moment, not from the live variables (which may hold later edits)
+      lastNavigationVars = reconstructVarsAt(get().historyIndex);
 
       if (payload.prng) {
         restorePRNG(payload.prng.seed, payload.prng.pull);
@@ -893,7 +900,10 @@ export const useStoryStore = create<StoryState>()(
         resetPRNG();
       }
 
-      emit('afterload', undefined);
+      // Write the loaded game to the session so a refresh restores it
+      persistSession(get);
+
+      emit('afterload', slot);
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {
