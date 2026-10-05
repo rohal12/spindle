@@ -14,6 +14,7 @@ import {
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
 import { isSaveExport } from '../../src/saves/types';
+import { on } from '../../src/event-emitter';
 
 function makePassage(pid: number, name: string, content: string): PassageData {
   return { pid, name, tags: [], metadata: {}, content };
@@ -589,6 +590,43 @@ describe('SaveManagerContent', () => {
 
       // State should be restored
       expect(useStoryStore.getState().currentPassage).toBe('Start');
+    });
+
+    it('restores built-in value types and fires load events without a slot', async () => {
+      const data = {
+        date: new Date('2025-01-01T00:00:00.000Z'),
+        map: new Map([['a', 1]]),
+        set: new Set([1]),
+        regex: /a/g,
+      };
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, {
+        ...makePayload(),
+        variables: { data },
+        history: [{ passage: 'Start', variables: { data }, timestamp: 1 }],
+      });
+      const slots: Array<string | undefined> = [];
+      const unsubs = [
+        on('beforeload', (slot) => slots.push(slot)),
+        on('afterload', (slot) => slots.push(slot)),
+      ];
+
+      renderSaveManager(container, onClose);
+      await flush();
+      const loadBtns = [
+        ...container.querySelectorAll('.save-slot-action.primary'),
+      ].filter((b) => b.textContent === 'Load');
+      await act(async () => (loadBtns[0] as HTMLElement).click());
+      await flush();
+      unsubs.forEach((u) => u());
+
+      const loaded = useStoryStore.getState().variables.data as typeof data;
+      expect(loaded.date).toBeInstanceOf(Date);
+      expect(loaded.date.toISOString()).toBe('2025-01-01T00:00:00.000Z');
+      expect([...loaded.map]).toEqual([['a', 1]]);
+      expect([...loaded.set]).toEqual([1]);
+      expect(loaded.regex).toEqual(/a/g);
+      expect(slots).toEqual([undefined, undefined]);
     });
 
     it('shows "Game loaded" status after load', async () => {

@@ -36,7 +36,7 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { deepClone, serialize, deserialize } from './class-registry';
+import { deepClone, serialize } from './class-registry';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -301,6 +301,7 @@ export interface StoryState {
   clearAllData: () => void;
   deletePlaythrough: (playthroughId: string) => void;
   getSavePayload: () => SavePayload;
+  /** Replace the game state with a live (deserialized) payload. */
   loadFromPayload: (payload: SavePayload) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
@@ -840,19 +841,15 @@ export const useStoryStore = create<StoryState>()(
 
       emit('beforeload', undefined);
 
+      // The payload is already live (deserialized at the storage boundary by
+      // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
-      const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const base = deepClone(payload.history[0]?.variables ?? {});
       const newPatchEntries: PatchEntry[] = [];
 
       let prevVars: Record<string, unknown> = base;
       for (let i = 1; i < payload.history.length; i++) {
-        const currVars = deserialize(payload.history[i]!.variables) as Record<
-          string,
-          unknown
-        >;
+        const currVars = deepClone(payload.history[i]!.variables);
         newPatchEntries.push(computeVarPatches(prevVars, currVars));
         prevVars = currVars;
       }
@@ -863,10 +860,7 @@ export const useStoryStore = create<StoryState>()(
 
       set((state) => {
         state.currentPassage = payload.passage;
-        state.variables = deserialize(payload.variables) as Record<
-          string,
-          unknown
-        >;
+        state.variables = deepClone(payload.variables);
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,

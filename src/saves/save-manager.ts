@@ -157,18 +157,28 @@ export async function overwriteSave(
   return updated;
 }
 
+/**
+ * Turn a stored (serialized) payload into a live one, restoring class
+ * instances and built-ins. Returns a new payload; the stored one is left
+ * untouched. Payloads handed to the store's `loadFromPayload()` must be live.
+ */
+export function deserializePayload(payload: SavePayload): SavePayload {
+  return {
+    ...payload,
+    variables: deserialize(payload.variables),
+    history: payload.history.map((m) => ({
+      ...m,
+      variables: deserialize(m.variables),
+    })),
+  };
+}
+
 export async function loadSave(
   saveId: string,
 ): Promise<SavePayload | undefined> {
   const record = await (await getBackend()).getSave(saveId);
   if (!record) return undefined;
-  const payload = record.payload;
-  payload.variables = deserialize(payload.variables);
-  payload.history = payload.history.map((m) => ({
-    ...m,
-    variables: deserialize(m.variables),
-  }));
-  return payload;
+  return deserializePayload(record.payload);
 }
 
 export async function deleteSaveById(saveId: string): Promise<void> {
@@ -458,13 +468,7 @@ export function loadSession(ifid: string): SavePayload | undefined {
     if (!raw) return undefined;
     const parsed: unknown = JSON.parse(raw);
     if (!isSavePayload(parsed)) return undefined;
-    const payload = parsed;
-    payload.variables = deserialize(payload.variables);
-    payload.history = payload.history.map((m) => ({
-      ...m,
-      variables: deserialize(m.variables),
-    }));
-    return payload;
+    return deserializePayload(parsed);
   } catch {
     return undefined;
   }
