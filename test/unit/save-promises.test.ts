@@ -279,6 +279,34 @@ describe('storage operations run in call order', () => {
     expect(data!.save.payload.passage).toBe('Room');
   });
 
+  it('clearGameData restarts at once: a save issued after it belongs to the new game', async () => {
+    const old = useStoryStore.getState().playthroughId;
+    const cleared = Story.storage.clearGameData();
+    const current = useStoryStore.getState().playthroughId;
+    expect(current).not.toBe(old);
+    const saved = Story.save('a');
+    await Promise.all([cleared, saved]);
+
+    expect(Story.hasSave('a')).toBe(true);
+    const groups = await saveManager.getSavesGrouped(ifid);
+    expect(
+      groups.map((g) => [
+        g.playthrough.id,
+        g.playthrough.label,
+        g.saves.length,
+      ]),
+    ).toEqual([[current, 'Playthrough 1', 1]]);
+  });
+
+  it('clearGameData deletes a save issued right before it', async () => {
+    const saved = Story.save('a');
+    const cleared = Story.storage.clearGameData();
+    await Promise.all([saved, cleared]);
+
+    expect(Story.hasSave('a')).toBe(false);
+    expect(await Story.listSaves()).toEqual([]);
+  });
+
   it('deleting the playthrough a booting game looks up replaces it', async () => {
     await Story.save('a');
     const old = useStoryStore.getState().playthroughId;

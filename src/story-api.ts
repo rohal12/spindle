@@ -18,8 +18,6 @@ import type {
 import {
   setTitleGenerator,
   getStorageInfo as _getStorageInfo,
-  clearGameData as _clearGameData,
-  clearAllData as _clearAllData,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
@@ -481,22 +479,12 @@ function createStoryAPI(): StoryAPI {
         return { usage: 0, quota: 0, estimateSupported: false };
       },
 
-      async clearGameData(): Promise<void> {
-        const ifid = useStoryStore.getState().storyData?.ifid;
-        if (!ifid) return;
-        await _clearGameData(ifid);
-        useStoryStore.setState((state) => {
-          state.knownSaves = {};
-        });
-        useStoryStore.getState().restart();
+      clearGameData(): Promise<void> {
+        return useStoryStore.getState().clearGameData();
       },
 
-      async clearAllData(): Promise<void> {
-        await _clearAllData();
-        useStoryStore.setState((state) => {
-          state.knownSaves = {};
-        });
-        useStoryStore.getState().restart();
+      clearAllData(): Promise<void> {
+        return useStoryStore.getState().clearAllData();
       },
 
       deletePlaythrough(playthroughId: string): Promise<void> {

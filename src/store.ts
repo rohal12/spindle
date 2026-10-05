@@ -432,8 +432,13 @@ export interface StoryState {
   deleteSave: (slot?: string) => Promise<void>;
   exportSave: (slot?: string) => Promise<SaveExport | null>;
   importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
-  clearGameData: () => void;
-  clearAllData: () => void;
+  /**
+   * Delete the story's saves and playthroughs and restart. The restart is
+   * immediate; the promise settles once the data is deleted.
+   */
+  clearGameData: () => Promise<void>;
+  /** As clearGameData, for all Spindle data (every story). */
+  clearAllData: () => Promise<void>;
   /**
    * Delete a playthrough and its saves. Deleting the current one moves the
    * running game to a new playthrough.
@@ -961,34 +966,40 @@ export const useStoryStore = create<StoryState>()(
 
     clearGameData: () => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smClearGameData(storyData.ifid)
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear game data', err);
+      // Queue the clearing, then restart now: the new playthrough is stored
+      // after it, and operations issued from here on belong to the new game.
+      // The slot cache empties once the clearing is done, after operations
+      // issued before it have updated it.
+      const cleared = smClearGameData(storyData.ifid).then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear game data', err);
+          throw err;
+        }),
+      );
     },
 
     clearAllData: () => {
-      const { storyData } = get();
-      if (!storyData) return;
-
-      smClearAllData()
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear all data', err);
+      // As clearGameData: queue the clearing, then restart now
+      const cleared = smClearAllData().then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear all data', err);
+          throw err;
+        }),
+      );
     },
 
     deletePlaythrough: (playthroughId: string) => {
