@@ -158,3 +158,68 @@ describe('sequential @local assignments (#166)', () => {
     expect(useStoryStore.getState().variables.out).toBe(3);
   });
 });
+
+describe('nested @local mutations (#203)', () => {
+  beforeEach(() => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'Start', 'Start')]), {
+        items: [{ name: 'old' }],
+      });
+  });
+
+  afterEach(() => {
+    clearWidgets();
+  });
+
+  it('updates a field of a loop item taken from story state', () => {
+    const el = renderPassage(
+      '{for @item of $items}{set @item.name = "new"}<span id="r">{@item.name}</span>{/for}',
+    );
+    expect(el.querySelector('#r')!.textContent).toBe('new');
+  });
+
+  it('leaves the source collection unchanged (locals are copies)', () => {
+    const before = useStoryStore.getState().variables.items;
+    renderPassage(
+      '{for @item of $items}{set @item.name = "new"}{@item.name}{/for}',
+    );
+    const after = useStoryStore.getState().variables.items;
+    expect(after).toEqual([{ name: 'old' }]);
+    expect(after).toBe(before);
+  });
+
+  it('updates a field of an unfrozen local object', () => {
+    const el = renderPassage(
+      '{for @i of [1]}{set @o = {n: 1}}{set @o.n = @o.n + 1}<span id="r">{@o.n}</span>{/for}',
+    );
+    expect(el.querySelector('#r')!.textContent).toBe('2');
+  });
+
+  it('applies in-place array methods on a local', () => {
+    const el = renderPassage(
+      '{for @i of [1]}{set @list = [1]}{do}@list.push(2){/do}<span id="r">{@list.length}</span>{/for}',
+    );
+    expect(el.querySelector('#r')!.textContent).toBe('2');
+  });
+
+  it('updates a field of an object widget argument', () => {
+    defineWidget(
+      '{widget "Show" @arg}{set @arg.x = 1}<span id="w">{@arg.x}</span>{/widget}',
+    );
+    const el = renderPassage('{set $obj = {x: 0}}{Show $obj}');
+    expect(el.querySelector('#w')!.textContent).toBe('1');
+    expect(useStoryStore.getState().variables.obj).toEqual({ x: 0 });
+  });
+
+  it('accumulates nested local updates across button clicks', () => {
+    const el = renderPassage(
+      '{for @item of $items}{button "Go"}{set @item.name = @item.name + "!"}{set $out = @item.name}{/button}{/for}',
+    );
+    const btn = el.querySelector('button.macro-button') as HTMLElement;
+    act(() => btn.click());
+    act(() => btn.click());
+    expect(useStoryStore.getState().variables.out).toBe('old!!');
+    expect(useStoryStore.getState().variables.items).toEqual([{ name: 'old' }]);
+  });
+});

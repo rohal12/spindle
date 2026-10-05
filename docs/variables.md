@@ -268,6 +268,18 @@ Locals can be modified within their scope using `{set}`:
 {/for}
 ```
 
+Nested fields and in-place methods work too. A local is a **copy** of the value it was bound from, so changing it never touches the source collection or story variable:
+
+```
+{for @item of $items}
+  {set @item.name = "new"}
+  {@item.name}      <!-- "new" -->
+{/for}
+<!-- $items is unchanged -->
+```
+
+The same applies to widget arguments: `{set @arg.x = 1}` inside a widget updates `@arg` for that widget body only, not the variable that was passed in. To change the source, write to it directly, e.g. `{set $items[@i].name = "new"}`.
+
 ### Nesting
 
 Inner scopes inherit parent locals. Each scope maintains its own bindings:

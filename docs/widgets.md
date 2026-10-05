@@ -164,6 +164,7 @@ When you define a widget, its body is stored as an AST (parsed content). When yo
 - Widgets re-render when variables they reference change
 - Widgets can contain any markup: links, macros, HTML, other widgets
 - Arguments are evaluated at invocation time and scoped to the widget body
+- Arguments are copies: `{set @arg.x = 1}` changes `@arg` inside the widget body but not the variable that was passed in
 
 ## Example
 
