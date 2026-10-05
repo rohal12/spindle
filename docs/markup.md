@@ -98,6 +98,8 @@ Object notation: \{ key: "value" \}
 
 This renders as: `The set macro syntax is {set $x = 5}.`
 
+Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute interpolations need no escaping: `{set $x = "}"}` stores `}`.
+
 ## HTML Tags
 
 A curated set of HTML tags is supported directly in passage content:

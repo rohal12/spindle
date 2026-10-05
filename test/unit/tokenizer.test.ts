@@ -1059,6 +1059,104 @@ describe('tokenize', () => {
   });
 });
 
+describe('tokenize — braces inside quoted strings (#169)', () => {
+  it('keeps a } inside a double-quoted macro argument', () => {
+    const tokens = tokenize('{set $x = "}"}Value: {$x}');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      name: 'set',
+      rawArgs: '$x = "}"',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'Value: ' });
+    expect(tokens[2]).toMatchObject({ type: 'variable', name: 'x' });
+  });
+
+  it('keeps a { inside a single-quoted macro argument', () => {
+    const tokens = tokenize("{set $x = '{'}after");
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "$x = '{'" });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('handles escaped quotes inside strings', () => {
+    const tokens = tokenize('{set $x = "a\\"}"}after');
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: '$x = "a\\"}"' });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside template literals, including ${} parts', () => {
+    const tokens = tokenize('{set $x = `}${"}" + `{`}{`}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      rawArgs: '$x = `}${"}" + `{`}{`',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in selector-prefixed macros', () => {
+    const tokens = tokenize('{.c set $x = "}"}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      className: 'c',
+      rawArgs: '$x = "}"',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it.each([
+    ['{$x + "}"}', '$x + "}"'],
+    ["{_x + '{'}", "_x + '{'"],
+    ['{@x + `}`}', '@x + `}`'],
+    ['{%x + "{"}', '%x + "{"'],
+  ])('keeps braces inside strings in expression display %s', (src, expr) => {
+    const tokens = tokenize(src + 'after');
+    expect(tokens[0]).toMatchObject({ type: 'expression', expression: expr });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in selector-prefixed expressions', () => {
+    const tokens = tokenize('{.c $x + "}"}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'expression',
+      expression: '$x + "}"',
+      className: 'c',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in HTML attribute interpolation', () => {
+    const tokens = tokenize(`<span title='{"{" + $x}'>t</span>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag: 'span',
+      attributes: { title: '{"{" + $x}' },
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 't' });
+  });
+
+  it('does not treat prose apostrophes as strings', () => {
+    const tokens = tokenize("{if $x}don't{/if} and 'quoted' {$y}");
+    expect(tokens.map((t) => t.type)).toEqual([
+      'macro',
+      'text',
+      'macro',
+      'text',
+      'variable',
+    ]);
+  });
+
+  it('does not treat apostrophes inside unquoted macro args as strings', () => {
+    const tokens = tokenize("{goto Bob's room} and {goto Al's}");
+    expect(tokens).toHaveLength(3);
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "Bob's room" });
+    expect(tokens[2]).toMatchObject({ type: 'macro', rawArgs: "Al's" });
+  });
+
+  it('treats a quote not closed on the same line as a plain character', () => {
+    const tokens = tokenize("{print ' + $x}\nmore '");
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "' + $x" });
+  });
+});
+
 describe('tokenize — HTML void elements (#170)', () => {
   const VOID = [
     'area',

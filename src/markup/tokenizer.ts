@@ -235,11 +235,15 @@ function parseHtmlAttributes(
         const quote = input[j]!;
         j++; // skip opening quote
         const valStart = j;
-        let braceDepth = 0;
         while (j < input.length) {
-          if (input[j] === '{') braceDepth++;
-          else if (input[j] === '}') braceDepth--;
-          else if (input[j] === quote && braceDepth <= 0) break;
+          if (input[j] === '{') {
+            // Skip a whole {…} interpolation so quotes inside it don't end the value
+            const closeIdx = scanBalancedBrace(input, j + 1);
+            if (closeIdx !== -1) {
+              j = closeIdx + 1;
+              continue;
+            }
+          } else if (input[j] === quote) break;
           j++;
         }
         attributes[attrName] = input.slice(valStart, j);
@@ -260,17 +264,85 @@ function parseHtmlAttributes(
 }
 
 /**
+ * Skip a '…' or "…" string literal opening at i.
+ * Returns the index just past the closing quote, or -1 if the string is
+ * not closed on the same line (JS strings can't span lines unescaped).
+ */
+function skipQuoted(input: string, i: number): number {
+  const quote = input[i];
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') j += 2;
+    else if (c === quote) return j + 1;
+    else if (c === '\n') return -1;
+    else j++;
+  }
+  return -1;
+}
+
+/**
+ * Skip a `…` template literal opening at i, including ${…} parts.
+ * Returns the index just past the closing backtick, or -1 if unclosed.
+ */
+function skipTemplate(input: string, i: number): number {
+  let j = i + 1;
+  while (j < input.length) {
+    const c = input[j];
+    if (c === '\\') {
+      j += 2;
+    } else if (c === '`') {
+      return j + 1;
+    } else if (c === '$' && input[j + 1] === '{') {
+      const closeIdx = scanBalancedBrace(input, j + 2);
+      if (closeIdx === -1) return -1;
+      j = closeIdx + 1;
+    } else {
+      j++;
+    }
+  }
+  return -1;
+}
+
+/**
+ * A quote directly after a letter/digit is an apostrophe (don't), not a
+ * string; after a backslash it is an escaped attribute delimiter (\").
+ */
+const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
+
+/**
  * Scan for the balanced closing } starting at position i (just past the {).
+ * Braces inside string and template literals are ignored. A quote that
+ * can't start a string (apostrophe, escaped, unterminated) counts as text.
  * Returns the index of the closing } or -1 if unbalanced.
  */
-function scanBalancedBrace(input: string, i: number): number {
+export function scanBalancedBrace(input: string, i: number): number {
   let depth = 1;
-  while (i < input.length && depth > 0) {
-    if (input[i] === '{') depth++;
-    else if (input[i] === '}') depth--;
-    if (depth > 0) i++;
+  while (i < input.length) {
+    const c = input[i]!;
+    if (c === '{') {
+      depth++;
+    } else if (c === '}') {
+      if (--depth === 0) return i;
+    } else if (
+      (c === '"' || c === "'") &&
+      !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!))
+    ) {
+      const end = skipQuoted(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    } else if (c === '`') {
+      const end = skipTemplate(input, i);
+      if (end !== -1) {
+        i = end;
+        continue;
+      }
+    }
+    i++;
   }
-  return depth === 0 ? i : -1;
+  return -1;
 }
 
 /**
@@ -562,25 +634,18 @@ export function tokenize(input: string): Token[] {
 
         if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
           // {.class#id macroName args}
-          i = afterSelectors;
+          // Scan to closing }, tracking brace nesting and string literals
+          const contentStart = afterSelectors;
+          const closeIdx = scanBalancedBrace(input, contentStart);
 
-          // Scan to closing }, tracking brace nesting
-          let depth = 1;
-          const contentStart = i;
-          while (i < input.length && depth > 0) {
-            if (input[i] === '{') depth++;
-            else if (input[i] === '}') depth--;
-            if (depth > 0) i++;
-          }
-
-          if (depth !== 0) {
+          if (closeIdx === -1) {
             i = start + 1;
             textStart = start;
             continue;
           }
 
-          const content = input.slice(contentStart, i);
-          i++; // skip closing }
+          const content = input.slice(contentStart, closeIdx);
+          i = closeIdx + 1; // skip closing }
 
           const { name, rawArgs, isClose } = parseMacroContent(content);
           const token: MacroToken = {
@@ -771,26 +836,21 @@ export function tokenize(input: string): Token[] {
         (nextChar === '/' || /[a-zA-Z]/.test(nextChar))
       ) {
         flushText(i);
-        i++; // skip {
 
-        // Scan to closing }, tracking brace nesting for object literals
-        let depth = 1;
-        const contentStart = i;
-        while (i < input.length && depth > 0) {
-          if (input[i] === '{') depth++;
-          else if (input[i] === '}') depth--;
-          if (depth > 0) i++;
-        }
+        // Scan to closing }, tracking brace nesting (object literals)
+        // and string literals
+        const contentStart = i + 1;
+        const closeIdx = scanBalancedBrace(input, contentStart);
 
-        if (depth !== 0) {
+        if (closeIdx === -1) {
           // Unclosed macro — treat as text
           i = start + 1;
           textStart = start;
           continue;
         }
 
-        const content = input.slice(contentStart, i);
-        i++; // skip closing }
+        const content = input.slice(contentStart, closeIdx);
+        i = closeIdx + 1; // skip closing }
 
         const { name, rawArgs, isClose } = parseMacroContent(content);
         tokens.push({

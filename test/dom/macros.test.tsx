@@ -384,6 +384,33 @@ describe('macro components', () => {
     });
   });
 
+  describe('braces inside strings (#169)', () => {
+    it('{set} accepts a string containing }', () => {
+      useStoryStore.getState().setVariable('x', '');
+      const el = renderPassage('{set $x = "}"}Value: {$x}');
+      expect(useStoryStore.getState().variables.x).toBe('}');
+      expect(el.textContent).toContain('Value: }');
+      expect(el.querySelector('.error')).toBeNull();
+    });
+
+    it('{set} accepts a string containing {', () => {
+      renderPassage("{set $x = '{' + `}${'{'}`}");
+      expect(useStoryStore.getState().variables.x).toBe('{}{');
+    });
+
+    it('expression display handles braces in strings', () => {
+      useStoryStore.getState().setVariable('x', 'a');
+      const el = renderPassage('[{$x + "}"}]');
+      expect(el.textContent).toContain('[a}]');
+    });
+
+    it('HTML attribute interpolation handles braces in strings', () => {
+      useStoryStore.getState().setVariable('x', 'a');
+      const el = renderPassage(`<span title='{$x + "}"}'>t</span>`);
+      expect(el.querySelector('span')!.getAttribute('title')).toBe('a}');
+    });
+  });
+
   describe('HTML void elements (#170)', () => {
     it('renders <input> without a closing tag', () => {
       const el = renderPassage('<input type="text"><span>After</span>');
