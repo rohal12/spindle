@@ -421,6 +421,24 @@ describe('macro components', () => {
       expect(useStoryStore.getState().variables.r).toBe('lt');
     });
 
+    it('skips apostrophes in comments (#216)', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      renderPassage("{do}\n$x = 1; // don't reset\n$x = 2;\n{/do}");
+      expect(useStoryStore.getState().variables.x).toBe(2);
+      expect('$x' in globalThis).toBe(false);
+    });
+
+    it('keeps regex literal contents (#217)', () => {
+      renderPassage('{set $matched = /^_name$/.test("_name")}');
+      expect(useStoryStore.getState().variables.matched).toBe(true);
+    });
+
+    it('keeps modulo on a continuation line (#218)', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      renderPassage('{do}\nconst n = 3;\n$x = 5\n%n;\n{/do}');
+      expect(useStoryStore.getState().variables.x).toBe(2);
+    });
+
     it('preserves strings containing HTML and macro markup', () => {
       const el = renderPassage(
         '{do}$s="<b>{x}</b> {set $y = 1} [[L]]";{/do}after',

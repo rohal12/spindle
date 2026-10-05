@@ -512,3 +512,169 @@ describe('executeMutation', () => {
     expect(useStoryStore.getState().variables.y).toBe(15);
   });
 });
+
+describe('JavaScript comments (#216)', () => {
+  const globals = globalThis as Record<string, unknown>;
+
+  beforeEach(() => {
+    delete globals.$x;
+  });
+
+  it('skips apostrophes in line comments', () => {
+    const vars: Record<string, unknown> = { x: 0 };
+    execute("$x = 1; // don't reset\n$x = 2;", vars, {});
+    expect(vars.x).toBe(2);
+    expect('$x' in globals).toBe(false);
+  });
+
+  it('skips apostrophes in block comments', () => {
+    const vars: Record<string, unknown> = { x: 0 };
+    execute("$x = 1; /* don't reset */ $x = 2;", vars, {});
+    expect(vars.x).toBe(2);
+    expect('$x' in globals).toBe(false);
+  });
+
+  it('skips double quotes and backticks in comments', () => {
+    const vars: Record<string, unknown> = { x: 0 };
+    execute('$x = 1; // say "hi\n/* a ` tick */ $x = 2;', vars, {});
+    expect(vars.x).toBe(2);
+    expect('$x' in globals).toBe(false);
+  });
+
+  it('resumes after a multi-line block comment', () => {
+    const vars: Record<string, unknown> = { x: 0 };
+    const temps: Record<string, unknown> = {};
+    execute("/* it's\n   _y's */\n$x = 2; _y = 3", vars, temps);
+    expect(vars.x).toBe(2);
+    expect(temps.y).toBe(3);
+  });
+
+  it('passes comments through untouched', () => {
+    const vars: Record<string, unknown> = {};
+    execute(
+      '_f = function () { /* $x _y @z %w */ return 1 }; $src = String(_f)',
+      vars,
+      {},
+    );
+    expect(vars.src).toContain('/* $x _y @z %w */');
+  });
+
+  it('evaluates an expression ending in a line comment', () => {
+    expect(evaluate("$x + 1 // it's", { x: 1 }, {})).toBe(2);
+  });
+
+  it('ignores braces in comments inside template interpolations', () => {
+    expect(evaluate('`${$a /* } */ + $b}`', { a: 1, b: 1 }, {})).toBe('2');
+    expect(evaluate("`${$a // don't }\n+ $b}`", { a: 1, b: 1 }, {})).toBe('2');
+  });
+
+  it('still treats a lone slash as division', () => {
+    expect(evaluate('$a / 2 / _b', { a: 12 }, { b: 3 })).toBe(2);
+  });
+});
+
+describe('regex literals (#217)', () => {
+  it('preserves sigil-like text inside a regex', () => {
+    expect(evaluate('/^_name$/.test("_name")', {}, {})).toBe(true);
+    const vars: Record<string, unknown> = {};
+    execute('$re = /\\$x@y%z_w/', vars, {});
+    expect((vars.re as RegExp).source).toBe('\\$x@y%z_w');
+  });
+
+  it('handles escaped slashes', () => {
+    expect(evaluate('/a\\/_b/.test("a/_b")', {}, {})).toBe(true);
+  });
+
+  it('handles slashes inside character classes', () => {
+    expect(evaluate('/[/_]x/.test("_x")', {}, {})).toBe(true);
+    expect(evaluate('/[\\]/]_y/.test("/_y")', {}, {})).toBe(true);
+  });
+
+  it('keeps regex flags', () => {
+    expect(evaluate('/_A/i.test("_a")', {}, {})).toBe(true);
+    expect(evaluate('"_a_a".replace(/_a/g, "b")', {}, {})).toBe('bb');
+  });
+
+  it('transforms real sigils outside the pattern', () => {
+    expect(evaluate('/^_n$/.test(_name)', {}, { name: '_n' })).toBe(true);
+    expect(evaluate('$s.replace(/_b/, @r)', { s: 'a_b' }, {}, { r: 'c' })).toBe(
+      'ac',
+    );
+  });
+
+  it('is not confused by quotes or braces inside a regex', () => {
+    expect(evaluate('/[\'"`]/.test($s) && _t', { s: '"' }, { t: 7 })).toBe(7);
+    expect(evaluate('`${/}/.test("}") ? $a : 0}`', { a: 5 }, {})).toBe('5');
+  });
+
+  it('recognises a regex after keywords and statement starts', () => {
+    expect(evaluate('typeof /_x/', {}, {})).toBe('object');
+    const vars: Record<string, unknown> = {};
+    execute(
+      '_f = function () { return /_x/.test("_x") }; $a = _f()\n' +
+        'if (true) /_y/.test("_y") && ($b = 1); { $c = /_z/.test("_z") }',
+      vars,
+      {},
+    );
+    expect(vars).toEqual({ a: true, b: 1, c: true });
+  });
+
+  it('treats a slash after an operand as division', () => {
+    expect(evaluate('$a /_b/ 1', { a: 12 }, { b: 3 })).toBe(4);
+    expect(evaluate('($a) /_b/ 2', { a: 12 }, { b: 3 })).toBe(2);
+    expect(evaluate('$l[0] /_b/ 2', { l: [12] }, { b: 3 })).toBe(2);
+    expect(evaluate('%a /%b/ 2', {}, {}, {}, { a: 12, b: 3 })).toBe(2);
+    expect(evaluate('_i++ /_b/ 1', {}, { i: 12, b: 3 })).toBe(4);
+  });
+});
+
+describe('modulo across newlines and postfix operators (#218)', () => {
+  it('keeps modulo at the start of a continuation line', () => {
+    const vars: Record<string, unknown> = { x: 0 };
+    execute('const n = 3;\n$x = 5\n%n;', vars, {});
+    expect(vars.x).toBe(2);
+    const vars2: Record<string, unknown> = { x: 0 };
+    execute('const n = 3;\n$x = 5\n  % n\n  + 1;', vars2, {});
+    expect(vars2.x).toBe(3);
+    expect(evaluate('$a\n%%b', { a: 10 }, {}, {}, { b: 4 })).toBe(2);
+  });
+
+  it('keeps modulo after postfix increments and decrements', () => {
+    const vars: Record<string, unknown> = {};
+    const temps: Record<string, unknown> = {};
+    execute('const n=3; _i=5; $x=_i++ %n;', vars, temps);
+    expect(vars.x).toBe(2);
+    expect(temps.i).toBe(6);
+    execute('const n=3; _j=5; $y=_j-- %n;', vars, temps);
+    expect(vars.y).toBe(2);
+    expect(temps.j).toBe(4);
+  });
+
+  it('reads a transient after a postfix increment and modulo', () => {
+    const trans: Record<string, unknown> = { x: 7, y: 4 };
+    expect(evaluate('%x++ %%y', {}, {}, {}, trans)).toBe(3);
+    expect(trans.x).toBe(8);
+  });
+
+  it('treats ++ after a newline as a prefix increment', () => {
+    const vars: Record<string, unknown> = {};
+    const temps: Record<string, unknown> = { i: 5 };
+    execute('$x = 1\n++_i', vars, temps);
+    expect(vars.x).toBe(1);
+    expect(temps.i).toBe(6);
+  });
+
+  it('keeps prefix increments in operand position', () => {
+    const trans: Record<string, unknown> = { x: 1 };
+    expect(evaluate('10 % ++%x', {}, {}, {}, trans)).toBe(0);
+    expect(trans.x).toBe(2);
+  });
+
+  it('still assigns a %transient on a new line after a statement', () => {
+    const vars: Record<string, unknown> = {};
+    const trans: Record<string, unknown> = { a: 0, b: 0 };
+    execute('$x = 5\n%a = 1\n$y = 2\n%b += 3', vars, {}, {}, trans);
+    expect(vars).toEqual({ x: 5, y: 2 });
+    expect(trans).toEqual({ a: 1, b: 3 });
+  });
+});

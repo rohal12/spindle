@@ -31,17 +31,25 @@ const fnCache = new Map<string, CompiledExpression>();
 
 /**
  * Transform expression: $var → variables["var"], _var → temporary["var"],
- * @var → locals["var"]
- * Only transforms when sigils appear as a word boundary (not inside strings naively,
- * but authors already have full JS access so this is acceptable).
- * `%var` → transient["var"] is handled by `transform` itself, because `%` is
- * also the modulo operator and only an operand position makes it a sigil.
+ * @var → locals["var"], %var → transient["var"].
+ * Only transforms when sigils appear as a word boundary, and only in code:
+ * string, template and regex literal text and comments are left untouched.
+ * `%var` is handled by `scan` itself, because `%` is also the modulo operator
+ * and only an operand position makes it a sigil.
  */
 const VAR_RE = /\$(\w+)/g;
 const TEMP_RE = /(?<![.\w])_(\w+)/g;
 const LOCAL_RE = /@(\w+)/g;
 /** Transient name after `%`: an identifier, so `%3` is never a reference. */
 const TRANS_NAME_RE = /[A-Za-z_]\w*/y;
+/**
+ * The rest of an assignment target and its operator after a transient name:
+ * ` = 1`, `.a.b += 2`, but not `== 1` or `=> 1`.
+ */
+const ASSIGNMENT_RE =
+  /(?:\s*\.\s*[A-Za-z_$][\w$]*)*\s*(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])?=(?![=>])/y;
+/** Flags after the closing `/` of a regex literal. */
+const REGEX_FLAGS_RE = /\w*/y;
 /** Characters of identifiers, numbers and sigil variable references. */
 const WORD_CHAR_RE = /[\w$@]/;
 const SPACE_RE = /\s/;
@@ -72,26 +80,84 @@ function transformSegment(segment: string): string {
     .replace(LOCAL_RE, 'locals["$1"]');
 }
 
+/** Index just past the string literal opening at `start`. */
+function skipString(src: string, start: number): number {
+  const quote = src.charAt(start);
+  let i = start + 1;
+  while (i < src.length) {
+    const c = src.charAt(i);
+    if (c === '\\') i += 2;
+    else if (c === quote) return i + 1;
+    else i++;
+  }
+  return src.length;
+}
+
+/** Index just past the regex literal (with flags) opening at `start`. */
+function skipRegex(src: string, start: number): number {
+  let inClass = false; // inside `[…]`, where `/` does not close
+  let i = start + 1;
+  while (i < src.length) {
+    const c = src.charAt(i);
+    if (c === '\\') {
+      i += 2;
+      continue;
+    }
+    if (c === '\n') return i; // unterminated: leave the rest to the parser
+    if (inClass) {
+      if (c === ']') inClass = false;
+    } else if (c === '[') {
+      inClass = true;
+    } else if (c === '/') {
+      REGEX_FLAGS_RE.lastIndex = i + 1;
+      return i + 1 + (REGEX_FLAGS_RE.exec(src)?.[0].length ?? 0);
+    }
+    i++;
+  }
+  return src.length;
+}
+
+/** Index just past the comment opening at `start` (`//` or `/*`). */
+function skipComment(src: string, start: number): number {
+  if (src.charAt(start + 1) === '/') {
+    const end = src.indexOf('\n', start);
+    return end < 0 ? src.length : end;
+  }
+  const end = src.indexOf('*/', start + 2);
+  return end < 0 ? src.length : end + 2;
+}
+
 /**
- * String-aware expression transformer. Walks the expression character by
- * character so that variable sigils ($, _, @, %) inside string literals are
- * left untouched while code — including expressions inside template-literal
- * `${…}` interpolations — is transformed.
+ * Lexical scanner behind `transform`. Walks the source once, passing string,
+ * template and regex literal text and comments through untouched, and
+ * transforming the code between them — including the code of template-literal
+ * `${…}` interpolations, which is scanned recursively.
  *
- * It also tracks whether the next token is an operand or an operator, so that
- * `%name` in operand position is a transient reference while `%` after an
- * operand — `($n)%3`, `$a[i] %2`, `$a%$b` — stays the modulo operator.
+ * It also tracks whether the next token is an operand or an operator, which
+ * decides two ambiguities: `/` opens a regex in operand position and divides
+ * otherwise, and `%name` is a transient reference in operand position while
+ * `%` after an operand — `($n)%3`, `$a[i] %2`, `_i++ %n` — is the modulo
+ * operator.
+ *
+ * Scanning starts at `start`; inside an interpolation it stops at the `}`
+ * that closes it and returns that index as `end`.
  */
-function transform(expr: string): string {
+function scan(
+  src: string,
+  start: number,
+  interpolation: boolean,
+): { out: string; end: number } {
   let result = '';
   let code = ''; // accumulates code characters to be transformed
-  let i = 0;
+  let i = start;
 
   let operandNext = true; // an operand (not an operator) comes next
   let word = ''; // identifier/number currently being read
   let afterDot = false; // `word` is a property name, never a keyword
   let afterHeaderKeyword = false; // last token was if/while/for/with
   let lastPunct = '';
+  let lineBreak = false; // a line break since the last token
+  let braceDepth = 0;
   const parenIsHeader: boolean[] = []; // per open `(`: closes a header?
 
   function flushCode() {
@@ -101,22 +167,39 @@ function transform(expr: string): string {
     }
   }
 
+  /** Emit literal text or a comment verbatim. */
+  function emit(text: string) {
+    flushCode();
+    result += text;
+  }
+
   function endWord() {
     if (!word) return;
     operandNext = !afterDot && OPERAND_KEYWORDS.has(word);
     afterHeaderKeyword = !afterDot && HEADER_KEYWORDS.has(word);
     afterDot = false;
     lastPunct = '';
+    lineBreak = false;
     word = '';
   }
 
-  /** A string or template literal, or a transient reference, just ended. */
+  /** A string, template or regex literal, or a transient reference, ended. */
   function endOperand() {
     endWord();
     operandNext = false;
     afterHeaderKeyword = false;
     afterDot = false;
     lastPunct = '';
+    lineBreak = false;
+  }
+
+  /** Track an operator token: `operandNext` tells what may follow it. */
+  function endPunct(punct: string, nextIsOperand: boolean) {
+    operandNext = nextIsOperand;
+    afterDot = punct === '.';
+    afterHeaderKeyword = false;
+    lastPunct = punct;
+    lineBreak = false;
   }
 
   function trackCode(c: string) {
@@ -125,169 +208,126 @@ function transform(expr: string): string {
       return;
     }
     endWord();
-    // A line may start a new statement such as `%x = 1`.
-    if (c === '\n') operandNext = true;
+    // A line break alone never changes operand/operator position:
+    // `$x = 5\n%n` continues the expression, as in JavaScript.
+    if (c === '\n') lineBreak = true;
     if (SPACE_RE.test(c)) return;
     if (c === '(') parenIsHeader.push(afterHeaderKeyword);
+    if (c === '{') braceDepth++;
+    if (c === '}') braceDepth--;
     if (c === ')') {
       // `if (…) %x = 1` vs `($n)%3`
-      operandNext = parenIsHeader.pop() ?? false;
+      endPunct(c, parenIsHeader.pop() ?? false);
     } else if (c === '.') {
       // Property access, unless it is the spread `...`
-      operandNext = lastPunct === '.';
+      endPunct(c, lastPunct === '.');
     } else {
       // `]` ends an operand; `}` closes a block, so a statement may follow.
-      operandNext = c !== ']';
+      endPunct(c, c !== ']');
     }
-    afterDot = c === '.';
-    afterHeaderKeyword = false;
-    lastPunct = c;
   }
 
-  while (i < expr.length) {
-    const ch = expr.charAt(i);
+  /** Template literal at `i`: literal parts verbatim, interpolations scanned. */
+  function scanTemplate() {
+    flushCode();
+    result += '`';
+    i++;
+    while (i < src.length) {
+      const c = src.charAt(i);
+      if (c === '\\') {
+        result += src.slice(i, i + 2);
+        i += 2;
+      } else if (c === '`') {
+        result += c;
+        i++;
+        break;
+      } else if (c === '$' && src.charAt(i + 1) === '{') {
+        const inner = scan(src, i + 2, true);
+        result += '${' + inner.out;
+        i = inner.end;
+        if (i < src.length) {
+          result += '}';
+          i++;
+        }
+      } else {
+        result += c;
+        i++;
+      }
+    }
+    endOperand();
+  }
 
-    // Single or double quoted string — skip entirely
+  while (i < src.length) {
+    const ch = src.charAt(i);
+
+    // String literal — skip entirely
     if (ch === '"' || ch === "'") {
-      flushCode();
-      const quote = ch;
-      let str = quote;
-      i++;
-      while (i < expr.length) {
-        const c = expr.charAt(i);
-        if (c === '\\' && i + 1 < expr.length) {
-          str += c + expr.charAt(i + 1);
-          i += 2;
-        } else if (c === quote) {
-          str += quote;
-          i++;
-          break;
-        } else {
-          str += c;
-          i++;
-        }
-      }
-      result += str;
+      const end = skipString(src, i);
+      emit(src.slice(i, end));
+      i = end;
       endOperand();
       continue;
     }
 
-    // Template literal — preserve literal parts, transform interpolations
     if (ch === '`') {
-      flushCode();
-      result += '`';
-      i++;
-      while (i < expr.length) {
-        const c = expr.charAt(i);
-        if (c === '\\' && i + 1 < expr.length) {
-          result += c + expr.charAt(i + 1);
-          i += 2;
-        } else if (c === '$' && expr.charAt(i + 1) === '{') {
-          // Template interpolation — collect the inner expression and
-          // recursively transform it
-          result += '${';
-          i += 2;
-          let depth = 1;
-          let inner = '';
-          while (i < expr.length && depth > 0) {
-            const ic = expr.charAt(i);
-            if (ic === '{') {
-              depth++;
-              inner += ic;
-            } else if (ic === '}') {
-              depth--;
-              if (depth === 0) break;
-              inner += ic;
-            } else if (ic === '\\' && i + 1 < expr.length) {
-              inner += ic + expr.charAt(i + 1);
-              i++;
-            } else if (ic === '"' || ic === "'") {
-              // Skip quoted strings — braces inside are not depth-relevant
-              inner += ic;
-              i++;
-              while (i < expr.length) {
-                const sc = expr.charAt(i);
-                if (sc === '\\' && i + 1 < expr.length) {
-                  inner += sc + expr.charAt(i + 1);
-                  i += 2;
-                } else if (sc === ic) {
-                  inner += sc;
-                  i++;
-                  break;
-                } else {
-                  inner += sc;
-                  i++;
-                }
-              }
-              continue; // skip the i++ at the end
-            } else if (ic === '`') {
-              // Nested template literal — consume entirely
-              inner += ic;
-              i++;
-              while (i < expr.length) {
-                const tc = expr.charAt(i);
-                if (tc === '\\' && i + 1 < expr.length) {
-                  inner += tc + expr.charAt(i + 1);
-                  i += 2;
-                } else if (tc === '$' && expr.charAt(i + 1) === '{') {
-                  // Nested interpolation — track brace depth
-                  inner += '${';
-                  i += 2;
-                  let nestedDepth = 1;
-                  while (i < expr.length && nestedDepth > 0) {
-                    const nc = expr.charAt(i);
-                    if (nc === '{') nestedDepth++;
-                    else if (nc === '}') nestedDepth--;
-                    if (nestedDepth > 0) inner += nc;
-                    i++;
-                  }
-                  inner += '}';
-                } else if (tc === '`') {
-                  inner += tc;
-                  i++;
-                  break;
-                } else {
-                  inner += tc;
-                  i++;
-                }
-              }
-              continue; // skip the i++ at the end
-            } else {
-              inner += ic;
-            }
-            i++;
-          }
-          result += transform(inner); // recursive transform
-          if (i < expr.length && expr.charAt(i) === '}') {
-            result += '}';
-            i++;
-          }
-        } else if (c === '`') {
-          result += '`';
-          i++;
-          break;
-        } else {
-          result += c;
-          i++;
-        }
-      }
-      endOperand();
+      scanTemplate();
       continue;
     }
 
-    // Transient reference — only where an operand is expected
-    if (ch === '%') {
+    if (ch === '/') {
       endWord();
-      TRANS_NAME_RE.lastIndex = i + 1;
-      const name = operandNext ? TRANS_NAME_RE.exec(expr)?.[0] : undefined;
-      if (name) {
-        flushCode();
-        result += `transient["${name}"]`;
-        i += 1 + name.length;
+      const next = src.charAt(i + 1);
+      // Comment — skip entirely; it is not a token
+      if (next === '/' || next === '*') {
+        const end = skipComment(src, i);
+        const comment = src.slice(i, end);
+        emit(comment);
+        if (comment.includes('\n')) lineBreak = true;
+        i = end;
+        continue;
+      }
+      // Regex literal — only where an operand is expected
+      if (operandNext) {
+        const end = skipRegex(src, i);
+        emit(src.slice(i, end));
+        i = end;
         endOperand();
         continue;
       }
     }
+
+    // Transient reference — where an operand is expected, or as the target
+    // of an assignment starting a line: `$x = 5\n%a = 1` would otherwise be
+    // the invalid assignment `5 % a = 1`.
+    if (ch === '%') {
+      endWord();
+      TRANS_NAME_RE.lastIndex = i + 1;
+      const name = TRANS_NAME_RE.exec(src)?.[0];
+      if (name) {
+        ASSIGNMENT_RE.lastIndex = i + 1 + name.length;
+        if (operandNext || (lineBreak && ASSIGNMENT_RE.test(src))) {
+          flushCode();
+          result += `transient["${name}"]`;
+          i += 1 + name.length;
+          endOperand();
+          continue;
+        }
+      }
+    }
+
+    // Increment/decrement: postfix after an operand on the same line (no line
+    // break may precede postfix `++`), prefix otherwise.
+    if ((ch === '+' || ch === '-') && src.charAt(i + 1) === ch) {
+      endWord();
+      const postfix = !operandNext && !lineBreak;
+      code += ch + ch;
+      i += 2;
+      endPunct(ch, !postfix);
+      continue;
+    }
+
+    // End of a template interpolation
+    if (ch === '}' && interpolation && braceDepth === 0) break;
 
     // Regular code character
     trackCode(ch);
@@ -295,7 +335,11 @@ function transform(expr: string): string {
     i++;
   }
   flushCode();
-  return result;
+  return { out: result, end: i };
+}
+
+function transform(expr: string): string {
+  return scan(expr, 0, false).out;
 }
 
 const preamble =
@@ -401,7 +445,8 @@ export function evaluate(
   transient: Record<string, unknown> = {},
 ): unknown {
   const transformed = transform(expr);
-  const body = `return (${transformed});`;
+  // The line break keeps a trailing `// comment` from swallowing the `)`.
+  const body = `return (${transformed}\n);`;
   const fn = getOrCompile(body, body);
   return fn(variables, temporary, locals, buildExpressionFns(), transient);
 }
