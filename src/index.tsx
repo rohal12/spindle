@@ -13,6 +13,7 @@ import {
   validatePassages,
   extractDefaults,
 } from './story-variables';
+import { getMacroRegistry } from './registry';
 import { tokenize } from './markup/tokenizer';
 import { buildAST, registerBlockMacro } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
@@ -86,7 +87,11 @@ function boot() {
   }
 
   const schema = parseStoryVariables(storyVarsPassage.content);
-  const errors = validatePassages(storyData.passages, schema);
+  // Include input macros registered by author JS, which ran above.
+  const storeVarMacros = getMacroRegistry()
+    .filter((m) => m.storeVar)
+    .map((m) => m.name);
+  const errors = validatePassages(storyData.passages, schema, storeVarMacros);
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
