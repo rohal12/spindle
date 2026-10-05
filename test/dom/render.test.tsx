@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { tokenize } from '../../src/markup/tokenizer';
@@ -427,6 +427,92 @@ describe('renderNodes', () => {
       });
 
       expect(container.textContent).toBe('10');
+    });
+
+    // Issue #202: Maps, Sets and RegExps all JSON.stringify to "{}"
+    const mounted: HTMLElement[] = [];
+    afterEach(() => {
+      // Unmount so earlier {computed} macros stop reacting to the store
+      for (const container of mounted.splice(0)) render(null, container);
+    });
+
+    function renderComputed(markup: string): HTMLElement {
+      const container = document.createElement('div');
+      mounted.push(container);
+      act(() => {
+        render(<>{renderNodes(buildAST(tokenize(markup)))}</>, container);
+      });
+      return container;
+    }
+
+    it('updates a computed Map when its contents change (#202)', () => {
+      useStoryStore.getState().setVariable('n', 0);
+      const el = renderComputed(
+        '{computed $derived = new Map([["n", $n]])}{print $derived.get("n")}',
+      );
+      expect(el.textContent).toBe('0');
+
+      act(() => {
+        useStoryStore.getState().setVariable('n', 1);
+      });
+
+      const derived = useStoryStore.getState().variables.derived as Map<
+        string,
+        number
+      >;
+      expect(derived.get('n')).toBe(1);
+      expect(el.textContent).toBe('1');
+    });
+
+    it('updates a computed Set when its contents change (#202)', () => {
+      useStoryStore.getState().setVariable('n', 0);
+      renderComputed('{computed $derived = new Set([$n])}');
+
+      act(() => {
+        useStoryStore.getState().setVariable('n', 1);
+      });
+
+      const derived = useStoryStore.getState().variables.derived as Set<number>;
+      expect([...derived]).toEqual([1]);
+    });
+
+    it('updates a computed RegExp when its pattern changes (#202)', () => {
+      useStoryStore.getState().setVariable('n', 'a');
+      renderComputed('{computed $derived = new RegExp($n)}');
+
+      act(() => {
+        useStoryStore.getState().setVariable('n', 'b');
+      });
+
+      const derived = useStoryStore.getState().variables.derived as RegExp;
+      expect(derived.source).toBe('b');
+    });
+
+    it('updates a Map nested inside a plain object and array (#202)', () => {
+      useStoryStore.getState().setVariable('n', 0);
+      const el = renderComputed(
+        '{computed $derived = { list: [new Map([["n", $n]])] }}{print $derived.list[0].get("n")}',
+      );
+      expect(el.textContent).toBe('0');
+
+      act(() => {
+        useStoryStore.getState().setVariable('n', 1);
+      });
+
+      expect(el.textContent).toBe('1');
+    });
+
+    it('does not rewrite a computed Map whose contents are unchanged (#202)', () => {
+      useStoryStore.getState().setVariable('n', 0);
+      useStoryStore.getState().setVariable('other', 0);
+      renderComputed('{computed $derived = new Map([["n", $n]])}{$other}');
+      const first = useStoryStore.getState().variables.derived;
+
+      act(() => {
+        useStoryStore.getState().setVariable('other', 1);
+      });
+
+      expect(useStoryStore.getState().variables.derived).toBe(first);
     });
   });
 

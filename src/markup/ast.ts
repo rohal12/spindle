@@ -92,6 +92,14 @@ const BRANCH_PARENT: Record<string, string> = {
 const BRANCHING_BLOCK_MACROS = new Set(['if', 'switch', 'timed']);
 
 /**
+ * Quote a bracket-link value as a {link} argument, escaping backslashes and
+ * double quotes so MacroLink reads the value back unchanged (#200).
+ */
+function quoteArg(value: string): string {
+  return `"${value.replace(/[\\"]/g, '\\$&')}"`;
+}
+
+/**
  * Build an AST from a token array. Block macros are nested into trees
  * using a stack. Throws on unclosed or mismatched macros.
  */
@@ -118,7 +126,7 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         break;
 
       case 'link': {
-        const rawArgs = `"${token.display}" "${token.target}"`;
+        const rawArgs = `${quoteArg(token.display)} ${quoteArg(token.target)}`;
         const macroNode: MacroNode = {
           type: 'macro',
           name: 'link',
