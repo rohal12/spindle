@@ -70,6 +70,8 @@ describe('extended macro components', () => {
         ['nobr'],
       ),
       makePassage(7, 'Help', 'Help content here'),
+      makePassage(8, 'inline', '**INCLUDED**'),
+      makePassage(9, 'An inline example', '**Example**'),
     ]);
     useStoryStore.getState().init(storyData);
   });
@@ -137,6 +139,48 @@ describe('extended macro components', () => {
       const el = renderPassage('{include "Markdown" inline}');
       expect(el.querySelector('strong')).toBeNull();
       expect(el.textContent).toContain('**bold** text');
+    });
+
+    // Issue #201: the flag was stripped from anywhere in the arguments
+    it('includes a passage named "inline" (#201)', () => {
+      const el = renderPassage('{include "inline"}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')!.textContent).toBe('INCLUDED');
+    });
+
+    it('keeps "inline" inside a quoted passage name (#201)', () => {
+      const el = renderPassage('{include "An inline example"}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')!.textContent).toBe('Example');
+    });
+
+    it('applies the flag after a passage named "inline" (#201)', () => {
+      const el = renderPassage('{include "inline" inline}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**INCLUDED**');
+    });
+
+    it('accepts a leading inline flag (#201)', () => {
+      const el = renderPassage('{include inline "An inline example"}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**Example**');
+    });
+
+    it('does not treat "inline" inside an expression as the flag (#201)', () => {
+      useStoryStore.getState().setVariable('names', { inline: 'Markdown' });
+      const el = renderPassage('{include $names["inline"]}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')!.textContent).toBe('bold');
+    });
+
+    it('applies the flag after an expression target (#201)', () => {
+      useStoryStore.getState().setVariable('target', 'An inline example');
+      const el = renderPassage('{include $target inline}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('strong')).toBeNull();
+      expect(el.textContent).toContain('**Example**');
     });
 
     it('renders with markdown by default', () => {

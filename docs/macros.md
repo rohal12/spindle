@@ -455,6 +455,8 @@ Add `inline` to skip markdown processing and render the passage content as inlin
 {include "RawData" inline}
 ```
 
+The flag must stand on its own, separated by a space from the passage expression. The word inside a quoted name or an expression is not the flag, so `{include "inline"}` includes the passage named `inline`.
+
 ### `{nobr}`
 
 Suppress `<p>` tag generation within a block while keeping inline markdown (bold, italic, etc.).
