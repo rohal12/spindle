@@ -103,6 +103,15 @@ describe('parseWatchArgs', () => {
     );
   });
 
+  it('reads a condition containing a regex literal with quotes', () => {
+    expect(
+      parseWatchArgs(String.raw`'/[\'"/]/.test($s)' run "$n += 1"`),
+    ).toEqual({
+      condition: String.raw`/['"/]/.test($s)`,
+      options: { run: '$n += 1' },
+    });
+  });
+
   it('leaves other backslash sequences in a condition untouched', () => {
     expect(parseWatchArgs(String.raw`'/\d+/.test($code)' once`)).toEqual({
       condition: String.raw`/\d+/.test($code)`,

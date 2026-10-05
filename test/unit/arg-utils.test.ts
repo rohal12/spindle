@@ -57,6 +57,11 @@ describe('skipString', () => {
     expect(skipString(src, 0)).toBe(src.length - 2);
   });
 
+  it('skips regex literals inside template interpolations', () => {
+    const src = '`a ${/[`}]/.source} b` x';
+    expect(skipString(src, 0)).toBe(src.length - 2);
+  });
+
   it('treats an escaped ${ in a template as literal text', () => {
     const src = '`a \\${ b` x';
     expect(skipString(src, 0)).toBe(src.length - 2);
@@ -191,5 +196,92 @@ describe('splitTopLevel', () => {
       '',
       'd',
     ]);
+  });
+
+  describe('regex literals', () => {
+    const words = (src: string) =>
+      splitTopLevel(src, isWhitespace).filter(Boolean);
+
+    it('does not treat a quote inside a regex as a string', () => {
+      expect(words('/"/.test(x) "label"')).toEqual(['/"/.test(x)', '"label"']);
+      expect(splitTopLevel(`/'/.test(x), 'a'`, isComma)).toEqual([
+        `/'/.test(x)`,
+        ` 'a'`,
+      ]);
+    });
+
+    it('does not end a regex at a slash inside a character class', () => {
+      expect(splitTopLevel('/[/"]/.test(x), "a"', isComma)).toEqual([
+        '/[/"]/.test(x)',
+        ' "a"',
+      ]);
+    });
+
+    it('does not end a regex at an escaped slash', () => {
+      expect(splitTopLevel(String.raw`/\/"/.test(x), "a"`, isComma)).toEqual([
+        String.raw`/\/"/.test(x)`,
+        ' "a"',
+      ]);
+    });
+
+    it('does not split on separators inside a regex', () => {
+      expect(words('/a b/.test(x) "l"')).toEqual(['/a b/.test(x)', '"l"']);
+      expect(splitTopLevel('/,/g, y', isComma)).toEqual(['/,/g', ' y']);
+    });
+
+    it('does not count brackets inside a regex as nesting', () => {
+      expect(splitTopLevel('/[(]/.test(x), y', isComma)).toEqual([
+        '/[(]/.test(x)',
+        ' y',
+      ]);
+      expect(splitTopLevel(String.raw`/\{/.test(x), y`, isComma)).toEqual([
+        String.raw`/\{/.test(x)`,
+        ' y',
+      ]);
+    });
+
+    it('reads a regex after a separator or an opening bracket', () => {
+      expect(splitTopLevel('a, /"/.source, b', isComma)).toEqual([
+        'a',
+        ' /"/.source',
+        ' b',
+      ]);
+      expect(splitTopLevel('f(/[,"]/), b', isComma)).toEqual([
+        'f(/[,"]/)',
+        ' b',
+      ]);
+    });
+
+    it('reads a regex inside a template interpolation', () => {
+      expect(splitTopLevel('`${/[`"]/.source}`, b', isComma)).toEqual([
+        '`${/[`"]/.source}`',
+        ' b',
+      ]);
+    });
+
+    it('treats a slash after an operand as division', () => {
+      expect(words('a / b "label"')).toEqual(['a', '/', 'b', '"label"']);
+      expect(words('x /2/ y')).toEqual(['x', '/2/', 'y']);
+      expect(splitTopLevel('$a / 2, "/", 3', isComma)).toEqual([
+        '$a / 2',
+        ' "/"',
+        ' 3',
+      ]);
+      expect(splitTopLevel('x /2/ y, "a"', isComma)).toEqual([
+        'x /2/ y',
+        ' "a"',
+      ]);
+      expect(splitTopLevel('(a) / 2, "/"', isComma)).toEqual([
+        '(a) / 2',
+        ' "/"',
+      ]);
+    });
+
+    it('skips comments', () => {
+      expect(splitTopLevel('a /* , " */, b', isComma)).toEqual([
+        'a /* , " */',
+        ' b',
+      ]);
+    });
   });
 });

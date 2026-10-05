@@ -122,6 +122,45 @@ function skipComment(src: string, start: number): number {
 }
 
 /**
+ * Lex the template literal opening at `start` (a backtick): its backticks,
+ * text and escapes are reported as literal text and the code of its `${…}`
+ * interpolations through `lexJs` one nesting level deeper. Returns the index
+ * just past the closing backtick, or `src.length` if it is unterminated.
+ */
+export function lexTemplate(
+  src: string,
+  start: number,
+  handlers: JsLexHandlers = {},
+  nesting = 0,
+): number {
+  const literal = (text: string, index: number) =>
+    handlers.literal?.(text, index, nesting);
+  literal('`', start);
+  let i = start + 1;
+  while (i < src.length) {
+    const c = src.charAt(i);
+    if (c === '\\') {
+      literal(src.slice(i, i + 2), i);
+      i += 2;
+    } else if (c === '`') {
+      literal(c, i);
+      return i + 1;
+    } else if (c === '$' && src.charAt(i + 1) === '{') {
+      literal('${', i);
+      i = lexJs(src, handlers, i + 2, nesting + 1);
+      if (i < src.length) {
+        literal('}', i);
+        i++;
+      }
+    } else {
+      literal(c, i);
+      i++;
+    }
+  }
+  return Math.min(i, src.length);
+}
+
+/**
  * Walk `src` from `start`, reporting code characters, literal text and
  * transient references to `handlers` in source order. Every character of the
  * scanned range is reported exactly once (a transient reference covers its
@@ -205,34 +244,6 @@ export function lexJs(
     }
   }
 
-  /** Template literal at `i`: literal parts verbatim, interpolations lexed. */
-  function scanTemplate() {
-    literal('`', i);
-    i++;
-    while (i < src.length) {
-      const c = src.charAt(i);
-      if (c === '\\') {
-        literal(src.slice(i, i + 2), i);
-        i += 2;
-      } else if (c === '`') {
-        literal(c, i);
-        i++;
-        break;
-      } else if (c === '$' && src.charAt(i + 1) === '{') {
-        literal('${', i);
-        i = lexJs(src, handlers, i + 2, nesting + 1);
-        if (i < src.length) {
-          literal('}', i);
-          i++;
-        }
-      } else {
-        literal(c, i);
-        i++;
-      }
-    }
-    endOperand();
-  }
-
   while (i < src.length) {
     const ch = src.charAt(i);
 
@@ -246,7 +257,8 @@ export function lexJs(
     }
 
     if (ch === '`') {
-      scanTemplate();
+      i = lexTemplate(src, i, handlers, nesting);
+      endOperand();
       continue;
     }
 

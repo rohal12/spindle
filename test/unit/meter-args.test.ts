@@ -125,6 +125,27 @@ describe('parseMeterArgs', () => {
     });
   });
 
+  it('keeps a regex literal with quotes and spaces intact', () => {
+    expect(parseMeterArgs('/[ "]/.test($s) 1 "HP"')).toEqual({
+      currentExpr: '/[ "]/.test($s)',
+      maxExpr: '1',
+      labelMode: 'HP',
+    });
+    expect(parseMeterArgs(String.raw`$s.split(/\/"/).length 10 "x"`)).toEqual({
+      currentExpr: String.raw`$s.split(/\/"/).length`,
+      maxExpr: '10',
+      labelMode: 'x',
+    });
+  });
+
+  it('treats a slash after an operand as division', () => {
+    expect(parseMeterArgs('$hp $max / 2 "HP"')).toEqual({
+      currentExpr: '$hp',
+      maxExpr: '$max / 2',
+      labelMode: 'HP',
+    });
+  });
+
   it('does not take a trailing string inside the max expression as label', () => {
     // The trailing string is part of an expression token, not standalone.
     expect(parseMeterArgs('$hp $m["max"]')).toEqual({

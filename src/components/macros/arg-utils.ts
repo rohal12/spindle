@@ -1,14 +1,12 @@
 /**
  * Shared helpers for macros that split or read their raw argument text by
- * hand. They agree on one lexical model: `"…"` and `'…'` strings and `` `…` ``
- * template literals (whose `${…}` parts are code) are opaque, a backslash
- * inside any of them escapes the character after it, and `(`/`[`/`{` nest.
+ * hand. Their lexical model is the expression lexer's (`js-lexer.ts`):
+ * string, template and regex literals and comments are opaque (a backslash
+ * inside a literal escapes the character after it, and `${…}` parts of a
+ * template are code), `/` opens a regex only where an operand is expected,
+ * and `(`/`[`/`{` nest.
  */
-
-/** True for a character that opens a string literal (`"`, `'` or a backtick). */
-export function isQuote(ch: string | undefined): boolean {
-  return ch === '"' || ch === "'" || ch === '`';
-}
+import { lexJs, lexTemplate, scanStringLiteral } from '../../js-lexer';
 
 /** True for a whitespace character. */
 export function isWhitespace(ch: string): boolean {
@@ -24,57 +22,17 @@ function isCloser(ch: string): boolean {
 }
 
 /**
- * Scan the string or template literal whose opening quote is at `start`.
- * `end` is the index just past the closing quote, or `src.length` if the
- * literal is unterminated (`closed` false).
- *
- * A backslash escapes the character after it, so a quote preceded by an even
- * run of backslashes still closes the string and one preceded by an odd run
- * does not. Inside a template literal, `${…}` interpolations are scanned as
- * code, so quotes, backticks and braces inside them do not end the template.
- */
-function scanString(
-  src: string,
-  start: number,
-): { end: number; closed: boolean } {
-  const quote = src[start];
-  for (let i = start + 1; i < src.length; i++) {
-    const ch = src[i];
-    if (ch === '\\') i++;
-    else if (ch === quote) return { end: i + 1, closed: true };
-    else if (quote === '`' && ch === '$' && src[i + 1] === '{') {
-      i = skipInterpolation(src, i + 2) - 1;
-    }
-  }
-  return { end: src.length, closed: false };
-}
-
-/**
- * Skip the code of a `${…}` interpolation starting just past the `${`.
- * Returns the index just past its closing `}`, or `src.length`.
- */
-function skipInterpolation(src: string, start: number): number {
-  let depth = 0;
-  for (let i = start; i < src.length; i++) {
-    const ch = src[i]!;
-    if (isQuote(ch)) {
-      i = skipString(src, i) - 1;
-    } else if (isOpener(ch)) {
-      depth++;
-    } else if (isCloser(ch)) {
-      if (depth === 0 && ch === '}') return i + 1;
-      depth--;
-    }
-  }
-  return src.length;
-}
-
-/**
  * Given the index of an opening quote (`"`, `'` or a backtick), return the
  * index just past its closing quote, or `src.length` if it is unterminated.
+ * A backslash escapes the character after it, so a quote preceded by an even
+ * run of backslashes still closes the string and one preceded by an odd run
+ * does not. Inside a template literal, `${…}` interpolations are lexed as
+ * code, so quotes, backticks, braces and regexes inside them do not end it.
  */
 export function skipString(src: string, start: number): number {
-  return scanString(src, start).end;
+  return src[start] === '`'
+    ? lexTemplate(src, start)
+    : scanStringLiteral(src, start).end;
 }
 
 /**
@@ -97,7 +55,7 @@ export function readQuoted(
 ): { value: string; end: number } | null {
   const quote = src[start];
   if (quote !== '"' && quote !== "'") return null;
-  const { end, closed } = scanString(src, start);
+  const { end, closed } = scanStringLiteral(src, start);
   if (!closed) return null;
   return { value: unescapeQuoted(src.slice(start + 1, end - 1)), end };
 }
@@ -122,8 +80,8 @@ export function stripLooseQuotes(src: string): string {
 
 /**
  * Indices of the characters in `src` that satisfy `isSeparator` and sit at
- * depth 0: outside string and template literals and outside `()`, `[]` and
- * `{}` pairs.
+ * depth 0: in code outside string, template and regex literals and comments,
+ * and outside `()`, `[]` and `{}` pairs.
  */
 export function topLevelIndices(
   src: string,
@@ -131,18 +89,14 @@ export function topLevelIndices(
 ): number[] {
   const indices: number[] = [];
   let depth = 0;
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i]!;
-    if (isQuote(ch)) {
-      i = skipString(src, i) - 1;
-    } else if (isOpener(ch)) {
-      depth++;
-    } else if (isCloser(ch)) {
-      depth--;
-    } else if (depth === 0 && isSeparator(ch)) {
-      indices.push(i);
-    }
-  }
+  lexJs(src, {
+    code(ch, i, nesting) {
+      if (nesting > 0) return; // inside a template interpolation
+      if (isOpener(ch)) depth++;
+      else if (isCloser(ch)) depth--;
+      else if (depth === 0 && isSeparator(ch)) indices.push(i);
+    },
+  });
   return indices;
 }
 

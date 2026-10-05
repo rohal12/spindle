@@ -170,6 +170,30 @@ describe('splitArgs', () => {
     });
   });
 
+  // ── Regex literals ───────────────────────────────────────────────
+
+  describe('regex literals', () => {
+    it('does not treat a quote inside a regex as a string (comma form)', () => {
+      expect(splitArgs('/"/, "label"')).toEqual(['/"/', '"label"']);
+      expect(splitArgs('$s.match(/[,"]/), 2')).toEqual([
+        '$s.match(/[,"]/)',
+        '2',
+      ]);
+    });
+
+    it('does not treat a quote inside a regex as a string (whitespace form)', () => {
+      expect(splitArgs('$s.match(/"/) "label"')).toEqual([
+        '$s.match(/"/)',
+        '"label"',
+      ]);
+    });
+
+    it('keeps division as division', () => {
+      expect(splitArgs('$a / 2, "/"')).toEqual(['$a / 2', '"/"']);
+      expect(splitArgs('x /2/ y, "a"')).toEqual(['x /2/ y', '"a"']);
+    });
+  });
+
   // ── Template literal interpolations ──────────────────────────────
 
   describe('template literal interpolations', () => {

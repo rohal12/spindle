@@ -595,6 +595,15 @@ describe('macro components', () => {
       );
     });
 
+    it('does not split inside a regex literal argument', () => {
+      useStoryStore.getState().setVariable('s', 'a b');
+      const el = renderPassage('{meter /[ "]/.test($s) 2 "x"}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '1 x / 2 x',
+      );
+    });
+
     it('label mode supports escaped quotes', () => {
       useStoryStore.getState().setVariable('hp', 75);
       const el = renderPassage(String.raw`{meter $hp 100 "\"HP\""}`);
