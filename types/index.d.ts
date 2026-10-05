@@ -460,10 +460,18 @@ export interface StoryAPI {
    * Open a dialog rendering the given passage.
    * @param passageName - The passage to render inside the dialog.
    * @param options - Optional configuration for the dialog panel.
+   * @param options.panelClass - CSS class added to the dialog panel.
+   * @param options.showCloseButton - Show the default `✕` button (defaults to `dismissible`).
+   * @param options.dismissible - When `false`, backdrop clicks are ignored and the
+   *   `✕` button is hidden; close the dialog with `closeDialog()`. Default: `true`.
    */
   openDialog(
     passageName: string,
-    options?: { panelClass?: string; showCloseButton?: boolean },
+    options?: {
+      panelClass?: string;
+      showCloseButton?: boolean;
+      dismissible?: boolean;
+    },
   ): void;
 
   /** Close the topmost open dialog. */

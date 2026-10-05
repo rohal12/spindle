@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
@@ -589,6 +589,99 @@ describe('extended macro components', () => {
         closeBtn.click();
       });
       expect(closed).toBe(true);
+    });
+
+    it('closes on backdrop click by default', () => {
+      const onClose = vi.fn();
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          h(PassageDialog, { fallbackMarkup: 'test', onClose }),
+          container,
+        );
+      });
+      const overlay = container.querySelector('.dialog-overlay') as HTMLElement;
+      act(() => {
+        overlay.click();
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores clicks inside the panel', () => {
+      const onClose = vi.fn();
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          h(PassageDialog, { fallbackMarkup: 'test', onClose }),
+          container,
+        );
+      });
+      const panel = container.querySelector('.dialog-panel') as HTMLElement;
+      act(() => {
+        panel.click();
+      });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    describe('dismissible: false', () => {
+      function renderLocked(props: Record<string, unknown> = {}) {
+        const onClose = vi.fn();
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        act(() => {
+          render(
+            h(PassageDialog, {
+              fallbackMarkup: 'test',
+              onClose,
+              dismissible: false,
+              ...props,
+            }),
+            container,
+          );
+        });
+        return { container, onClose };
+      }
+
+      it('hides the close button', () => {
+        const { container } = renderLocked();
+        expect(container.querySelector('.dialog-close')).toBeNull();
+        expect(container.querySelector('.dialog-body')!.textContent).toBe(
+          'test',
+        );
+      });
+
+      it('ignores backdrop clicks', () => {
+        const { container, onClose } = renderLocked();
+        const overlay = container.querySelector(
+          '.dialog-overlay',
+        ) as HTMLElement;
+        act(() => {
+          overlay.click();
+        });
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('ignores Escape', () => {
+        const { onClose } = renderLocked();
+        act(() => {
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+          );
+        });
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('still shows the close button when showCloseButton is explicitly true', () => {
+        const { container, onClose } = renderLocked({ showCloseButton: true });
+        const closeBtn = container.querySelector(
+          '.dialog-close',
+        ) as HTMLButtonElement;
+        expect(closeBtn).not.toBeNull();
+        act(() => {
+          closeBtn.click();
+        });
+        expect(onClose).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('onClose callback reflects latest reference after re-render', () => {

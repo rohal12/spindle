@@ -12,7 +12,14 @@ interface PassageDialogProps {
   fallbackMarkup?: string;
   panelClass?: string;
   onClose: () => void;
+  /** Show the default `✕` button. Defaults to `dismissible`. */
   showCloseButton?: boolean;
+  /**
+   * When `false`, the player cannot dismiss the dialog: backdrop clicks are
+   * ignored and the `✕` button is hidden (unless `showCloseButton` is set
+   * explicitly). The dialog can still be closed programmatically.
+   */
+  dismissible?: boolean;
 }
 
 export function PassageDialog({
@@ -20,7 +27,8 @@ export function PassageDialog({
   fallbackMarkup,
   panelClass,
   onClose,
-  showCloseButton = true,
+  dismissible = true,
+  showCloseButton = dismissible,
 }: PassageDialogProps) {
   // Stabilize onClose so DialogCloseContext value doesn't change identity
   const onCloseRef = useRef(onClose);
@@ -52,6 +60,7 @@ export function PassageDialog({
   }, [markup]);
 
   const handleBackdrop = (e: MouseEvent) => {
+    if (!dismissible) return;
     if ((e.target as HTMLElement).classList.contains('dialog-overlay')) {
       stableOnClose();
     }
