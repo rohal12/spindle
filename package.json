@@ -29,12 +29,17 @@
     "./tooling": {
       "types": "./types/tooling.d.ts",
       "import": "./dist/pkg/tooling.js"
+    },
+    "./headless": {
+      "types": "./types/headless.d.ts",
+      "import": "./dist/pkg/headless.js"
     }
   },
   "files": [
     "dist/pkg/index.js",
     "dist/pkg/format.js",
     "dist/pkg/tooling.js",
+    "dist/pkg/headless.js",
     "dist/pkg/story-variables.js",
     "dist/pkg/macro-registry.json",
     "types",

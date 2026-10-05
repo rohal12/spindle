@@ -619,7 +619,7 @@ Content that re-renders _inside_ a passage or dialog because a variable changed 
 
 ### `Story.waitForActions()`
 
-Returns a `Promise` that resolves with the current actions after the UI has settled (2 animation frames). Useful in scripts that navigate and then need to inspect the new passage's actions.
+Returns a `Promise` that resolves with the current actions after the UI has settled: two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. Useful in scripts that navigate and then need to inspect the new passage's actions.
 
 ```js
 Story.goto('Forest');

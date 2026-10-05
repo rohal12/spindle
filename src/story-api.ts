@@ -29,6 +29,7 @@ import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
 import { getActions, getAction, type StoryAction } from './action-registry';
+import { getRenderedPassage } from './passage-render-state';
 import {
   initPRNG,
   isPRNGEnabled,
@@ -539,14 +540,26 @@ function createStoryAPI(): StoryAPI {
       return unsub;
     },
 
-    waitForActions(): Promise<StoryAction[]> {
-      return new Promise((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve(getActions());
+    async waitForActions(): Promise<StoryAction[]> {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      // A navigation can still be rendering: the passage display mounts the
+      // new passage from an effect, after a fade-through's outgoing phase.
+      // Its actions exist only once it is mounted, so wait for that.
+      const { currentPassage, renderDeferred } = useStoryStore.getState();
+      const rendered = getRenderedPassage();
+      if (rendered !== null && rendered !== currentPassage && !renderDeferred) {
+        await new Promise<void>((resolve) => {
+          const off = emitterOn('passagerender', (name) => {
+            if (name === useStoryStore.getState().currentPassage) {
+              off();
+              resolve();
+            }
           });
         });
-      });
+      }
+      return getActions();
     },
 
     watch(

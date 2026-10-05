@@ -45,7 +45,14 @@ function renderErrors(root: HTMLElement, errors: string[]) {
   root.appendChild(container);
 }
 
-function boot() {
+/**
+ * Boot Spindle in the current document: parse `<tw-storydata>`, install the
+ * `Story` API, run author JavaScript, validate `StoryVariables`, run
+ * `StoryInit`, and render into `#root`. Dispatches `:storyready` when the
+ * first passage is shown. Call once per page (module state is global).
+ * The browser story format calls it from `main.tsx`.
+ */
+export function boot() {
   const storyData = parseStoryData();
 
   // Inject built-in styles with an id so they can be disabled at runtime
@@ -238,10 +245,4 @@ function boot() {
   } else {
     document.dispatchEvent(new CustomEvent(':storyready'));
   }
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot);
-} else {
-  boot();
 }
