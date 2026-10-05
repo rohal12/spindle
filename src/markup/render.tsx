@@ -729,8 +729,42 @@ const BLANK_LINE_RE = /\n\s*\n/;
 const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
 
 /** Whitespace that markdown strips at the start and end of a paragraph. */
-const LEADING_WS_RE = /^[ \t\r\n]*/;
-const TRAILING_WS_RE = /[ \t\r\n]*$/;
+const EDGE_WS = ' \t\r\n';
+
+/**
+ * Index of the first character from `from` on (`step` 1) or before `from`
+ * (`step` -1) that is not in `chars`, or where the run of them ends. A loop,
+ * not a regex: `/[ \t]*$/` and the like try each position of a whitespace
+ * run, taking quadratic time on a long run in the middle of a passage.
+ */
+function skipChars(s: string, from: number, step: 1 | -1, chars: string) {
+  let i = from;
+  if (step === 1) {
+    while (i < s.length && chars.includes(s[i]!)) i++;
+  } else {
+    while (i > 0 && chars.includes(s[i - 1]!)) i--;
+  }
+  return i;
+}
+
+/**
+ * Drop the spaces and tabs around line endings, as markdown does within a
+ * paragraph.
+ */
+function trimLineEdges(text: string): string {
+  if (!text.includes('\n')) return text;
+  return text
+    .split('\n')
+    .map((line, k, lines) => {
+      const start = k === 0 ? 0 : skipChars(line, 0, 1, ' \t');
+      const end =
+        k === lines.length - 1
+          ? line.length
+          : skipChars(line, line.length, -1, ' \t');
+      return line.slice(start, Math.max(start, end));
+    })
+    .join('\n');
+}
 
 /**
  * Build Preact vnodes from a combined string that contains only plain text
@@ -743,10 +777,9 @@ function buildPlainTextVnodes(
   ph: Placeholders,
   unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
-  const children = expandPlaceholderText(
-    core.replace(/[ \t]*\n[ \t]*/g, '\n'),
-    ph,
-  ).filter((part) => part !== '');
+  const children = expandPlaceholderText(trimLineEdges(core), ph).filter(
+    (part) => part !== '',
+  );
   return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
@@ -823,9 +856,11 @@ export function renderNodes(
   // Markdown strips whitespace at paragraph edges. Without <p> wrappers that
   // whitespace separates this content from its neighbours (as in
   // `<span>*HP*: </span>{$hp}`), so it is kept around the output there.
-  const lead = LEADING_WS_RE.exec(combined)![0];
+  const lead = combined.slice(0, skipChars(combined, 0, 1, EDGE_WS));
   const trail =
-    lead.length === combined.length ? '' : TRAILING_WS_RE.exec(combined)![0];
+    lead.length === combined.length
+      ? ''
+      : combined.slice(skipChars(combined, combined.length, -1, EDGE_WS));
   const core = combined.slice(lead.length, combined.length - trail.length);
   const edges = (content: preact.ComponentChildren) =>
     unwrapParagraphs && (lead || trail) ? (

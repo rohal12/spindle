@@ -686,4 +686,41 @@ describe('renderNodes', () => {
       expect(strong!.textContent).toBe('bold');
     });
   });
+
+  // Found by fuzzing: the whitespace trimmed at the edges of a paragraph and
+  // around its line endings was found with regexes (`/[ \t]*$/`) that try
+  // every position of a whitespace run, quadratic in its length.
+  describe('long whitespace runs', () => {
+    /** Milliseconds to render `markup`, best of three. */
+    function time(markup: string): number {
+      let best = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const t0 = performance.now();
+        renderMarkup(markup);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    }
+
+    it.each([
+      ['plain text', (ws: string) => `a${ws}b`],
+      ['markdown', (ws: string) => `*a*${ws}b`],
+      ['a variable', (ws: string) => `{$x}${ws}b`],
+      ['an inline element', (ws: string) => `<span>a${ws}b</span>`],
+    ])('render in about linear time in %s', (_, markup) => {
+      useStoryStore.getState().setVariable('x', 'X');
+      for (const unit of [' ', '\t', ' \t']) {
+        const small = time(markup(unit.repeat(2000)));
+        const large = time(markup(unit.repeat(16000)));
+        // 8× the input may take 8× the time, not the 64× of a quadratic scan
+        expect(large).toBeLessThan(Math.max(small, 1) * 24);
+      }
+    });
+
+    it('keep their spaces, but not around line endings', () => {
+      useStoryStore.getState().setVariable('x', 'X');
+      const el = renderMarkup(`a${' '.repeat(5)}b \t\n\t c {$x}  \t`);
+      expect(el.innerHTML).toBe(`<p>a${' '.repeat(5)}b\nc X</p>`);
+    });
+  });
 });
