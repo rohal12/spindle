@@ -7,8 +7,7 @@ import { getWidget } from '../widgets/widget-registry';
 import { getMacro, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, HtmlNode, MacroNode, VariableNode } from './ast';
-import { useStoryStore } from '../store';
+import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useInterpolate } from '../hooks/use-interpolate';
 
 export interface LocalsUpdater {
@@ -28,21 +27,39 @@ const defaultUpdater: LocalsUpdater = {
 export const LocalsValuesContext = createContext<Record<string, unknown>>({});
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
+/**
+ * True while rendering inside an inline HTML element (e.g. `<span>`), where
+ * block-level markdown and `<p>` wrappers would produce invalid HTML (#220).
+ * Macro and widget bodies read it so their content stays inline too.
+ */
+export const InlineContext = createContext(false);
 export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
+ * Placeholder markers for components inside markdown code spans. micromark
+ * escapes HTML in code spans, so a <span data-tw> placeholder would show as
+ * literal text there; private-use characters pass through verbatim and are
+ * swapped for the live component afterwards, keeping it subscribed (#223).
+ */
+const CODE_MARKER_OPEN = '\uE000';
+const CODE_MARKER_CLOSE = '\uE001';
+const CODE_MARKER_SPLIT_RE = /\uE000(\d+)\uE001/;
+
+/**
  * Convert an HTML string (from micromark) to Preact VNodes,
  * replacing <span data-tw="N"> placeholder elements with pre-rendered components.
+ * With `unwrapParagraphs` (nobr or inline content), top-level <p> wrappers are
+ * replaced by their children.
  */
 function htmlToPreact(
   html: string,
   components: preact.ComponentChildren[],
-  nobr = false,
+  unwrapParagraphs = false,
 ): preact.ComponentChildren {
   const temp = document.createElement('div');
   temp.innerHTML = html.trim();
-  if (nobr) {
+  if (unwrapParagraphs) {
     for (const p of Array.from(temp.querySelectorAll(':scope > p'))) {
       p.replaceWith(...Array.from(p.childNodes));
     }
@@ -59,7 +76,15 @@ function convertDomNode(
   components: preact.ComponentChildren[],
 ): preact.ComponentChildren {
   if (node.nodeType === Node.TEXT_NODE) {
-    return node.textContent;
+    const text = node.textContent ?? '';
+    if (!text.includes(CODE_MARKER_OPEN)) return text;
+    // Swap code-span markers for their components; the split puts captured
+    // indices at odd positions.
+    return text
+      .split(CODE_MARKER_SPLIT_RE)
+      .map((part, i) =>
+        i % 2 === 1 ? components[parseInt(part, 10)] : part || null,
+      );
   }
   if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as Element;
@@ -166,6 +191,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
   const inSvg = useContext(SvgContext);
+  const parentInline = useContext(InlineContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
     attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
@@ -175,13 +201,24 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   // Inside SVG, skip markdown processing entirely — markdown wraps content
   // in <p> tags which break the SVG namespace.
   // Inside inline elements, disable block-level markdown (lists, headings,
-  // blockquotes) since those produce invalid HTML inside inline containers.
-  const children =
-    node.children.length > 0
-      ? inSvg || isSvgRoot
-        ? renderInlineNodes(node.children)
-        : renderNodes(node.children, { nobr, locals, inline: isInline })
-      : undefined;
+  // blockquotes) and <p> wrappers since those produce invalid HTML inside
+  // inline containers. The inline flag reaches nested macro/widget bodies via
+  // InlineContext; a block element nested inside resets it.
+  let children: preact.ComponentChildren = undefined;
+  if (node.children.length > 0) {
+    if (inSvg || isSvgRoot) {
+      children = renderInlineNodes(node.children);
+    } else {
+      children = renderNodes(node.children, { nobr, locals, inline: isInline });
+      if (isInline !== parentInline) {
+        children = (
+          <InlineContext.Provider value={isInline}>
+            {children}
+          </InlineContext.Provider>
+        );
+      }
+    }
+  }
   const element = h(node.tag, attrs, children);
   return isSvgRoot ? (
     <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
@@ -193,9 +230,10 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const locals = useContext(LocalsValuesContext);
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals })}</>;
+  return <>{renderNodes(childrenAST, { nobr, locals, inline })}</>;
 }
 
 /**
@@ -316,35 +354,12 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   return nodes.map((node) => renderSingleNode(node));
 }
 
-function hasUnclosedBacktick(s: string): boolean {
+function countBackticks(s: string): number {
   let count = 0;
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '`') count++;
   }
-  return count % 2 === 1;
-}
-
-function getVariableTextValue(
-  node: VariableNode,
-  locals: Record<string, unknown>,
-): string {
-  const state = useStoryStore.getState();
-  const parts = node.name.split('.');
-  const root = parts[0]!;
-
-  let value: unknown;
-  if (node.scope === 'variable') value = state.variables[root];
-  else if (node.scope === 'temporary') value = state.temporary[root];
-  else if (node.scope === 'transient') value = state.transient[root];
-  else value = locals[root];
-
-  for (let i = 1; i < parts.length; i++) {
-    // Primitives box on access, so `{$name.length}` works too.
-    if (value == null) return '';
-    value = (value as Record<string, unknown>)[parts[i]!];
-  }
-
-  return value == null ? '' : String(value);
+  return count;
 }
 
 /**
@@ -368,7 +383,7 @@ const PLACEHOLDER_STRIP_RE = /<span data-tw="\d+"><\/span>/g;
 function buildPlainTextVnodes(
   combined: string,
   components: preact.ComponentChildren[],
-  nobr?: boolean,
+  unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
   const parts = combined.split(PLACEHOLDER_SPLIT_RE);
   const children: preact.ComponentChildren[] = [];
@@ -380,7 +395,7 @@ function buildPlainTextVnodes(
       children.push(part);
     }
   }
-  return nobr ? <>{children}</> : h('p', null, ...children);
+  return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
 /**
@@ -393,11 +408,14 @@ function buildPlainTextVnodes(
  *
  * After micromark processes the combined string, the HTML is parsed back into
  * Preact VNodes with placeholders replaced by the real rendered components.
+ * Inside code spans the placeholders are text markers instead (see
+ * CODE_MARKER_OPEN), so variables there stay live components too.
  */
 export function renderNodes(
   nodes: ASTNode[],
   options?: {
     nobr?: boolean;
+    /** Unused: components read locals from LocalsValuesContext. Kept for API compatibility. */
     locals?: Record<string, unknown>;
     inline?: boolean;
   },
@@ -420,34 +438,38 @@ export function renderNodes(
   // Build combined markdown string with placeholders for non-text nodes
   const components: preact.ComponentChildren[] = [];
   let combined = '';
-  const locals = options?.locals ?? {};
+  // An odd backtick count means the next placeholder sits in a code span.
+  let backticks = 0;
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
       combined += node.value;
-    } else if (node.type === 'variable' && hasUnclosedBacktick(combined)) {
-      // Inline variable value to avoid placeholder inside code span
-      combined += getVariableTextValue(node, locals);
-    } else {
-      const phIdx = components.length;
-      components.push(renderSingleNode(node));
-      combined += `<span data-tw="${phIdx}"></span>`;
+      backticks += countBackticks(node.value);
+      continue;
     }
+    const phIdx = components.length;
+    components.push(renderSingleNode(node));
+    combined +=
+      backticks % 2 === 1
+        ? `${CODE_MARKER_OPEN}${phIdx}${CODE_MARKER_CLOSE}`
+        : `<span data-tw="${phIdx}"></span>`;
   }
 
   // Fast path: skip micromark + innerHTML when text has no markdown syntax.
   // This eliminates ~655 innerHTML calls on plain UI text like "ALMA",
   // "▸ Crew", "Activate" that pass through the full pipeline only to
   // produce the same text they started with (issue #145).
+  // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
+  const unwrapParagraphs = !!(options?.nobr || options?.inline);
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, components, options?.nobr);
+    return buildPlainTextVnodes(combined, components, unwrapParagraphs);
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, components, options?.nobr);
+  return htmlToPreact(html, components, unwrapParagraphs);
 }

@@ -9,6 +9,7 @@ import {
   LocalsValuesContext,
   LocalsUpdateContext,
   NobrContext,
+  InlineContext,
   WidgetChildrenContext,
   renderNodes,
 } from '../../markup/render';
@@ -186,6 +187,7 @@ function WidgetBody({
   ownKeys: Record<string, unknown>;
 }) {
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
     {},
   );
@@ -211,7 +213,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, { nobr, locals: localState })}
+        {renderNodes(body, { nobr, inline, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -225,6 +227,7 @@ export function WidgetInvocation({
 }: WidgetInvocationProps) {
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -235,7 +238,7 @@ export function WidgetInvocation({
   if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
-        {renderNodes(body, { nobr, locals: parentValues })}
+        {renderNodes(body, { nobr, inline, locals: parentValues })}
       </WidgetChildrenContext.Provider>
     );
   }

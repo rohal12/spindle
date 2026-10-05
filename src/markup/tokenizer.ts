@@ -231,9 +231,13 @@ function parseHtmlAttributes(
     const attrName = input.slice(attrStart, j);
     if (!attrName) break;
 
-    // Check for = value
-    if (input[j] === '=') {
-      j++; // skip =
+    // Check for = value. HTML allows whitespace on either side of the =
+    // (`id = "x"`); whitespace not followed by = ends a boolean attribute.
+    let eqIdx = j;
+    while (eqIdx < input.length && /\s/.test(input[eqIdx]!)) eqIdx++;
+    if (input[eqIdx] === '=') {
+      j = eqIdx + 1; // skip =
+      while (j < input.length && /\s/.test(input[j]!)) j++;
       if (input[j] === '"' || input[j] === "'") {
         const quote = input[j]!;
         j++; // skip opening quote

@@ -9,6 +9,7 @@ import {
   LocalsValuesContext,
   LocalsUpdateContext,
   NobrContext,
+  InlineContext,
   renderNodes,
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
@@ -97,11 +98,12 @@ function ForIteration({
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
 
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children, { nobr, locals: localState })}
+        {renderNodes(children, { nobr, inline, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
