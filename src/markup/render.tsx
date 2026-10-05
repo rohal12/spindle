@@ -9,6 +9,7 @@ import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useInterpolate } from '../hooks/use-interpolate';
+import { splitTemplate } from '../interpolation';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -335,6 +336,44 @@ function isPresentBooleanAttribute(name: string, value: string): boolean {
   return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
 }
 
+const decodedAttributeText = new Map<string, string>();
+
+/**
+ * Decode character references (`&amp;`, `&#123;`) in attribute text the way
+ * the HTML parser decodes an attribute value, by letting it parse one.
+ */
+function decodeAttributeText(text: string): string {
+  if (!text.includes('&')) return text;
+  let decoded = decodedAttributeText.get(text);
+  if (decoded === undefined) {
+    const template = document.createElement('template');
+    template.innerHTML = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
+    decoded =
+      (template.content.firstChild as Element).getAttribute('title') ?? text;
+    decodedAttributeText.set(text, decoded);
+  }
+  return decoded;
+}
+
+/**
+ * An author-written attribute value with its `{…}` interpolations resolved
+ * and the character references in its literal text decoded. A reference
+ * that decodes to a brace (`&#123;$x}`) stays literal, not an interpolation.
+ */
+function resolveAttributeValue(
+  value: string,
+  resolve: (s: string | undefined) => string | undefined,
+): string {
+  if (!value.includes('&')) return resolve(value) ?? value;
+  return splitTemplate(value)
+    .map((part) =>
+      'text' in part
+        ? decodeAttributeText(part.text)
+        : (resolve(`{${part.expr}}`) ?? ''),
+    )
+    .join('');
+}
+
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
@@ -343,7 +382,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const parentInline = useContext(InlineContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
+    attrs[k] = isPresentBooleanAttribute(k, v)
+      ? true
+      : resolveAttributeValue(v, resolve);
   }
   const isSvgRoot = node.tag.toLowerCase() === 'svg';
   const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
