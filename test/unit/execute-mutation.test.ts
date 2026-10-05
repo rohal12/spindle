@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useStoryStore } from '../../src/store';
 import { executeMutation } from '../../src/execute-mutation';
 import { installStoryAPI } from '../../src/story-api';
+import { registerClass, clearRegistry } from '../../src/class-registry';
 import {
   addTrigger,
   connectTriggersToStore,
@@ -137,6 +138,121 @@ describe('executeMutation', () => {
   it('still deletes variables removed by the code', () => {
     executeMutation('delete $other', {}, () => {});
     expect('other' in useStoryStore.getState().variables).toBe(false);
+  });
+});
+
+describe('executeMutation with nested Story.set writes (#215)', () => {
+  class Player {
+    hp = 100;
+    name = 'Ada';
+  }
+
+  beforeEach(() => {
+    registerClass('Player', Player);
+    resetTriggers();
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([makePassage(1, 'Start', '')]),
+        { obj: { a: 0, b: 0 }, flag: 0 },
+        { tobj: { a: 0, b: 0 } },
+      );
+    installStoryAPI();
+    useStoryStore.getState().setVariable('player', new Player());
+  });
+
+  afterEach(() => {
+    clearRegistry();
+    resetTriggers();
+  });
+
+  const run = (code: string) => executeMutation(code, {}, () => {});
+  const vars = () => useStoryStore.getState().variables;
+
+  it('keeps a Story.set path write after a code write to the same root', () => {
+    run('$obj.a = 1; Story.set("obj.b", 2)');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps a Story.set path write before a code write to the same root', () => {
+    run('Story.set("obj.b", 2); $obj.a = 1');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps nested transient writes to the same root', () => {
+    run('%tobj.a = 1; Story.set("%tobj.b", 2)');
+    expect(useStoryStore.getState().transient.tobj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('keeps batch Story.set path writes across namespaces', () => {
+    run('$obj.a = 1; %tobj.a = 1; Story.set({ "obj.b": 2, "%tobj.b": 3 })');
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+    expect(useStoryStore.getState().transient.tobj).toEqual({ a: 1, b: 3 });
+  });
+
+  it('keeps code temporaries alongside Story.set writes', () => {
+    run('_t = { n: 1 }; $obj.a = 1; Story.set("obj.b", 2); _t.n = 2');
+    expect(useStoryStore.getState().temporary.t).toEqual({ n: 2 });
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('lets the code see a Story.set write made earlier in the same run', () => {
+    run(
+      'Story.set("obj.b", 2); $obj.b += 1; Story.set("%tobj.a", 5); %tobj.b = %tobj.a * 2',
+    );
+    expect(vars().obj).toEqual({ a: 0, b: 3 });
+    expect(useStoryStore.getState().transient.tobj).toEqual({ a: 5, b: 10 });
+  });
+
+  it('writes Story.set paths into objects the code already holds', () => {
+    run('const o = $obj; Story.set("obj.b", 2); o.a = o.b + 1');
+    expect(vars().obj).toEqual({ a: 3, b: 2 });
+  });
+
+  it('applies conflicting writes in program order', () => {
+    run('$obj.a = 1; Story.set("obj.a", 2)');
+    expect(vars().obj).toEqual({ a: 2, b: 0 });
+    run('Story.set("obj.a", 3); $obj.a = 4');
+    expect(vars().obj).toEqual({ a: 4, b: 0 });
+    run('Story.set("obj", { a: 5, b: 5 }); $obj.b = 6');
+    expect(vars().obj).toEqual({ a: 5, b: 6 });
+    run('$obj = { a: 7, b: 7 }; Story.set("obj.b", 8)');
+    expect(vars().obj).toEqual({ a: 7, b: 8 });
+  });
+
+  it('does not let the code mutate a value it passed to Story.set', () => {
+    run('const v = { a: 1, b: 1 }; Story.set("obj", v); v.a = 9');
+    expect(vars().obj).toEqual({ a: 1, b: 1 });
+  });
+
+  it('keeps nested writes to a registered class root', () => {
+    run('$player.name = "Bo"; Story.set("player.hp", 50)');
+    const player = vars().player as Player;
+    expect(player).toBeInstanceOf(Player);
+    expect(player.name).toBe('Bo');
+    expect(player.hp).toBe(50);
+  });
+
+  it('still applies Story.set immediately for watchers during the run', () => {
+    const disconnect = connectTriggersToStore();
+    addTrigger('$obj.b == 2', { run: '$flag = 1' });
+    run('$obj.a = 1; Story.set("obj.b", 2)');
+    disconnect();
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+    expect(vars().flag).toBe(1);
+  });
+
+  it('keeps Story.set writes made before the code throws', () => {
+    expect(() =>
+      run('$obj.a = 1; Story.set("obj.b", 2); throw new Error("x")'),
+    ).toThrow('x');
+    expect(vars().obj).toEqual({ a: 0, b: 2 });
+  });
+
+  it('does not route Story.set calls made after the run into its copy', () => {
+    run('$obj.a = 1');
+    (globalThis as Record<string, any>).Story.set('obj.b', 2);
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
   });
 });
 

@@ -44,7 +44,7 @@ describe('Story.set inside mutation macros', () => {
       .getState()
       .init(
         makeStoryData([makePassage(1, 'Start', '')]),
-        { data: { value: 0 }, list: [1] },
+        { data: { value: 0 }, list: [1], obj: { a: 0, b: 0 } },
         { tdata: { value: 0 } },
       );
     installStoryAPI();
@@ -69,6 +69,14 @@ describe('Story.set inside mutation macros', () => {
     const state = useStoryStore.getState();
     expect(state.variables.list).toEqual([4, 5]);
     expect(state.transient.tdata).toEqual({ value: 3 });
+  });
+
+  it('{do} keeps a nested Story.set write to a root the code changed (#215)', () => {
+    const el = renderMarkup(
+      '{do}$obj.a = 1; Story.set("obj.b", 2);{/do}{print $obj.a}-{print $obj.b}',
+    );
+    expect(el.textContent).toBe('1-2');
+    expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
   });
 
   it('custom ctx.mutate keeps a Story.set object update', () => {
