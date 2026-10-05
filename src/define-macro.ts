@@ -88,7 +88,7 @@ export interface MacroDefinition {
   storeVar?: boolean;
   description?: string;
   parameters?: ParameterDef[];
-  render: (props: MacroProps, ctx: MacroContext) => VNode | null;
+  render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
 }
 
 const sharedHooks = {
