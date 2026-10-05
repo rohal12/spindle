@@ -269,7 +269,7 @@ Standard markdown links and images work alongside Twine link syntax:
 ![Alt text](image.png)
 ```
 
-Variables and expressions work in link text, image alt text and link titles, and update with the variable: `![Portrait of {$name}](portrait.png "{$name}")`. In alt text and titles, macros count as their text, as in [attribute values](#markup-in-attribute-values): `![{if $lit}A lit{else}A dark{/if} room](room.png)`.
+Variables and expressions work in link text, image alt text and link titles, and update with the variable: `![Portrait of {$name}](portrait.png "{$name}")`. In alt text and titles, macros count as their text, as in [attribute values](#markup-in-attribute-values): `![{if $lit}A lit{else}A dark{/if} room](room.png)`. A macro without a text form has nothing to put there, and that includes Twine links: `[[…]]`, `{link}`, `{button}` or an input macro in alt text or a title doesn't run, and an error is shown in front of the image or link instead. Markdown links and images inside an image's alt text count as their text; their own titles are not shown, as in CommonMark.
 
 ## Line Breaks
 

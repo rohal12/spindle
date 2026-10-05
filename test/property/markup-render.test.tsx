@@ -9,7 +9,12 @@ import { installStoryAPI } from '../../src/story-api';
 import { markdownToHtml } from '../../src/markup/markdown';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import { NUM_RUNS, fcOptions } from './config';
-import { INLINE_TAGS, richPassage, substituteVars } from './markup-rich';
+import {
+  INLINE_TAGS,
+  TWINE_LINK,
+  richPassage,
+  substituteVars,
+} from './markup-rich';
 import {
   TEXT_WIDGETS,
   codePieces,
@@ -89,9 +94,71 @@ function shownText(el: HTMLElement): string {
   return [el.textContent ?? '', ...attrs].join('\n');
 }
 
+/** Stands for a Twine link in the reference render of linksInAttributes. */
+const LINK_MARK = 'LNK';
+
+/**
+ * How many of the Twine links in `content` end up in an attribute value
+ * (image alt text, a link or image title). Where markdown puts each link is
+ * markdown's business, so the reference is the same passage with every link
+ * swapped for a text macro: both are a placeholder to markdown, so the links
+ * in attributes are where the macro's text shows in one.
+ */
+function linksInAttributes(content: string): number {
+  if (!content.includes(TWINE_LINK) || !content.includes('](')) return 0;
+  let n = 0;
+  const reference = content.split(TWINE_LINK).join(`{print "${LINK_MARK}"}`);
+  withPassage(reference, (el) => {
+    for (const node of Array.from(el.querySelectorAll('*'))) {
+      for (const attr of Array.from(node.attributes)) {
+        n += countOf(attr.value, LINK_MARK);
+      }
+    }
+  });
+  return n;
+}
+
+/**
+ * Every Twine link in `content` renders as a link, except one in an attribute
+ * value: a link has no text form, so there it shows exactly one error, in
+ * front of the element (docs/markup.md "Links and images"). These are the
+ * only errors.
+ */
+function expectLinks(el: HTMLElement, content: string, inAttributes: number) {
+  const errors = Array.from(el.querySelectorAll('.error'));
+  expect(errors.length, content).toBe(inAttributes);
+  for (const error of errors) {
+    expect(error.textContent, content).toMatch(
+      /^\{link error: in attribute "(alt|title)": \{link\} has no text form/,
+    );
+  }
+  expect(el.querySelectorAll('a.macro-link').length, content).toBe(
+    countOf(content, TWINE_LINK) - inAttributes,
+  );
+}
+
+/**
+ * Render generated passage content and run `check` on it. `checkMarkup`
+ * checks its links (expectLinks) and that nothing leaks (expectNoLeak); it
+ * runs before `check`, and `check` may run it again after a change.
+ */
+function withRichPassage(
+  content: string,
+  check: (el: HTMLElement, checkMarkup: () => void) => void,
+) {
+  const inAttributes = linksInAttributes(content);
+  withPassage(content, (el) => {
+    const checkMarkup = () => {
+      expectLinks(el, content, inAttributes);
+      expectNoLeak(el);
+    };
+    checkMarkup();
+    check(el, checkMarkup);
+  });
+}
+
 /** No placeholder markup or escape guard may reach the DOM, anywhere. */
 function expectNoLeak(el: HTMLElement) {
-  expect(el.querySelector('.error')).toBeNull();
   const text = el.textContent ?? '';
   expect(text).not.toContain('data-tw');
   expect(text).not.toMatch(/[\uE000-\uF8FF]/);
@@ -202,8 +269,7 @@ describe('placeholders', () => {
       const vars: Record<string, string> = {};
       for (let k = 0; k < count; k++) vars[varName(k)] = `«${k}»`;
       initStory(vars);
-      withPassage(src, (el) => {
-        expectNoLeak(el);
+      withRichPassage(src, (el) => {
         const text = shownText(el);
         for (let k = 0; k < count; k++) {
           expect(countOf(text, `«${k}»`), `{$v${k}} in ${src}`).toBe(1);
@@ -222,8 +288,7 @@ describe('placeholders', () => {
         (k) => `{${sigils[k % 4]}${INHERITED[k % INHERITED.length]}}`,
       );
       initStory();
-      withPassage(src, (el) => {
-        expectNoLeak(el);
+      withRichPassage(src, (el) => {
         expect(shownText(el)).not.toMatch(/native code|function/);
       });
     },
@@ -235,10 +300,10 @@ describe('placeholders', () => {
     (raw, name) => {
       const { src, count } = substituteVars(raw, () => `{$${name}}`);
       initStory({ [name]: '«old»' });
-      withPassage(src, (el) => {
+      withRichPassage(src, (el, checkMarkup) => {
         expect(countOf(shownText(el), '«old»')).toBe(count);
         act(() => window.Story.set(name, '«new»'));
-        expectNoLeak(el);
+        checkMarkup();
         expect(countOf(shownText(el), '«old»')).toBe(0);
         expect(countOf(shownText(el), '«new»')).toBe(count);
       });
@@ -267,8 +332,7 @@ describe('inline elements', () => {
       const vars: Record<string, string> = {};
       for (let k = 0; k < count; k++) vars[`v${k}`] = `«${k}»`;
       initStory(vars);
-      withPassage(`<${tag} data-inline>${src}</${tag}>`, (el) => {
-        expectNoLeak(el);
+      withRichPassage(`<${tag} data-inline>${src}</${tag}>`, (el) => {
         const shown = shownText(el);
         for (let k = 0; k < count; k++) {
           expect(countOf(shown, `«${k}»`), `{$v${k}} in ${src}`).toBe(1);
@@ -496,6 +560,7 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
         useStoryStore.getState().setTransient('tr', 'R');
       });
       withPassage(wrap(`a${'\\'.repeat(n)}${markup}b`), (el) => {
+        expect(el.querySelector('.error')).toBeNull();
         expectNoLeak(el);
         const visible = n % 2 === 1 ? markup : shown;
         expect(el.textContent).toContain(

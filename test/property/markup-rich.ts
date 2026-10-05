@@ -67,6 +67,9 @@ const escape = fc.constantFrom(
 
 const variable = fc.constant(VAR_SENTINEL);
 
+/** The Twine link generated passages hold, to the passage `Start`. */
+export const TWINE_LINK = '[[Start]]';
+
 /** Code span content: no backtick run of the delimiter's length. */
 function codeSpan(inner: fc.Arbitrary<string>) {
   return fc
@@ -103,6 +106,33 @@ const codeContent = fc
 function opensFence(s: string): boolean {
   return /^\s*(`{3}|~{3})/.test(s);
 }
+
+const HREF = 'http://e.x/';
+
+/**
+ * A link or image destination, with or without a title. A title is attribute
+ * text like alt text; one holding a `"` would end early, so none is made.
+ */
+const destination = (inline: fc.Arbitrary<string>) =>
+  fc.oneof(
+    { weight: 2, arbitrary: fc.constant(HREF) },
+    {
+      weight: 1,
+      arbitrary: inline
+        .filter((title) => !title.includes('"'))
+        .map((title) => `${HREF} "${title}"`),
+    },
+  );
+
+/**
+ * Text for a link label or image description. Alt text is the plain text of
+ * the description, by CommonMark, so the title of a link or image inside an
+ * image is not displayed and variables there legitimately render nothing.
+ * Any label may end up in an image (`!` + `[label](url)`), so labels hold no
+ * titled links.
+ */
+const label = (inline: fc.Arbitrary<string>) =>
+  inline.filter((text) => !text.includes(`${HREF} "`));
 
 const tableCell = (inline: fc.Arbitrary<string>) =>
   inline.filter((s) => !s.includes('\n') && !s.includes('|'));
@@ -145,7 +175,7 @@ export function richPassage(opts: RichOptions = {}) {
         { weight: 2, arbitrary: noise },
         { weight: 2, arbitrary: escape },
         { weight: 2, arbitrary: codeSpan(codeContent) },
-        { weight: 1, arbitrary: fc.constant('[[Start]]') },
+        { weight: 1, arbitrary: fc.constant(TWINE_LINK) },
         { weight: 1, arbitrary: fc.constant('{print "pr"}') },
         { weight: 1, arbitrary: fc.constant('<br>') },
         {
@@ -156,7 +186,18 @@ export function richPassage(opts: RichOptions = {}) {
         },
         {
           weight: 1,
-          arbitrary: tie('inline').map((label) => `[${label}](http://e.x/)`),
+          arbitrary: fc
+            .tuple(label(tie('inline')), destination(tie('inline')))
+            .map(([label, dest]) => `[${label}](${dest})`),
+        },
+        {
+          // Image alt text holds the text of its description: variables and
+          // text macros resolve there, a Twine link has no text form and
+          // shows an error instead (docs/markup.md "Links and images").
+          weight: 1,
+          arbitrary: fc
+            .tuple(label(tie('inline')), destination(tie('inline')))
+            .map(([alt, dest]) => `![${alt}](${dest})`),
         },
         {
           weight: 2,
@@ -241,10 +282,12 @@ export function richPassage(opts: RichOptions = {}) {
       ),
     }))
     .blocks.filter(
-      // Adjacent brackets (`[` + `[label](url)`) can form a Twine link
-      // whose text is literal by design (docs/markup.md "Links"), so a
-      // variable inside it shows as `{$v}`. Only the explicit links are kept.
-      (src) => !src.split('[[Start]]').join('L').includes('[['),
+      // Adjacent brackets (`[` + `[label](url)`, `[` + `[[Start]]`) can form
+      // a Twine link whose text is literal by design (docs/markup.md
+      // "Links"), so a variable inside it shows as `{$v}`. Only the explicit
+      // links are kept.
+      (src) =>
+        !src.includes('[[[') && !src.split(TWINE_LINK).join('L').includes('[['),
     );
 }
 

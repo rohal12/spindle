@@ -224,4 +224,27 @@ describe('variables in markdown attributes', () => {
     const el = renderPassage('![\\{$dir} {$x}](i.png)');
     expect(el.querySelector('img')!.getAttribute('alt')).toBe('{$dir} V');
   });
+
+  // A link has no text form, so in alt text or a title it shows an error in
+  // front of the element, as in an HTML attribute value (#225). Found by
+  // property testing, where a link in alt text was expected to vanish.
+  it.each([
+    ['![a [[Start]] b](i.png)', 'alt', 'a  b'],
+    ['![{if true}[[Start]]a{/if} ](i.png)', 'alt', 'a '],
+    ['![a {link "x" "Start"}{/link}](i.png)', 'alt', 'a '],
+    ['![a](i.png "t [[Start]]")', 'title', 't '],
+    ['[a](http://u "t [[Start]]")', 'title', 't '],
+  ])('%j shows a link in %s as an error', (src, attribute, value) => {
+    const el = renderPassage(src);
+    expectNoAttributeLeak(el);
+    const errors = el.querySelectorAll('.error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.textContent).toBe(
+      `{link error: in attribute "${attribute}": {link} has no text form, ` +
+        `so it can't be used in an attribute value or label}`,
+    );
+    expect(el.querySelector('a.macro-link')).toBeNull();
+    const element = errors[0]!.nextElementSibling!;
+    expect(element.getAttribute(attribute)).toBe(value);
+  });
 });
