@@ -6,7 +6,10 @@ import {
   stripLooseQuotes,
 } from './arg-utils';
 
-function parseRadioArgs(rawArgs: string): { value: string; label: string } {
+export function parseRadioArgs(rawArgs: string): {
+  value: string;
+  label: string;
+} {
   // $var "value" label: a quoted value accepts \" \' and \\ escapes and
   // may contain the other quote kind.
   const head = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+/);
@@ -24,7 +27,7 @@ function parseRadioArgs(rawArgs: string): { value: string; label: string } {
   }
 
   const match = rawArgs.match(
-    /^\s*["']?\$?[\w.]+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
+    /^\s*["']?\$?[\w.]+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/s,
   );
   if (!match) {
     const parts = rawArgs.trim().split(/\s+/).slice(1);

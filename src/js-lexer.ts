@@ -12,6 +12,14 @@
  * position and divides otherwise, and `%name` is a transient reference in
  * operand position while `%` after an operand — `($n)%3`, `$a[i] %2`,
  * `_i++ %n` — is the modulo operator.
+ *
+ * A `}` ends an operand when it closes an object literal (`-{}/2` divides)
+ * and starts a statement when it closes a block (`if (x) {}\n/re/.test(s)`).
+ * A `{` opens a block at the start of the code, after `;`, `{`, `}`, `)`,
+ * `=>`, `else` and `do`, and where an operator was expected; elsewhere —
+ * after an operator, `(`, `[`, `,`, `:`, `?`, an operand keyword such as
+ * `return`, and at the start of a template interpolation — it opens an
+ * object literal.
  */
 
 export interface JsLexHandlers {
@@ -64,6 +72,10 @@ const OPERAND_KEYWORDS = new Set([
 ]);
 /** Keywords whose parenthesised header is followed by a statement. */
 const HEADER_KEYWORDS = new Set(['for', 'if', 'while', 'with']);
+/** Operand keywords followed by a statement, so a `{` after them is a block. */
+const STATEMENT_KEYWORDS = new Set(['do', 'else']);
+/** Tokens after which a `{` opens a block (a statement starts there). */
+const BLOCK_AFTER_PUNCT = new Set([';', '{', '}', ')', '=>']);
 
 /**
  * Scan the `"…"` or `'…'` string literal opening at `start`. `end` is the
@@ -181,9 +193,11 @@ export function lexJs(
   let afterDot = false; // `word` is a property name, never a keyword
   let afterHeaderKeyword = false; // last token was if/while/for/with
   let lastPunct = '';
+  let lastWord = ''; // the identifier or keyword just read, if any
   let lineBreak = false; // a line break since the last token
   let braceDepth = 0;
   const parenIsHeader: boolean[] = []; // per open `(`: closes a header?
+  const braceIsBlock: boolean[] = []; // per open `{`: a block, not an object?
 
   const code = (ch: string, index: number) =>
     handlers.code?.(ch, index, nesting);
@@ -194,6 +208,7 @@ export function lexJs(
     if (!word) return;
     operandNext = !afterDot && OPERAND_KEYWORDS.has(word);
     afterHeaderKeyword = !afterDot && HEADER_KEYWORDS.has(word);
+    lastWord = afterDot ? '' : word;
     afterDot = false;
     lastPunct = '';
     lineBreak = false;
@@ -207,6 +222,7 @@ export function lexJs(
     afterHeaderKeyword = false;
     afterDot = false;
     lastPunct = '';
+    lastWord = '';
     lineBreak = false;
   }
 
@@ -216,10 +232,19 @@ export function lexJs(
     afterDot = punct === '.';
     afterHeaderKeyword = false;
     lastPunct = punct;
+    lastWord = '';
     lineBreak = false;
   }
 
-  function trackCode(c: string) {
+  /** Whether a `{` here opens a block rather than an object literal. */
+  function opensBlock(): boolean {
+    if (!operandNext) return true; // `try {`, `class A {`, `$x\n{`
+    if (lastPunct) return BLOCK_AFTER_PUNCT.has(lastPunct);
+    if (lastWord) return STATEMENT_KEYWORDS.has(lastWord);
+    return !interpolation; // start of the code
+  }
+
+  function trackCode(c: string, index: number) {
     if (WORD_CHAR_RE.test(c)) {
       word += c;
       return;
@@ -230,16 +255,28 @@ export function lexJs(
     if (c === '\n') lineBreak = true;
     if (SPACE_RE.test(c)) return;
     if (c === '(') parenIsHeader.push(afterHeaderKeyword);
-    if (c === '{') braceDepth++;
-    if (c === '}') braceDepth--;
-    if (c === ')') {
+    if (c === '{') {
+      braceDepth++;
+      braceIsBlock.push(opensBlock());
+      endPunct(c, true);
+    } else if (c === '}') {
+      braceDepth--;
+      // After a block a statement may follow; after an object, an operator.
+      endPunct(c, braceIsBlock.pop() ?? true);
+    } else if (c === ')') {
       // `if (…) %x = 1` vs `($n)%3`
       endPunct(c, parenIsHeader.pop() ?? false);
     } else if (c === '.') {
       // Property access, unless it is the spread `...`
       endPunct(c, lastPunct === '.');
+    } else if (
+      c === '>' &&
+      lastPunct === '=' &&
+      src.charAt(index - 1) === '='
+    ) {
+      endPunct('=>', true);
     } else {
-      // `]` ends an operand; `}` closes a block, so a statement may follow.
+      // `]` ends an operand.
       endPunct(c, c !== ']');
     }
   }
@@ -318,7 +355,7 @@ export function lexJs(
     if (ch === '}' && interpolation && braceDepth === 0) break;
 
     // Regular code character
-    trackCode(ch);
+    trackCode(ch, i);
     code(ch, i);
     i++;
   }

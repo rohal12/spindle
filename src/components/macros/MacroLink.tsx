@@ -3,7 +3,7 @@ import { defineMacro } from '../../define-macro';
 import { unescapeQuoted } from './arg-utils';
 import { useDetachedBody } from './detached-body';
 
-function parseArgs(rawArgs: string): {
+export function parseLinkArgs(rawArgs: string): {
   display: string;
   passage: string | null;
 } {
@@ -30,7 +30,7 @@ defineMacro({
   block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
-    const { display, passage } = parseArgs(rawArgs);
+    const { display, passage } = parseLinkArgs(rawArgs);
     const runBody = useDetachedBody();
 
     const perform = () => {

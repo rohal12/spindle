@@ -109,6 +109,22 @@ describe('stableKey', () => {
     expect(stableKey('NaN')).not.toBe(stableKey(NaN));
   });
 
+  // Counterexamples from the property tests.
+
+  it('distinguishes a sparse array from a shorter one', () => {
+    expect(stableKey([,])).not.toBe(stableKey([]));
+    // A hole reads as undefined, as deepClone fills it.
+    expect(stableKey([, 1])).toBe(stableKey([undefined, 1]));
+  });
+
+  it('keeps a symbol description from reading as other symbols', () => {
+    expect(stableKey([Symbol('a),Symbol(b')])).not.toBe(
+      stableKey([Symbol('a'), Symbol('b')]),
+    );
+    expect(stableKey(Symbol('a'))).toBe(stableKey(Symbol('a')));
+    expect(stableKey(Symbol())).not.toBe(stableKey(Symbol('')));
+  });
+
   it('distinguishes registered class instances from plain objects', () => {
     class Item {
       constructor(public name: string) {}

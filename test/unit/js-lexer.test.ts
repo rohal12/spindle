@@ -71,6 +71,36 @@ describe('lexJs', () => {
     expect(literals('a[0] / 2 / "b"')).toEqual(['"b"']);
   });
 
+  it('reads a slash after an object literal as division', () => {
+    // Found by property testing: `}` closing an object literal was read as
+    // the end of a block, so the `/` after it opened a regex.
+    expect(literals('-{}/-[]')).toEqual([]);
+    expect(literals('[{a: 1} / 2, "x"]')).toEqual(['"x"']);
+    expect(literals('`${ {} / 2 }`')).toEqual(['`', '${', '}', '`']);
+    expect(literals('x ? {} / 2 : "y"')).toEqual(['"y"']);
+    expect(literals('return {} / 2')).toEqual([]);
+  });
+
+  it('reads a slash after a block as the start of a regex', () => {
+    expect(literals('if (x) {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(literals('{}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(literals('f = () => {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(literals('if (x) {} else {}\n/a"/.test(s)')).toEqual(['/a"/']);
+    expect(literals('do {} while (x); try {} finally {}\n/a"/')).toEqual([
+      '/a"/',
+    ]);
+    expect(literals('function f() {}\n/a"/.test(s)')).toEqual(['/a"/']);
+  });
+
+  it('reads a % after an object literal as modulo', () => {
+    expect(pieces('[{} %n]')).toEqual([['code', '[{} %n]', 0]]);
+    expect(pieces('if (x) {} %n = 1')).toEqual([
+      ['code', 'if (x) {} ', 0],
+      ['transient', 'n', 0],
+      ['code', ' = 1', 0],
+    ]);
+  });
+
   it('reports string literals and comments as literal text', () => {
     expect(literals(`"a" + 'b' /* c */ // d`)).toEqual([
       '"a"',
