@@ -214,6 +214,20 @@ function parseHtmlAttributes(
   memo: ScanMemo,
 ): { attributes: Record<string, string>; endIdx: number } {
   const attributes: Record<string, string> = {};
+  // As in HTML, the first of attributes with the same (case-insensitive)
+  // name wins. Defined as own properties so `__proto__` is kept too.
+  const seen = new Set<string>();
+  function addAttribute(name: string, value: string) {
+    const lower = name.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    Object.defineProperty(attributes, name, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
 
   while (j < input.length) {
     // Skip whitespace
@@ -254,17 +268,17 @@ function parseHtmlAttributes(
           } else if (input[j] === quote) break;
           j++;
         }
-        attributes[attrName] = input.slice(valStart, j);
+        addAttribute(attrName, input.slice(valStart, j));
         if (j < input.length) j++; // skip closing quote
       } else {
         // Unquoted value
         const valStart = j;
         while (j < input.length && /[^\s>]/.test(input[j]!)) j++;
-        attributes[attrName] = input.slice(valStart, j);
+        addAttribute(attrName, input.slice(valStart, j));
       }
     } else {
       // Boolean attribute
-      attributes[attrName] = '';
+      addAttribute(attrName, '');
     }
   }
 

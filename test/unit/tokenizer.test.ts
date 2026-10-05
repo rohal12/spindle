@@ -1272,6 +1272,29 @@ describe('tokenize — raw {do} bodies (#176)', () => {
   });
 });
 
+describe('tokenize — duplicate attributes', () => {
+  // Found by property testing: the last duplicate won, where HTML keeps
+  // the first (names compare case-insensitively).
+  it('keeps the first of duplicate attribute names', () => {
+    const [token] = tokenize('<span id="a" ID="b" title=x title=y>');
+    expect(token).toMatchObject({ type: 'html' });
+    expect((token as { attributes: object }).attributes).toEqual({
+      id: 'a',
+      title: 'x',
+    });
+  });
+
+  it('keeps an attribute named __proto__ as an own property', () => {
+    const [token] = tokenize('<span __proto__="p">');
+    const attributes = (token as { attributes: Record<string, string> })
+      .attributes;
+    expect(Object.keys(attributes)).toEqual(['__proto__']);
+    expect(
+      Object.getOwnPropertyDescriptor(attributes, '__proto__')!.value,
+    ).toBe('p');
+  });
+});
+
 describe('tokenize — whitespace around attribute equals (#219)', () => {
   it.each([
     ['before and after', '<div id = "attrs">x</div>'],
