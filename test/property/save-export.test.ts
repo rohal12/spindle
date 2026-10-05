@@ -198,6 +198,16 @@ describe('save export', () => {
     numRuns: Math.ceil(fcOptions.numRuns / 3),
   })('loads whenever the validator accepts it', async (exported) => {
     if (!isSaveExport(exported)) return;
+    if (exported.ifid !== IFID) {
+      // An export of another story (the validator does not know ours)
+      await expect(Story.importSave(exported, 'p')).rejects.toThrow(
+        /different story/,
+      );
+      return;
+    }
     expect(await importAndLoad(exported)).toBeNull();
+    // Filed under this story, whatever its metadata says
+    const saves = await (await getBackend()).getSavesByIfid(IFID);
+    expect(saves).toHaveLength(1);
   });
 });
