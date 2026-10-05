@@ -7,8 +7,7 @@ import { getWidget } from '../widgets/widget-registry';
 import { getMacro, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
-import type { ASTNode, HtmlNode, MacroNode, VariableNode } from './ast';
-import { useStoryStore } from '../store';
+import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useInterpolate } from '../hooks/use-interpolate';
 
 export interface LocalsUpdater {
@@ -36,6 +35,16 @@ export const NobrContext = createContext(false);
 export const InlineContext = createContext(false);
 export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
+
+/**
+ * Placeholder markers for components inside markdown code spans. micromark
+ * escapes HTML in code spans, so a <span data-tw> placeholder would show as
+ * literal text there; private-use characters pass through verbatim and are
+ * swapped for the live component afterwards, keeping it subscribed (#223).
+ */
+const CODE_MARKER_OPEN = '\uE000';
+const CODE_MARKER_CLOSE = '\uE001';
+const CODE_MARKER_SPLIT_RE = /\uE000(\d+)\uE001/;
 
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
@@ -67,7 +76,15 @@ function convertDomNode(
   components: preact.ComponentChildren[],
 ): preact.ComponentChildren {
   if (node.nodeType === Node.TEXT_NODE) {
-    return node.textContent;
+    const text = node.textContent ?? '';
+    if (!text.includes(CODE_MARKER_OPEN)) return text;
+    // Swap code-span markers for their components; the split puts captured
+    // indices at odd positions.
+    return text
+      .split(CODE_MARKER_SPLIT_RE)
+      .map((part, i) =>
+        i % 2 === 1 ? components[parseInt(part, 10)] : part || null,
+      );
   }
   if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as Element;
@@ -337,35 +354,12 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   return nodes.map((node) => renderSingleNode(node));
 }
 
-function hasUnclosedBacktick(s: string): boolean {
+function countBackticks(s: string): number {
   let count = 0;
   for (let i = 0; i < s.length; i++) {
     if (s[i] === '`') count++;
   }
-  return count % 2 === 1;
-}
-
-function getVariableTextValue(
-  node: VariableNode,
-  locals: Record<string, unknown>,
-): string {
-  const state = useStoryStore.getState();
-  const parts = node.name.split('.');
-  const root = parts[0]!;
-
-  let value: unknown;
-  if (node.scope === 'variable') value = state.variables[root];
-  else if (node.scope === 'temporary') value = state.temporary[root];
-  else if (node.scope === 'transient') value = state.transient[root];
-  else value = locals[root];
-
-  for (let i = 1; i < parts.length; i++) {
-    // Primitives box on access, so `{$name.length}` works too.
-    if (value == null) return '';
-    value = (value as Record<string, unknown>)[parts[i]!];
-  }
-
-  return value == null ? '' : String(value);
+  return count;
 }
 
 /**
@@ -414,11 +408,14 @@ function buildPlainTextVnodes(
  *
  * After micromark processes the combined string, the HTML is parsed back into
  * Preact VNodes with placeholders replaced by the real rendered components.
+ * Inside code spans the placeholders are text markers instead (see
+ * CODE_MARKER_OPEN), so variables there stay live components too.
  */
 export function renderNodes(
   nodes: ASTNode[],
   options?: {
     nobr?: boolean;
+    /** Unused: components read locals from LocalsValuesContext. Kept for API compatibility. */
     locals?: Record<string, unknown>;
     inline?: boolean;
   },
@@ -441,20 +438,22 @@ export function renderNodes(
   // Build combined markdown string with placeholders for non-text nodes
   const components: preact.ComponentChildren[] = [];
   let combined = '';
-  const locals = options?.locals ?? {};
+  // An odd backtick count means the next placeholder sits in a code span.
+  let backticks = 0;
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
       combined += node.value;
-    } else if (node.type === 'variable' && hasUnclosedBacktick(combined)) {
-      // Inline variable value to avoid placeholder inside code span
-      combined += getVariableTextValue(node, locals);
-    } else {
-      const phIdx = components.length;
-      components.push(renderSingleNode(node));
-      combined += `<span data-tw="${phIdx}"></span>`;
+      backticks += countBackticks(node.value);
+      continue;
     }
+    const phIdx = components.length;
+    components.push(renderSingleNode(node));
+    combined +=
+      backticks % 2 === 1
+        ? `${CODE_MARKER_OPEN}${phIdx}${CODE_MARKER_CLOSE}`
+        : `<span data-tw="${phIdx}"></span>`;
   }
 
   // Fast path: skip micromark + innerHTML when text has no markdown syntax.
