@@ -149,7 +149,7 @@ Both arguments are expressions, so `{meter $health $stats.maxHealth}` works.
 {meter $hp 100 "HP"}       → "75 HP / 100 HP"
 ```
 
-Arguments are separated by whitespace, but whitespace inside strings, template and regex literals and brackets doesn't split them, so `{meter $stats["max hp"] 100}` works. In the label, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
+Arguments are separated by whitespace, but whitespace inside strings, template and regex literals and brackets doesn't split them, so `{meter $stats["max hp"] 100}` works. A `/` directly after an argument reads as division, as in JavaScript, so wrap an argument that starts with a regex literal in parentheses: `{meter (/hp/.test($s) ? 1 : 0) 1}`. In the label, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
 
 The bar clamps between 0% and 100%.
 
