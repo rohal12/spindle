@@ -27,6 +27,7 @@ export type SettingDef =
 const definitions = new Map<string, SettingDef>();
 let values: Record<string, unknown> = {};
 let storageLoaded = false;
+let unsubscribeStoryData: (() => void) | null = null;
 
 function storageKey(): string {
   const storyData = useStoryStore.getState().storyData;
@@ -40,6 +41,20 @@ function persist(): void {
 
 function loadFromStorage(): void {
   if (storageLoaded) return;
+  // Settings registered from Story JavaScript run before store.init(), when
+  // the IFID (and thus the storage key) is not known yet. Defer the load
+  // until story data arrives instead of reading `spindle.unknown.settings`.
+  if (!useStoryStore.getState().storyData?.ifid) {
+    if (!unsubscribeStoryData) {
+      unsubscribeStoryData = useStoryStore.subscribe((state) => {
+        if (!state.storyData?.ifid) return;
+        unsubscribeStoryData?.();
+        unsubscribeStoryData = null;
+        loadFromStorage();
+      });
+    }
+    return;
+  }
   storageLoaded = true;
   try {
     const raw = localStorage.getItem(storageKey());

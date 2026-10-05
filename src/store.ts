@@ -251,6 +251,11 @@ export interface HistoryMoment {
 export interface StoryState {
   storyData: StoryData | null;
   currentPassage: string;
+  /**
+   * Incremented on every navigation (navigate, back, forward, restart, load)
+   * so the passage display can remount even when the passage name is unchanged.
+   */
+  navigationId: number;
   variables: Record<string, unknown>;
   variableDefaults: Record<string, unknown>;
   transient: Record<string, unknown>;
@@ -320,6 +325,7 @@ export const useStoryStore = create<StoryState>()(
   immer((set, get) => ({
     storyData: null,
     currentPassage: '',
+    navigationId: 0,
     variables: {},
     variableDefaults: {},
     transient: {},
@@ -377,6 +383,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.storyData = storyData as StoryData;
         state.currentPassage = startPassage.name;
+        state.navigationId++;
         state.variables = initialVars;
         state.variableDefaults = variableDefaults;
         state.transient = deepClone(transientDefaults);
@@ -451,6 +458,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.temporary = {};
         state.currentPassage = passageName;
+        state.navigationId++;
 
         // Truncate forward history if we navigated back then chose a new path
         state.history = state.history.slice(0, state.historyIndex + 1);
@@ -507,6 +515,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.historyIndex--;
         state.currentPassage = state.history[state.historyIndex]!.passage;
+        state.navigationId++;
         state.variables = restoredVars;
         state.temporary = {};
       });
@@ -533,6 +542,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.historyIndex++;
         state.currentPassage = state.history[state.historyIndex]!.passage;
+        state.navigationId++;
         state.variables = restoredVars;
         state.temporary = {};
       });
@@ -614,6 +624,7 @@ export const useStoryStore = create<StoryState>()(
 
       set((state) => {
         state.currentPassage = startPassage.name;
+        state.navigationId++;
         state.variables = initialVars;
         state.transient = deepClone(transientDefaults);
         state.temporary = {};
@@ -874,6 +885,7 @@ export const useStoryStore = create<StoryState>()(
 
       set((state) => {
         state.currentPassage = payload.passage;
+        state.navigationId++;
         state.variables = deepClone(payload.variables);
         state.history = payload.history.map((m) => ({
           passage: m.passage,
