@@ -2,7 +2,7 @@ import { createContext } from 'preact';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
-import { renderNodes } from '../markup/render';
+import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
 import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
@@ -43,6 +43,9 @@ export function PassageDialog({
     ? storyData?.passages.get(passageName)
     : undefined;
   const markup = passage?.content ?? fallbackMarkup;
+  // A [nobr] passage renders without <p> wrapping in a dialog too, like
+  // Passage and {include} (top-level text and nested content).
+  const nobr = passage?.tags.includes('nobr') ?? false;
 
   const content = useMemo(() => {
     if (!markup) {
@@ -51,7 +54,12 @@ export function PassageDialog({
     try {
       const tokens = tokenize(markup);
       const ast = buildAST(tokens);
-      return renderNodes(ast);
+      const nodes = renderNodes(ast, nobr ? { nobr: true } : undefined);
+      return nobr ? (
+        <NobrContext.Provider value={true}>{nodes}</NobrContext.Provider>
+      ) : (
+        nodes
+      );
     } catch (err) {
       return (
         <div class="error">
@@ -59,7 +67,7 @@ export function PassageDialog({
         </div>
       );
     }
-  }, [markup]);
+  }, [markup, nobr]);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
