@@ -3,8 +3,9 @@
  * Model test of the mutation merge (execute-mutation.ts): mutation code
  * runs on working copies of the store namespaces and commits the paths it
  * changed with a three-way merge, while writes made elsewhere during the
- * run (Story.set, nested mutations, direct store updates) are mirrored into
- * the copies, and Story.get/goto/back/forward/save act in program order.
+ * run (Story.set, nested mutations, any other store update) are made in
+ * the code's state and mirrored into the copies, and
+ * Story.get/goto/back/forward/save act in program order.
  *
  * All of that must be indistinguishable from the simple reference model
  * here: one plain state that every write is applied to in program order.
@@ -20,6 +21,7 @@ import {
   deserialize,
 } from '../../src/class-registry';
 import { getBackend, resetBackend } from '../../src/saves/storage';
+import { deleteByPath, setByPath } from '../../src/utils/object-path';
 import { createNamespace } from '../../src/utils/namespace';
 import { resetEmitter } from '../../src/event-emitter';
 import {
@@ -46,7 +48,17 @@ type Spec =
   | { k: 'counter'; n: number }
   | { k: 'map'; entries: [string, number][] };
 
-const KEYS = ['a', 'b', 'c'];
+/**
+ * Property keys. `valueOf` is an Object.prototype member: an object holds
+ * it only as an own property, like any other key.
+ */
+const KEYS = ['a', 'b', 'c', 'valueOf'];
+
+/**
+ * Names of new variables. Those of Object.prototype members are variables
+ * like any other (the namespaces have no prototype).
+ */
+const NEW_ROOTS = ['q', 'r', 'constructor', 'toString', 'hasOwnProperty'];
 
 const specArb: fc.Arbitrary<Spec> = fc.letrec<{ spec: Spec }>((tie) => ({
   spec: fc.oneof(
@@ -122,7 +134,16 @@ type Op =
       entries: { ns: number; walk: number[]; last: number; v: Spec }[];
     }
   | { k: 'get'; ns: number; walk: number[]; last: number }
-  | { k: 'direct'; key: string; v: Spec }
+  | {
+      k: 'direct';
+      ns: number;
+      walk: number[];
+      last: number;
+      /** A value to write, or a delete. */
+      v: Spec | null;
+      /** Which store write path makes it (see plan()). */
+      via: number;
+    }
   | { k: 'nested'; ops: Op[] }
   | { k: 'watch'; ops: Op[] }
   | { k: 'goto' }
@@ -171,11 +192,12 @@ function opsArb(withSaves: boolean): fc.Arbitrary<Op[]> {
       ],
       [3, fc.record({ k: fc.constant('get' as const), ...pathOp })],
       [
-        1,
+        4,
         fc.record({
           k: fc.constant('direct' as const),
-          key: fc.constantFrom(...KEYS),
-          v: specArb,
+          ...pathOp,
+          v: fc.option(specArb, { freq: 4, nil: null }),
+          via: fc.nat(3),
         }),
       ],
       [3, fc.constant({ k: 'goto' as const })],
@@ -223,8 +245,8 @@ const PREFIX: Record<NsName, string> = {
   transient: '%',
 };
 
-/** Roots only the harness writes: random operations leave them alone. */
-const isProtectedRoot = (name: string) => name === 'ext' || /^f\d+$/.test(name);
+/** Watcher flags: only the harness writes them (see 'watch'). */
+const isProtectedRoot = (name: string) => /^f\d+$/.test(name);
 
 const isWalkable = (v: unknown): v is Rec =>
   typeof v === 'object' &&
@@ -259,7 +281,7 @@ function resolvePath(ns: Rec, walk: number[], last: number): string[] {
     node = (node ?? ns)[key] as Rec;
   }
   let options: string[];
-  if (!node) options = [...roots, 'q', 'r'];
+  if (!node) options = [...new Set([...roots, ...NEW_ROOTS])];
   else if (Array.isArray(node))
     options = Object.keys(node).concat(String(node.length));
   else options = [...new Set([...Object.keys(node), ...KEYS])];
@@ -518,16 +540,52 @@ function plan(model: Model, engine: Engine, ops: Op[], p: Plan): string {
         break;
       }
       case 'direct': {
-        // A store update that is not Story.set (not mirrored into running
-        // code) keeps what it writes only where the code does not write:
-        // the `ext` root, which nothing else writes or reads
-        (model.variables.ext as Rec)[op.key] = build(op.v);
-        const { key, v } = op;
-        extCall(() =>
-          useStoryStore.getState().updateVariables((d) => {
-            (d.variables.ext as Rec)[key] = build(v);
-          }),
+        // A store update other than Story.set (an input binding, {computed},
+        // {unset}, a store action): made in program order like any write
+        const ns = nsOf(op.ns, true);
+        // Store actions name a variable: a root
+        const path = resolvePath(
+          model[ns],
+          op.via === 3 ? [] : op.walk,
+          op.last,
         );
+        const { v, via } = op;
+        if (v === null) {
+          delete (getAt(model[ns], path.slice(0, -1)) as Rec)[
+            path[path.length - 1]!
+          ];
+        } else {
+          setAt(model[ns], path, build(v));
+        }
+        const write = (draft: Rec) => {
+          if (v === null) deleteByPath(draft, path);
+          else setByPath(draft, path, build(v), { createMissing: via === 2 });
+        };
+        extCall(() => {
+          const store = useStoryStore.getState();
+          if (via === 0) {
+            store.updateVariables((d) => write(d[ns]));
+          } else if (via === 1 || via === 2) {
+            // As input bindings write (with createMissing)
+            useStoryStore.setState((s) => write(s[ns]));
+          } else {
+            const name = path[0]!;
+            const value = v === null ? undefined : build(v);
+            if (ns === 'variables') {
+              if (v === null) store.deleteVariable(name);
+              else store.setVariable(name, value);
+            } else if (ns === 'temporary') {
+              if (v === null) store.deleteTemporary(name);
+              else store.setTemporary(name, value);
+            } else if (v === null) store.deleteTransient(name);
+            else store.setTransient(name, value);
+          }
+        });
+        if (!engine.checking) {
+          engine.checking = true;
+          checkWatchers(model, engine, p);
+          engine.checking = false;
+        }
         break;
       }
       case 'nested': {
@@ -622,7 +680,6 @@ const variableDefaults = (): Rec => ({
   arr: [1, 2],
   m: new Map([['a', 1]]),
   n: 0,
-  ext: {},
 });
 
 const transientDefaults = (): Rec => ({

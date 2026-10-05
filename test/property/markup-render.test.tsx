@@ -174,13 +174,17 @@ describe('markdown parity', () => {
   );
 });
 
+/** Variable names, the first ones those of Object.prototype members. */
+const INHERITED = ['constructor', 'toString', 'valueOf', 'hasOwnProperty'];
+const varName = (k: number) => INHERITED[k] ?? `v${k}`;
+
 describe('placeholders', () => {
   test.prop([richPassage()], domOptions)(
     'never leak, and every variable renders its value exactly once',
     (raw) => {
-      const { src, count } = substituteVars(raw, (k) => `{$v${k}}`);
+      const { src, count } = substituteVars(raw, (k) => `{$${varName(k)}}`);
       const vars: Record<string, string> = {};
-      for (let k = 0; k < count; k++) vars[`v${k}`] = `«${k}»`;
+      for (let k = 0; k < count; k++) vars[varName(k)] = `«${k}»`;
       initStory(vars);
       withPassage(src, (el) => {
         expectNoLeak(el);
@@ -194,13 +198,30 @@ describe('placeholders', () => {
   );
 
   test.prop([richPassage()], domOptions)(
-    'variables in every context update after Story.set',
+    'unset variables render as nothing, whatever their name',
     (raw) => {
-      const { src, count } = substituteVars(raw, () => '{$x}');
-      initStory({ x: '«old»' });
+      const sigils = ['$', '_', '%', '@'];
+      const { src } = substituteVars(
+        raw,
+        (k) => `{${sigils[k % 4]}${INHERITED[k % INHERITED.length]}}`,
+      );
+      initStory();
+      withPassage(src, (el) => {
+        expectNoLeak(el);
+        expect(shownText(el)).not.toMatch(/native code|function/);
+      });
+    },
+    domTimeout,
+  );
+
+  test.prop([richPassage(), fc.constantFrom('x', ...INHERITED)], domOptions)(
+    'variables in every context update after Story.set',
+    (raw, name) => {
+      const { src, count } = substituteVars(raw, () => `{$${name}}`);
+      initStory({ [name]: '«old»' });
       withPassage(src, (el) => {
         expect(countOf(shownText(el), '«old»')).toBe(count);
-        act(() => window.Story.set('x', '«new»'));
+        act(() => window.Story.set(name, '«new»'));
         expectNoLeak(el);
         expect(countOf(shownText(el), '«old»')).toBe(0);
         expect(countOf(shownText(el), '«new»')).toBe(count);

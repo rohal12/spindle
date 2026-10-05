@@ -15,11 +15,13 @@ import {
   IDENTS,
   NAMES,
   NAMESPACE,
+  RESERVED_NAME,
   bindIdentsExpr,
   bindIdentsStmts,
   compiles,
   jsArbitraries,
   nativeName,
+  refsOf,
   render,
   type Doc,
   type Ref,
@@ -28,6 +30,14 @@ import {
 
 const plain = jsArbitraries({ refs: false });
 const sigils = jsArbitraries({ refs: true });
+
+/** The first reference to a variable named `__proto__`, if any. */
+const reservedRef = (doc: Doc): Ref | undefined =>
+  refsOf(doc).find((r) => r.name === RESERVED_NAME);
+
+/** What refusing `doc` must throw: a SyntaxError naming the reference. */
+const refusal = (r: Ref) =>
+  new RegExp(`"\\${r.ref}${RESERVED_NAME}" cannot be used as a variable name`);
 
 /** Programs the oracle accepts: the native rendering is valid JavaScript. */
 const validExpr = (doc: Doc) =>
@@ -69,16 +79,20 @@ describe('transform', () => {
   test.prop([exprs(sigils)], fcOptions)(
     'rewrites exactly the references in code in expressions',
     (doc) => {
-      expect(transform(render(doc, 'sigil'))).toBe(render(doc, 'transformed'));
+      const reserved = reservedRef(doc);
+      const run = () => transform(render(doc, 'sigil'));
+      if (reserved) expect(run).toThrow(refusal(reserved));
+      else expect(run()).toBe(render(doc, 'transformed'));
     },
   );
 
   test.prop([programs(sigils)], fcOptions)(
     'rewrites exactly the references in code in statements',
     (doc) => {
-      expect(transform(render(doc, 'sigil'), 'statements')).toBe(
-        render(doc, 'transformed'),
-      );
+      const reserved = reservedRef(doc);
+      const run = () => transform(render(doc, 'sigil'), 'statements');
+      if (reserved) expect(run).toThrow(refusal(reserved));
+      else expect(run()).toBe(render(doc, 'transformed'));
     },
   );
 });
@@ -93,6 +107,9 @@ const ALL_REFS: Ref[] = (['$', '_', '@', '%'] as const).flatMap((ref) =>
   (ref === '%' ? NAMES : [...NAMES, '1', '2b']).map((name) => ({ ref, name })),
 );
 
+const own = (o: object, key: string) =>
+  Object.prototype.hasOwnProperty.call(o, key);
+
 const value = fc.oneof(
   fc.integer({ min: -5, max: 5 }),
   fc.constantFrom('', 'x', '$y', '_z', '1'),
@@ -103,12 +120,26 @@ const value = fc.oneof(
   fc.record({ k: fc.integer({ min: -3, max: 3 }), x: fc.string() }),
 );
 
+/**
+ * A namespace holding some of the names: one that is not set reads as
+ * undefined, even when Object.prototype has a member by that name. The
+ * store's namespaces have no prototype; evaluate() and execute() take any
+ * object and drop its prototype.
+ */
 const namespace = (sigil: Sigil) =>
-  fc.record(
-    Object.fromEntries(
-      ALL_REFS.filter((r) => r.ref === sigil).map((r) => [r.name, value]),
-    ),
-  );
+  fc
+    .tuple(
+      fc.record(
+        Object.fromEntries(
+          ALL_REFS.filter((r) => r.ref === sigil).map((r) => [r.name, value]),
+        ),
+        { requiredKeys: [] },
+      ),
+      fc.boolean(),
+    )
+    .map(([record, bare]) =>
+      bare ? Object.assign(Object.create(null) as object, record) : record,
+    );
 
 const namespaces: fc.Arbitrary<Namespaces> = fc.record({
   variables: namespace('$'),
@@ -146,6 +177,20 @@ function normalize(v: unknown, path: unknown[] = []): unknown {
   );
 }
 
+/** A deep copy, keeping whether each namespace has a prototype. */
+const cloneNs = (ns: Namespaces): Namespaces =>
+  Object.fromEntries(
+    Object.entries(ns).map(([k, v]) => {
+      const copy = structuredClone(v);
+      return [
+        k,
+        Object.getPrototypeOf(v) === null
+          ? Object.assign(Object.create(null) as object, copy)
+          : copy,
+      ];
+    }),
+  ) as Namespaces;
+
 const errorName = (e: unknown) =>
   e instanceof Error ? e.constructor.name : typeof e;
 
@@ -181,29 +226,90 @@ function outcome(ns: Namespaces, run: (ns: Namespaces) => unknown): Outcome {
 
 /**
  * Run the native rendering with each reference bound to a `let` variable
- * holding the namespace value, and write the variables back afterwards.
+ * holding the namespace's own value (undefined when it holds none), and
+ * write the variables back afterwards: those the namespace held, and those
+ * the program changed.
  */
 function runNative(src: string, kind: 'expr' | 'stmts', ns: Namespaces) {
-  const slot = (r: Ref) =>
-    `__ns.${NAMESPACE[r.ref]}[${JSON.stringify(r.name)}]`;
-  const decls = ALL_REFS.map((r) => `let ${nativeName(r)} = ${slot(r)};`);
-  const writeBack = ALL_REFS.map((r) => `${slot(r)} = ${nativeName(r)};`);
+  const nsOf = (r: Ref) => `__ns.${NAMESPACE[r.ref]}`;
+  const slot = (r: Ref) => `${nsOf(r)}[${JSON.stringify(r.name)}]`;
+  const held = (r: Ref) => `__own(${nsOf(r)}, ${JSON.stringify(r.name)})`;
+  const decls = ALL_REFS.map(
+    (r, i) =>
+      `let ${nativeName(r)} = ${held(r)} ? ${slot(r)} : undefined; const __${i} = ${nativeName(r)};`,
+  );
+  const writeBack = ALL_REFS.map(
+    (r, i) =>
+      `if (${held(r)} || ${nativeName(r)} !== __${i}) ${slot(r)} = ${nativeName(r)};`,
+  );
   const inner = kind === 'expr' ? `return (\n${src}\n);` : src;
   const body =
     decls.join('\n') +
     `\ntry { return (function () {\n${inner}\n})(); } finally {\n` +
     writeBack.join('\n') +
     '\n}';
-  return new Function('__ns', body)(ns);
+  return new Function('__ns', '__own', body)(ns, own);
 }
 
 afterAll(clearIdentGlobals);
+
+describe('namespaces', () => {
+  const someRefs = fc.array(fc.constantFrom(...ALL_REFS), {
+    minLength: 1,
+    maxLength: 6,
+  });
+  const args = (n: Namespaces) =>
+    [n.variables, n.temporary, n.locals, n.transient] as const;
+
+  test.prop([namespaces, someRefs], fcOptions)(
+    'read exactly the values they hold, whatever the name',
+    (ns, refs) => {
+      const expected = refs.map((r) => {
+        const held = ns[NAMESPACE[r.ref]];
+        return own(held, r.name) ? held[r.name] : undefined;
+      });
+      const src = `[${refs.map((r) => r.ref + r.name).join(', ')}]`;
+      const actual = evaluate(src, ...args(ns)) as unknown[];
+      expected.forEach((v, i) => expect(actual[i]).toBe(v));
+    },
+  );
+
+  test.prop([namespaces, someRefs], fcOptions)(
+    'store every name as a value of their own',
+    (ns, refs) => {
+      const src = refs.map((r, i) => `${r.ref}${r.name} = ${i}`).join('; ');
+      execute(src, ...args(ns));
+      refs.forEach((r) => {
+        const held = ns[NAMESPACE[r.ref]];
+        expect(Object.getPrototypeOf(held)).toBe(null);
+        expect(own(held, r.name)).toBe(true);
+        expect(held[r.name]).toBe(refs.lastIndexOf(r));
+      });
+      expect(Object.getOwnPropertyNames(Object.prototype)).not.toContain('0');
+    },
+  );
+});
 
 describe('evaluate', () => {
   test.prop([exprs(sigils), namespaces], fcOptions)(
     'agrees with the same expression on plain variables',
     (doc, ns) => {
-      const actual = outcome(structuredClone(ns), (n) =>
+      const reserved = reservedRef(doc);
+      if (reserved) {
+        const before = normalize(ns);
+        expect(() =>
+          evaluate(
+            render(doc, 'sigil'),
+            ns.variables,
+            ns.temporary,
+            ns.locals,
+            ns.transient,
+          ),
+        ).toThrow(refusal(reserved));
+        expect(normalize(ns)).toEqual(before);
+        return;
+      }
+      const actual = outcome(cloneNs(ns), (n) =>
         evaluate(
           render(doc, 'sigil'),
           n.variables,
@@ -212,7 +318,7 @@ describe('evaluate', () => {
           n.transient,
         ),
       );
-      const expected = outcome(structuredClone(ns), (n) =>
+      const expected = outcome(cloneNs(ns), (n) =>
         runNative(render(doc, 'native'), 'expr', n),
       );
       expect(actual).toEqual(expected);
@@ -224,7 +330,23 @@ describe('execute', () => {
   test.prop([programs(sigils), namespaces], fcOptions)(
     'mutates the namespaces as the same statements on plain variables',
     (doc, ns) => {
-      const actual = outcome(structuredClone(ns), (n) =>
+      const reserved = reservedRef(doc);
+      if (reserved) {
+        // Refused before any statement runs
+        const before = normalize(ns);
+        expect(() =>
+          execute(
+            render(doc, 'sigil'),
+            ns.variables,
+            ns.temporary,
+            ns.locals,
+            ns.transient,
+          ),
+        ).toThrow(refusal(reserved));
+        expect(normalize(ns)).toEqual(before);
+        return;
+      }
+      const actual = outcome(cloneNs(ns), (n) =>
         execute(
           render(doc, 'sigil'),
           n.variables,
@@ -233,7 +355,7 @@ describe('execute', () => {
           n.transient,
         ),
       );
-      const expected = outcome(structuredClone(ns), (n) => {
+      const expected = outcome(cloneNs(ns), (n) => {
         runNative(render(doc, 'native'), 'stmts', n);
       });
       expect(actual).toEqual(expected);

@@ -32,6 +32,7 @@ import {
   MODEL_TIMEOUT,
   type PassageName,
 } from './story-fixtures';
+import { structEq } from './values';
 
 type Vars = Record<string, unknown>;
 
@@ -70,6 +71,15 @@ let Story: StoryAPI;
 // Invariants
 // ---------------------------------------------------------------------------
 
+/**
+ * Variables equal at every node, prototypes included. Not toStrictEqual:
+ * it takes a variable named `constructor` for the object's class.
+ */
+function expectSameVars(actual: Vars, expected: Vars): void {
+  expect(actual).toEqual(expected);
+  expect(structEq(actual, expected)).toBe(true);
+}
+
 function assertMatches(m: HistoryModel): void {
   const s = store();
   const current = m.moments[m.index]!;
@@ -82,7 +92,7 @@ function assertMatches(m: HistoryModel): void {
   expect(s.history.length).toBeLessThanOrEqual(s.maxHistory);
   // Namespaces have no prototype (the model's plain copies do)
   expect(Object.getPrototypeOf(s.variables)).toBe(null);
-  expect({ ...s.variables }).toStrictEqual(m.live);
+  expectSameVars({ ...s.variables }, m.live);
   expect(s.visitCounts).toEqual(m.visitCounts);
 
   // Back/forward availability
@@ -96,11 +106,11 @@ function assertMatches(m: HistoryModel): void {
   for (let i = 0; i < m.moments.length; i++) {
     const vars = s.getHistoryVariables(i);
     expect(Object.getPrototypeOf(vars)).toBe(null);
-    expect({ ...vars }).toStrictEqual(m.moments[i]!.vars);
+    expectSameVars({ ...vars }, m.moments[i]!.vars);
     // The returned snapshot is a copy: changing it changes no moment
     if (vars.pet instanceof Pet) vars.pet.feed(1000);
     (vars.nested as { a: { b: number[] } } | undefined)?.a?.b?.push(1000);
-    expect({ ...s.getHistoryVariables(i) }).toStrictEqual(m.moments[i]!.vars);
+    expectSameVars({ ...s.getHistoryVariables(i) }, m.moments[i]!.vars);
   }
 }
 
@@ -159,6 +169,17 @@ class SetVar implements Cmd {
     assertMatches(m);
   }
   toString = () => `Set(${this.name}=${JSON.stringify(this.value)})`;
+}
+
+class UnsetVar implements Cmd {
+  constructor(readonly name: string) {}
+  check = () => true;
+  run(m: HistoryModel): void {
+    executeMutation(`delete $${this.name}`, {}, () => {});
+    delete m.live[this.name];
+    assertMatches(m);
+  }
+  toString = () => `Unset(${this.name})`;
 }
 
 /** Mutation code, as a {do} or a {button} would run it. */
@@ -371,10 +392,15 @@ const valueArb: fc.Arbitrary<unknown> = fc.oneof(
   ),
 );
 
+/**
+ * Names of variables commands set and unset; Object.prototype members are
+ * variables like any other.
+ */
+const varName = fc.constantFrom('x', 'y', 'z', 'constructor', 'toString');
+
 const simpleCommands: fc.Arbitrary<Cmd>[] = [
-  fc
-    .tuple(fc.constantFrom('x', 'y', 'z'), valueArb)
-    .map(([n, v]) => new SetVar(n, v)),
+  fc.tuple(varName, valueArb).map(([n, v]) => new SetVar(n, v)),
+  varName.map((n) => new UnsetVar(n)),
   fc
     .tuple(
       fc.constantFrom('feed', 'push', 'deep', 'path') as fc.Arbitrary<
