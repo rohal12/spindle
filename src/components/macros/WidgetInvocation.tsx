@@ -16,7 +16,7 @@ import {
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
-import { isWhitespace, splitTopLevel } from './arg-utils';
+import { endsWithOperator, isWhitespace, splitTopLevel } from './arg-utils';
 
 interface WidgetInvocationProps {
   body: ASTNode[];
@@ -27,15 +27,19 @@ interface WidgetInvocationProps {
 
 /**
  * Check whether a whitespace-delimited token looks like a standalone value
- * (not an operator or partial expression).
+ * (not an operator or partial expression): it starts like a value and does
+ * not end with an operator still waiting for its operand.
  */
 function isStandaloneValue(token: string): boolean {
+  return startsLikeValue(token) && !endsWithOperator(token);
+}
+
+function startsLikeValue(token: string): boolean {
   const first = token[0]!;
   // Quoted string
   if (first === '"' || first === "'" || first === '`') return true;
-  // Variable ($var, _var, @var)
-  if (first === '$' || first === '_' || first === '@' || first === '%')
-    return true;
+  // Variable ($var, _var, @var, %var), but not the modulo operator in `$a % 2`
+  if (/^[$_@]\w|^%[A-Za-z_]/.test(token)) return true;
   // Number literal
   if (/\d/.test(first)) return true;
   // Signed number (-1, +2)
@@ -47,10 +51,10 @@ function isStandaloneValue(token: string): boolean {
     return true;
   // Grouped expression or collection literal
   if (first === '(' || first === '[' || first === '{') return true;
-  // Boolean / null / undefined
-  if (/^(true|false|null|undefined)$/.test(token)) return true;
-  // Negation (!$flag, !true)
-  if (first === '!' && token.length > 1) return true;
+  // Boolean / null / undefined, alone or leading an expression (true||$x)
+  if (/^(?:true|false|null|undefined)(?![\w$])/.test(token)) return true;
+  // Negation (!$flag, !true), but not the operators != and !==
+  if (first === '!' && token.length > 1 && token[1] !== '=') return true;
   return false;
 }
 

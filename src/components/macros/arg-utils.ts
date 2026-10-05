@@ -78,6 +78,39 @@ export function stripLooseQuotes(src: string): string {
   return /^["']?(.+?)["']?$/.exec(src)?.[1] ?? src;
 }
 
+/** An operator character, or an operator keyword, at the end of code. */
+const TRAILING_OPERATOR_RE =
+  /(?:[-+*/%&|^!~=<>?:,.]|(?:^|[^\w$@.])(?:typeof|void|new|delete|in|instanceof|await|yield))$/;
+
+/**
+ * Whether `src` ends with an operator that still needs an operand (`$a +`,
+ * `$a+`, `$x ==`, `typeof`), so it cannot be a complete value on its own.
+ * Only code counts: the closing `/` of a regex literal is not division, a
+ * `%name` transient reference is an operand, trailing comments are skipped,
+ * and a postfix `++` or `--` completes its operand.
+ */
+export function endsWithOperator(src: string): boolean {
+  // Index just past the last code token, or -1 when a literal or transient
+  // reference ends the source.
+  let end = -1;
+  lexJs(src, {
+    code(ch, i, nesting) {
+      if (nesting === 0 && !isWhitespace(ch)) end = i + 1;
+    },
+    literal(text, _i, nesting) {
+      const comment = text.startsWith('//') || text.startsWith('/*');
+      if (nesting === 0 && !comment) end = -1;
+    },
+    transient(_name, _i, nesting) {
+      if (nesting === 0) end = -1;
+    },
+  });
+  if (end < 0) return false;
+  const code = src.slice(0, end);
+  if (/(?:\+\+|--)$/.test(code)) return false;
+  return TRAILING_OPERATOR_RE.test(code);
+}
+
 /**
  * Indices of the characters in `src` that satisfy `isSeparator` and sit at
  * depth 0: in code outside string, template and regex literals and comments,

@@ -1,12 +1,18 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
-import { isWhitespace, readWholeQuoted, splitTopLevel } from './arg-utils';
+import {
+  endsWithOperator,
+  isWhitespace,
+  readWholeQuoted,
+  splitTopLevel,
+} from './arg-utils';
 
 /**
  * Parse `{meter currentExpr maxExpr ["label"]}`. Arguments are separated by
  * whitespace outside string and template literals and bracket pairs; a
  * trailing standalone `"…"` or `'…'` string is the label mode, with `\"`,
- * `\'` and `\\` escapes.
+ * `\'` and `\\` escapes. A string after an operator (`$a ?? "5"`) is an
+ * operand of the max expression, not the label.
  */
 export function parseMeterArgs(rawArgs: string): {
   currentExpr: string;
@@ -17,7 +23,9 @@ export function parseMeterArgs(rawArgs: string): {
 
   let labelMode = '';
   const label =
-    tokens.length >= 2 ? readWholeQuoted(tokens[tokens.length - 1]!) : null;
+    tokens.length >= 2 && !endsWithOperator(tokens.slice(0, -1).join(' '))
+      ? readWholeQuoted(tokens[tokens.length - 1]!)
+      : null;
   if (label !== null) {
     labelMode = label;
     tokens.pop();

@@ -104,6 +104,36 @@ describe('splitArgs', () => {
     expect(splitArgs('"foo" + "bar"')).toEqual(['"foo" + "bar"']);
   });
 
+  // Counterexamples from the property tests: each token looked standalone
+  // by its first character, so one expression became several arguments.
+
+  it('does not split at the != and !== operators', () => {
+    expect(splitArgs('$a !== 1')).toEqual(['$a !== 1']);
+    expect(splitArgs('$a != "x"')).toEqual(['$a != "x"']);
+  });
+
+  it('does not split at the modulo operator', () => {
+    expect(splitArgs('$f($a) % 0')).toEqual(['$f($a) % 0']);
+    expect(splitArgs('$a %2')).toEqual(['$a %2']);
+  });
+
+  it('does not split after a token ending with an operator', () => {
+    expect(splitArgs('$a+ $b')).toEqual(['$a+ $b']);
+    expect(splitArgs('$f(-{})+void (1)')).toEqual(['$f(-{})+void (1)']);
+    expect(splitArgs('$f($a)%typeof ``')).toEqual(['$f($a)%typeof ``']);
+  });
+
+  it('splits a token that ends with a regex literal or postfix operator', () => {
+    expect(splitArgs('$a+/x/ "b"')).toEqual(['$a+/x/', '"b"']);
+    expect(splitArgs('_i++ "b"')).toEqual(['_i++', '"b"']);
+    expect(splitArgs('$a %t')).toEqual(['$a', '%t']);
+  });
+
+  it('splits an expression led by a boolean, null or undefined', () => {
+    expect(splitArgs('true+[] -0x0 -0')).toEqual(['true+[]', '-0x0', '-0']);
+    expect(splitArgs('null??$x "b"')).toEqual(['null??$x', '"b"']);
+  });
+
   // ── Edge cases ────────────────────────────────────────────────────
 
   it('handles escaped quotes inside strings', () => {
