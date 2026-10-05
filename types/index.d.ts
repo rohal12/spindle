@@ -138,6 +138,18 @@ export interface StoryEventMap {
   afterload: (slot: string | undefined) => void;
   beforenavigate: (passageName: string) => void;
   afternavigate: (to: string, from: string) => void;
+  /**
+   * A passage's `.passage` element was committed to the DOM (first render,
+   * navigation, back/forward, restart, load). Fires after the transition
+   * mounts the new passage, before paint.
+   */
+  passagerender: (passage: string, element: HTMLElement) => void;
+  /**
+   * A dialog was opened and its `.dialog-panel` element committed to the DOM.
+   * `passage` is the dialog's passage name (empty for built-in dialogs
+   * without one).
+   */
+  dialogrender: (passage: string, element: HTMLElement) => void;
 }
 
 /** Event name that can be passed to `Story.on()`. */
