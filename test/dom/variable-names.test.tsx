@@ -12,6 +12,7 @@ import { renderNodes } from '../../src/markup/render';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { clearWidgets } from '../../src/widgets/widget-registry';
+import { defineMacro } from '../../src/define-macro';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -156,5 +157,100 @@ describe('a variable named __proto__', () => {
     expect(Object.getPrototypeOf(state().temporary)).toBe(null);
     expect(Object.getPrototypeOf(state().transient)).toBe(null);
     expect(Object.keys(state().variables)).toEqual([]);
+  });
+});
+
+describe('in attribute values, alt text and labels', () => {
+  const titleOf = (el: HTMLElement) =>
+    el.querySelector('span:not(.error)')?.getAttribute('title');
+
+  it('read unset inherited names as empty', () => {
+    const el = renderMarkup(
+      '{for @x of [1]}<span title="[{$toString}{_constructor}{%valueOf}{@hasOwnProperty}{print $isPrototypeOf}]">s</span>{/for}',
+    );
+    expect(titleOf(el)).toBe('[]');
+    expect(el.querySelector('.error')).toBeNull();
+  });
+
+  it('read unset inherited names as empty in code attributes', () => {
+    const el = renderMarkup(
+      '<span onclick="f([{$toString}{_valueOf}{%constructor}])">s</span>',
+    );
+    expect(el.querySelector('span')!.getAttribute('onclick')).toBe('f([])');
+  });
+
+  it('read unset inherited names as empty in alt text and labels', () => {
+    const el = renderMarkup(
+      '![a{$toString}b](x.png) {button "c{$valueOf}d"}{/button}',
+    );
+    expect(el.querySelector('img')!.getAttribute('alt')).toBe('ab');
+    expect(el.querySelector('button')!.textContent).toBe('cd');
+  });
+
+  it('display variables named like Object.prototype members', () => {
+    act(() => {
+      window.Story.set('toString', 'T');
+      window.Story.set('%constructor', 'C');
+    });
+    const el = renderMarkup(
+      '<span title="{$toString}{%constructor}{print $toString}">s</span>',
+    );
+    expect(titleOf(el)).toBe('TCT');
+  });
+
+  it('give {for} text form and widget locals inherited names', () => {
+    renderMarkup('{widget "w" @constructor}<{@constructor}>{/widget}');
+    const el = renderMarkup(
+      "<span title=\"{for @valueOf, @toString of ['a', 'b']}{@toString}{@valueOf}{/for}|{w 7}|{w}\">s</span>",
+    );
+    expect(titleOf(el)).toBe('0a1b|<7>|<>');
+  });
+
+  it.each([
+    ['<span title="{$__proto__}">s</span>'],
+    ['<span title="{___proto__}">s</span>'],
+    ['<span title="{%__proto__.x}">s</span>'],
+    ['{for @x of [1]}<span title="{@__proto__}">s</span>{/for}'],
+    ['<span title="{print $__proto__}">s</span>'],
+    ['<span title="{for @__proto__ of [1]}x{/for}">s</span>'],
+    ['<span title="{for @i, @__proto__ of [1]}x{/for}">s</span>'],
+    ['<span onclick="f({$__proto__})">s</span>'],
+    ['<span onclick="f({$__proto__ + 1})">s</span>'],
+    ['![{$__proto__}](x.png)'],
+  ])('refuse a variable named __proto__ with an error: %s', (markup) => {
+    const el = renderMarkup(markup);
+    expect(el.querySelector('.error')?.textContent ?? '').toMatch(
+      /__proto__" cannot be used as a variable name/,
+    );
+    expect(Object.getPrototypeOf(state().variables)).toBe(null);
+    expect(Object.keys(state().variables)).toEqual([]);
+  });
+
+  it('give a text form the locals it adds as variables, refusing __proto__', () => {
+    defineMacro({
+      name: 'withlocal',
+      block: true,
+      render: () => null,
+      text: ({ rawArgs, children = [] }, ctx) =>
+        ctx.renderText(children, { [rawArgs.trim()]: 'L' }),
+    });
+    const el = renderMarkup(
+      '<span title="{withlocal toString}[{@toString}]{/withlocal}">s</span>',
+    );
+    expect(titleOf(el)).toBe('[L]');
+    const refused = renderMarkup(
+      '<span title="{withlocal __proto__}[{@x}]{/withlocal}">s</span>',
+    );
+    expect(titleOf(refused)).toBe('');
+    expect(refused.querySelector('.error')?.textContent).toMatch(
+      /withlocal error.*"@__proto__" cannot be used as a variable name/,
+    );
+  });
+
+  it('refuse a variable named __proto__ in a label, logging the error', () => {
+    const error = vi.mocked(console.error);
+    const el = renderMarkup('{button "a{$__proto__}b"}{/button}');
+    expect(el.querySelector('button')!.textContent).toBe('ab');
+    expect(String(error.mock.calls[0]?.[0])).toMatch(/__proto__/);
   });
 });

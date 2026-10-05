@@ -340,4 +340,36 @@ describe('StoryVariables', () => {
       'Passage "P": "$__proto__" cannot be used as a variable name (__proto__ is reserved)',
     ]);
   });
+
+  it('validates references in attribute values and labels the same way', () => {
+    const schema = parseStoryVariables('$constructor = { hp: 1 }');
+    const passage = (content: string) =>
+      new Map([['P', { pid: 1, name: 'P', tags: [], metadata: {}, content }]]);
+    expect(
+      validatePassages(
+        passage(
+          '<b title="{$constructor.hp}{print $constructor}" onclick="f({$constructor})">x</b>{button "{$constructor.hp}"}{/button}',
+        ),
+        schema,
+      ),
+    ).toEqual([]);
+    for (const content of [
+      '<b title="{$toString}">x</b>',
+      '<b title="{if $toString}x{/if}">x</b>',
+      '<b onclick="f({$toString})">x</b>',
+    ]) {
+      expect(validatePassages(passage(content), schema), content).toEqual([
+        'Passage "P": Undeclared variable: $toString',
+      ]);
+    }
+    for (const content of [
+      '<b title="{$__proto__}">x</b>',
+      '<b title="{print $__proto__}">x</b>',
+      '<b onclick="f({$__proto__})">x</b>',
+    ]) {
+      expect(validatePassages(passage(content), schema), content).toEqual([
+        'Passage "P": "$__proto__" cannot be used as a variable name (__proto__ is reserved)',
+      ]);
+    }
+  });
 });

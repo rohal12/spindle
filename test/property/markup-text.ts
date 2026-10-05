@@ -3,6 +3,12 @@
  * mixing literal text, escapes, character references, variables,
  * expressions and text macros, each with a reference evaluator giving the
  * string the value must resolve to.
+ *
+ * Variable names include those of Object.prototype members (`$constructor`
+ * is set, `$toString` is not): they are plain variables, and one that isn't
+ * set reads as missing (see src/utils/namespace.ts). With `failing`, values
+ * may also use a variable named `__proto__`, which is refused with an
+ * error wherever it appears.
  */
 import { fc } from '@fast-check/vitest';
 
@@ -13,11 +19,16 @@ export interface TextVars {
   n: number;
   list: (string | number)[];
   o: { k: string };
+  /** Named like an Object.prototype member. */
+  constructor: string;
 }
 
 export interface TextEnv {
   vars: TextVars;
-  /** Locals without `@`: the outer loop's `o`, inner loops' `l` and `i`. */
+  /**
+   * Locals without `@`: the outer loop's `o`, inner loops' item (`l` or
+   * `toString`) and index (`i` or `constructor`).
+   */
   locals: Record<string, unknown>;
 }
 
@@ -46,8 +57,12 @@ export interface TextOptions {
   failing?: boolean;
 }
 
-/** A widget the markup may invoke; tests register it with this body. */
-export const TEXT_WIDGET = { name: 'tw', params: ['@p'], body: '[{@p}]' };
+/** Widgets the markup may invoke; tests register them with these bodies. */
+export const TEXT_WIDGETS = [
+  { name: 'tw', params: ['@p'], body: '[{@p}]' },
+  // A parameter named like an Object.prototype member, and an unset one
+  { name: 'tiw', params: ['@toString'], body: '({@toString}{@valueOf})' },
+];
 
 const show = (v: unknown) => (v == null ? '' : String(v));
 
@@ -136,7 +151,11 @@ const literal: fc.Arbitrary<TextPiece> = fc.oneof(
 
 type Expr = [src: string, value: (env: TextEnv) => unknown];
 
-const local = (env: TextEnv, name: string) => env.locals[name];
+/** A local: own entries only, as namespaces hold them. */
+const local = (env: TextEnv, name: string) =>
+  Object.prototype.hasOwnProperty.call(env.locals, name)
+    ? env.locals[name]
+    : undefined;
 
 /** Expressions, opened by a sigil, `(` or `!`. Strings may hold braces. */
 const EXPRESSIONS: Expr[] = [
@@ -151,6 +170,12 @@ const EXPRESSIONS: Expr[] = [
   ['@i + 1', (e) => (local(e, 'i') as number) + 1],
   ['(@l + "!")', (e) => String(local(e, 'l')) + '!'],
   ['!@o', (e) => !local(e, 'o')],
+  ['$toString === undefined', () => true],
+  [
+    '($constructor + @valueOf)',
+    (e) => e.vars.constructor + local(e, 'valueOf'),
+  ],
+  ['(typeof @hasOwnProperty)', (e) => typeof local(e, 'hasOwnProperty')],
 ];
 
 /** Conditions for {if} / {elseif}. */
@@ -172,6 +197,14 @@ const VARIABLES: Expr[] = [
   ['@o', (e) => local(e, 'o')],
   ['@l', (e) => local(e, 'l')],
   ['@i', (e) => local(e, 'i')],
+  ['$constructor', (e) => e.vars.constructor],
+  ['$constructor.length', (e) => e.vars.constructor.length],
+  ['$toString', () => undefined],
+  ['_valueOf', () => undefined],
+  ['%hasOwnProperty', () => undefined],
+  ['@toString', (e) => local(e, 'toString')],
+  ['@constructor', (e) => local(e, 'constructor')],
+  ['@isPrototypeOf', () => undefined],
 ];
 
 const display = ([src, value]: Expr): TextPiece => ({
@@ -193,6 +226,18 @@ const FAILING: string[] = [
   '{(nosuch)}',
   '{for @l of $n}x{/for}',
   '{switch nosuch}{case 1}x{/switch}',
+  // No namespace holds a variable named __proto__
+  '{$__proto__}',
+  '{___proto__}',
+  '{%__proto__}',
+  '{@__proto__}',
+  '{$__proto__.x}',
+  '{$__proto__ + 1}',
+  '{(@__proto__)}',
+  '{print $__proto__}',
+  '{for @__proto__ of $list}x{/for}',
+  '{for @l, @__proto__ of $list}x{/for}',
+  '{if $__proto__}x{/if}',
 ];
 
 /** Markup that is one `{…}` element (macros take bodies at `depth`). */
@@ -212,8 +257,14 @@ function markup(depth: number, options: TextOptions): fc.Arbitrary<TextPiece> {
     fc
       .constantFrom<Expr>(['$n', (e) => e.vars.n], ['"q"', () => 'q'])
       .map(([src, value]) => ({
-        src: `{${TEXT_WIDGET.name} ${src}}`,
+        src: `{tw ${src}}`,
         ref: (env: TextEnv) => text(`[${show(value(env))}]`),
+      })),
+    fc
+      .constantFrom<Expr>(['$constructor', (e) => e.vars.constructor])
+      .map(([src, value]) => ({
+        src: `{tiw ${src}}`,
+        ref: (env: TextEnv) => text(`(${show(value(env))})`),
       })),
   ];
   if (options.failing) {
@@ -272,26 +323,33 @@ function markup(depth: number, options: TextOptions): fc.Arbitrary<TextPiece> {
           return otherwise ? otherwise.ref(env, decode) : NONE;
         },
       })),
-    // {for @l, @i of $list}…{/for}: the body sees the item and index
-    fc.tuple(fc.boolean(), body).map(([withIndex, b]) => ({
-      src: `{for @l${withIndex ? ', @i' : ''} of $list}${b.src}{/for}`,
-      ref: (env: TextEnv, decode: boolean) =>
-        join(
-          env.vars.list.map((item, i) =>
-            b.ref(
-              {
-                ...env,
-                locals: {
-                  ...env.locals,
-                  l: item,
-                  ...(withIndex ? { i } : {}),
+    // {for @l, @i of $list}…{/for}: the body sees the item and index,
+    // which may be named like Object.prototype members
+    fc
+      .tuple(
+        fc.constantFrom('l', 'toString'),
+        fc.constantFrom(null, 'i', 'constructor'),
+        body,
+      )
+      .map(([item, index, b]) => ({
+        src: `{for @${item}${index ? `, @${index}` : ''} of $list}${b.src}{/for}`,
+        ref: (env: TextEnv, decode: boolean) =>
+          join(
+            env.vars.list.map((value, i) =>
+              b.ref(
+                {
+                  ...env,
+                  locals: {
+                    ...env.locals,
+                    [item]: value,
+                    ...(index ? { [index]: i } : {}),
+                  },
                 },
-              },
-              decode,
+                decode,
+              ),
             ),
           ),
-        ),
-    })),
+      })),
     // Content wrappers: their text is their body's.
     fc.tuple(fc.constantFrom('nobr', 'span'), body).map(([name, b]) => ({
       src: `{${name}}${b.src}{/${name}}`,
@@ -380,15 +438,19 @@ export const codePieces: fc.Arbitrary<TextPiece> = fc
             ['$n + 1', (e: TextEnv) => e.vars.n + 1],
             ["$b ? '}' : '{'", (e: TextEnv) => (e.vars.b ? '}' : '{')],
             ['$list.length', (e: TextEnv) => e.vars.list.length],
+            ['@toString', (e: TextEnv) => local(e, 'toString')],
+            ['_constructor', () => undefined],
           )
           .map(display),
       },
       {
         weight: 1,
-        arbitrary: fc.constant<TextPiece>({
-          src: '{$a.nope()}',
-          ref: () => FAILED,
-        }),
+        arbitrary: fc
+          .constantFrom(
+            ...['{$a.nope()}', '{$__proto__}', '{_x + %__proto__}'],
+            ...['{@__proto__.k}'],
+          )
+          .map((src): TextPiece => ({ src, ref: () => FAILED })),
       },
     ),
     { maxLength: 6 },
@@ -405,6 +467,7 @@ export const textVars: fc.Arbitrary<TextVars> = fc.record({
     maxLength: 3,
   }),
   o: fc.record({ k: value }),
+  constructor: value,
 });
 
 /** The outer loop's `@o`, or none when the element is not inside a loop. */

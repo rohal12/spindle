@@ -11,7 +11,7 @@ import type { StoryData, Passage as PassageData } from '../../src/parser';
 import { NUM_RUNS, fcOptions } from './config';
 import { INLINE_TAGS, richPassage, substituteVars } from './markup-rich';
 import {
-  TEXT_WIDGET,
+  TEXT_WIDGETS,
   codePieces,
   outerLocal,
   pieces,
@@ -380,11 +380,13 @@ describe('HTML attributes', () => {
 
 describe('markup in attribute values (#225)', () => {
   beforeAll(() => {
-    registerWidget(
-      TEXT_WIDGET.name,
-      buildAST(tokenize(TEXT_WIDGET.body)),
-      TEXT_WIDGET.params,
-    );
+    for (const widget of TEXT_WIDGETS) {
+      registerWidget(
+        widget.name,
+        buildAST(tokenize(widget.body)),
+        widget.params,
+      );
+    }
   });
   afterAll(() => clearWidgets());
 

@@ -9,7 +9,7 @@ import {
 } from '../../src/widgets/widget-registry';
 import { fcOptions } from './config';
 import {
-  TEXT_WIDGET,
+  TEXT_WIDGETS,
   codePieces,
   outerLocal,
   pieces,
@@ -206,11 +206,13 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
 
 describe('text-only markup (#225)', () => {
   beforeAll(() => {
-    registerWidget(
-      TEXT_WIDGET.name,
-      buildAST(tokenize(TEXT_WIDGET.body)),
-      TEXT_WIDGET.params,
-    );
+    for (const widget of TEXT_WIDGETS) {
+      registerWidget(
+        widget.name,
+        buildAST(tokenize(widget.body)),
+        widget.params,
+      );
+    }
   });
   afterAll(() => clearWidgets());
 
