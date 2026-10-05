@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { lexJs, lexTemplate, scanStringLiteral } from '../../src/js-lexer';
 
 type Piece = [
-  kind: 'code' | 'literal' | 'transient',
+  kind: 'code' | 'literal' | 'variable',
   text: string,
   nest: number,
 ];
@@ -19,8 +19,8 @@ function pieces(src: string): Piece[] {
     literal(text, _i, nesting) {
       out.push(['literal', text, nesting]);
     },
-    transient(name, _i, nesting) {
-      out.push(['transient', name, nesting]);
+    variable(sigil, name, _i, nesting) {
+      out.push(['variable', sigil + name, nesting]);
     },
   });
   return out;
@@ -34,7 +34,7 @@ const literals = (src: string) =>
 
 describe('lexJs', () => {
   it('reports every character exactly once, in order', () => {
-    const src = 'a = /x"/g.test(`${%t + "}"}`) // c\n%u / 2';
+    const src = 'a = /x"/g.test(`${%t + "}" + $v}`) // c\n%u / _w + @l';
     let rebuilt = '';
     let next = 0;
     lexJs(src, {
@@ -48,9 +48,9 @@ describe('lexJs', () => {
         rebuilt += text;
         next = i + text.length;
       },
-      transient(name, i) {
+      variable(sigil, name, i) {
         expect(i).toBe(next);
-        rebuilt += '%' + name;
+        rebuilt += sigil + name;
         next = i + 1 + name.length;
       },
     });
@@ -96,7 +96,7 @@ describe('lexJs', () => {
 
   it('reports transient references in operand position only', () => {
     expect(pieces('%a % 2')).toEqual([
-      ['transient', 'a', 0],
+      ['variable', '%a', 0],
       ['code', ' % 2', 0],
     ]);
   });
@@ -131,5 +131,34 @@ describe('scanStringLiteral', () => {
       end: 6,
       closed: false,
     });
+  });
+});
+
+describe('lexJs nesting', () => {
+  it('lexes deeply nested template literals without recursion', () => {
+    const depth = 5000;
+    const src = '`${'.repeat(depth) + '$a' + '}`'.repeat(depth);
+    let maxNesting = 0;
+    let variables = 0;
+    lexJs(src, {
+      variable(_sigil, _name, _i, nesting) {
+        variables++;
+        maxNesting = Math.max(maxNesting, nesting);
+      },
+    });
+    expect(variables).toBe(1);
+    expect(maxNesting).toBe(depth);
+  });
+
+  it('keeps a stray closer in an interpolation from closing outer brackets', () => {
+    expect(pieces('(`${)}`) / 2')).toEqual([
+      ['code', '(', 0],
+      ['literal', '`', 0],
+      ['literal', '${', 0],
+      ['code', ')', 1],
+      ['literal', '}', 0],
+      ['literal', '`', 0],
+      ['code', ') / 2', 0],
+    ]);
   });
 });

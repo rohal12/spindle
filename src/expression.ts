@@ -2,7 +2,7 @@ import type { StoryState } from './store';
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
 import { random, randomInt } from './prng';
-import { lexJs } from './js-lexer';
+import { lexJs, type JsGoal, type Sigil } from './js-lexer';
 
 interface ExpressionFns {
   currentPassage: () => Passage | undefined;
@@ -30,55 +30,46 @@ type CompiledExpression = (
 const FN_CACHE_MAX = 500;
 const fnCache = new Map<string, CompiledExpression>();
 
+const NAMESPACES: Record<Sigil, string> = {
+  $: 'variables',
+  _: 'temporary',
+  '@': 'locals',
+  '%': 'transient',
+};
+
+/** Ends with an identifier character. */
+const IDENT_END_RE = /[\p{ID_Continue}$\u200c\u200d]$/u;
+
 /**
  * Transform expression: $var → variables["var"], _var → temporary["var"],
  * @var → locals["var"], %var → transient["var"].
- * Only transforms when sigils appear as a word boundary, and only in code:
- * string, template and regex literal text and comments are left untouched.
- * `%var` is recognised by the lexer (`lexJs`), because `%` is also the modulo
- * operator and only an operand position makes it a sigil.
+ * The lexer (`lexJs`) finds the references: only in code (string, template
+ * and regex literal text and comments are left untouched), only where an
+ * identifier starts (not in `a$b`, nor as the property name in `obj._x`),
+ * and `%var` only where an operand is expected, since `%` is also the
+ * modulo operator. `goal` tells whether `expr` is an expression or a list of
+ * statements, as that decides whether a leading `{` opens an object literal
+ * or a block. Exported for tests.
  */
-const VAR_RE = /\$(\w+)/g;
-const TEMP_RE = /(?<![.\w])_(\w+)/g;
-const LOCAL_RE = /@(\w+)/g;
-
-function transformSegment(segment: string): string {
-  return segment
-    .replace(VAR_RE, 'variables["$1"]')
-    .replace(TEMP_RE, 'temporary["$1"]')
-    .replace(LOCAL_RE, 'locals["$1"]');
-}
-
-/**
- * Rewrite sigil references in `expr`. The lexer passes literal text and
- * comments through untouched; each run of code between them (including the
- * code of template-literal `${…}` interpolations) is transformed as a whole.
- */
-function transform(expr: string): string {
+export function transform(expr: string, goal: JsGoal = 'expression'): string {
   let result = '';
-  let code = ''; // accumulates code characters to be transformed
-
-  function flushCode() {
-    if (code) {
-      result += transformSegment(code);
-      code = '';
-    }
-  }
-
-  lexJs(expr, {
-    code(ch) {
-      code += ch;
+  lexJs(
+    expr,
+    {
+      code(ch) {
+        result += ch;
+      },
+      literal(text) {
+        result += text;
+      },
+      variable(sigil, name) {
+        // `typeof%x` needs a space once `%x` turns into an identifier.
+        if (IDENT_END_RE.test(result.slice(-2))) result += ' ';
+        result += `${NAMESPACES[sigil]}["${name}"]`;
+      },
     },
-    literal(text) {
-      flushCode();
-      result += text;
-    },
-    transient(name) {
-      flushCode();
-      result += `transient["${name}"]`;
-    },
-  });
-  flushCode();
+    goal,
+  );
   return result;
 }
 
@@ -202,7 +193,7 @@ export function execute(
   locals: Record<string, unknown> = {},
   transient: Record<string, unknown> = {},
 ): void {
-  const transformed = transform(code);
+  const transformed = transform(code, 'statements');
   const fn = getOrCompile('exec:' + transformed, transformed);
   fn(variables, temporary, locals, buildExpressionFns(), transient);
 }
