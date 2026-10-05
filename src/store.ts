@@ -262,6 +262,28 @@ export function resolvePlaythroughId(): Promise<string> {
   return playthroughSetup.then((established) => current || established);
 }
 
+/**
+ * Move the running game to a new playthrough at once: saves issued from here
+ * on belong to it. Storing its record is queued after the previous
+ * playthrough setup, so playthroughs are numbered in the order they start.
+ */
+function switchToNewPlaythrough(ifid: string): void {
+  const id = crypto.randomUUID();
+  ++playthroughGeneration;
+  useStoryStore.setState((state) => {
+    state.playthroughId = id;
+  });
+  playthroughSetup = playthroughSetup
+    .then(() => startNewPlaythrough(ifid, id))
+    .then(
+      () => id,
+      (err) => {
+        console.error('spindle: failed to start new playthrough', err);
+        return id;
+      },
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Runtime handler cleanup (auto-unsub on restart)
 // ---------------------------------------------------------------------------
@@ -410,7 +432,11 @@ export interface StoryState {
   importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
   clearGameData: () => void;
   clearAllData: () => void;
-  deletePlaythrough: (playthroughId: string) => void;
+  /**
+   * Delete a playthrough and its saves. Deleting the current one moves the
+   * running game to a new playthrough.
+   */
+  deletePlaythrough: (playthroughId: string) => Promise<void>;
   getSavePayload: () => SavePayload;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
@@ -776,23 +802,8 @@ export const useStoryStore = create<StoryState>()(
 
       // Switch to the new playthrough now, after beforerestart (whose saves
       // belong to the game being left) and before StoryInit, so every save
-      // issued from here on belongs to the new game. Storing its record is
-      // queued after the previous playthrough setup.
-      const newPlaythroughId = crypto.randomUUID();
-      ++playthroughGeneration;
-      set((state) => {
-        state.playthroughId = newPlaythroughId;
-      });
-      const ifid = storyData.ifid;
-      playthroughSetup = playthroughSetup
-        .then(() => startNewPlaythrough(ifid, newPlaythroughId))
-        .then(
-          () => newPlaythroughId,
-          (err) => {
-            console.error('spindle: failed to start new playthrough', err);
-            return newPlaythroughId;
-          },
-        );
+      // issued from here on belongs to the new game.
+      switchToNewPlaythrough(storyData.ifid);
 
       const keepDeferred = get().renderDeferred;
 
@@ -992,18 +1003,28 @@ export const useStoryStore = create<StoryState>()(
 
     deletePlaythrough: (playthroughId: string) => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smDeletePlaythroughData(storyData.ifid, playthroughId)
-        .then(async () => {
-          const known = await populateKnownSaves(storyData.ifid);
-          set((state) => {
-            state.knownSaves = known;
-          });
-        })
-        .catch((err) => {
-          console.error('spindle: failed to delete playthrough', err);
-        });
+      // The running game can't go on in a deleted playthrough: its later
+      // saves would belong to no playthrough. It moves to a new one, as
+      // on restart but keeping its state.
+      if (playthroughId !== '' && playthroughId === get().playthroughId) {
+        switchToNewPlaythrough(storyData.ifid);
+      }
+
+      return handled(
+        smDeletePlaythroughData(storyData.ifid, playthroughId)
+          .then(async () => {
+            const known = await populateKnownSaves(storyData.ifid);
+            set((state) => {
+              state.knownSaves = known;
+            });
+          })
+          .catch((err) => {
+            console.error('spindle: failed to delete playthrough', err);
+            throw err;
+          }),
+      );
     },
 
     getSavePayload: (): SavePayload => {

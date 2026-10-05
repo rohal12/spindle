@@ -20,8 +20,6 @@ import {
   getStorageInfo as _getStorageInfo,
   clearGameData as _clearGameData,
   clearAllData as _clearAllData,
-  deletePlaythroughData,
-  populateKnownSaves,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
@@ -501,14 +499,8 @@ function createStoryAPI(): StoryAPI {
         useStoryStore.getState().restart();
       },
 
-      async deletePlaythrough(playthroughId: string): Promise<void> {
-        const { storyData } = useStoryStore.getState();
-        if (!storyData) return;
-        await deletePlaythroughData(storyData.ifid, playthroughId);
-        const known = await populateKnownSaves(storyData.ifid);
-        useStoryStore.setState((state) => {
-          state.knownSaves = known;
-        });
+      deletePlaythrough(playthroughId: string): Promise<void> {
+        return useStoryStore.getState().deletePlaythrough(playthroughId);
       },
 
       get backend() {

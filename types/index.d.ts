@@ -675,7 +675,10 @@ export interface StoryAPI {
     clearGameData(): Promise<void>;
     /** Delete all Spindle data across all games. */
     clearAllData(): Promise<void>;
-    /** Delete a specific playthrough and its saves. */
+    /**
+     * Delete a specific playthrough and its saves. Deleting the current
+     * playthrough moves the running game to a new one.
+     */
     deletePlaythrough(playthroughId: string): Promise<void>;
     /** The active storage backend. */
     readonly backend: 'indexeddb' | 'localstorage' | 'memory';

@@ -92,6 +92,30 @@ describe('awaitable Story.save / deleteSave / load', () => {
     expect(Story.passage).toBe('Room');
   });
 
+  // Found by the save model property test (test/property/saves-model)
+  it('deleting the current playthrough moves the game to a new one', async () => {
+    const ifid = useStoryStore.getState().storyData!.ifid;
+    const old = useStoryStore.getState().playthroughId;
+    await Story.save('slot-1');
+
+    await Story.storage.deletePlaythrough(old);
+    const current = useStoryStore.getState().playthroughId;
+    expect(current).not.toBe(old);
+    expect(current).not.toBe('');
+    expect(Story.hasSave('slot-1')).toBe(false);
+
+    // Later saves belong to the new playthrough, not to a deleted one
+    await Story.save('slot-2');
+    const groups = await saveManager.getSavesGrouped(ifid);
+    expect(
+      groups.map((g) => [
+        g.playthrough.id,
+        g.playthrough.label,
+        g.saves.length,
+      ]),
+    ).toEqual([[current, 'Playthrough 2', 1]]);
+  });
+
   it('load() of an empty slot resolves without changing state', async () => {
     Story.set('hp', 7);
     await expect(Story.load('nothing-here')).resolves.toBeUndefined();
