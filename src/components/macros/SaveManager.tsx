@@ -22,6 +22,7 @@ import {
 } from '../../saves/save-manager';
 import { DialogCloseContext } from '../PassageDialog';
 import { defineMacro } from '../../define-macro';
+import { errorMessage } from '../../utils/error-message';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -251,10 +252,7 @@ export function SaveManagerContent() {
       showStatus('Save imported');
       await refresh();
     } catch (err) {
-      showStatus(
-        err instanceof Error ? err.message : 'Failed to import save',
-        'error',
-      );
+      showStatus(errorMessage(err, 'Failed to import save'), 'error');
     }
   };
 
