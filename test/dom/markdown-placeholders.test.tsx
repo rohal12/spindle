@@ -4,6 +4,8 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
+import { renderNodes } from '../../src/markup/render';
+import type { ASTNode } from '../../src/markup/ast';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 // renderNodes() stands in a <span data-tw> placeholder for every non-text
@@ -103,6 +105,37 @@ describe('backslash before a placeholder', () => {
     // backslash right before a variable or macro; `&#92;` gives a backslash.
     expect(renderPassage('C:\\{$dir}').textContent).toBe('C:{$dir}');
     expect(renderPassage('C:&#92;{$dir}').textContent).toBe('C:\\D');
+  });
+});
+
+describe('placeholder-like author text', () => {
+  const FAKE = '<span data-tw="0"></span>';
+  const x: ASTNode = { type: 'variable', name: 'x', scope: 'variable' };
+
+  function renderAst(nodes: ASTNode[]): HTMLElement {
+    const container = document.createElement('div');
+    act(() => {
+      render(<>{renderNodes(nodes)}</>, container);
+    });
+    return container;
+  }
+
+  it('keeps entity-decoded placeholder text literal', () => {
+    const el = renderPassage('&lt;span data-tw="0"&gt;&lt;/span&gt; *{$x}*');
+    expect(el.textContent).toBe(`${FAKE} V`);
+    expect(el.querySelector('em')!.textContent).toBe('V');
+  });
+
+  it('keeps placeholder text in a code span literal', () => {
+    const el = renderAst([{ type: 'text', value: `\`${FAKE}\` ` }, x]);
+    expect(el.querySelector('code')!.textContent).toBe(FAKE);
+    expect(el.textContent).toBe(`${FAKE} V`);
+  });
+
+  it('does not treat an author data-tw element as a placeholder', () => {
+    const el = renderAst([{ type: 'text', value: `*a* ${FAKE}` }, x]);
+    expect(el.textContent).toBe('a V');
+    expect(el.querySelectorAll('span[data-tw]').length).toBe(1);
   });
 });
 

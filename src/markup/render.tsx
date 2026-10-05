@@ -37,15 +37,31 @@ export const SvgContext = createContext(false);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
- * A component placeholder that micromark escaped because it sits in code
- * (a code span of any backtick length, or a fenced code block). It reaches
- * the DOM as literal text and is swapped for the live component, keeping it
- * subscribed (#223). Letting micromark decide what is code keeps this exact,
- * with no CommonMark re-implementation to drift from it.
+ * Components rendered for the non-text nodes of one renderNodes() call. Each
+ * stands in the markdown source as `<span data-tw="NONCE:INDEX"></span>`.
+ * The per-call random nonce means author text that merely looks like a
+ * placeholder (e.g. decoded from `&lt;span data-tw=...&gt;`) is never
+ * swapped for a component.
  */
-const ESCAPED_PLACEHOLDER = '<span data-tw="';
-const ESCAPED_PLACEHOLDER_SPLIT_RE =
-  /(?:(?<=\\)\uE000)?<span data-tw="(\d+)"><\/span>/;
+interface Placeholders {
+  nonce: string;
+  components: preact.ComponentChildren[];
+}
+
+function placeholderHtml(nonce: string, index: number): string {
+  return `<span data-tw="${nonce}:${index}"></span>`;
+}
+
+/**
+ * A placeholder as text. micromark escapes placeholders in code (a code span
+ * of any backtick length, or a fenced code block), so they reach the DOM as
+ * literal text and are swapped for the live component there, keeping it
+ * subscribed (#223). Letting micromark decide what is code keeps this exact,
+ * with no CommonMark re-implementation to drift from it. Also consumes an
+ * ESCAPE_GUARD in front of the placeholder.
+ */
+const PLACEHOLDER_TEXT_RE =
+  /(?:(?<=\\)\uE000)?<span data-tw="([0-9a-z]+):(\d+)"><\/span>/g;
 
 /**
  * Emitted between author text ending in a backslash and a placeholder, so
@@ -55,15 +71,42 @@ const ESCAPED_PLACEHOLDER_SPLIT_RE =
  */
 const ESCAPE_GUARD = '\uE000';
 
+/** Split text into literal parts and the components its placeholders name. */
+function expandPlaceholderText(
+  text: string,
+  ph: Placeholders,
+): preact.ComponentChildren[] {
+  if (!text.includes('<span data-tw="')) return [text];
+  const parts: preact.ComponentChildren[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
+    if (m[1] !== ph.nonce) continue;
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(ph.components[parseInt(m[2]!, 10)]);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+/** The component index of a placeholder element of this call, or -1. */
+function placeholderIndex(node: Node | null, ph: Placeholders): number {
+  if (node == null || node.nodeType !== Node.ELEMENT_NODE) return -1;
+  const value = (node as Element).getAttribute('data-tw');
+  const prefix = `${ph.nonce}:`;
+  if (value == null || !value.startsWith(prefix)) return -1;
+  return parseInt(value.slice(prefix.length), 10);
+}
+
 /**
  * Convert an HTML string (from micromark) to Preact VNodes,
- * replacing <span data-tw="N"> placeholder elements with pre-rendered components.
+ * replacing placeholder elements with pre-rendered components.
  * With `unwrapParagraphs` (nobr or inline content), top-level <p> wrappers are
  * replaced by their children.
  */
 function htmlToPreact(
   html: string,
-  components: preact.ComponentChildren[],
+  ph: Placeholders,
   unwrapParagraphs = false,
 ): preact.ComponentChildren {
   const temp = document.createElement('div');
@@ -74,7 +117,7 @@ function htmlToPreact(
     }
   }
   const children = Array.from(temp.childNodes).map((child, i) =>
-    convertDomNode(child, i, components),
+    convertDomNode(child, i, ph),
   );
   return <>{children}</>;
 }
@@ -82,34 +125,28 @@ function htmlToPreact(
 function convertDomNode(
   node: Node,
   key: number,
-  components: preact.ComponentChildren[],
+  ph: Placeholders,
 ): preact.ComponentChildren {
   if (node.nodeType === Node.TEXT_NODE) {
     let text = node.textContent ?? '';
     // Drop the escape guard in front of a placeholder element.
     if (
       text.endsWith(`\\${ESCAPE_GUARD}`) &&
-      isPlaceholderElement(node.nextSibling)
+      placeholderIndex(node.nextSibling, ph) !== -1
     ) {
       text = text.slice(0, -1);
     }
-    if (!text.includes(ESCAPED_PLACEHOLDER)) return text;
-    // Swap escaped placeholders for their components; the split puts
-    // captured indices at odd positions.
-    return text
-      .split(ESCAPED_PLACEHOLDER_SPLIT_RE)
-      .map((part, i) =>
-        i % 2 === 1 ? components[parseInt(part, 10)] : part || null,
-      );
+    const parts = expandPlaceholderText(text, ph);
+    return parts.length === 1 ? parts[0] : parts;
   }
   if (node.nodeType === Node.ELEMENT_NODE) {
     const el = node as Element;
     const tag = el.localName;
 
     // Check if it's a placeholder for a Twine component
-    const twIdx = el.getAttribute('data-tw');
-    if (twIdx != null) {
-      return components[parseInt(twIdx, 10)];
+    const idx = placeholderIndex(el, ph);
+    if (idx !== -1) {
+      return ph.components[idx];
     }
 
     // Convert attributes
@@ -120,20 +157,12 @@ function convertDomNode(
 
     // Convert children recursively
     const children = Array.from(el.childNodes).map((child, i) =>
-      convertDomNode(child, i, components),
+      convertDomNode(child, i, ph),
     );
 
     return h(tag, props, ...children);
   }
   return null;
-}
-
-function isPlaceholderElement(node: Node | null): boolean {
-  return (
-    node != null &&
-    node.nodeType === Node.ELEMENT_NODE &&
-    (node as Element).hasAttribute('data-tw')
-  );
 }
 
 /** Inline elements where block-level markdown (lists, headings) is invalid. */
@@ -388,44 +417,36 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
 const MARKDOWN_SYNTAX_RE =
   /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
-const PLACEHOLDER_SPLIT_RE = /(<span data-tw="\d+"><\/span>)/;
-const PLACEHOLDER_IDX_RE = /^<span data-tw="(\d+)"><\/span>$/;
-const PLACEHOLDER_STRIP_RE = /<span data-tw="\d+"><\/span>/g;
+const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
 
 /**
  * Build Preact vnodes from a combined string that contains only plain text
- * and <span data-tw="N"></span> placeholders. No micromark, no innerHTML.
+ * and placeholders. No micromark, no innerHTML.
  */
 function buildPlainTextVnodes(
   combined: string,
-  components: preact.ComponentChildren[],
+  ph: Placeholders,
   unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
-  const parts = combined.split(PLACEHOLDER_SPLIT_RE);
-  const children: preact.ComponentChildren[] = [];
-  for (const part of parts) {
-    const m = PLACEHOLDER_IDX_RE.exec(part);
-    if (m) {
-      children.push(components[parseInt(m[1]!, 10)]);
-    } else if (part) {
-      children.push(part);
-    }
-  }
+  const children = expandPlaceholderText(combined, ph).filter(
+    (part) => part !== '',
+  );
   return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
 /**
  * Render AST nodes with full CommonMark markdown support.
  *
- * Combines all nodes into a single markdown document, using <tw-N> placeholder
- * elements for non-text nodes (variables, macros, links, HTML). This allows
+ * Combines all nodes into a single markdown document, using placeholder
+ * elements (see Placeholders) for non-text nodes (variables, macros, links,
+ * HTML). This allows
  * markdown syntax to span across Twine tokens — e.g., markdown tables can
  * contain {$variables} and {macros} in their cells.
  *
  * After micromark processes the combined string, the HTML is parsed back into
  * Preact VNodes with placeholders replaced by the real rendered components.
  * Placeholders that micromark escaped as code text are swapped back too (see
- * ESCAPED_PLACEHOLDER), so variables in code stay live components.
+ * PLACEHOLDER_TEXT_RE), so variables in code stay live components.
  */
 export function renderNodes(
   nodes: ASTNode[],
@@ -453,6 +474,10 @@ export function renderNodes(
 
   // Build combined markdown string with placeholders for non-text nodes
   const components: preact.ComponentChildren[] = [];
+  const ph: Placeholders = {
+    nonce: Math.random().toString(36).slice(2, 10) || '0',
+    components,
+  };
   let combined = '';
 
   for (let i = 0; i < nodes.length; i++) {
@@ -464,7 +489,7 @@ export function renderNodes(
     const phIdx = components.length;
     components.push(renderSingleNode(node));
     if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
-    combined += `<span data-tw="${phIdx}"></span>`;
+    combined += placeholderHtml(ph.nonce, phIdx);
   }
 
   // Fast path: skip micromark + innerHTML when text has no markdown syntax.
@@ -475,12 +500,12 @@ export function renderNodes(
   const unwrapParagraphs = !!(options?.nobr || options?.inline);
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, components, unwrapParagraphs);
+    return buildPlainTextVnodes(combined, ph, unwrapParagraphs);
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, components, unwrapParagraphs);
+  return htmlToPreact(html, ph, unwrapParagraphs);
 }
