@@ -183,4 +183,56 @@ describe('history navigation', () => {
       expect(store().currentPassage).toBe('D');
     });
   });
+
+  describe('beforenavigate variable changes (#164)', () => {
+    it('records primitive changes in the destination snapshot', () => {
+      store().init(makeStoryData(), { x: 0 });
+      const off = emitterOn('beforenavigate', () =>
+        store().setVariable('x', 9),
+      );
+      store().navigate('B');
+      off();
+
+      expect(store().variables).toEqual({ x: 9 });
+      expect(historySnapshots()).toEqual([{ x: 0 }, { x: 9 }]);
+      expect(store().getSavePayload().history[1]!.variables).toEqual({ x: 9 });
+
+      store().goBack();
+      expect(store().variables).toEqual({ x: 0 });
+      store().goForward();
+      expect(store().variables).toEqual({ x: 9 });
+    });
+
+    it('records nested changes in the destination snapshot', () => {
+      store().init(makeStoryData(), { player: { hp: 10, items: ['a'] } });
+      const off = emitterOn('beforenavigate', () => {
+        useStoryStore.setState((s) => {
+          const player = s.variables.player as {
+            hp: number;
+            items: string[];
+          };
+          player.hp = 5;
+          player.items.push('b');
+        });
+      });
+      store().navigate('B');
+      off();
+
+      const before = { player: { hp: 10, items: ['a'] } };
+      const after = { player: { hp: 5, items: ['a', 'b'] } };
+      expect(historySnapshots()).toEqual([before, after]);
+
+      store().navigate('C');
+      expect(historySnapshots()).toEqual([before, after, after]);
+
+      store().goBack();
+      expect(store().variables).toEqual(after);
+      store().goBack();
+      expect(store().variables).toEqual(before);
+      store().goForward();
+      expect(store().variables).toEqual(after);
+      store().goForward();
+      expect(store().variables).toEqual(after);
+    });
+  });
 });

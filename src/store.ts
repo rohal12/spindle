@@ -421,7 +421,7 @@ export const useStoryStore = create<StoryState>()(
     },
 
     navigate: (passageName: string) => {
-      const { storyData, variables: currVars } = get();
+      const { storyData } = get();
       if (!storyData) return;
 
       if (SPECIAL_PASSAGES.has(passageName)) {
@@ -439,8 +439,9 @@ export const useStoryStore = create<StoryState>()(
       const previousPassage = get().currentPassage;
       emit('beforenavigate', passageName);
 
-      // Compute variable delta before Immer set()
-      const patchEntry = computeVarPatches(lastNavigationVars, currVars);
+      // Compute variable delta before Immer set(). Read the variables after
+      // beforenavigate so changes made by its handlers are recorded.
+      const patchEntry = computeVarPatches(lastNavigationVars, get().variables);
 
       set((state) => {
         state.temporary = {};
