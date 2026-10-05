@@ -29,6 +29,7 @@ import {
   frozenCopy,
   getActiveMutationScope,
   mirrorWriteToActiveScopes,
+  runWithCommittedMutations,
 } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
@@ -320,24 +321,31 @@ function createStoryAPI(): StoryAPI {
       });
     },
 
+    // Called from running mutation code, these commit the code's writes so
+    // far before they record, replace or save state, and the code goes on
+    // from the state they leave (see runWithCommittedMutations).
     goto(passageName: string): void {
-      useStoryStore.getState().navigate(passageName);
+      runWithCommittedMutations(() =>
+        useStoryStore.getState().navigate(passageName),
+      );
     },
 
     back(): void {
-      useStoryStore.getState().goBack();
+      runWithCommittedMutations(() => useStoryStore.getState().goBack());
     },
 
     forward(): void {
-      useStoryStore.getState().goForward();
+      runWithCommittedMutations(() => useStoryStore.getState().goForward());
     },
 
     restart(): void {
-      useStoryStore.getState().restart();
+      runWithCommittedMutations(() => useStoryStore.getState().restart());
     },
 
     save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return useStoryStore.getState().save(slot, custom);
+      return runWithCommittedMutations(() =>
+        useStoryStore.getState().save(slot, custom),
+      );
     },
 
     load(slot?: string): Promise<void> {

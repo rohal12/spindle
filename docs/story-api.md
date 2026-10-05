@@ -59,6 +59,8 @@ Navigate to a passage.
 {/do}
 ```
 
+Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
+
 ### `Story.back()`
 
 Go to the previous passage in history.
