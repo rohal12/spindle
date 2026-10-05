@@ -251,6 +251,26 @@ describe('load pipeline', () => {
     });
   });
 
+  describe('history after a load', () => {
+    it('records the next move from the loaded moment snapshot', async () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      // Edited after entering B, so the live variables differ from B's snapshot
+      Story.set('data', { n: 2 });
+      await saveTo('edited');
+
+      await loadFrom('edited');
+      Story.goto('C');
+
+      const state = useStoryStore.getState();
+      expect(state.getHistoryVariables(1).data).toEqual({ n: 1 });
+      expect(state.getHistoryVariables(2).data).toEqual({ n: 2 });
+
+      state.goBack();
+      expect(Story.get('data')).toEqual({ n: 1 });
+    });
+  });
+
   describe('load events receive the slot (#174)', () => {
     it('passes a named slot to beforeload and afterload', async () => {
       await saveTo('named');

@@ -887,7 +887,9 @@ export const useStoryStore = create<StoryState>()(
         state.transient = deepClone(get().transientDefaults);
       });
 
-      lastNavigationVars = get().variables;
+      // The next navigate() diffs from the snapshot recorded for the current
+      // moment, not from the live variables (which may hold later edits)
+      lastNavigationVars = reconstructVarsAt(get().historyIndex);
 
       if (payload.prng) {
         restorePRNG(payload.prng.seed, payload.prng.pull);
