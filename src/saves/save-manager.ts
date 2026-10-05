@@ -273,6 +273,28 @@ function slotMetaKey(ifid: string, slot?: string): string {
     : `${AUTOSAVE_KEY_PREFIX}${ifid}`;
 }
 
+/** Record a named slot in the per-story slot index (no-op for the default slot). */
+async function addToSlotIndex(ifid: string, slot?: string): Promise<void> {
+  if (slot == null) return;
+  const backend = await getBackend();
+  const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+  const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
+  if (!existing.includes(slot)) {
+    await backend.setMeta(indexKey, [...existing, slot]);
+  }
+}
+
+function toSaveInfo(record: SaveRecord, slot?: string): SaveInfo {
+  return {
+    slot: slot ?? '',
+    title: record.meta.title,
+    passage: record.meta.passage,
+    createdAt: record.meta.createdAt,
+    updatedAt: record.meta.updatedAt,
+    custom: record.meta.custom ?? {},
+  };
+}
+
 export async function quickSave(
   ifid: string,
   playthroughId: string,
@@ -296,15 +318,7 @@ export async function quickSave(
     ...custom,
   });
   await backend.setMeta(metaKey, record.meta.id);
-
-  // Track named slots in the index
-  if (slot != null) {
-    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
-    if (!existing.includes(slot)) {
-      await backend.setMeta(indexKey, [...existing, slot]);
-    }
-  }
+  await addToSlotIndex(ifid, slot);
 
   return record;
 }
@@ -371,14 +385,7 @@ export async function getSlotSaveInfo(
   if (!existingId) return null;
   const record = await backend.getSave(existingId);
   if (!record) return null;
-  return {
-    slot: slot ?? '',
-    title: record.meta.title,
-    passage: record.meta.passage,
-    createdAt: record.meta.createdAt,
-    updatedAt: record.meta.updatedAt,
-    custom: record.meta.custom ?? {},
-  };
+  return toSaveInfo(record, slot);
 }
 
 /**
@@ -487,7 +494,12 @@ export async function exportSave(
   };
 }
 
-export async function importSave(
+/**
+ * Validate an export against the running story and build the record to store:
+ * a fresh save ID, and the playthrough record created if it doesn't exist yet.
+ * The returned record is not stored yet.
+ */
+async function prepareImport(
   data: SaveExport,
   ifid: string,
 ): Promise<SaveRecord> {
@@ -521,8 +533,65 @@ export async function importSave(
     await backend.putPlaythrough(pt);
   }
 
-  await backend.putSave(record);
   return record;
+}
+
+export async function importSave(
+  data: SaveExport,
+  ifid: string,
+): Promise<SaveRecord> {
+  const record = await prepareImport(data, ifid);
+  await (await getBackend()).putSave(record);
+  return record;
+}
+
+/**
+ * Export the save held in a slot (default autosave slot when `slot` is omitted).
+ * Returns undefined if the slot is empty.
+ */
+export async function exportSlotSave(
+  ifid: string,
+  slot?: string,
+): Promise<SaveExport | undefined> {
+  const saveId = await (
+    await getBackend()
+  ).getMeta<string>(slotMetaKey(ifid, slot));
+  if (!saveId) return undefined;
+  return exportSave(saveId);
+}
+
+/**
+ * Import an exported save into a slot (default autosave slot when `slot` is
+ * omitted), replacing any save already in that slot. Applies the same
+ * validation as `importSave` (version, IFID) and keeps the playthrough record
+ * and slot index consistent.
+ */
+export async function importSlotSave(
+  data: SaveExport,
+  ifid: string,
+  slot?: string,
+): Promise<SaveInfo> {
+  const record = await prepareImport(data, ifid);
+
+  // The slot keys in `custom` describe where the save lives, so they follow
+  // the target slot rather than the slot the save was exported from.
+  const { slot: _exportedSlot, ...custom } = record.meta.custom ?? {};
+  record.meta.custom = {
+    ...custom,
+    isAutosave: !slot,
+    ...(slot != null ? { slot } : {}),
+  };
+
+  const backend = await getBackend();
+  const metaKey = slotMetaKey(ifid, slot);
+  const previousId = await backend.getMeta<string>(metaKey);
+
+  await backend.putSave(record);
+  await backend.setMeta(metaKey, record.meta.id);
+  await addToSlotIndex(ifid, slot);
+  if (previousId) await backend.deleteSave(previousId);
+
+  return toSaveInfo(record, slot);
 }
 
 // --- Storage Management ---

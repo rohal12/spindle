@@ -55,6 +55,8 @@ Individual saves can be exported as JSON files and imported back. Exported files
 
 Imported saves are placed into their original playthrough group (or an "Imported" group if the playthrough no longer exists).
 
+Custom save UIs can do the same for slots with [`Story.exportSave(slot?)`](story-api.md#story-exportsave-slot) and [`Story.importSave(data, slot?)`](story-api.md#story-importsave-data-slot). They work with every storage backend and apply the same IFID check.
+
 ## Save Title
 
 By default, save titles show `passage name - HH:MM`. Customize this with a `SaveTitle` passage or via the JavaScript API:
