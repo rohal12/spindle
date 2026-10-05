@@ -2,14 +2,13 @@ import { render } from 'preact';
 import { App } from './components/App';
 import { parseStoryData } from './parser';
 import { useStoryStore, enterRuntimePhase } from './store';
-import { emit } from './event-emitter';
 import {
   installStoryAPI,
   getReadyPromise,
   setDeclaredVariables,
 } from './story-api';
 import { resetIdCounters } from './action-registry';
-import { executeStoryInit } from './story-init';
+import { initializeStory } from './story-init';
 import { connectTriggersToStore } from './triggers';
 import { loadSession } from './saves/save-manager';
 import {
@@ -141,17 +140,9 @@ export function boot() {
   // Enter runtime phase — handlers registered from here on are cleaned on restart
   enterRuntimePhase();
 
-  // Execute StoryInit passage if it exists
-  executeStoryInit();
-
-  // Restore session state if the page was refreshed
-  const sessionPayload = loadSession(storyData.ifid);
-  if (sessionPayload) {
-    useStoryStore.getState().loadFromPayload(sessionPayload);
-  }
-
-  // Fire storyinit after all state is settled (defaults + StoryInit + session)
-  emit('storyinit');
+  // Run StoryInit, restore the session if the page was refreshed, and fire
+  // storyinit after all state is settled (defaults + StoryInit + session)
+  initializeStory(loadSession(storyData.ifid));
 
   // Pass 1: Pre-scan all widget passages to discover block widgets.
   // Register them as block macros BEFORE any tokenize/buildAST calls,
