@@ -209,6 +209,38 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     expect(Story.hasSave('slot-2')).toBe(false);
   });
 
+  it.each([
+    ['the default slot', undefined],
+    ['a named slot', 'slot-1'],
+  ])(
+    'a save to %s after restart belongs to the new playthrough',
+    async (_, slot) => {
+      Story.set('hp', 10);
+      await saveTo(slot);
+      const oldPt = useStoryStore.getState().playthroughId;
+
+      Story.restart();
+      await vi.waitFor(() =>
+        expect(useStoryStore.getState().playthroughId).not.toBe(oldPt),
+      );
+      const newPt = useStoryStore.getState().playthroughId;
+      Story.set('hp', 20);
+      Story.goto('Room');
+      await Story.save(slot);
+
+      const data = (await Story.exportSave(slot))!;
+      expect(data.save.meta.playthroughId).toBe(newPt);
+
+      // Deleting the old playthrough keeps the new game's save
+      await Story.storage.deletePlaythrough(oldPt);
+      expect(Story.hasSave(slot)).toBe(true);
+      Story.set('hp', 1);
+      await Story.load(slot);
+      expect(Story.get('hp')).toBe(20);
+      expect(Story.passage).toBe('Room');
+    },
+  );
+
   it('creates an "Imported" playthrough for an unknown playthrough', async () => {
     await saveTo('slot-1');
     const data = (await Story.exportSave('slot-1'))!;
