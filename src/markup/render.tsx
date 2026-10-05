@@ -124,6 +124,43 @@ const INLINE_ELEMENTS = new Set([
   'wbr',
 ]);
 
+/**
+ * HTML boolean attributes. Their presence means "on", but a parsed bare or
+ * `=""` attribute has the value '', which Preact would assign to the DOM
+ * property as a falsy value — so present ones are passed as `true` (#177).
+ */
+const BOOLEAN_ATTRIBUTES = new Set([
+  'allowfullscreen',
+  'async',
+  'autofocus',
+  'autoplay',
+  'checked',
+  'controls',
+  'default',
+  'defer',
+  'disabled',
+  'formnovalidate',
+  'hidden',
+  'inert',
+  'ismap',
+  'itemscope',
+  'loop',
+  'multiple',
+  'muted',
+  'nomodule',
+  'novalidate',
+  'open',
+  'playsinline',
+  'readonly',
+  'required',
+  'reversed',
+  'selected',
+]);
+
+function isPresentBooleanAttribute(name: string, value: string): boolean {
+  return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+}
+
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
@@ -131,7 +168,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const inSvg = useContext(SvgContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = resolve(v) ?? v;
+    attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
   }
   const isSvgRoot = node.tag.toLowerCase() === 'svg';
   const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
