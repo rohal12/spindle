@@ -161,7 +161,26 @@ function ChildrenSlot() {
   return <>{renderNodes(childrenAST, { nobr, locals })}</>;
 }
 
-function renderMacro(node: MacroNode, key: number) {
+/**
+ * Stable per-node keys. Keying rendered children by AST node identity (not
+ * by position) makes Preact remount components when different content
+ * occupies the same slot — e.g. when an {if}/{switch} branch or an included
+ * passage changes — so mount-only macros like {set} and {do} run for the new
+ * content, while re-rendering the same AST keeps existing instances (#175).
+ */
+const nodeKeys = new WeakMap<ASTNode, string>();
+let nextNodeKey = 0;
+
+function nodeKey(node: ASTNode): string {
+  let key = nodeKeys.get(node);
+  if (key === undefined) {
+    key = `n${nextNodeKey++}`;
+    nodeKeys.set(node, key);
+  }
+  return key;
+}
+
+function renderMacro(node: MacroNode, key: string) {
   if (isSubMacro(node.name)) return null;
 
   const widget = getWidget(node.name);
@@ -204,14 +223,10 @@ function renderMacro(node: MacroNode, key: number) {
 /**
  * Render a non-text AST node to a Preact element.
  */
-function renderSingleNode(
-  node: ASTNode,
-  key: number,
-): preact.ComponentChildren {
+function renderSingleNode(node: ASTNode): preact.ComponentChildren {
+  if (node.type === 'text') return node.value;
+  const key = nodeKey(node);
   switch (node.type) {
-    case 'text':
-      return node.value;
-
     case 'variable':
       if (node.scope === 'local' && node.name === 'children') {
         return <ChildrenSlot key={key} />;
@@ -261,7 +276,7 @@ function renderSingleNode(
  */
 export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   if (nodes.length === 0) return null;
-  return nodes.map((node, i) => renderSingleNode(node, i));
+  return nodes.map((node) => renderSingleNode(node));
 }
 
 function hasUnclosedBacktick(s: string): boolean {
@@ -358,7 +373,7 @@ export function renderNodes(
       n.type === 'text' && (n.value.trim() !== '' || /\n\s*\n/.test(n.value)),
   );
   if (!needsMarkdown) {
-    return nodes.map((node, i) => renderSingleNode(node, i));
+    return nodes.map((node) => renderSingleNode(node));
   }
 
   // Build combined markdown string with placeholders for non-text nodes
@@ -375,7 +390,7 @@ export function renderNodes(
       combined += getVariableTextValue(node, locals);
     } else {
       const phIdx = components.length;
-      components.push(renderSingleNode(node, i));
+      components.push(renderSingleNode(node));
       combined += `<span data-tw="${phIdx}"></span>`;
     }
   }

@@ -420,6 +420,8 @@ This metadata is accessible at runtime via `Story.getMacroRegistry()` and from N
 | `ctx.useAction(config)`          | Register an action for testing/automation tools                                              |
 | `ctx.hooks`                      | `useState`, `useRef`, `useEffect`, `useLayoutEffect`, `useCallback`, `useMemo`, `useContext` |
 
+Rendered nodes are tracked by identity: when `ctx.renderNodes()` is given different nodes than on the previous render (for example, another branch), the old content is unmounted and the new content is mounted fresh, so its `{set}` and `{do}` macros run. Passing the same nodes again only updates them. Pass the nodes from `props.children` or `props.branches` as they are. Don't build new node objects on every render.
+
 ### Feature Flags
 
 | Flag          | What it adds                                 | Turn it on when...                                         |
