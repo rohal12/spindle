@@ -155,12 +155,12 @@ export interface StoryAPI {
   back(): void;
   forward(): void;
   restart(): void;
-  save(slot?: string, custom?: Record<string, unknown>): void;
-  load(slot?: string): void;
+  save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
+  load(slot?: string): Promise<void>;
   hasSave(slot?: string): boolean;
   getSaveInfo(slot?: string): Promise<SaveInfo | null>;
   listSaves(): Promise<SaveInfo[]>;
-  deleteSave(slot?: string): void;
+  deleteSave(slot?: string): Promise<void>;
   exportSave(slot?: string): Promise<SaveExport | null>;
   importSave(data: unknown, slot?: string): Promise<SaveInfo>;
   visited(name?: string): number;
@@ -343,12 +343,12 @@ function createStoryAPI(): StoryAPI {
       useStoryStore.getState().restart();
     },
 
-    save(slot?: string, custom?: Record<string, unknown>): void {
-      useStoryStore.getState().save(slot, custom);
+    save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
+      return useStoryStore.getState().save(slot, custom);
     },
 
-    load(slot?: string): void {
-      useStoryStore.getState().load(slot);
+    load(slot?: string): Promise<void> {
+      return useStoryStore.getState().load(slot);
     },
 
     hasSave(slot?: string): boolean {
@@ -363,8 +363,8 @@ function createStoryAPI(): StoryAPI {
       return useStoryStore.getState().listSaves();
     },
 
-    deleteSave(slot?: string): void {
-      useStoryStore.getState().deleteSave(slot);
+    deleteSave(slot?: string): Promise<void> {
+      return useStoryStore.getState().deleteSave(slot);
     },
 
     exportSave(slot?: string): Promise<SaveExport | null> {

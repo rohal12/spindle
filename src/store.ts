@@ -370,12 +370,12 @@ export interface StoryState {
   updateVariables: (recipe: (draft: VariableNamespaces) => void) => void;
   trackRender: (passageName: string) => void;
   restart: () => void;
-  save: (slot?: string, custom?: Record<string, unknown>) => void;
-  load: (slot?: string) => void;
+  save: (slot?: string, custom?: Record<string, unknown>) => Promise<void>;
+  load: (slot?: string) => Promise<void>;
   hasSave: (slot?: string) => boolean;
   getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
   listSaves: () => Promise<SaveInfo[]>;
-  deleteSave: (slot?: string) => void;
+  deleteSave: (slot?: string) => Promise<void>;
   exportSave: (slot?: string) => Promise<SaveExport | null>;
   importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
   clearGameData: () => void;
@@ -393,6 +393,17 @@ export interface StoryState {
   consumeNextTransition: () => TransitionConfig | null;
   deferRender: () => void;
   clearDeferredRender: () => void;
+}
+
+/**
+ * Return `p` marked as handled: a caller that ignores the result of a
+ * fire-and-forget operation (whose failure is already logged) gets no
+ * unhandled-rejection report, while a caller that awaits it still sees the
+ * error.
+ */
+function handled<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => {});
+  return p;
 }
 
 export const useStoryStore = create<StoryState>()(
@@ -781,52 +792,64 @@ export const useStoryStore = create<StoryState>()(
 
     save: (slot?: string, custom?: Record<string, unknown>) => {
       const { storyData, playthroughId } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      saveWithHooks(
-        slot,
-        custom,
-        () => get().getSavePayload(),
-        async (payload) => {
+      return handled(
+        saveWithHooks(
+          slot,
+          custom,
+          () => get().getSavePayload(),
+          async (payload) => {
+            set((state) => {
+              state.saveError = null;
+            });
+            await quickSave(
+              storyData.ifid,
+              playthroughId,
+              payload,
+              slot,
+              custom,
+            );
+            set((state) => {
+              state.knownSaves = {
+                ...state.knownSaves,
+                [slot ?? '']: true,
+              };
+            });
+          },
+        ).catch((err) => {
+          console.error('spindle: failed to save', err);
           set((state) => {
-            state.saveError = null;
+            state.saveError =
+              err instanceof Error ? err.message : 'Failed to save';
           });
-          await quickSave(storyData.ifid, playthroughId, payload, slot, custom);
-          set((state) => {
-            state.knownSaves = {
-              ...state.knownSaves,
-              [slot ?? '']: true,
-            };
-          });
-        },
-      ).catch((err) => {
-        console.error('spindle: failed to save', err);
-        set((state) => {
-          state.saveError =
-            err instanceof Error ? err.message : 'Failed to save';
-        });
-      });
+          throw err;
+        }),
+      );
     },
 
     load: (slot?: string) => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
       set((state) => {
         state.loadError = null;
       });
-      loadQuickSave(storyData.ifid, slot)
-        .then((payload) => {
-          if (!payload) return;
-          get().loadFromPayload(payload, slot);
-        })
-        .catch((err) => {
-          console.error('spindle: failed to load save', err);
-          set((state) => {
-            state.loadError =
-              err instanceof Error ? err.message : 'Failed to load';
-          });
-        });
+      return handled(
+        loadQuickSave(storyData.ifid, slot)
+          .then((payload) => {
+            if (!payload) return;
+            get().loadFromPayload(payload, slot);
+          })
+          .catch((err) => {
+            console.error('spindle: failed to load save', err);
+            set((state) => {
+              state.loadError =
+                err instanceof Error ? err.message : 'Failed to load';
+            });
+            throw err;
+          }),
+      );
     },
 
     hasSave: (slot?: string) => {
@@ -849,19 +872,22 @@ export const useStoryStore = create<StoryState>()(
 
     deleteSave: (slot?: string) => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      deleteSlotSave(storyData.ifid, slot)
-        .then(() => {
-          set((state) => {
-            const key = slot ?? '';
-            const { [key]: _, ...rest } = state.knownSaves;
-            state.knownSaves = rest as Record<string, true>;
-          });
-        })
-        .catch((err) => {
-          console.error('spindle: failed to delete save', err);
-        });
+      return handled(
+        deleteSlotSave(storyData.ifid, slot)
+          .then(() => {
+            set((state) => {
+              const key = slot ?? '';
+              const { [key]: _, ...rest } = state.knownSaves;
+              state.knownSaves = rest as Record<string, true>;
+            });
+          })
+          .catch((err) => {
+            console.error('spindle: failed to delete save', err);
+            throw err;
+          }),
+      );
     },
 
     exportSave: async (slot?: string): Promise<SaveExport | null> => {
