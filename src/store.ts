@@ -235,6 +235,34 @@ export function recordStoryInitState(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Playthrough setup
+// ---------------------------------------------------------------------------
+
+/**
+ * Settles once the latest playthrough setup (init's lookup or creation, or a
+ * restart's creation) is stored, with that setup's playthrough ID ('' if
+ * init could not establish one). Each setup chains on the previous one, so
+ * playthroughs are created and numbered in the order the game started them.
+ */
+let playthroughSetup: Promise<string> = Promise.resolve('');
+
+/** Bumped by every init()/restart(); a stale init must not adopt its ID. */
+let playthroughGeneration = 0;
+
+/**
+ * The playthrough a save issued now belongs to, once its record is stored.
+ * Read synchronously at the call: restart() switches the store's
+ * `playthroughId` at once, so a save issued after it (even before the new
+ * playthrough is stored) belongs to the new playthrough, and a later restart
+ * doesn't move it. Before init() has looked up the stored playthrough the
+ * store's ID is '', and the save takes the one init establishes.
+ */
+export function resolvePlaythroughId(): Promise<string> {
+  const current = useStoryStore.getState().playthroughId;
+  return playthroughSetup.then((established) => current || established);
+}
+
+// ---------------------------------------------------------------------------
 // Runtime handler cleanup (auto-unsub on restart)
 // ---------------------------------------------------------------------------
 
@@ -469,6 +497,8 @@ export const useStoryStore = create<StoryState>()(
 
       set((state) => {
         state.storyData = storyData as StoryData;
+        // Unknown until the save system has looked it up (below)
+        state.playthroughId = '';
         state.currentPassage = startPassage.name;
         state.navigationId++;
         state.variables = initialVars;
@@ -490,19 +520,20 @@ export const useStoryStore = create<StoryState>()(
       // Update lastNavigationVars to the Immer-produced reference
       lastNavigationVars = get().variables;
 
-      // Init save system (fire-and-forget — DB will be ready before user opens dialog)
+      // Init save system in the background. Saves issued meanwhile wait for
+      // it (see resolvePlaythroughId), so they are tagged with the
+      // playthrough it establishes and recorded after the known saves.
       const ifid = storyData.ifid;
-      initSaveSystem()
+      const generation = ++playthroughGeneration;
+      playthroughSetup = initSaveSystem()
         .then(async () => {
-          const existingId = await getCurrentPlaythroughId(ifid);
-          if (existingId) {
+          const id =
+            (await getCurrentPlaythroughId(ifid)) ??
+            (await startNewPlaythrough(ifid));
+          // A restart issued meanwhile has already switched playthroughs
+          if (generation === playthroughGeneration) {
             set((state) => {
-              state.playthroughId = existingId;
-            });
-          } else {
-            const newId = await startNewPlaythrough(ifid);
-            set((state) => {
-              state.playthroughId = newId;
+              state.playthroughId = id;
             });
           }
 
@@ -513,10 +544,12 @@ export const useStoryStore = create<StoryState>()(
               state.knownSaves = saves;
             });
           }
+          return id;
         })
-        .catch((err) =>
-          console.error('spindle: failed to init save system', err),
-        );
+        .catch((err) => {
+          console.error('spindle: failed to init save system', err);
+          return '';
+        });
     },
 
     navigate: (passageName: string) => {
@@ -741,6 +774,26 @@ export const useStoryStore = create<StoryState>()(
 
       emit('beforerestart');
 
+      // Switch to the new playthrough now, after beforerestart (whose saves
+      // belong to the game being left) and before StoryInit, so every save
+      // issued from here on belongs to the new game. Storing its record is
+      // queued after the previous playthrough setup.
+      const newPlaythroughId = crypto.randomUUID();
+      ++playthroughGeneration;
+      set((state) => {
+        state.playthroughId = newPlaythroughId;
+      });
+      const ifid = storyData.ifid;
+      playthroughSetup = playthroughSetup
+        .then(() => startNewPlaythrough(ifid, newPlaythroughId))
+        .then(
+          () => newPlaythroughId,
+          (err) => {
+            console.error('spindle: failed to start new playthrough', err);
+            return newPlaythroughId;
+          },
+        );
+
       const keepDeferred = get().renderDeferred;
 
       // Clean up all runtime-phase handlers (after beforerestart has fired)
@@ -781,22 +834,13 @@ export const useStoryStore = create<StoryState>()(
       emit('storyinit');
       // The storyinit handlers' changes belong to the start moment too
       recordStoryInitState();
-
-      // Start a new playthrough on restart
-      startNewPlaythrough(storyData.ifid)
-        .then((newId) => {
-          set((state) => {
-            state.playthroughId = newId;
-          });
-        })
-        .catch((err) =>
-          console.error('spindle: failed to start new playthrough', err),
-        );
     },
 
     save: (slot?: string, custom?: Record<string, unknown>) => {
-      const { storyData, playthroughId } = get();
+      const { storyData } = get();
       if (!storyData) return Promise.resolve();
+      // The playthrough current now, not when the write runs
+      const playthrough = resolvePlaythroughId();
 
       return handled(
         saveWithHooks(
@@ -807,6 +851,7 @@ export const useStoryStore = create<StoryState>()(
             set((state) => {
               state.saveError = null;
             });
+            const playthroughId = await playthrough;
             await quickSave(
               storyData.ifid,
               playthroughId,

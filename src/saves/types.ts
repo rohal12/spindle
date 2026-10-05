@@ -26,6 +26,11 @@ export interface SaveMeta {
   createdAt: string;
   updatedAt: string;
   title: string;
+  /**
+   * True once the player has named the save (renameSave). Overwriting the
+   * save keeps such a title; a generated one is generated anew.
+   */
+  userTitle?: boolean;
   passage: string;
   custom: Record<string, unknown>;
   estimatedBytes?: number;
