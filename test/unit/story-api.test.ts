@@ -181,6 +181,77 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('$ sigil', () => {
+    it('Story.get accepts a leading $', () => {
+      Story.set('pc', 'Ada');
+      expect(Story.get('$pc')).toBe('Ada');
+    });
+
+    it('Story.set with a leading $ sets the bare variable', () => {
+      Story.set('$gold', 10);
+      expect(useStoryStore.getState().variables.gold).toBe(10);
+      expect('$gold' in useStoryStore.getState().variables).toBe(false);
+    });
+
+    it('accepts $ with dot-paths and in the object form', () => {
+      Story.set('player', { hp: 1 });
+      Story.set({ '$player.hp': 5, $name: 'Bo' });
+      expect(Story.get('$player.hp')).toBe(5);
+      expect(Story.get('name')).toBe('Bo');
+    });
+  });
+
+  describe('undeclared variable warning', () => {
+    let warn: ReturnType<typeof vi.spyOn>;
+    let mod: typeof import('../../src/story-api');
+
+    beforeEach(async () => {
+      mod = await import('../../src/story-api');
+      mod.setDeclaredVariables(['hp', 'player'], ['npcs']);
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warn.mockRestore();
+      mod._resetDeclaredVariables();
+    });
+
+    it('warns once per undeclared name', () => {
+      Story.set('hp', 1);
+      Story.set('$hp', 2);
+      expect(warn).not.toHaveBeenCalled();
+
+      Story.set('badge_scaned', true);
+      Story.set('badge_scaned', false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain('$badge_scaned');
+      expect(warn.mock.calls[0]![0]).toContain('StoryVariables');
+      // The write still happens
+      expect(Story.get('badge_scaned')).toBe(false);
+    });
+
+    it('checks the root of a dot-path', () => {
+      Story.set('player', { hp: 1 });
+      Story.set('player.hp', 2);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('checks transients against StoryTransients', () => {
+      Story.set('%npcs', []);
+      expect(warn).not.toHaveBeenCalled();
+      Story.set('%hp', 1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain('%hp');
+      expect(warn.mock.calls[0]![0]).toContain('StoryTransients');
+    });
+
+    it('does not check names when no declarations are registered', () => {
+      mod._resetDeclaredVariables();
+      Story.set('anything', 1);
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('navigation', () => {
     it('goto navigates to passage', () => {
       useStoryStore.getState().navigate('Room');

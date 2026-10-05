@@ -3,7 +3,11 @@ import { App } from './components/App';
 import { parseStoryData } from './parser';
 import { useStoryStore, enterRuntimePhase } from './store';
 import { emit } from './event-emitter';
-import { installStoryAPI, getReadyPromise } from './story-api';
+import {
+  installStoryAPI,
+  getReadyPromise,
+  setDeclaredVariables,
+} from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
 import { connectTriggersToStore } from './triggers';
@@ -42,7 +46,14 @@ function renderErrors(root: HTMLElement, errors: string[]) {
   root.appendChild(container);
 }
 
-function boot() {
+/**
+ * Boot Spindle in the current document: parse `<tw-storydata>`, install the
+ * `Story` API, run author JavaScript, validate `StoryVariables`, run
+ * `StoryInit`, and render into `#root`. Dispatches `:storyready` when the
+ * first passage is shown. Call once per page (module state is global).
+ * The browser story format calls it from `main.tsx`.
+ */
+export function boot() {
   const storyData = parseStoryData();
 
   // Inject built-in styles with an id so they can be disabled at runtime
@@ -123,6 +134,7 @@ function boot() {
   }
 
   defaults = extractDefaults(schema);
+  setDeclaredVariables(Object.keys(defaults), Object.keys(transientDefaults));
 
   useStoryStore.getState().init(storyData, defaults, transientDefaults);
 
@@ -227,10 +239,4 @@ function boot() {
   } else {
     document.dispatchEvent(new CustomEvent(':storyready'));
   }
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot);
-} else {
-  boot();
 }

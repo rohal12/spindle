@@ -1,9 +1,11 @@
 import { createContext } from 'preact';
-import { useCallback, useMemo, useRef } from 'preact/hooks';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
-import { renderNodes } from '../markup/render';
+import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
+import { emitFromRender } from '../event-emitter';
+import { useModalFocus } from '../hooks/use-modal-focus';
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
@@ -41,6 +43,9 @@ export function PassageDialog({
     ? storyData?.passages.get(passageName)
     : undefined;
   const markup = passage?.content ?? fallbackMarkup;
+  // A [nobr] passage renders without <p> wrapping in a dialog too, like
+  // Passage and {include} (top-level text and nested content).
+  const nobr = passage?.tags.includes('nobr') ?? false;
 
   const content = useMemo(() => {
     if (!markup) {
@@ -49,7 +54,12 @@ export function PassageDialog({
     try {
       const tokens = tokenize(markup);
       const ast = buildAST(tokens);
-      return renderNodes(ast);
+      const nodes = renderNodes(ast, nobr ? { nobr: true } : undefined);
+      return nobr ? (
+        <NobrContext.Provider value={true}>{nodes}</NobrContext.Provider>
+      ) : (
+        nodes
+      );
     } catch (err) {
       return (
         <div class="error">
@@ -57,7 +67,20 @@ export function PassageDialog({
         </div>
       );
     }
-  }, [markup]);
+  }, [markup, nobr]);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Focus into the dialog, trap Tab, Escape to close, restore focus on close.
+  // Declared before the dialogrender effect so handlers can move focus.
+  useModalFocus(panelRef, '.dialog-body', dismissible, stableOnClose);
+
+  // Signal that the dialog's DOM is committed (once per open).
+  useLayoutEffect(() => {
+    if (panelRef.current) {
+      emitFromRender('dialogrender', passageName ?? '', panelRef.current);
+    }
+  }, []);
 
   const handleBackdrop = (e: MouseEvent) => {
     if (!dismissible) return;
@@ -74,10 +97,17 @@ export function PassageDialog({
         class="dialog-overlay"
         onClick={handleBackdrop}
       >
-        <div class={cls}>
+        <div
+          ref={panelRef}
+          class={cls}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+        >
           {showCloseButton && (
             <button
               class="dialog-close"
+              aria-label="Close"
               onClick={stableOnClose}
             >
               ✕

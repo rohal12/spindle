@@ -1,3 +1,14 @@
+import type { ComponentChildren, VNode, h } from 'preact';
+import type {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  useContext,
+} from 'preact/hooks';
+
 // Format metadata (used by twee-ts)
 export declare const name: string;
 export declare const version: string;
@@ -127,6 +138,18 @@ export interface StoryEventMap {
   afterload: (slot: string | undefined) => void;
   beforenavigate: (passageName: string) => void;
   afternavigate: (to: string, from: string) => void;
+  /**
+   * A passage's `.passage` element was committed to the DOM (first render,
+   * navigation, back/forward, restart, load). Fires after the transition
+   * mounts the new passage, before paint.
+   */
+  passagerender: (passage: string, element: HTMLElement) => void;
+  /**
+   * A dialog was opened and its `.dialog-panel` element committed to the DOM.
+   * `passage` is the dialog's passage name (empty for built-in dialogs
+   * without one).
+   */
+  dialogrender: (passage: string, element: HTMLElement) => void;
 }
 
 /** Event name that can be passed to `Story.on()`. */
@@ -242,6 +265,68 @@ export interface MacroMetadata {
   parameters?: ParameterDef[];
 }
 
+/** Plain text in a parsed passage. */
+export interface TextNode {
+  type: 'text';
+  value: string;
+}
+
+/** A variable display such as `{$hp}`, `{_tmp}`, `{@local}` or `{%transient}`. */
+export interface VariableNode {
+  type: 'variable';
+  name: string;
+  scope: 'variable' | 'temporary' | 'local' | 'transient';
+  className?: string;
+  id?: string;
+}
+
+/** An expression display such as `{= $hp * 2}`. */
+export interface ExpressionNode {
+  type: 'expression';
+  expression: string;
+  className?: string;
+  id?: string;
+}
+
+/** One branch of a block macro (`{elseif}`, `{else}`, `{case}`, ...). */
+export interface Branch {
+  rawArgs: string;
+  className?: string;
+  id?: string;
+  children: ASTNode[];
+}
+
+/** A macro invocation, with its body and branches for block macros. */
+export interface MacroNode {
+  type: 'macro';
+  name: string;
+  rawArgs: string;
+  children: ASTNode[];
+  branches?: Branch[];
+  className?: string;
+  id?: string;
+}
+
+/** An HTML element written in passage markup. */
+export interface HtmlNode {
+  type: 'html';
+  tag: string;
+  attributes: Record<string, string>;
+  children: ASTNode[];
+}
+
+/**
+ * A node of a parsed passage. Macros receive their body as `props.children`
+ * and render it with `ctx.renderNodes()`.
+ * @see {@link ../../src/markup/ast.ts} for the implementation.
+ */
+export type ASTNode =
+  | TextNode
+  | VariableNode
+  | ExpressionNode
+  | MacroNode
+  | HtmlNode;
+
 /**
  * Props passed to a macro's render function.
  * @see {@link ../../src/registry.ts} for the implementation.
@@ -250,13 +335,8 @@ export interface MacroProps {
   rawArgs: string;
   className?: string;
   id?: string;
-  children?: any[];
-  branches?: Array<{
-    rawArgs: string;
-    className?: string;
-    id?: string;
-    children: any[];
-  }>;
+  children?: ASTNode[];
+  branches?: Branch[];
 }
 
 /**
@@ -278,8 +358,9 @@ export interface UseActionOptions {
 
 /**
  * Context object passed to a macro's render function alongside props.
- * Internal Preact/AST types are represented as `any` since consumers
- * may not have Preact type definitions installed.
+ *
+ * Rendering helpers and hooks are Preact's own (`preact` is a dependency of
+ * this package), so `ctx.hooks.useState<T>()`, `ctx.h()` etc. are fully typed.
  * @see {@link ../../src/define-macro.ts} for the implementation.
  */
 export interface MacroContext {
@@ -301,26 +382,38 @@ export interface MacroContext {
   setValue?: (value: unknown) => void;
   getValue?: () => unknown;
   evaluate?: (expr: string) => unknown;
-  collectText: (nodes: any[]) => string;
+  /** Concatenate the text nodes of an AST (e.g. a macro body holding a passage name). */
+  collectText: (nodes: ASTNode[]) => string;
+  /** Source location of the current passage, for error messages. */
   sourceLocation: () => string;
   parseVarArgs: (rawArgs: string) => { varName: string; placeholder: string };
-  extractOptions: (children: any[]) => string[];
-  wrap: (content: any) => any;
+  /** Collect the labels of `{option}` sub-macros in a macro body. */
+  extractOptions: (children: ASTNode[]) => string[];
+  /** Wrap content in a `<span>` carrying the macro's class/id, or a fragment if it has neither. */
+  wrap: (content: ComponentChildren) => VNode<any>;
   useAction: (opts: UseActionOptions) => string;
-  h: (type: any, props: any, ...children: any[]) => any;
+  /** Preact's `h` (createElement). */
+  h: typeof h;
+  /** Render AST nodes as block content (markdown, `<p>` wrapping unless nobr). */
   renderNodes: (
-    nodes: any[],
-    options?: { nobr?: boolean; locals?: Record<string, unknown> },
-  ) => any;
-  renderInlineNodes: (nodes: any[]) => any;
+    nodes: ASTNode[],
+    options?: {
+      nobr?: boolean;
+      locals?: Record<string, unknown>;
+      inline?: boolean;
+    },
+  ) => ComponentChildren;
+  /** Render AST nodes as inline content (no markdown block processing). */
+  renderInlineNodes: (nodes: ASTNode[]) => ComponentChildren;
+  /** Preact hooks, shared with Spindle's own Preact instance. */
   hooks: {
-    useState: any;
-    useRef: any;
-    useEffect: any;
-    useLayoutEffect: any;
-    useCallback: any;
-    useMemo: any;
-    useContext: any;
+    useState: typeof useState;
+    useRef: typeof useRef;
+    useEffect: typeof useEffect;
+    useLayoutEffect: typeof useLayoutEffect;
+    useCallback: typeof useCallback;
+    useMemo: typeof useMemo;
+    useContext: typeof useContext;
   };
 }
 
@@ -330,14 +423,21 @@ export interface MacroContext {
  */
 export interface MacroDefinition {
   name: string;
+  /** Sub-macro names (e.g. `['option']`); a non-empty list makes the macro a block macro. */
   subMacros?: string[];
+  /** Accept a `{name}...{/name}` body. Inferred from `subMacros` when omitted. */
   block?: boolean;
+  /** Resolve `{$var}` interpolation in the macro's class/id (`ctx.resolve`). */
   interpolate?: boolean;
+  /** Provide `ctx.merged` and `ctx.evaluate` (variables, temporaries, locals, transients). */
   merged?: boolean;
+  /** Bind the first argument as a story variable (`ctx.varName`, `ctx.value`, `ctx.setValue`). */
   storeVar?: boolean;
+  /** Tooling hint: one-line description shown by editors. */
   description?: string;
+  /** Tooling hint: positional parameters. */
   parameters?: ParameterDef[];
-  render: (props: MacroProps, ctx: MacroContext) => any;
+  render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
 }
 
 /**

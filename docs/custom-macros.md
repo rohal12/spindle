@@ -431,6 +431,32 @@ Rendered nodes are tracked by identity: when `ctx.renderNodes()` is given differ
 | `merged`      | `ctx.evaluate(expr)` — evaluate expressions  | Your macro needs to read variables or run expressions      |
 | `storeVar`    | `ctx.varName`, `ctx.value`, `ctx.setValue()` | Your macro is an input bound to a single `$variable`       |
 
+### TypeScript
+
+The package exports `MacroDefinition`, `MacroContext`, `MacroProps` and the AST node types (`ASTNode`, `MacroNode`, `Branch`, ...). `ctx.h`, `ctx.renderNodes` and `ctx.hooks` carry Preact's own types (Preact is a dependency of `@rohal12/spindle`), so hooks are generic and checked:
+
+```ts
+import type { MacroDefinition } from '@rohal12/spindle';
+
+const counter: MacroDefinition = {
+  name: 'counter',
+  render(props, ctx) {
+    const [count, setCount] = ctx.hooks.useState(0); // number
+    const ref = ctx.hooks.useRef<HTMLButtonElement>(null);
+    ctx.hooks.useEffect(() => ref.current?.focus(), []);
+    return ctx.h(
+      'button',
+      { ref, class: ctx.cls, onClick: () => setCount(count + 1) },
+      count,
+    );
+  },
+};
+
+Story.defineMacro(counter);
+```
+
+`render` may return anything Preact can render (`ComponentChildren`): an element, a string, an array or `null`.
+
 ### Variable Namespaces
 
 | Prefix | Name      | Scope                         | Saved? | Cleared on navigation? |

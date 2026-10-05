@@ -6,7 +6,7 @@ Spindle exposes a `window.Story` global object for JavaScript access to story st
 
 ### `Story.get(name)`
 
-Get a story variable's value.
+Get a story variable's value. The name may be written with or without the `$` sigil: `Story.get("health")` and `Story.get("$health")` read the same variable.
 
 ```
 {do}
@@ -16,7 +16,7 @@ Get a story variable's value.
 
 ### `Story.set(name, value)` / `Story.set(vars)`
 
-Set one or more story variables.
+Set one or more story variables. As with `Story.get()`, a leading `$` is optional.
 
 ```
 {do}
@@ -24,6 +24,8 @@ Set one or more story variables.
   Story.set({ health: 100, name: "Hero" });
 {/do}
 ```
+
+Writing a variable that is not declared in `StoryVariables` (or a `%` transient not declared in `StoryTransients`) still works, but logs a console warning once per name: passages cannot reference such a variable, so it is usually a typo. For dot-paths only the root name is checked.
 
 #### Transient variables
 
@@ -98,13 +100,13 @@ Remove a named watcher.
 
 Open a dialog displaying the given passage. Dialogs stack — if a dialog is already open, the new one appears on top of it. Each stacked dialog gets its own overlay. Closing the top dialog reveals the one beneath.
 
-| Parameter                 | Type       | Description                                                                |
-| ------------------------- | ---------- | -------------------------------------------------------------------------- |
-| `passageName`             | `string`   | Name of the passage to render in the dialog                                |
-| `options`                 | `object?`  | Optional settings                                                          |
-| `options.panelClass`      | `string?`  | CSS class added to the dialog panel                                        |
-| `options.showCloseButton` | `boolean?` | Show the default `✕` close button (default: same as `dismissible`)         |
-| `options.dismissible`     | `boolean?` | Let the player close the dialog by clicking the backdrop (default: `true`) |
+| Parameter                 | Type       | Description                                                                                   |
+| ------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `passageName`             | `string`   | Name of the passage to render in the dialog                                                   |
+| `options`                 | `object?`  | Optional settings                                                                             |
+| `options.panelClass`      | `string?`  | CSS class added to the dialog panel                                                           |
+| `options.showCloseButton` | `boolean?` | Show the default `✕` close button (default: same as `dismissible`)                            |
+| `options.dismissible`     | `boolean?` | Let the player close the dialog by clicking the backdrop or pressing Escape (default: `true`) |
 
 ```
 {do}
@@ -114,9 +116,18 @@ Open a dialog displaying the given passage. Dialogs stack — if a dialog is alr
 {/do}
 ```
 
+#### Keyboard and screen readers
+
+Every dialog (from `Story.openDialog()`, `{dialog}`, `watch` triggers and the menubar) is a modal dialog for assistive technology: the panel has `role="dialog"` and `aria-modal="true"`, and the `✕` button is labelled "Close".
+
+- When a dialog opens, focus moves into it: to an element with the `autofocus` attribute, else the first focusable element in the dialog's content, else the panel itself.
+- Tab and Shift+Tab cycle through the topmost dialog's controls and do not leave it.
+- Escape closes the topmost dialog if it is dismissible.
+- When a dialog closes, focus returns to the element that had it before the dialog opened.
+
 #### Non-dismissible dialogs
 
-Pass `dismissible: false` when the player must act inside the dialog before continuing (a required choice, character creation, a confirmation). Clicking the backdrop does nothing and the `✕` button is hidden. The dialog stays open until your code closes it with `Story.closeDialog()` or `Story.closeAllDialogs()` (restarting the story also closes it).
+Pass `dismissible: false` when the player must act inside the dialog before continuing (a required choice, character creation, a confirmation). Clicking the backdrop and pressing Escape do nothing, and the `✕` button is hidden. The dialog stays open until your code closes it with `Story.closeDialog()` or `Story.closeAllDialogs()` (restarting the story also closes it).
 
 ```
 :: Choose Path
@@ -162,11 +173,18 @@ Returns `true` if any dialog is currently displayed.
 
 ### `Story.setNobr(enabled)`
 
-Globally enable or disable `<p>` tag wrapping from markdown. When `true`, all passages and macros suppress paragraph wrapping while keeping inline markdown (bold, italic, etc.).
+Turn off `<p>` wrapping for content _nested_ inside macros, HTML elements and included passages, while keeping inline markdown (bold, italic, etc.). Useful for layout markup — `<div>`s, `{for}` loops, widgets, `{if}` blocks — where stray paragraphs break the layout.
+
+A passage's own top-level text keeps its paragraphs, so prose still reads as prose. To remove those too, tag the passage `[nobr]` or wrap the text in `{nobr}...{/nobr}`.
+
+| Content                                                                   | `setNobr(false)` (default) | `setNobr(true)` | `[nobr]` passage tag |
+| ------------------------------------------------------------------------- | -------------------------- | --------------- | -------------------- |
+| Top-level text of a passage, dialog, `PassageHeader` / `PassageFooter`    | `<p>`                      | `<p>`           | no `<p>`             |
+| Text inside macros (`{if}`, `{for}`, widgets, …), HTML elements, includes | `<p>`                      | no `<p>`        | no `<p>`             |
 
 ```
 {do}
-  Story.setNobr(true);  // disable <p> wrapping everywhere
+  Story.setNobr(true);  // no <p> inside macros, elements and includes
   Story.setNobr(false); // re-enable (default)
 {/do}
 ```
@@ -550,8 +568,13 @@ Subscribe to story events. Returns an unsubscribe function.
 
 ```js
 // Navigation events
-var unsub = Story.on('navigate', function (to, from) {
+var unsub = Story.on('afternavigate', function (to, from) {
   console.log('Navigated from ' + from + ' to ' + to);
+});
+
+// The passage's DOM is in the document (see "Render events" below)
+Story.on('passagerender', function (passage, el) {
+  initPager(el);
 });
 
 // Action registry changes (components mount/unmount)
@@ -586,9 +609,29 @@ Story.on('afterload', function (slot) {
 unsub();
 ```
 
+#### Render events
+
+`afternavigate` fires as soon as the story state changes, before the new passage is rendered (with a `fade-through` transition the new passage mounts only after the outgoing fade). Code that needs the rendered DOM — pagers, drag-and-drop, focus, third-party widgets — listens for the render events instead:
+
+| Event           | Arguments                            | Fires when                                                                                                                                                                             |
+| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot. |
+| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                    |
+
+Both fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
+
+```js
+Story.on('dialogrender', function (passage, panel) {
+  if (passage === 'Inventory') initDragAndDrop(panel);
+});
+Story.openDialog('Inventory');
+```
+
+Content that re-renders _inside_ a passage or dialog because a variable changed does not fire these events. For DOM work tied to such content, use a [custom macro](custom-macros.md#stateful-macros-with-hooks) with `ctx.hooks.useEffect`, which runs after the macro's own content is committed.
+
 ### `Story.waitForActions()`
 
-Returns a `Promise` that resolves with the current actions after the UI has settled (2 animation frames). Useful in scripts that navigate and then need to inspect the new passage's actions.
+Returns a `Promise` that resolves with the current actions after the UI has settled: two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. Useful in scripts that navigate and then need to inspect the new passage's actions.
 
 ```js
 Story.goto('Forest');

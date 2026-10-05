@@ -30,6 +30,7 @@ import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
 import { getActions, getAction, type StoryAction } from './action-registry';
+import { getRenderedPassage } from './passage-render-state';
 import {
   initPRNG,
   isPRNGEnabled,
@@ -233,10 +234,61 @@ export interface StoryAPI {
   };
 }
 
+// Names declared in StoryVariables / StoryTransients, registered at boot.
+// null until a schema is registered (e.g. unit tests that init the store
+// directly), in which case Story.set() does not check names.
+let declaredVariables: ReadonlySet<string> | null = null;
+let declaredTransients: ReadonlySet<string> | null = null;
+const warnedUndeclared = new Set<string>();
+
+/** Register the declared variable names so Story.set() can flag typos. */
+export function setDeclaredVariables(
+  variables: Iterable<string>,
+  transients: Iterable<string> = [],
+): void {
+  declaredVariables = new Set(variables);
+  declaredTransients = new Set(transients);
+  warnedUndeclared.clear();
+}
+
+/** Test-only: forget the registered declarations. */
+export function _resetDeclaredVariables(): void {
+  declaredVariables = null;
+  declaredTransients = null;
+  warnedUndeclared.clear();
+}
+
+/**
+ * Split an API variable name into namespace and key. Accepts the bare name
+ * (`hp`), the `$` sigil authors use in passages (`$hp`), and `%` for
+ * transients (`%npcs`). Dot-paths are kept in the key.
+ */
+function parseName(name: string): {
+  isTransient: boolean;
+  key: string;
+} {
+  if (name.startsWith('%')) return { isTransient: true, key: name.slice(1) };
+  if (name.startsWith('$')) return { isTransient: false, key: name.slice(1) };
+  return { isTransient: false, key: name };
+}
+
+function warnIfUndeclared(isTransient: boolean, key: string): void {
+  const declared = isTransient ? declaredTransients : declaredVariables;
+  if (!declared) return;
+  const root = key.split('.')[0]!;
+  if (declared.has(root)) return;
+  const label = (isTransient ? '%' : '$') + root;
+  if (warnedUndeclared.has(label)) return;
+  warnedUndeclared.add(label);
+  const where = isTransient ? 'StoryTransients' : 'StoryVariables';
+  console.warn(
+    `spindle: Story.set() wrote ${label}, which is not declared in ${where}. Passages cannot reference it; check the name or declare it.`,
+  );
+}
+
 /** Set a single variable on an Immer draft, resolving dot-paths if present. */
 function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
-  const isTransient = name.startsWith('%');
-  const key = isTransient ? name.slice(1) : name;
+  const { isTransient, key } = parseName(name);
   const namespace = isTransient ? draft.transient : draft.variables;
 
   if (key.includes('.')) {
@@ -249,8 +301,7 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
 function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
-      const isTransient = name.startsWith('%');
-      const key = isTransient ? name.slice(1) : name;
+      const { isTransient, key } = parseName(name);
       const store = isTransient
         ? useStoryStore.getState().transient
         : useStoryStore.getState().variables;
@@ -258,6 +309,12 @@ function createStoryAPI(): StoryAPI {
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
+      const names =
+        typeof nameOrVars === 'string' ? [nameOrVars] : Object.keys(nameOrVars);
+      for (const name of names) {
+        const { isTransient, key } = parseName(name);
+        warnIfUndeclared(isTransient, key);
+      }
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
         if (typeof nameOrVars === 'string') {
@@ -485,14 +542,26 @@ function createStoryAPI(): StoryAPI {
       return unsub;
     },
 
-    waitForActions(): Promise<StoryAction[]> {
-      return new Promise((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve(getActions());
+    async waitForActions(): Promise<StoryAction[]> {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      // A navigation can still be rendering: the passage display mounts the
+      // new passage from an effect, after a fade-through's outgoing phase.
+      // Its actions exist only once it is mounted, so wait for that.
+      const { currentPassage, renderDeferred } = useStoryStore.getState();
+      const rendered = getRenderedPassage();
+      if (rendered !== null && rendered !== currentPassage && !renderDeferred) {
+        await new Promise<void>((resolve) => {
+          const off = emitterOn('passagerender', (name) => {
+            if (name === useStoryStore.getState().currentPassage) {
+              off();
+              resolve();
+            }
           });
         });
-      });
+      }
+      return getActions();
     },
 
     watch(

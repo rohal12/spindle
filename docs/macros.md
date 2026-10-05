@@ -473,11 +473,13 @@ Entire passages can be marked with the `[nobr]` tag to achieve the same effect:
 <div class="content">{passage}</div>
 ```
 
-To disable `<p>` wrapping globally for the entire story, call in a `script` passage or StoryInit:
+To disable `<p>` wrapping for all content nested inside macros, HTML elements and included passages, call in a `script` passage or StoryInit:
 
 ```js
 Story.setNobr(true);
 ```
+
+A passage's own top-level text keeps its paragraphs under `setNobr(true)`; use the `[nobr]` tag for passages that must not have any. See [`Story.setNobr()`](story-api.md#story-setnobr-enabled).
 
 ### `{widget}`
 

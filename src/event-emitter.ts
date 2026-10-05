@@ -14,6 +14,8 @@ type EventMap = {
   afterload: (slot: string | undefined) => void;
   beforenavigate: (passageName: string) => void;
   afternavigate: (to: string, from: string) => void;
+  passagerender: (passage: string, element: HTMLElement) => void;
+  dialogrender: (passage: string, element: HTMLElement) => void;
 };
 
 export type StoryEvent = keyof EventMap;
@@ -30,6 +32,8 @@ const VALID_EVENTS = new Set<string>([
   'afterload',
   'beforenavigate',
   'afternavigate',
+  'passagerender',
+  'dialogrender',
 ]);
 
 // Each event key maps to a Set of callbacks.
@@ -62,6 +66,26 @@ export function emit<E extends StoryEvent>(
   // Snapshot to tolerate unsubscription during iteration
   for (const cb of [...set]) {
     (cb as Function)(...args);
+  }
+}
+
+/**
+ * Emit an event from inside a render commit (layout effect). A throwing
+ * handler is logged instead of propagating into Preact and breaking the
+ * render; the remaining handlers still run.
+ */
+export function emitFromRender<E extends StoryEvent>(
+  event: E,
+  ...args: Parameters<EventMap[E]>
+): void {
+  const set = listeners.get(event);
+  if (!set) return;
+  for (const cb of [...set]) {
+    try {
+      (cb as Function)(...args);
+    } catch (err) {
+      console.error(`spindle: Error in ${event} handler:`, err);
+    }
   }
 }
 

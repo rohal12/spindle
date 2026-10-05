@@ -139,6 +139,35 @@ console.log(result.stepsRun); // number of steps executed
 console.log(result.errors); // array of { step, message }
 ```
 
+### Headless in Node (happy-dom / jsdom)
+
+`@rohal12/spindle/headless` boots a compiled story inside the DOM your test environment provides, so the whole Story API — `getActions()`, `performAction()`, `waitForActions()`, `runAutomation()` — works without a browser. It runs the real Spindle: passages, macros, `StoryVariables` validation, `StoryInit` and your story JavaScript.
+
+```typescript
+// @vitest-environment happy-dom
+import { readFileSync } from 'fs';
+import { test, expect } from 'vitest';
+import { bootStory } from '@rohal12/spindle/headless';
+
+test('reach the hallway', async () => {
+  const Story = await bootStory({
+    html: readFileSync('dist/index.html', 'utf-8'), // your compiled story
+  });
+
+  await Story.waitForActions();
+  Story.performAction('link:Hallway');
+  await Story.waitForActions();
+
+  expect(Story.passage).toBe('Hallway');
+  expect(document.querySelector('.passage')!.textContent).toContain('hallway');
+});
+```
+
+- `html` is the compiled story file, or any HTML that contains its `<tw-storydata>` element. `bootStory` replaces `document.body` with it plus `<div id="root">`, boots, and resolves with `Story` once the first passage is shown (after `Story.ready()` if the story defers rendering). It rejects on boot errors such as `StoryVariables` validation failures.
+- Transitions are off by default (`Story.setTransition({ type: 'none' })` before boot), since there is nothing to animate. Pass `transitions: true` to keep them; `waitForActions()` then waits for each transition to mount the next passage.
+- Spindle keeps its state in module scope, so one story can be booted per module instance. Boot each story in its own test file (vitest isolates modules per file); a second `bootStory()` call in the same file rejects.
+- Spindle does not ship a DOM: install `happy-dom` or `jsdom` and select it as the test environment.
+
 ### In the Browser Console
 
 Load your story, then:

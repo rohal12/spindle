@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Accessible dialogs: dialog panels have `role="dialog"` and `aria-modal="true"`, focus moves into a dialog when it opens (an `autofocus` element, else the first focusable element, else the panel) and returns to the previously focused element when it closes, Tab/Shift+Tab stay inside the topmost dialog, Escape closes the topmost dialog when it is dismissible, and the `✕` button has `aria-label="Close"`. ([#185](https://github.com/rohal12/spindle/issues/185))
+- `@rohal12/spindle/headless` entry point: `bootStory({ html })` boots a compiled story inside a happy-dom/jsdom document in Node and resolves with the `Story` API, so `getActions()`, `performAction()`, `waitForActions()` and `runAutomation()` work in headless tests. The boot sequence is now an exported `boot()` in `src/index.tsx`; the browser format calls it from `src/main.tsx`. ([#187](https://github.com/rohal12/spindle/issues/187))
+- `Story.get()` and `Story.set()` accept the `$` sigil (`Story.get('$hp')`, `Story.set({ $gold: 10 })`), which previously read or created a separate variable literally named `$hp`. `Story.set()` logs a one-time console warning per name when it writes a variable not declared in `StoryVariables` (or a transient not declared in `StoryTransients`). ([#184](https://github.com/rohal12/spindle/issues/184))
+- `passagerender` and `dialogrender` events: `Story.on('passagerender', (passage, el) => …)` fires when a passage's `.passage` element has been committed to the DOM (after transitions swap it in), and `Story.on('dialogrender', (passage, el) => …)` when a dialog has rendered, with its `.dialog-panel`. Replaces `MutationObserver`/`requestAnimationFrame` guesses for DOM work after navigation or `Story.openDialog()`. ([#182](https://github.com/rohal12/spindle/issues/182))
+- Published types for custom macros are no longer `any`: `MacroContext.hooks` are Preact's generic hooks (`useState<T>`, `useRef<T>`, `useEffect`, `useMemo`, ...), `ctx.h`, `ctx.wrap`, `ctx.renderNodes` and `ctx.renderInlineNodes` use Preact's types, and `MacroProps.children`/`branches` use the newly exported AST node types (`ASTNode`, `MacroNode`, `Branch`, ...). `MacroDefinition.render` may return any `ComponentChildren`. A compile-time check keeps the published macro types in sync with the implementation. ([#181](https://github.com/rohal12/spindle/issues/181))
 - `Story.config.quickSaveKey` and `Story.config.quickLoadKey` rebind the built-in quick save / quick load shortcuts (default `'F6'` / `'F9'`), or disable them with `null`. The `{quicksave}` / `{quickload}` button tooltips follow the configured keys.
 - `Story.exportSave(slot?)` and `Story.importSave(data, slot?)` export a save slot as a portable `SaveExport` object and import one into a slot. Import replaces the slot's previous save, rejects files from other stories (IFID check), creates the "Imported" playthrough when needed, and updates `Story.hasSave()`. Both work with the IndexedDB, localStorage and memory backends. `SaveExport`, `SaveRecord` and `SaveMeta` are now in the published types.
 - `dismissible` option for `Story.openDialog()`: `Story.openDialog(name, { dismissible: false })` opens a dialog the player cannot close by clicking the backdrop and hides the `✕` button by default. Close it from code with `Story.closeDialog()` / `Story.closeAllDialogs()`.
@@ -39,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `{include}` macro `inline` flag to render included passage without markdown processing (e.g. `{include "Data" inline}`)
 - `{nobr}...{/nobr}` block macro to suppress `<p>` wrapping while keeping inline markdown
 - `[nobr]` passage tag to suppress `<p>` wrapping for an entire passage
-- `Story.setNobr(true)` global config to disable `<p>` wrapping everywhere
+- `Story.setNobr(true)` global config to disable `<p>` wrapping for content nested inside macros, HTML elements and included passages
 - `Story.setCSS(false)` to disable all built-in Spindle styles at runtime
 - Programmatic dialog API: `Story.openDialog(passageName, options?)`, `Story.closeDialog()`, `Story.closeAllDialogs()`, `Story.isDialogOpen()` for imperative dialog control from `{do}` blocks, custom macros, and event handlers
 - `showCloseButton` option for dialogs: hide the default `✕` close button via `{dialog "Label" noclose}`, `Story.openDialog(name, { showCloseButton: false })`, or `defineMenubarAction({ dialog: { showCloseButton: false } })`
@@ -53,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.passage` element is now wrapped in a `.passage-container` div
 
 ### Fixed
+
+- Dialogs honour the opened passage's `[nobr]` tag, like passages and `{include}` already did. ([#186](https://github.com/rohal12/spindle/issues/186))
+- `Story.setNobr()` docs described it as removing `<p>` wrapping "everywhere"; they now describe what it does: it removes wrapping for content nested inside macros, HTML elements and included passages, while a passage's top-level text keeps its paragraphs unless the passage is tagged `[nobr]`. Tests pin this behaviour. ([#186](https://github.com/rohal12/spindle/issues/186))
+- `Story.waitForActions()` resolved before a navigation's passage was mounted when Preact's effects or a `fade-through` transition ran later than two animation frames, returning the previous (or no) passage actions. It now also waits until the current passage has rendered. ([#187](https://github.com/rohal12/spindle/issues/187))
 
 - `@rohal12/spindle/tooling` now ships the type declarations its `exports` entry points to (`types/tooling.d.ts` was missing from the package) and exports `parseStoryVariables`, so tests and tooling can validate `StoryVariables`/`StoryTransients` declarations with the same parser Spindle uses at boot
 - Allow array method/property access (e.g. `$inventory.push`, `$journal.find`) in story variable validation
