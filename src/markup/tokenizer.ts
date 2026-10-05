@@ -66,7 +66,23 @@ export type Token =
 /** Tag name must start with a letter (covers standard and custom elements). */
 const VALID_TAG_START = /[a-zA-Z]/;
 
-const HTML_VOID_TAGS = new Set(['br', 'col', 'hr', 'img', 'wbr']);
+/** HTML void elements: never have children or a closing tag. */
+const HTML_VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
 
 /**
  * Parse a Twine link interior into display and target.
@@ -817,6 +833,12 @@ export function tokenize(input: string): Token[] {
           if (input[j] === '>') {
             j++;
             flushText(start);
+            if (HTML_VOID_TAGS.has(tagLower)) {
+              // Void elements never take a closer; drop a redundant </input>
+              textStart = j;
+              i = j;
+              continue;
+            }
             tokens.push({
               type: 'html',
               tag,

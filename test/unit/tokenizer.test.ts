@@ -1058,3 +1058,39 @@ describe('tokenize', () => {
     });
   });
 });
+
+describe('tokenize — HTML void elements (#170)', () => {
+  const VOID = [
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ];
+
+  it.each(VOID)('treats <%s> as self-closing', (tag) => {
+    const tokens = tokenize(`<${tag} class="x">after`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag,
+      isClose: false,
+      isSelfClose: true,
+    });
+  });
+
+  it.each(VOID)('drops a redundant </%s> closing tag', (tag) => {
+    const tokens = tokenize(`<${tag}></${tag}>after`);
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ type: 'html', isSelfClose: true });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+});

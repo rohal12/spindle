@@ -384,6 +384,25 @@ describe('macro components', () => {
     });
   });
 
+  describe('HTML void elements (#170)', () => {
+    it('renders <input> without a closing tag', () => {
+      const el = renderPassage('<input type="text"><span>After</span>');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('input')).not.toBeNull();
+      expect(el.querySelector('span')!.textContent).toBe('After');
+    });
+
+    it('renders void elements inside containers', () => {
+      const el = renderPassage(
+        '<div><input type="checkbox"><img src="a.png"><span>After</span></div>',
+      );
+      expect(el.querySelector('.error')).toBeNull();
+      const div = el.querySelector('div')!;
+      expect(div.querySelector('input')).not.toBeNull();
+      expect(div.querySelector('span')!.textContent).toBe('After');
+    });
+  });
+
   describe('{meter}', () => {
     it('renders .macro-meter container with fill and label', () => {
       useStoryStore.getState().setVariable('hp', 75);
