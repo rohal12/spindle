@@ -483,17 +483,16 @@ export const useStoryStore = create<StoryState>()(
     },
 
     goBack: () => {
-      const { historyIndex, variables } = get();
+      const { historyIndex } = get();
       if (historyIndex <= 0) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = get().history[historyIndex - 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply inverse transition: moment historyIndex → historyIndex−1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex - 1]!.inverse),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex - 1));
 
       set((state) => {
         state.historyIndex--;
@@ -510,17 +509,16 @@ export const useStoryStore = create<StoryState>()(
     },
 
     goForward: () => {
-      const { historyIndex, history: hist, variables } = get();
+      const { historyIndex, history: hist } = get();
       if (historyIndex >= hist.length - 1) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = hist[historyIndex + 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply forward transition: moment historyIndex → historyIndex+1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex]!.forward),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex + 1));
 
       set((state) => {
         state.historyIndex++;
