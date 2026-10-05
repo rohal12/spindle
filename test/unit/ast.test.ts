@@ -32,6 +32,13 @@ describe('buildAST', () => {
       ]);
     });
 
+    it('escapes quotes and backslashes in desugared link args (#200)', () => {
+      const ast = parse('[[Say "hi" \\o/->The "End"]]');
+      expect((ast[0] as MacroNode).rawArgs).toBe(
+        '"Say \\"hi\\" \\\\o/" "The \\"End\\""',
+      );
+    });
+
     it('converts variable tokens to variable nodes', () => {
       const ast = parse('{$health}');
       expect(ast).toEqual([
