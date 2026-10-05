@@ -548,14 +548,28 @@ async function detectBackend(): Promise<StorageBackend> {
   return createMemoryBackend();
 }
 
-export async function getBackend(): Promise<StorageBackend> {
-  if (_backend) return _backend;
-  _backend = await detectBackend();
-  return _backend;
+/**
+ * Detection in flight. Concurrent first callers share it so they all get the
+ * same backend (the memory fallback makes a new, empty store per detection).
+ */
+let _backendPromise: Promise<StorageBackend> | null = null;
+
+export function getBackend(): Promise<StorageBackend> {
+  if (_backend) return Promise.resolve(_backend);
+  if (!_backendPromise) {
+    const pending = detectBackend().then((backend) => {
+      // A reset while detecting discards this result
+      if (_backendPromise === pending) _backend = backend;
+      return backend;
+    });
+    _backendPromise = pending;
+  }
+  return _backendPromise;
 }
 
 export function resetBackend(): void {
   _backend = null;
+  _backendPromise = null;
 }
 
 /**

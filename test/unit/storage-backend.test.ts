@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createMemoryBackend,
   createLocalStorageBackend,
+  getBackend,
+  resetBackend,
 } from '../../src/saves/storage';
+import { quickSave, hasQuickSave } from '../../src/saves/save-manager';
 import type {
   StorageBackend,
   SaveRecord,
@@ -252,4 +255,45 @@ runBackendSuite('memory backend', () => createMemoryBackend());
 runBackendSuite('localStorage backend', () => {
   localStorage.clear();
   return createLocalStorageBackend();
+});
+
+describe('getBackend', () => {
+  beforeEach(() => {
+    // Force the memory fallback, where every detection makes a new store
+    vi.stubGlobal('localStorage', undefined);
+    resetBackend();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetBackend();
+  });
+
+  it('shares one backend between concurrent first calls', async () => {
+    const [a, b] = await Promise.all([getBackend(), getBackend()]);
+    expect(a).toBe(b);
+  });
+
+  it('keeps concurrent cold-start slot saves loadable', async () => {
+    const payload = {
+      passage: 'Start',
+      variables: { n: 1 },
+      historyIndex: 0,
+      history: [{ passage: 'Start', variables: { n: 1 }, timestamp: 0 }],
+    };
+    await Promise.all([
+      quickSave('cold-start', 'PT', payload, 'alpha'),
+      quickSave('cold-start', 'PT', payload, 'beta'),
+    ]);
+
+    expect(await hasQuickSave('cold-start', 'alpha')).toBe(true);
+    expect(await hasQuickSave('cold-start', 'beta')).toBe(true);
+  });
+
+  it('detects a fresh backend when reset during initialization', async () => {
+    const pending = getBackend();
+    resetBackend();
+    const fresh = getBackend();
+    expect(await fresh).not.toBe(await pending);
+  });
 });
