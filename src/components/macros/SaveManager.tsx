@@ -12,6 +12,7 @@ import {
   createSave,
   overwriteSave,
   deleteSaveById,
+  populateKnownSaves,
   renameSave,
   exportSave,
   importSave,
@@ -151,6 +152,12 @@ export function SaveManagerContent() {
     if (!confirm('Delete this save?')) return;
     try {
       await deleteSaveById(saveId);
+      // The save may have been held by a slot; hasSave() and QuickLoad
+      // read the store's cache
+      const known = await populateKnownSaves(ifid);
+      useStoryStore.setState((state) => {
+        state.knownSaves = known;
+      });
       showStatus('Save deleted');
       await refresh();
     } catch {

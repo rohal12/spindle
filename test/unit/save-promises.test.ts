@@ -109,6 +109,55 @@ describe('awaitable Story.save / deleteSave / load', () => {
     expect(Story.hasSave('slot-1')).toBe(false);
   });
 
+  it('save() rejects when a beforesave hook throws, and records saveError', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const after = vi.fn();
+    Story.on('beforesave', () => {
+      throw new Error('hook failed');
+    });
+    Story.on('aftersave', after);
+
+    let pending: Promise<void> | undefined;
+    expect(() => {
+      pending = Story.save('slot-1');
+    }).not.toThrow();
+
+    await expect(pending).rejects.toThrow('hook failed');
+    expect(useStoryStore.getState().saveError).toBe('hook failed');
+    expect(after).not.toHaveBeenCalled();
+    expect(Story.hasSave('slot-1')).toBe(false);
+    expect(await Story.listSaves()).toEqual([]);
+  });
+
+  it('save() rejects when capturing the payload throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { getSavePayload } = useStoryStore.getState();
+    useStoryStore.setState({
+      getSavePayload: () => {
+        throw new Error('cannot serialize');
+      },
+    });
+    try {
+      let pending: Promise<void> | undefined;
+      expect(() => {
+        pending = Story.save('slot-1');
+      }).not.toThrow();
+
+      await expect(pending).rejects.toThrow('cannot serialize');
+      expect(useStoryStore.getState().saveError).toBe('cannot serialize');
+    } finally {
+      useStoryStore.setState({ getSavePayload });
+    }
+  });
+
+  it('beforesave still runs before the payload is captured', async () => {
+    Story.on('beforesave', () => Story.set('hp', 55));
+    await Story.save('slot-1');
+
+    const data = await Story.exportSave('slot-1');
+    expect(data!.save.payload.variables.hp).toBe(55);
+  });
+
   it('an ignored failing save does not cause an unhandled rejection', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(saveManager, 'quickSave').mockRejectedValueOnce(
