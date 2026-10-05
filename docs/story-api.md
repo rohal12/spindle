@@ -255,6 +255,8 @@ if (info) {
 
 The `SaveInfo` object contains: `slot`, `title`, `passage`, `createdAt`, `updatedAt`, `custom`.
 
+The default save reports `slot` as `''`. Every slot method accepts `''` for the default slot as well, so you can pass `slot` from `getSaveInfo()` or `listSaves()` straight to `load()`, `deleteSave()`, `exportSave()` and `importSave()`.
+
 ### `Story.listSaves()`
 
 Returns a `Promise<SaveInfo[]>` listing all known saves (default + named slots).

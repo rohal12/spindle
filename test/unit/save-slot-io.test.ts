@@ -186,4 +186,73 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
       playthroughs.find((p) => p.id === 'playthrough-from-another-browser'),
     ).toMatchObject({ label: 'Imported' });
   });
+
+  it("addresses the default save by the slot '' its SaveInfo reports", async () => {
+    Story.set('hp', 42);
+    await saveTo();
+    const info = (await Story.getSaveInfo())!;
+    expect(info.slot).toBe('');
+
+    // Lookup and listing
+    expect(await Story.getSaveInfo(info.slot)).toEqual(info);
+    expect(Story.hasSave(info.slot)).toBe(true);
+    expect(await Story.listSaves()).toEqual([info]);
+
+    // Export
+    const data = (await Story.exportSave(info.slot))!;
+    expect(data).not.toBeNull();
+    expect(data.save.meta.id).toBe((await Story.exportSave())!.save.meta.id);
+
+    // Load
+    Story.set('hp', 1);
+    Story.load(info.slot);
+    await vi.waitFor(() => expect(Story.get('hp')).toBe(42));
+
+    // Save into '' overwrites the default save instead of creating a slot
+    Story.set('hp', 7);
+    Story.save(info.slot);
+    await vi.waitFor(async () =>
+      expect((await Story.exportSave())!.save.payload.variables).toMatchObject({
+        hp: 7,
+      }),
+    );
+    expect((await Story.listSaves()).map((s) => s.slot)).toEqual(['']);
+
+    // Import into '' replaces the default save
+    const imported = await Story.importSave(data, info.slot);
+    expect(imported.slot).toBe('');
+    expect(imported.custom).toMatchObject({ isAutosave: true });
+    expect(imported.custom).not.toHaveProperty('slot');
+    expect((await Story.exportSave())!.save.payload.variables).toEqual({
+      hp: 42,
+    });
+    expect((await Story.listSaves()).map((s) => s.slot)).toEqual(['']);
+
+    // Delete
+    Story.deleteSave(info.slot);
+    await vi.waitFor(() => expect(Story.hasSave()).toBe(false));
+    expect(await Story.getSaveInfo()).toBeNull();
+    expect(await Story.listSaves()).toEqual([]);
+  });
+
+  it('round-trips every listed slot through lookup, export, import and delete', async () => {
+    await saveTo();
+    await saveTo('slot-1');
+    const listed = await Story.listSaves();
+    expect(listed.map((s) => s.slot).sort()).toEqual(['', 'slot-1']);
+
+    for (const info of listed) {
+      expect(await Story.getSaveInfo(info.slot)).toEqual(info);
+      const data = (await Story.exportSave(info.slot))!;
+      expect(data).not.toBeNull();
+      expect((await Story.importSave(data, info.slot)).slot).toBe(info.slot);
+    }
+    expect((await Story.listSaves()).map((s) => s.slot).sort()).toEqual([
+      '',
+      'slot-1',
+    ]);
+
+    for (const info of listed) Story.deleteSave(info.slot);
+    await vi.waitFor(async () => expect(await Story.listSaves()).toEqual([]));
+  });
 });
