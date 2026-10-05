@@ -1,5 +1,5 @@
 import { evaluate } from './expression';
-import { scanBalancedBrace } from './markup/tokenizer';
+import { createScanMemo, scanBalancedBrace } from './markup/tokenizer';
 
 /** Detects any {…} block that starts with a sigil ($, _, @, %). */
 const INTERP_TEST = /\{[\$_@%]\w/;
@@ -74,6 +74,7 @@ export function interpolate(
   // Simple dot-path refs use the fast resolver; everything else falls back
   // to the full expression evaluator.
   let result = '';
+  const memo = createScanMemo();
   let i = 0;
 
   while (i < template.length) {
@@ -100,7 +101,7 @@ export function interpolate(
     }
 
     // Scan for balanced closing }, ignoring braces inside strings
-    const j = scanBalancedBrace(template, i);
+    const j = scanBalancedBrace(template, i, memo);
 
     if (j === -1) {
       // Unbalanced — emit as text

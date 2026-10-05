@@ -1379,3 +1379,27 @@ describe('tokenize — backslash runs before braces', () => {
     expect(tokens[1]).toMatchObject({ type: 'macro', name: 'if' });
   });
 });
+
+describe('tokenize — unclosed template literals', () => {
+  // Found by property testing: each unclosed `${ was scanned once as a
+  // template and again as plain text, so nesting them took time exponential
+  // in their depth (depth 25 took seconds; this one would never finish).
+  it('scans nested unclosed template literals in polynomial time', () => {
+    const input = '{$a`${'.repeat(60);
+    const tokens = tokenize(input);
+    expect(tokens.every((t) => t.type === 'text')).toBe(true);
+    expect(tokens.map((t) => (t.type === 'text' ? t.value : '')).join('')).toBe(
+      input,
+    );
+  });
+
+  it('still balances nested closed template literals', () => {
+    const tokens = tokenize('{print `a${`b${1}c`}d`}!');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      name: 'print',
+      rawArgs: '`a${`b${1}c`}d`',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: '!' });
+  });
+});
