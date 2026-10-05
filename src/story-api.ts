@@ -24,8 +24,13 @@ import {
   populateKnownSaves,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
-import { registerClass, deepClone } from './class-registry';
-import { getActiveMutationScope } from './execute-mutation';
+import { registerClass } from './class-registry';
+import {
+  frozenCopy,
+  getActiveMutationScope,
+  mirrorWriteToActiveScopes,
+  runWithCommittedMutations,
+} from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
@@ -273,10 +278,18 @@ function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
-      const store = isTransient
-        ? useStoryStore.getState().transient
-        : useStoryStore.getState().variables;
-      return key.includes('.') ? getByPath(store, key.split('.')) : store[key];
+      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+      // has pending writes in its working copy: read that, so the code sees
+      // its own changes. The value is a frozen copy, like the frozen store
+      // values returned otherwise, so writing to it cannot change the
+      // pending state outside the code's own assignments.
+      const scope = getActiveMutationScope();
+      const source = scope ?? useStoryStore.getState();
+      const namespace = isTransient ? source.transient : source.variables;
+      const value = key.includes('.')
+        ? getByPath(namespace, key.split('.'))
+        : namespace[key];
+      return scope ? frozenCopy(value) : value;
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
@@ -291,39 +304,48 @@ function createStoryAPI(): StoryAPI {
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
         for (const [k, v] of entries) setOne(draft, k, v);
-      });
-      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
-      // works on copies of the namespaces and commits changed roots when it
-      // finishes. Apply the write to those copies too, so the code sees it
-      // and the commit keeps it in program order alongside the code's own
-      // changes to the same root (#215). Values are copied: the store's are
-      // frozen, and the code must not change the store through them.
-      const scope = getActiveMutationScope();
-      if (scope) {
+        // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+        // works on copies of the namespaces and commits the paths it changed
+        // when it finishes. Apply the write to those copies too, so the code
+        // sees it and its commit keeps it in program order (#215). This runs
+        // inside the update, before watchers it triggers write.
         for (const [k, v] of entries) {
-          setOne(scope, k, deepClone(v, { keepUnregistered: true }));
+          const { isTransient, key } = parseName(k);
+          mirrorWriteToActiveScopes(
+            draft,
+            isTransient ? 'transient' : 'variables',
+            key.split('.'),
+            v,
+          );
         }
-      }
+      });
     },
 
+    // Called from running mutation code, these commit the code's writes so
+    // far before they record, replace or save state, and the code goes on
+    // from the state they leave (see runWithCommittedMutations).
     goto(passageName: string): void {
-      useStoryStore.getState().navigate(passageName);
+      runWithCommittedMutations(() =>
+        useStoryStore.getState().navigate(passageName),
+      );
     },
 
     back(): void {
-      useStoryStore.getState().goBack();
+      runWithCommittedMutations(() => useStoryStore.getState().goBack());
     },
 
     forward(): void {
-      useStoryStore.getState().goForward();
+      runWithCommittedMutations(() => useStoryStore.getState().goForward());
     },
 
     restart(): void {
-      useStoryStore.getState().restart();
+      runWithCommittedMutations(() => useStoryStore.getState().restart());
     },
 
     save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return useStoryStore.getState().save(slot, custom);
+      return runWithCommittedMutations(() =>
+        useStoryStore.getState().save(slot, custom),
+      );
     },
 
     load(slot?: string): Promise<void> {
