@@ -215,6 +215,18 @@ describe('block widgets', () => {
     expect(el.textContent).toContain('Alice');
   });
 
+  it('the {widget} macro itself registers block widgets with the AST builder (#199)', () => {
+    // Rendered definition (as in StoryInit or any passage), not the helper
+    registeredBlockMacros.push('Shell');
+    renderPassage(
+      '{widget "Shell" @title}<div class="shell">{@title}:{@children}</div>{/widget}',
+    );
+    expect(isBlockWidget('Shell')).toBe(true);
+
+    const el = renderPassage('{Shell "Hi"}BODY{/Shell}');
+    expect(el.querySelector('.shell')!.textContent).toBe('Hi:BODY');
+  });
+
   it('renders @children inside {if} within widget body', () => {
     defineAndTrack(
       '{widget "Conditional" @show}{if @show}<div class="wrap">{@children}</div>{/if}{/widget}',
