@@ -294,6 +294,30 @@ describe('macro components', () => {
       document.body.removeChild(container);
     });
 
+    it('inner for-loop sees later changes to an outer @local', () => {
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          <Passage
+            passage={makePassage(
+              1,
+              'Test',
+              '{for @o of [1]}{set @n = 0}{button "Inc"}{set @n = @n + 1}{/button}{for @i of [1, 2]}<span class="r">{@n}</span>{/for}{/for}',
+            )}
+          />,
+          container,
+        );
+      });
+      const shown = () =>
+        Array.from(container.querySelectorAll('.r')).map((e) => e.textContent);
+      expect(shown()).toEqual(['0', '0']);
+
+      const button = container.querySelector('button') as HTMLElement;
+      act(() => button.click());
+      act(() => button.click());
+      expect(shown()).toEqual(['2', '2']);
+    });
+
     it('computed can derive from @local in single-iteration for-loop', () => {
       useStoryStore
         .getState()

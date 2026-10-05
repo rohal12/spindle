@@ -16,6 +16,9 @@ import {
 } from '../../src/markup/ast';
 import { astContainsChildren } from '../../src/widgets/ast-scanner';
 import type { ASTNode } from '../../src/markup/ast';
+import { NobrContext } from '../../src/markup/render';
+import { DialogCloseContext } from '../../src/components/PassageDialog';
+import { defineMacro } from '../../src/define-macro';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 /*
@@ -108,6 +111,41 @@ describe('detached {button}/{link} bodies', () => {
     const el = renderPassage('{Each 4}{set $out = @twice}{/Each}');
     act(() => (el.querySelector('button') as HTMLElement).click());
     expect(useStoryStore.getState().variables.out).toBe(8);
+  });
+
+  it('passes the nobr mode and dialog close callback to the body', () => {
+    const seen: Array<{ nobr: boolean; close: unknown }> = [];
+    defineMacro({
+      name: 'probe-body-context',
+      render(_props, ctx) {
+        seen.push({
+          nobr: ctx.hooks.useContext(NobrContext),
+          close: ctx.hooks.useContext(DialogCloseContext),
+        });
+        return null;
+      },
+    });
+    const close = () => {};
+    const container = document.createElement('div');
+    act(() => {
+      render(
+        <DialogCloseContext.Provider value={close}>
+          <Passage
+            passage={{
+              ...makePassage(
+                1,
+                'Test',
+                '{button "Go"}{probe-body-context}{/button}',
+              ),
+              tags: ['nobr'],
+            }}
+          />
+        </DialogCloseContext.Provider>,
+        container,
+      );
+    });
+    act(() => (container.querySelector('button') as HTMLElement).click());
+    expect(seen).toEqual([{ nobr: true, close }]);
   });
 
   it('{stop} in a {button} body stops the enclosing {repeat}', () => {
