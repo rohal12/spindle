@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
 import {
   enablePatches,
