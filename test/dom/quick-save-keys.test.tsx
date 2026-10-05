@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { App } from '../../src/components/App';
-import { useStoryStore } from '../../src/store';
+import { useStoryStore, type StoryState } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { clearActions, resetIdCounters } from '../../src/action-registry';
 import type { StoryData, Passage } from '../../src/parser';
@@ -46,8 +54,8 @@ describe('quick save / quick load hotkeys', () => {
     save: useStoryStore.getState().save,
     load: useStoryStore.getState().load,
   };
-  let save: ReturnType<typeof vi.fn>;
-  let load: ReturnType<typeof vi.fn>;
+  let save: Mock<StoryState['save']>;
+  let load: Mock<StoryState['load']>;
   let container: HTMLElement;
 
   beforeEach(() => {

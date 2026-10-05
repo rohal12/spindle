@@ -158,7 +158,7 @@ describe('automation runner', () => {
     const result = await runAutomation(api, script);
     expect(result.success).toBe(false);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].message).toContain('Expected passage "Forest"');
+    expect(result.errors[0]!.message).toContain('Expected passage "Forest"');
   });
 
   it('asserts variables', async () => {
@@ -185,7 +185,7 @@ describe('automation runner', () => {
 
     const result = await runAutomation(api, script);
     expect(result.success).toBe(false);
-    expect(result.errors[0].message).toContain('Variable "health"');
+    expect(result.errors[0]!.message).toContain('Variable "health"');
   });
 
   it('sets variables', async () => {
@@ -214,7 +214,7 @@ describe('automation runner', () => {
 
     const result = await runAutomation(api, script);
     expect(result.success).toBe(false);
-    expect(result.errors[0].message).toContain(
+    expect(result.errors[0]!.message).toContain(
       'Action "link:Missing" not found',
     );
   });

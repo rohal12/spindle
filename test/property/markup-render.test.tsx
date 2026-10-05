@@ -301,7 +301,7 @@ describe('HTML attributes', () => {
         const value = raw.replace(/[\s"'=<>`]/g, '').replace(/\/+$/, '') || 'v';
         return ` ${name}${s1}=${s2}${value}`;
       }
-      return ` ${name}${s1}=${s2}${quote}${raw.replaceAll(quote, '')}${quote}`;
+      return ` ${name}${s1}=${s2}${quote}${raw.split(quote).join('')}${quote}`;
     });
 
   function attributesOf(el: Element): Record<string, string> {

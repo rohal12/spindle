@@ -192,7 +192,7 @@ describe('store extended coverage', () => {
       expect(payload.variables.x).toBe(42);
       expect(payload.history).toHaveLength(2);
       expect(payload.historyIndex).toBe(1);
-      expect(payload.visitCounts['Room']).toBe(1);
+      expect(payload.visitCounts!['Room']).toBe(1);
     });
 
     it('returns a deep copy (mutations do not affect store)', () => {

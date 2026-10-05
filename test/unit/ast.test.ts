@@ -76,8 +76,8 @@ describe('buildAST', () => {
       expect(node.type).toBe('macro');
       expect(node.name).toBe('if');
       expect(node.branches).toHaveLength(1);
-      expect(node.branches![0].rawArgs).toBe('$x');
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.rawArgs).toBe('$x');
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'hello' },
       ]);
     });
@@ -86,12 +86,12 @@ describe('buildAST', () => {
       const ast = parse('{if $x}yes{else}no{/if}');
       const node = ast[0] as MacroNode;
       expect(node.branches).toHaveLength(2);
-      expect(node.branches![0].rawArgs).toBe('$x');
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.rawArgs).toBe('$x');
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'yes' },
       ]);
-      expect(node.branches![1].rawArgs).toBe('');
-      expect(node.branches![1].children).toEqual([
+      expect(node.branches![1]!.rawArgs).toBe('');
+      expect(node.branches![1]!.children).toEqual([
         { type: 'text', value: 'no' },
       ]);
     });
@@ -100,9 +100,9 @@ describe('buildAST', () => {
       const ast = parse('{if $a}A{elseif $b}B{else}C{/if}');
       const node = ast[0] as MacroNode;
       expect(node.branches).toHaveLength(3);
-      expect(node.branches![0].rawArgs).toBe('$a');
-      expect(node.branches![1].rawArgs).toBe('$b');
-      expect(node.branches![2].rawArgs).toBe('');
+      expect(node.branches![0]!.rawArgs).toBe('$a');
+      expect(node.branches![1]!.rawArgs).toBe('$b');
+      expect(node.branches![2]!.rawArgs).toBe('');
     });
 
     it('nests children inside for block', () => {
@@ -123,10 +123,10 @@ describe('buildAST', () => {
     it('handles nested block macros', () => {
       const ast = parse('{if $a}{if $b}inner{/if}{/if}');
       const outer = ast[0] as MacroNode;
-      expect(outer.branches![0].children).toHaveLength(1);
-      const inner = outer.branches![0].children[0] as MacroNode;
+      expect(outer.branches![0]!.children).toHaveLength(1);
+      const inner = outer.branches![0]!.children[0] as MacroNode;
       expect(inner.name).toBe('if');
-      expect(inner.branches![0].children).toEqual([
+      expect(inner.branches![0]!.children).toEqual([
         { type: 'text', value: 'inner' },
       ]);
     });
@@ -134,7 +134,7 @@ describe('buildAST', () => {
     it('handles block macro with links inside', () => {
       const ast = parse('{if $x}[[Go|Target]]{/if}');
       const node = ast[0] as MacroNode;
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.children).toEqual([
         {
           type: 'macro',
           name: 'link',
@@ -175,8 +175,8 @@ describe('buildAST', () => {
       const ast = parse('{.highlight if $x}hello{/if}');
       const node = ast[0] as MacroNode;
       expect('className' in node).toBe(false);
-      expect(node.branches![0].className).toBe('highlight');
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.className).toBe('highlight');
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'hello' },
       ]);
     });
@@ -184,16 +184,16 @@ describe('buildAST', () => {
     it('passes className to elseif and else branches', () => {
       const ast = parse('{.green if $a}A{.yellow elseif $b}B{.red else}C{/if}');
       const node = ast[0] as MacroNode;
-      expect(node.branches![0].className).toBe('green');
-      expect(node.branches![1].className).toBe('yellow');
-      expect(node.branches![2].className).toBe('red');
+      expect(node.branches![0]!.className).toBe('green');
+      expect(node.branches![1]!.className).toBe('yellow');
+      expect(node.branches![2]!.className).toBe('red');
     });
 
     it('branches without className omit the field', () => {
       const ast = parse('{if $a}A{else}B{/if}');
       const node = ast[0] as MacroNode;
-      expect('className' in node.branches![0]).toBe(false);
-      expect('className' in node.branches![1]).toBe(false);
+      expect('className' in node.branches![0]!).toBe(false);
+      expect('className' in node.branches![1]!).toBe(false);
     });
 
     it('passes className to non-if block macro node', () => {
@@ -217,7 +217,7 @@ describe('buildAST', () => {
 
     it('nodes without className omit the field', () => {
       const ast = parse('[[Go|Target]]');
-      expect('className' in ast[0]).toBe(false);
+      expect('className' in ast[0]!).toBe(false);
     });
   });
 
@@ -260,22 +260,22 @@ describe('buildAST', () => {
       const ast = parse('{#cond if $x}hello{/if}');
       const node = ast[0] as MacroNode;
       expect('id' in node).toBe(false);
-      expect(node.branches![0].id).toBe('cond');
+      expect(node.branches![0]!.id).toBe('cond');
     });
 
     it('passes id to elseif and else branches', () => {
       const ast = parse('{#a if $a}A{#b elseif $b}B{#c else}C{/if}');
       const node = ast[0] as MacroNode;
-      expect(node.branches![0].id).toBe('a');
-      expect(node.branches![1].id).toBe('b');
-      expect(node.branches![2].id).toBe('c');
+      expect(node.branches![0]!.id).toBe('a');
+      expect(node.branches![1]!.id).toBe('b');
+      expect(node.branches![2]!.id).toBe('c');
     });
 
     it('branches without id omit the field', () => {
       const ast = parse('{if $a}A{else}B{/if}');
       const node = ast[0] as MacroNode;
-      expect('id' in node.branches![0]).toBe(false);
-      expect('id' in node.branches![1]).toBe(false);
+      expect('id' in node.branches![0]!).toBe(false);
+      expect('id' in node.branches![1]!).toBe(false);
     });
 
     it('passes id to non-if block macro node', () => {
@@ -299,7 +299,7 @@ describe('buildAST', () => {
 
     it('nodes without id omit the field', () => {
       const ast = parse('[[Go|Target]]');
-      expect('id' in ast[0]).toBe(false);
+      expect('id' in ast[0]!).toBe(false);
     });
   });
 
@@ -374,13 +374,13 @@ describe('buildAST', () => {
       expect(node.rawArgs).toBe('$x');
       expect(node.branches).toHaveLength(3); // first branch + 2 case branches
       // First branch is the initial branch from rawArgs
-      expect(node.branches![0].rawArgs).toBe('$x');
-      expect(node.branches![1].rawArgs).toBe('1');
-      expect(node.branches![1].children).toEqual([
+      expect(node.branches![0]!.rawArgs).toBe('$x');
+      expect(node.branches![1]!.rawArgs).toBe('1');
+      expect(node.branches![1]!.children).toEqual([
         { type: 'text', value: 'one' },
       ]);
-      expect(node.branches![2].rawArgs).toBe('2');
-      expect(node.branches![2].children).toEqual([
+      expect(node.branches![2]!.rawArgs).toBe('2');
+      expect(node.branches![2]!.children).toEqual([
         { type: 'text', value: 'two' },
       ]);
     });
@@ -392,8 +392,8 @@ describe('buildAST', () => {
       const node = ast[0] as MacroNode;
       // First branch (rawArgs=$x) + case "a" + case "b" + default
       expect(node.branches).toHaveLength(4);
-      expect(node.branches![3].rawArgs).toBe('');
-      expect(node.branches![3].children).toEqual([
+      expect(node.branches![3]!.rawArgs).toBe('');
+      expect(node.branches![3]!.children).toEqual([
         { type: 'text', value: 'other' },
       ]);
     });
@@ -402,7 +402,7 @@ describe('buildAST', () => {
       const ast = parse('{.highlight switch $x}{case 1}one{/switch}');
       const node = ast[0] as MacroNode;
       expect('className' in node).toBe(false);
-      expect(node.branches![0].className).toBe('highlight');
+      expect(node.branches![0]!.className).toBe('highlight');
     });
 
     it('passes className to case branches', () => {
@@ -410,8 +410,8 @@ describe('buildAST', () => {
         '{switch $x}{.red case 1}one{.blue default}other{/switch}',
       );
       const node = ast[0] as MacroNode;
-      expect(node.branches![1].className).toBe('red');
-      expect(node.branches![2].className).toBe('blue');
+      expect(node.branches![1]!.className).toBe('red');
+      expect(node.branches![2]!.className).toBe('blue');
     });
   });
 
@@ -423,7 +423,7 @@ describe('buildAST', () => {
       expect(node.rawArgs).toBe('2s');
       // Timed is branching: first branch has the initial content
       expect(node.branches).toHaveLength(1);
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'first content' },
       ]);
     });
@@ -432,16 +432,16 @@ describe('buildAST', () => {
       const ast = parse('{timed 1s}first{next 2s}second{next 3s}third{/timed}');
       const node = ast[0] as MacroNode;
       expect(node.branches).toHaveLength(3);
-      expect(node.branches![0].rawArgs).toBe('1s');
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.rawArgs).toBe('1s');
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'first' },
       ]);
-      expect(node.branches![1].rawArgs).toBe('2s');
-      expect(node.branches![1].children).toEqual([
+      expect(node.branches![1]!.rawArgs).toBe('2s');
+      expect(node.branches![1]!.children).toEqual([
         { type: 'text', value: 'second' },
       ]);
-      expect(node.branches![2].rawArgs).toBe('3s');
-      expect(node.branches![2].children).toEqual([
+      expect(node.branches![2]!.rawArgs).toBe('3s');
+      expect(node.branches![2]!.children).toEqual([
         { type: 'text', value: 'third' },
       ]);
     });
@@ -450,7 +450,7 @@ describe('buildAST', () => {
       const ast = parse('{.reveal timed 1s}content{/timed}');
       const node = ast[0] as MacroNode;
       expect('className' in node).toBe(false);
-      expect(node.branches![0].className).toBe('reveal');
+      expect(node.branches![0]!.className).toBe('reveal');
     });
   });
 
@@ -542,7 +542,7 @@ describe('buildAST', () => {
       expect(node.type).toBe('macro');
       expect(node.name).toBe('if');
       expect(node.branches).toHaveLength(1);
-      expect(node.branches![0].children).toEqual([
+      expect(node.branches![0]!.children).toEqual([
         { type: 'text', value: 'hello' },
       ]);
     });
@@ -674,7 +674,7 @@ describe('buildAST', () => {
       const node = ast[0] as MacroNode;
       expect(node.name).toBe('button');
       expect(node.children).toHaveLength(2);
-      expect(node.children[0].type).toBe('html');
+      expect(node.children[0]!.type).toBe('html');
       expect((node.children[0] as any).tag).toBe('div');
       expect((node.children[1] as MacroNode).name).toBe('set');
     });
@@ -699,7 +699,7 @@ describe('buildAST', () => {
       const node = ast[0] as MacroNode;
       expect(node.name).toBe('button');
       expect(node.children).toHaveLength(2);
-      expect(node.children[0].type).toBe('text');
+      expect(node.children[0]!.type).toBe('text');
       expect((node.children[1] as MacroNode).name).toBe('set');
     });
   });

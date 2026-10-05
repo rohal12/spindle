@@ -17,7 +17,10 @@ const packageJson = JSON.parse(
   readFileSync(resolve(projectRoot, 'package.json'), 'utf-8'),
 ) as {
   dependencies: Record<string, string>;
-  exports: Record<string, { import: string }>;
+  exports: { './headless': { import: string } } & Record<
+    string,
+    { import: string }
+  >;
 };
 const headlessPath = resolve(
   projectRoot,

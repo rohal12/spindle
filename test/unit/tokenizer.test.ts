@@ -666,32 +666,32 @@ describe('tokenize', () => {
         start: 0,
         end: 7,
       });
-      expect('className' in tokens[0]).toBe(false);
+      expect('className' in tokens[0]!).toBe(false);
     });
 
     it('link tokens without classes have no className property', () => {
       const tokens = tokenize('[[Go|Start]]');
-      expect('className' in tokens[0]).toBe(false);
+      expect('className' in tokens[0]!).toBe(false);
     });
 
     it('macro tokens without classes have no className property', () => {
       const tokens = tokenize('{set $x = 5}');
-      expect('className' in tokens[0]).toBe(false);
+      expect('className' in tokens[0]!).toBe(false);
     });
 
     it('tokens without id have no id property', () => {
       const tokens = tokenize('{$name}');
-      expect('id' in tokens[0]).toBe(false);
+      expect('id' in tokens[0]!).toBe(false);
     });
 
     it('link tokens without id have no id property', () => {
       const tokens = tokenize('[[Go|Start]]');
-      expect('id' in tokens[0]).toBe(false);
+      expect('id' in tokens[0]!).toBe(false);
     });
 
     it('macro tokens without id have no id property', () => {
       const tokens = tokenize('{set $x = 5}');
-      expect('id' in tokens[0]).toBe(false);
+      expect('id' in tokens[0]!).toBe(false);
     });
   });
 
