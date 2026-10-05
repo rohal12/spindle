@@ -100,13 +100,13 @@ Remove a named watcher.
 
 Open a dialog displaying the given passage. Dialogs stack — if a dialog is already open, the new one appears on top of it. Each stacked dialog gets its own overlay. Closing the top dialog reveals the one beneath.
 
-| Parameter                 | Type       | Description                                                                |
-| ------------------------- | ---------- | -------------------------------------------------------------------------- |
-| `passageName`             | `string`   | Name of the passage to render in the dialog                                |
-| `options`                 | `object?`  | Optional settings                                                          |
-| `options.panelClass`      | `string?`  | CSS class added to the dialog panel                                        |
-| `options.showCloseButton` | `boolean?` | Show the default `✕` close button (default: same as `dismissible`)         |
-| `options.dismissible`     | `boolean?` | Let the player close the dialog by clicking the backdrop (default: `true`) |
+| Parameter                 | Type       | Description                                                                                   |
+| ------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `passageName`             | `string`   | Name of the passage to render in the dialog                                                   |
+| `options`                 | `object?`  | Optional settings                                                                             |
+| `options.panelClass`      | `string?`  | CSS class added to the dialog panel                                                           |
+| `options.showCloseButton` | `boolean?` | Show the default `✕` close button (default: same as `dismissible`)                            |
+| `options.dismissible`     | `boolean?` | Let the player close the dialog by clicking the backdrop or pressing Escape (default: `true`) |
 
 ```
 {do}
@@ -116,9 +116,18 @@ Open a dialog displaying the given passage. Dialogs stack — if a dialog is alr
 {/do}
 ```
 
+#### Keyboard and screen readers
+
+Every dialog (from `Story.openDialog()`, `{dialog}`, `watch` triggers and the menubar) is a modal dialog for assistive technology: the panel has `role="dialog"` and `aria-modal="true"`, and the `✕` button is labelled "Close".
+
+- When a dialog opens, focus moves into it: to an element with the `autofocus` attribute, else the first focusable element in the dialog's content, else the panel itself.
+- Tab and Shift+Tab cycle through the topmost dialog's controls and do not leave it.
+- Escape closes the topmost dialog if it is dismissible.
+- When a dialog closes, focus returns to the element that had it before the dialog opened.
+
 #### Non-dismissible dialogs
 
-Pass `dismissible: false` when the player must act inside the dialog before continuing (a required choice, character creation, a confirmation). Clicking the backdrop does nothing and the `✕` button is hidden. The dialog stays open until your code closes it with `Story.closeDialog()` or `Story.closeAllDialogs()` (restarting the story also closes it).
+Pass `dismissible: false` when the player must act inside the dialog before continuing (a required choice, character creation, a confirmation). Clicking the backdrop and pressing Escape do nothing, and the `✕` button is hidden. The dialog stays open until your code closes it with `Story.closeDialog()` or `Story.closeAllDialogs()` (restarting the story also closes it).
 
 ```
 :: Choose Path
