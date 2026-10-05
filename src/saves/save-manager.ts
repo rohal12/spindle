@@ -454,7 +454,8 @@ export async function loadQuickSave(
 export async function populateKnownSaves(
   ifid: string,
 ): Promise<Record<string, true>> {
-  const result: Record<string, true> = {};
+  // No prototype, so a slot named '__proto__' is recorded as an entry
+  const result = Object.create(null) as Record<string, true>;
 
   // Check default autosave
   if (await hasQuickSave(ifid)) {

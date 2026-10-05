@@ -855,7 +855,8 @@ export const useStoryStore = create<StoryState>()(
     hasSave: (slot?: string) => {
       const { storyData, knownSaves } = get();
       if (!storyData) return false;
-      return (slot ?? '') in knownSaves;
+      // Own entries only: slot names like 'constructor' are not inherited saves
+      return Object.prototype.hasOwnProperty.call(knownSaves, slot ?? '');
     },
 
     getSaveInfo: async (slot?: string): Promise<SaveInfo | null> => {

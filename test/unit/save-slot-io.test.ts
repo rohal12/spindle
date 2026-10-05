@@ -293,6 +293,28 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     await vi.waitFor(async () => expect(await Story.listSaves()).toEqual([]));
   });
 
+  it('agrees with storage for slot names found on Object.prototype', async () => {
+    expect(Story.hasSave('constructor')).toBe(false);
+    expect(await Story.getSaveInfo('constructor')).toBeNull();
+    expect(Story.hasSave('toString')).toBe(false);
+    expect(await Story.getSaveInfo('toString')).toBeNull();
+
+    await Story.save('constructor');
+    await Story.save('__proto__');
+    expect(Story.hasSave('constructor')).toBe(true);
+    expect(Story.hasSave('__proto__')).toBe(true);
+    expect(Story.hasSave('toString')).toBe(false);
+
+    // After a reload, known saves are rebuilt from the slot index
+    const known = await populateKnownSaves(ifid);
+    expect(Object.keys(known).sort()).toEqual(['__proto__', 'constructor']);
+    expect(Object.prototype.hasOwnProperty.call(known, 'toString')).toBe(false);
+
+    await Story.deleteSave('__proto__');
+    expect(Story.hasSave('__proto__')).toBe(false);
+    expect(Story.hasSave('constructor')).toBe(true);
+  });
+
   it('indexes every slot when saving to new slots concurrently', async () => {
     Story.save('parallel-a');
     Story.save('parallel-b');
