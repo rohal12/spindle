@@ -3,6 +3,7 @@ import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
+import { isWhitespace, topLevelIndices } from './arg-utils';
 
 const FLAG = 'inline';
 
@@ -19,27 +20,16 @@ function parseIncludeArgs(rawArgs: string): {
   const trimmed = rawArgs.trim();
 
   // First and last whitespace runs at depth 0, as [start, end) offsets.
+  const spaces = topLevelIndices(trimmed, isWhitespace);
   let first: [number, number] | null = null;
   let last: [number, number] | null = null;
-  let depth = 0;
-  let inString: string | null = null;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i]!;
-    if (inString) {
-      if (ch === '\\') i++;
-      else if (ch === inString) inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') inString = ch;
-    else if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (depth === 0 && /\s/.test(ch)) {
-      let end = i + 1;
-      while (end < trimmed.length && /\s/.test(trimmed[end]!)) end++;
-      last = [i, end];
-      first ??= last;
-      i = end - 1;
-    }
+  if (spaces.length > 0) {
+    let s = 0;
+    while (s + 1 < spaces.length && spaces[s + 1] === spaces[s]! + 1) s++;
+    first = [spaces[0]!, spaces[s]! + 1];
+    let e = spaces.length - 1;
+    while (e > 0 && spaces[e - 1] === spaces[e]! - 1) e--;
+    last = [spaces[e]!, spaces[spaces.length - 1]! + 1];
   }
 
   // Next to a binary operator the word is an operand (`"a" + inline`).

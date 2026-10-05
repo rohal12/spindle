@@ -169,4 +169,17 @@ describe('splitArgs', () => {
       expect(splitArgs(`${path}, $x, 3`)).toEqual([path, '$x', '3']);
     });
   });
+
+  // ── Template literal interpolations ──────────────────────────────
+
+  describe('template literal interpolations', () => {
+    it('does not end a template at a backtick inside ${…}', () => {
+      expect(splitArgs('`a${"`"}b` "x"')).toEqual(['`a${"`"}b`', '"x"']);
+      expect(splitArgs('`a${"`"}b`, "x"')).toEqual(['`a${"`"}b`', '"x"']);
+    });
+
+    it('does not split on a comma inside a nested template', () => {
+      expect(splitArgs('`${`a, b`}`, $y')).toEqual(['`${`a, b`}`', '$y']);
+    });
+  });
 });
