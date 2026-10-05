@@ -515,6 +515,8 @@ An edge-triggered watcher that monitors a condition and fires an action when it 
 
 Watchers are **edge-triggered** — they fire only on a `false → true` transition of the condition. A condition that is already true when the watcher is registered will not fire until it becomes false and then true again.
 
+Conditions are re-checked whenever a story (`$`), temporary (`_`) or transient (`%`) variable changes. Moving back or forward through history re-syncs watchers to the restored variables without firing them.
+
 Watchers survive passage navigation but are cleared on restart. Place them in `StoryInit` to register them on every playthrough.
 
 ### `{unwatch}`

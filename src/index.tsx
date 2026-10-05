@@ -6,7 +6,7 @@ import { emit } from './event-emitter';
 import { installStoryAPI, getReadyPromise } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
-import { checkTriggers, reinitTriggerState } from './triggers';
+import { connectTriggersToStore } from './triggers';
 import { loadSession } from './saves/save-manager';
 import {
   parseStoryVariables,
@@ -193,19 +193,7 @@ function boot() {
   });
 
   // Wire up trigger system: check triggers on variable mutations, reinit on history nav/load
-  let prevVars = useStoryStore.getState().variables;
-  let prevHistoryIndex = useStoryStore.getState().historyIndex;
-  useStoryStore.subscribe((state) => {
-    if (state.variables !== prevVars) {
-      if (state.historyIndex === prevHistoryIndex) {
-        checkTriggers();
-      } else {
-        reinitTriggerState();
-      }
-    }
-    prevVars = state.variables;
-    prevHistoryIndex = state.historyIndex;
-  });
+  connectTriggersToStore();
 
   // Warn if StoryInterface passage exists but doesn't contain {passage}
   const storyInterfacePassage = storyData.passages.get('StoryInterface');
