@@ -11,7 +11,9 @@ import {
   createSave,
   exportSave,
   getSavesGrouped,
+  populateKnownSaves,
 } from '../../src/saves/save-manager';
+import { getBackend } from '../../src/saves/storage';
 import { on as emitterOn } from '../../src/event-emitter';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
@@ -877,6 +879,48 @@ describe('SaveManagerContent', () => {
 
       const afterSlots = container.querySelectorAll('.save-slot').length;
       expect(afterSlots).toBe(beforeSlots);
+
+      vi.restoreAllMocks();
+    });
+
+    it('deleting slot saves clears the slots and the store save cache', async () => {
+      const slotIfid = 'dialog-delete-slot-ifid';
+      useStoryStore.getState().init({
+        ...makeStoryData([makePassage(1, 'Start', 'Hello')]),
+        ifid: slotIfid,
+      });
+      const ptId = await startNewPlaythrough(slotIfid);
+      useStoryStore.setState({ playthroughId: ptId, knownSaves: {} });
+
+      const store = useStoryStore.getState();
+      await store.save();
+      await store.save('named');
+      expect(store.hasSave()).toBe(true);
+      expect(store.hasSave('named')).toBe(true);
+
+      globalThis.confirm = vi.fn<() => boolean>(() => true);
+      renderSaveManager(container, onClose);
+      await flush();
+      expect(container.querySelectorAll('.save-slot').length).toBe(2);
+
+      for (let i = 0; i < 2; i++) {
+        const deleteBtn = [
+          ...container.querySelectorAll('.save-slot-action.danger'),
+        ].find((b) => b.textContent === 'Delete');
+        await act(async () => (deleteBtn as HTMLElement).click());
+        await flush();
+      }
+      expect(container.querySelectorAll('.save-slot').length).toBe(0);
+
+      const state = useStoryStore.getState();
+      expect(state.hasSave()).toBe(false);
+      expect(state.hasSave('named')).toBe(false);
+      expect(await state.getSaveInfo()).toBeNull();
+      expect(await state.listSaves()).toEqual([]);
+      expect(await populateKnownSaves(slotIfid)).toEqual({});
+      expect(
+        await (await getBackend()).getMeta(`slotIndex.${slotIfid}`),
+      ).toEqual([]);
 
       vi.restoreAllMocks();
     });

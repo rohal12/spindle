@@ -27,6 +27,7 @@ import {
   deletePlaythroughData,
 } from '../../src/saves/save-manager';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
+import { getBackend } from '../../src/saves/storage';
 
 // In Node there's no IndexedDB, so idb.ts uses in-memory fallback.
 // We need to reset the fallback between tests by re-importing.
@@ -145,6 +146,41 @@ describe('save-manager', () => {
       await deleteSaveById(record.meta.id);
       const loaded = await loadSave(record.meta.id);
       expect(loaded).toBeUndefined();
+    });
+
+    it('clears only the slot that holds the deleted save', async () => {
+      const freshIfid = 'delete-by-id-' + Date.now();
+      const ptId = await startNewPlaythrough(freshIfid);
+      const auto = await quickSave(freshIfid, ptId, makePayload());
+      const held = await quickSave(freshIfid, ptId, makePayload(), 'held');
+      await quickSave(freshIfid, ptId, makePayload(), 'other');
+      const loose = await createSave(freshIfid, ptId, makePayload());
+
+      await deleteSaveById(loose.meta.id);
+      expect(await populateKnownSaves(freshIfid)).toEqual({
+        '': true,
+        held: true,
+        other: true,
+      });
+
+      await deleteSaveById(held.meta.id);
+      expect(await hasQuickSave(freshIfid, 'held')).toBe(false);
+      expect((await listSlotSaves(freshIfid)).map((s) => s.slot)).toEqual([
+        '',
+        'other',
+      ]);
+
+      await deleteSaveById(auto.meta.id);
+      expect(await getSlotSaveInfo(freshIfid)).toBeNull();
+      expect(await populateKnownSaves(freshIfid)).toEqual({ other: true });
+
+      // The slot pointers and the index entry are gone, not just dangling
+      const backend = await getBackend();
+      expect(await backend.getMeta(`autosave.${freshIfid}`)).toBeUndefined();
+      expect(await backend.getMeta(`slot.held.${freshIfid}`)).toBeUndefined();
+      expect(await backend.getMeta(`slotIndex.${freshIfid}`)).toEqual([
+        'other',
+      ]);
     });
   });
 

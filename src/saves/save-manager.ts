@@ -212,8 +212,26 @@ export async function loadSave(
   return deserializePayload(record.payload);
 }
 
+/**
+ * Delete a save record. If the default slot or a named slot holds it, that
+ * slot is cleared as well (pointer and slot index), as `deleteSlotSave` would.
+ */
 export async function deleteSaveById(saveId: string): Promise<void> {
-  await (await getBackend()).deleteSave(saveId);
+  const backend = await getBackend();
+  const record = await backend.getSave(saveId);
+  await backend.deleteSave(saveId);
+  if (!record) return;
+
+  const ifid = record.meta.ifid;
+  const slots = [undefined, ...(await getIndexedSlots(ifid))];
+  for (const slot of slots) {
+    const metaKey = slotMetaKey(ifid, slot);
+    await withSlot(metaKey, async () => {
+      if ((await backend.getMeta<string>(metaKey)) !== saveId) return;
+      await backend.deleteMeta(metaKey);
+      await removeFromSlotIndex(ifid, slot);
+    });
+  }
 }
 
 export async function renameSave(
