@@ -179,6 +179,13 @@ describe('StoryAPI', () => {
     it('Story.set throws on missing intermediate', () => {
       expect(() => Story.set('nonexistent.prop', 'value')).toThrow();
     });
+
+    it('Story.set refuses a property of a Map with a TypeError', () => {
+      // Immer could not draft the Map (MapSet plugin not enabled)
+      useStoryStore.getState().setVariable('m', new Map([['a', 1]]));
+      expect(() => Story.set('m.a', 2)).toThrow(TypeError);
+      expect(useStoryStore.getState().variables.m).toEqual(new Map([['a', 1]]));
+    });
   });
 
   describe('$ sigil', () => {

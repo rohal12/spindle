@@ -1,6 +1,7 @@
 import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
 import {
+  enableMapSet,
   enablePatches,
   produceWithPatches,
   applyPatches,
@@ -50,6 +51,9 @@ import {
 } from './prng';
 
 enablePatches();
+// Story state holds Map and Set values: Immer must be able to draft them
+// when a write (a dot path, a macro binding) reaches one
+enableMapSet();
 
 const SPECIAL_PASSAGES = new Set([
   'StoryInit',
