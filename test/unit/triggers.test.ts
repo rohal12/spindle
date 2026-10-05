@@ -412,7 +412,7 @@ describe('triggers dialog queue', () => {
       const cb = vi.fn();
       store().navigate('Cave');
       const payload = store().getSavePayload();
-      payload.variables = { torch: true, n: 0 };
+      payload.history[1]!.variables = { torch: true, n: 0 };
       addTrigger('$torch', cb);
       store().loadFromPayload(payload);
       expect(store().variables.torch).toBe(true);

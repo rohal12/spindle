@@ -223,7 +223,7 @@ Story.save('day-3', { day: 3, phase: 'morning' }); // with custom metadata
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot.
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage: variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot

@@ -184,30 +184,34 @@ describe('load pipeline', () => {
     it('refresh right after a load restores the loaded game', async () => {
       initPRNG('seed', false);
       Story.set('data', { n: 1 });
+      random();
       Story.goto('B');
+      const entryPrng = useStoryStore.getState().history[1]!.prng!;
+      // Made after entering B: not part of what a load restores
       Story.set('data', { n: 2 });
       random();
       random();
       await saveTo('slot');
-      const savedPrng = useStoryStore.getState().getSavePayload().prng!;
 
       Story.goto('C');
       Story.set('data', { n: 3 });
       random();
 
       await loadFrom('slot');
-      expect(Story.get('data')).toEqual({ n: 2 });
+      expect(Story.get('data')).toEqual({ n: 1 });
+      expect(Story.prng.pull).toBe(entryPrng.pull);
 
       refresh();
 
       const state = useStoryStore.getState();
       expect(state.currentPassage).toBe('B');
-      expect(Story.get('data')).toEqual({ n: 2 });
+      expect(Story.get('data')).toEqual({ n: 1 });
       expect(state.history.map((m) => m.passage)).toEqual(['A', 'B']);
       expect(state.historyIndex).toBe(1);
       expect(state.getHistoryVariables(1).data).toEqual({ n: 1 });
-      expect(Story.prng.pull).toBe(savedPrng.pull);
-      expect(Story.prng.seed).toBe(savedPrng.seed);
+      expect(entryPrng.pull).toBe(1);
+      expect(Story.prng.pull).toBe(entryPrng.pull);
+      expect(Story.prng.seed).toBe(entryPrng.seed);
     });
 
     it('refresh after loading a save made mid-history keeps every moment', async () => {
@@ -251,23 +255,75 @@ describe('load pipeline', () => {
     });
   });
 
-  describe('history after a load', () => {
-    it('records the next move from the loaded moment snapshot', async () => {
+  describe('state restored by a load', () => {
+    it('restores the snapshot taken on entering the saved passage', async () => {
       Story.set('data', { n: 1 });
       Story.goto('B');
       // Edited after entering B, so the live variables differ from B's snapshot
       Story.set('data', { n: 2 });
       await saveTo('edited');
+      Story.set('data', { n: 9 });
 
       await loadFrom('edited');
+      expect(Story.get('data')).toEqual({ n: 1 });
+    });
+
+    it('discards changes made after entering the passage on refresh', () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+
+      refresh();
+
+      expect(useStoryStore.getState().currentPassage).toBe('B');
+      expect(Story.get('data')).toEqual({ n: 1 });
+    });
+
+    it('records the next move from the loaded moment snapshot', async () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+      await saveTo('edited');
+
+      await loadFrom('edited');
+      Story.set('data', { n: 3 });
       Story.goto('C');
 
       const state = useStoryStore.getState();
       expect(state.getHistoryVariables(1).data).toEqual({ n: 1 });
-      expect(state.getHistoryVariables(2).data).toEqual({ n: 2 });
+      expect(state.getHistoryVariables(2).data).toEqual({ n: 3 });
+      expect(loadSession(ifid)!.history[2]!.variables).toEqual({
+        data: { n: 3 },
+      });
 
       state.goBack();
       expect(Story.get('data')).toEqual({ n: 1 });
+    });
+
+    it('falls back to the payload variables for an out-of-range index', () => {
+      Story.set('data', { n: 1 });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+      const payload = useStoryStore.getState().getSavePayload();
+      payload.historyIndex = 5;
+
+      useStoryStore.getState().loadFromPayload(payload);
+
+      expect(useStoryStore.getState().historyIndex).toBe(1);
+      expect(Story.get('data')).toEqual({ n: 2 });
+    });
+
+    it('falls back to the payload PRNG for moments without one', () => {
+      initPRNG('seed', false);
+      Story.goto('B');
+      random();
+      const payload = useStoryStore.getState().getSavePayload();
+      // Saved before history moments recorded the PRNG state
+      delete payload.history[1]!.prng;
+
+      useStoryStore.getState().loadFromPayload(payload);
+
+      expect(Story.prng.pull).toBe(1);
     });
   });
 

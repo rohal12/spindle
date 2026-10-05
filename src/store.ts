@@ -276,6 +276,25 @@ function normalizeHotkey(key: unknown): string | null {
   return typeof key === 'string' && key !== '' ? key : null;
 }
 
+/**
+ * The history moment whose entry snapshot a load restores: the moment at
+ * `historyIndex`, provided it is in range and belongs to the saved passage.
+ * Otherwise (malformed or foreign payloads) the load falls back to the
+ * payload's live variables.
+ */
+function loadedEntryMoment(
+  payload: SavePayload,
+): SaveHistoryMoment | undefined {
+  const { history, historyIndex } = payload;
+  if (!Number.isInteger(historyIndex)) return undefined;
+  const moment = history[historyIndex];
+  if (!moment || moment.passage !== payload.passage) return undefined;
+  if (typeof moment.variables !== 'object' || moment.variables === null) {
+    return undefined;
+  }
+  return moment;
+}
+
 /** Restore or reset PRNG from a history moment's snapshot. */
 function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
   if (moment?.prng) {
@@ -955,6 +974,13 @@ export const useStoryStore = create<StoryState>()(
 
       emit('beforeload', slot);
 
+      // Restore the state on entering the saved passage, not the payload's
+      // live variables: the passage remounts and runs its {set}/{do} again,
+      // so restoring their results as well would apply them twice. Changes
+      // made after entering it (input, clicks) are not restored, as with
+      // back/forward.
+      const entry = loadedEntryMoment(payload);
+
       // The payload is already live (deserialized at the storage boundary by
       // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
@@ -970,9 +996,8 @@ export const useStoryStore = create<StoryState>()(
 
       variableBase = deepClone(base);
       patchEntries = newPatchEntries;
-      // Seed the session cache from the payload's own snapshots: the current
-      // variables can differ from the last moment's (set after entering it,
-      // or historyIndex < last), so persistSession must not rebuild them.
+      // Seed the session cache from the payload's own snapshots, so
+      // persistSession does not rebuild them from the live variables.
       serializedHistory = payload.history.map((m) => ({
         passage: m.passage,
         variables: serialize(m.variables),
@@ -983,7 +1008,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.currentPassage = payload.passage;
         state.navigationId++;
-        state.variables = deepClone(payload.variables);
+        state.variables = deepClone(entry?.variables ?? payload.variables);
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
@@ -1003,11 +1028,14 @@ export const useStoryStore = create<StoryState>()(
       reinitTriggerState();
 
       // The next navigate() diffs from the snapshot recorded for the current
-      // moment, not from the live variables (which may hold later edits)
+      // moment (the live variables, unless the load fell back to them)
       lastNavigationVars = reconstructVarsAt(get().historyIndex);
 
-      if (payload.prng) {
-        restorePRNG(payload.prng.seed, payload.prng.pull);
+      // Replay the passage's random rolls from its entry PRNG state; saves
+      // whose moments predate PRNG snapshots use the payload's.
+      const prng = entry?.prng !== undefined ? entry.prng : payload.prng;
+      if (prng) {
+        restorePRNG(prng.seed, prng.pull);
       } else {
         resetPRNG();
       }

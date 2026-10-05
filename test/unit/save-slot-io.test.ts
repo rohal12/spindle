@@ -94,13 +94,15 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
   it('imports into an empty slot and the slot loads', async () => {
     Story.set('hp', 42);
+    // Recorded on entering Room, which is what a load restores
+    Story.goto('Room');
     await saveTo('slot-1', { day: 3 });
     const file = JSON.stringify(await Story.exportSave('slot-1'));
 
     const info = await Story.importSave(JSON.parse(file), 'slot-2');
     expect(info).toMatchObject({
       slot: 'slot-2',
-      passage: 'Start',
+      passage: 'Room',
       custom: { day: 3, slot: 'slot-2', isAutosave: false },
     });
 
@@ -190,6 +192,8 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
   it("addresses the default save by the slot '' its SaveInfo reports", async () => {
     Story.set('hp', 42);
+    // Recorded on entering Room, which is what a load restores
+    Story.goto('Room');
     await saveTo();
     const info = (await Story.getSaveInfo())!;
     expect(info.slot).toBe('');

@@ -4,7 +4,7 @@ Spindle stores saves in the browser's IndexedDB, organized by playthroughs.
 
 ## Session Persistence
 
-Spindle automatically saves the current game state to the browser's session storage on every navigation. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same variables, same history.
+Spindle automatically saves the current game state to the browser's session storage on every navigation. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same history, and the variables as they were when the player entered the current passage (see [What a Load Restores](#what-a-load-restores)).
 
 - Session state persists across page refreshes within the same tab.
 - Closing the tab or browser clears the session — the next visit starts fresh.
@@ -94,6 +94,12 @@ A save captures:
 - Passage visit and render counts
 
 Temporary variables (`_name`) are **not** saved — they reset on load.
+
+### What a Load Restores
+
+Loading a save (or restoring the session after a refresh) restores the state at the **start of the saved passage**: the story variables, and the seeded PRNG state, recorded when the player entered it. The passage is then rendered again, so its `{set}`, `{do}` and other macros run once more, exactly as they did on the first visit, and its random rolls replay the same values.
+
+Changes made on the passage after entering it — typing into a `{textbox}`, clicking a `{button}` that sets a variable — are **not** restored. This matches how moving back and forward through history works, and how SugarCube treats saves. If a choice must survive a save, make it lead to another passage (for example with a link or `{goto}`), which records it in the history.
 
 History is stored efficiently using Immer patches (only changed variables per navigation), but saves contain full snapshots for portability.
 

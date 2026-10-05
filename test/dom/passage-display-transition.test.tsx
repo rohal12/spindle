@@ -6,6 +6,7 @@ import { useStoryStore } from '../../src/store';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 // Ensure PassageDisplay macro is registered
@@ -400,7 +401,38 @@ describe('PassageDisplay remounts on every navigation', () => {
       useStoryStore.getState().loadFromPayload(payload);
     });
     settle();
-    expect(result()).toBe('2');
+    // The entry snapshot (x = 0) is restored and the passage runs once more
+    expect(result()).toBe('1');
+  });
+
+  it('runs the passage once when a page refresh restores the session', () => {
+    sessionStorage.clear();
+    const storyData = () =>
+      makeStoryData([
+        makePassage(1, 'S', 'start'),
+        makePassage(2, 'A', counter),
+      ]);
+    useStoryStore.getState().init(storyData(), { x: 0 });
+    renderPassageMacro(container);
+    act(() => {
+      useStoryStore.getState().navigate('A');
+    });
+    settle();
+    expect(result()).toBe('1');
+    // A change made on the passage after entering it is not restored
+    act(() => {
+      useStoryStore.getState().setVariable('x', 10);
+    });
+
+    // Refresh: tear down, re-init, restore the session, render again
+    act(() => {
+      render(null, container);
+    });
+    useStoryStore.getState().init(storyData(), { x: 0 });
+    useStoryStore.getState().loadFromPayload(loadSession('test')!);
+    renderPassageMacro(container);
+    settle();
+    expect(result()).toBe('1');
   });
 
   it('re-runs PassageReady when navigating to the same passage', () => {
