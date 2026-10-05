@@ -10,7 +10,9 @@ import {
   startNewPlaythrough,
   createSave,
   exportSave,
+  getSavesGrouped,
 } from '../../src/saves/save-manager';
+import { on as emitterOn } from '../../src/event-emitter';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
 import { isSaveExport } from '../../src/saves/types';
@@ -636,6 +638,84 @@ describe('SaveManagerContent', () => {
       const status = container.querySelector('.saves-status');
       expect(status).not.toBeNull();
       expect(status!.textContent).toContain('Save overwritten');
+    });
+  });
+
+  describe('save hooks', () => {
+    /**
+     * Record beforesave/aftersave calls, and set $x in beforesave the way an
+     * engine integration serializes its state into the save.
+     */
+    function trackSaveHooks() {
+      const calls: string[] = [];
+      const unsubs = [
+        emitterOn('beforesave', () => {
+          calls.push('before');
+          useStoryStore.getState().setVariable('x', 42);
+        }),
+        emitterOn('aftersave', () => calls.push('after')),
+      ];
+      return { calls, unsub: () => unsubs.forEach((u) => u()) };
+    }
+
+    async function switchToSaveMode() {
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(() => saveModeBtn.click());
+      await flush();
+    }
+
+    /** Variables stored in the one save of this test's playthrough. */
+    async function savedVariables() {
+      const ptId = useStoryStore.getState().playthroughId;
+      const group = (await getSavesGrouped(IFID)).find(
+        (g) => g.playthrough.id === ptId,
+      );
+      expect(group?.saves).toHaveLength(1);
+      return group!.saves[0]!.payload.variables;
+    }
+
+    it('"+ New Save" fires beforesave and aftersave once and persists beforesave data', async () => {
+      const hooks = trackSaveHooks();
+      try {
+        renderSaveManager(container, onClose);
+        await flush();
+        await switchToSaveMode();
+
+        const newSaveBtn = container.querySelector(
+          '.save-slot-new',
+        ) as HTMLElement;
+        await act(async () => newSaveBtn.click());
+        await flush();
+
+        expect(hooks.calls).toEqual(['before', 'after']);
+        expect(await savedVariables()).toMatchObject({ x: 42 });
+      } finally {
+        hooks.unsub();
+      }
+    });
+
+    it('"Save Here" fires beforesave and aftersave once and persists beforesave data', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      const hooks = trackSaveHooks();
+      try {
+        renderSaveManager(container, onClose);
+        await flush();
+        await switchToSaveMode();
+
+        const saveHereBtn = [
+          ...container.querySelectorAll('.save-slot-action.primary'),
+        ].find((b) => b.textContent === 'Save Here') as HTMLElement;
+        await act(async () => saveHereBtn.click());
+        await flush();
+
+        expect(hooks.calls).toEqual(['before', 'after']);
+        expect(await savedVariables()).toMatchObject({ x: 42 });
+      } finally {
+        hooks.unsub();
+      }
     });
   });
 

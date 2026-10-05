@@ -10,6 +10,7 @@ import type {
 import { isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
 import { deepClone, serialize, deserialize } from '../class-registry';
+import { emit } from '../event-emitter';
 
 type TitleGenerator = (payload: SavePayload) => string;
 
@@ -92,6 +93,28 @@ export async function getCurrentPlaythroughId(
   ifid: string,
 ): Promise<string | undefined> {
   return (await getBackend()).getMeta<string>(`currentPlaythroughId.${ifid}`);
+}
+
+// --- Save Hooks ---
+
+/**
+ * Run a save through the `beforesave` / `aftersave` hooks. `beforesave` fires
+ * before `getPayload()` captures the state, so data a hook sets is part of the
+ * save; `aftersave` fires once `write` has stored it. Every user-facing save
+ * path goes through here.
+ */
+export function saveWithHooks<T>(
+  slot: string | undefined,
+  custom: Record<string, unknown> | undefined,
+  getPayload: () => SavePayload,
+  write: (payload: SavePayload) => Promise<T>,
+): Promise<T> {
+  emit('beforesave', slot, custom);
+  const payload = getPayload();
+  return write(payload).then((result) => {
+    emit('aftersave', slot);
+    return result;
+  });
 }
 
 // --- Save CRUD ---
