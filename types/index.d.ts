@@ -401,6 +401,8 @@ export interface MacroContext {
       nobr?: boolean;
       locals?: Record<string, unknown>;
       inline?: boolean;
+      /** Literal content, as inside `<pre>`: no markdown processing. */
+      raw?: boolean;
     },
   ) => ComponentChildren;
   /** Render AST nodes as inline content (no markdown block processing). */

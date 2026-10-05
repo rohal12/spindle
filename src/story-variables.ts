@@ -1,5 +1,6 @@
 import type { Passage } from './parser';
 import { tokenize } from './markup/tokenizer';
+import { errorMessage } from './utils/error-message';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -82,7 +83,7 @@ export function parseStoryVariables(
       value = new Function('return (' + expr + ')')();
     } catch (err) {
       throw new Error(
-        `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${err instanceof Error ? err.message : err}`,
+        `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${errorMessage(err)}`,
       );
     }
 
@@ -90,9 +91,7 @@ export function parseStoryVariables(
     try {
       fieldSchema = inferSchema(value);
     } catch (err) {
-      throw new Error(
-        `${passageName}: ${err instanceof Error ? err.message : err}`,
-      );
+      throw new Error(`${passageName}: ${errorMessage(err)}`);
     }
     schema.set(name, { ...fieldSchema, name, default: value });
   }

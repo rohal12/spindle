@@ -11,6 +11,7 @@ import {
   NobrContext,
   InlineContext,
   WidgetChildrenContext,
+  RawTextContext,
   renderNodes,
 } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
@@ -105,6 +106,7 @@ function WidgetBody({
 }) {
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
     {},
   );
@@ -130,7 +132,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, { nobr, inline, locals: localState })}
+        {renderNodes(body, { nobr, inline, raw, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -145,6 +147,7 @@ export function WidgetInvocation({
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -155,7 +158,7 @@ export function WidgetInvocation({
   if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
-        {renderNodes(body, { nobr, inline, locals: parentValues })}
+        {renderNodes(body, { nobr, inline, raw, locals: parentValues })}
       </WidgetChildrenContext.Provider>
     );
   }

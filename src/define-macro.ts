@@ -16,6 +16,7 @@ import {
   LocalsValuesContext,
   NobrContext,
   InlineContext,
+  RawTextContext,
   renderNodes as _renderNodes,
   renderInlineNodes,
 } from './markup/render';
@@ -122,6 +123,7 @@ export function defineMacro(
     const { update, getValues } = useContext(LocalsUpdateContext);
     const nobr = useContext(NobrContext);
     const inline = useContext(InlineContext);
+    const raw = useContext(RawTextContext);
     const localsValues = useContext(LocalsValuesContext);
     const renderNodes = (
       nodes: ASTNode[],
@@ -129,9 +131,16 @@ export function defineMacro(
         nobr?: boolean;
         locals?: Record<string, unknown>;
         inline?: boolean;
+        raw?: boolean;
       },
     ) =>
-      _renderNodes(nodes, { nobr, inline, locals: localsValues, ...options });
+      _renderNodes(nodes, {
+        nobr,
+        inline,
+        raw,
+        locals: localsValues,
+        ...options,
+      });
     const ctx: MacroContext = {
       collectText,
       sourceLocation: currentSourceLocation,

@@ -13,6 +13,7 @@ import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
 import { markPassageRendered } from '../passage-render-state';
+import { errorMessage } from '../utils/error-message';
 
 /**
  * Parsed AST per passage. The renderer keys children by AST node identity,
@@ -63,8 +64,7 @@ export function Passage({ passage, dataTransition }: PassageProps) {
       return (
         <div class="error">
           Error parsing passage &ldquo;{passage.name}&rdquo;
-          {sourceLocationOf(passage)}:{' '}
-          {err instanceof Error ? err.message : String(err)}
+          {sourceLocationOf(passage)}: {errorMessage(err)}
         </div>
       );
     }

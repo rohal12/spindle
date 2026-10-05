@@ -6,6 +6,7 @@ import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryStore } from '../store';
 import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
+import { errorMessage } from '../utils/error-message';
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
@@ -61,11 +62,7 @@ export function PassageDialog({
         nodes
       );
     } catch (err) {
-      return (
-        <div class="error">
-          Error in dialog: {err instanceof Error ? err.message : String(err)}
-        </div>
-      );
+      return <div class="error">Error in dialog: {errorMessage(err)}</div>;
     }
   }, [markup, nobr]);
 

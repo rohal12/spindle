@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import {
@@ -8,6 +9,7 @@ import {
   clearActions,
   resetIdCounters,
 } from '../../src/action-registry';
+import { on } from '../../src/event-emitter';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): PassageData {
@@ -172,6 +174,61 @@ describe('action registration', () => {
       expect(tb).toBeDefined();
       expect(tb!.variable).toBe('name');
       expect(tb!.label).toBe('Enter name');
+    });
+  });
+  describe('when an action changes', () => {
+    // Components rendered by earlier tests stay mounted, so these tests use
+    // their own variable, only look at the actions they render and unmount
+    // what they render.
+    const containers: HTMLElement[] = [];
+    afterEach(() => {
+      for (const c of containers.splice(0)) act(() => render(null, c));
+    });
+    function mount(content: string): HTMLElement {
+      const container = document.createElement('div');
+      containers.push(container);
+      act(() => {
+        render(
+          <Passage passage={makePassage(1, 'Test', content)} />,
+          container,
+        );
+      });
+      return container;
+    }
+    const own = () =>
+      getActions().filter(
+        (a) => a.variable === 'consent' || a.label === 'Proceed',
+      );
+
+    it('updates it in place, keeping its position', () => {
+      useStoryStore.getState().setVariable('consent', false);
+      mount('{checkbox $consent "I agree"}{button "Proceed"}{/button}');
+      const before = own().map((a) => a.id);
+
+      act(() => useStoryStore.getState().setVariable('consent', true));
+
+      expect(own().map((a) => a.id)).toEqual(before);
+      expect(own()[0]!.value).toBe(true);
+    });
+
+    it('notifies listeners once', () => {
+      useStoryStore.getState().setVariable('consent', false);
+      mount('{checkbox $consent "I agree"}');
+      let count = 0;
+      const off = on('actionsChanged', () => count++);
+
+      act(() => useStoryStore.getState().setVariable('consent', true));
+      off();
+
+      expect(count).toBe(1);
+    });
+
+    it('still unregisters on unmount after an update', () => {
+      useStoryStore.getState().setVariable('consent', false);
+      const container = mount('{checkbox $consent "I agree"}');
+      act(() => useStoryStore.getState().setVariable('consent', true));
+      act(() => render(null, container));
+      expect(own()).toEqual([]);
     });
   });
 });

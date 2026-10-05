@@ -3,6 +3,7 @@ import { useStoryStore } from '../store';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderInlineNodes, NobrContext } from '../markup/render';
+import { errorMessage } from '../utils/error-message';
 
 const DEFAULT_MARKUP =
   '<header class="story-menubar">{story-title}{back}{forward}{restart}{quicksave}{quickload}{saves}{settings}</header>\n{passage}';
@@ -22,10 +23,7 @@ export function StoryInterface() {
       return <>{renderInlineNodes(ast)}</>;
     } catch (err) {
       return (
-        <span class="error">
-          Error in StoryInterface:{' '}
-          {err instanceof Error ? err.message : String(err)}
-        </span>
+        <span class="error">Error in StoryInterface: {errorMessage(err)}</span>
       );
     }
   }, [markup]);

@@ -1,14 +1,6 @@
-import { h, render } from 'preact';
-import { useContext } from 'preact/hooks';
 import { defineMacro } from '../../define-macro';
 import { readWholeQuoted } from './arg-utils';
-import {
-  renderNodes,
-  LocalsUpdateContext,
-  LocalsValuesContext,
-  NobrContext,
-} from '../../markup/render';
-import { liveLocalsView } from '../../utils/live-locals';
+import { useDetachedBody } from './detached-body';
 
 defineMacro({
   name: 'button',
@@ -18,29 +10,11 @@ defineMacro({
     const text =
       readWholeQuoted(rawArgs.trim()) ?? rawArgs.replace(/^["']|["']$/g, '');
     const label = ctx.resolve?.(text) ?? rawArgs;
-    const nobr = useContext(NobrContext);
+    const runBody = useDetachedBody();
 
-    const handleClick = () => {
-      // Render children into a detached DOM node — all macro side effects
-      // ({set}, {if}, {unwatch}, etc.) fire through the normal Preact pipeline.
-      // Wrap with locals context so @local variables from for-loops are available.
-      const container = document.createElement('div');
-      const vnode = h(
-        NobrContext.Provider,
-        { value: nobr },
-        h(
-          LocalsUpdateContext.Provider,
-          { value: { update: ctx.update, getValues: ctx.getValues } },
-          h(
-            LocalsValuesContext.Provider,
-            { value: liveLocalsView(ctx.getValues) },
-            renderNodes(children),
-          ),
-        ),
-      );
-      render(vnode, container);
-      render(null, container);
-    };
+    // Run the body outside the passage tree: all macro side effects ({set},
+    // {if}, {unwatch}, etc.) fire through the normal Preact pipeline.
+    const handleClick = () => runBody(children);
 
     ctx.useAction({
       type: 'button',

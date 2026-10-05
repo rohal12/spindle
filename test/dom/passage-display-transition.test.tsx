@@ -90,6 +90,29 @@ describe('PassageDisplay transition state machine', () => {
     expect(passageDiv!.getAttribute('data-transition')).toBe('fade');
   });
 
+  it.each(['fade-through', 'crossfade'] as const)(
+    'cancels a running %s transition on unmount',
+    (type) => {
+      const storyData = makeStoryData([
+        makePassage(1, 'Start', 'Start'),
+        makePassage(2, 'Room', 'A room'),
+      ]);
+      useStoryStore.getState().init(storyData);
+      useStoryStore.getState().setTransition({ type, duration: 500 });
+      renderPassageMacro(container);
+
+      act(() => {
+        useStoryStore.getState().navigate('Room');
+      });
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      act(() => {
+        render(null, container);
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
   it('consumeNextTransition is consumed on navigation regardless of tags', () => {
     const storyData = makeStoryData([
       makePassage(1, 'Start', 'Start'),

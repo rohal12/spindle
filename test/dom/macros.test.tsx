@@ -294,6 +294,30 @@ describe('macro components', () => {
       document.body.removeChild(container);
     });
 
+    it('inner for-loop sees later changes to an outer @local', () => {
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          <Passage
+            passage={makePassage(
+              1,
+              'Test',
+              '{for @o of [1]}{set @n = 0}{button "Inc"}{set @n = @n + 1}{/button}{for @i of [1, 2]}<span class="r">{@n}</span>{/for}{/for}',
+            )}
+          />,
+          container,
+        );
+      });
+      const shown = () =>
+        Array.from(container.querySelectorAll('.r')).map((e) => e.textContent);
+      expect(shown()).toEqual(['0', '0']);
+
+      const button = container.querySelector('button') as HTMLElement;
+      act(() => button.click());
+      act(() => button.click());
+      expect(shown()).toEqual(['2', '2']);
+    });
+
     it('computed can derive from @local in single-iteration for-loop', () => {
       useStoryStore
         .getState()
@@ -378,6 +402,46 @@ describe('macro components', () => {
       expect(results).toHaveLength(2);
       expect(results[0].textContent).toBe('a-green');
       expect(results[1].textContent).toBe('b-red');
+    });
+
+    it('computed sees a local set just before it, without a stale first write', () => {
+      const writes: unknown[] = [];
+      const off = useStoryStore.subscribe((s, prev) => {
+        if (s.variables.x !== prev.variables.x) writes.push(s.variables.x);
+      });
+      act(() => {
+        renderPassage(
+          '{for @i of [1]}{set @a = 5}{computed $x = @a + 1}{/for}',
+        );
+      });
+      off();
+      expect(useStoryStore.getState().variables.x).toBe(6);
+      expect(writes).toEqual([6]);
+    });
+
+    it('computed @-target sees a local set just before it', () => {
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage(
+          '{for @i of [1]}{set @a = 5}{computed @b = @a + 1}{set $seen = @b}<span class="result">{@b}</span>{/for}',
+        );
+      });
+      expect(el.querySelector('.result')!.textContent).toBe('6');
+      // {set} runs once, right after {computed}: it must see the value
+      expect(useStoryStore.getState().variables.seen).toBe(6);
+    });
+
+    it('computed sees a story variable set later in the same render', () => {
+      const writes: unknown[] = [];
+      const off = useStoryStore.subscribe((s, prev) => {
+        if (s.variables.x !== prev.variables.x) writes.push(s.variables.x);
+      });
+      act(() => {
+        renderPassage('{set $a = 1}{computed $x = $a * 10}{set $a = 2}');
+      });
+      off();
+      expect(useStoryStore.getState().variables.x).toBe(20);
+      expect(writes).toEqual([10, 20]);
     });
 
     it('computed @-target outside local scope logs error', () => {

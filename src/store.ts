@@ -48,6 +48,7 @@ import {
   resetPRNG,
   type PRNGSnapshot,
 } from './prng';
+import { errorMessage } from './utils/error-message';
 
 enablePatches();
 
@@ -869,8 +870,7 @@ export const useStoryStore = create<StoryState>()(
         ).catch((err) => {
           console.error('spindle: failed to save', err);
           set((state) => {
-            state.saveError =
-              err instanceof Error ? err.message : 'Failed to save';
+            state.saveError = errorMessage(err, 'Failed to save');
           });
           throw err;
         }),
@@ -893,8 +893,7 @@ export const useStoryStore = create<StoryState>()(
           .catch((err) => {
             console.error('spindle: failed to load save', err);
             set((state) => {
-              state.loadError =
-                err instanceof Error ? err.message : 'Failed to load';
+              state.loadError = errorMessage(err, 'Failed to load');
             });
             throw err;
           }),

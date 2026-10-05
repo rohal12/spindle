@@ -7,6 +7,7 @@ import type {
 } from './types';
 import type { StoryAPI } from '../story-api';
 import type { StoryAction } from '../action-registry';
+import { errorMessage } from '../utils/error-message';
 
 export interface RunOptions {
   onStep?: (stepIndex: number, step: AutomationStep) => void;
@@ -35,7 +36,7 @@ export async function runAutomation(
     } catch (err) {
       errors.push({
         step: i,
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
       break;
     }

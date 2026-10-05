@@ -58,6 +58,45 @@ describe('renderNodes', () => {
     expect(el.textContent).toContain('indented line');
   });
 
+  describe('preformatted elements', () => {
+    it('keeps <pre> content literal: indentation and markdown-like text', () => {
+      const text = 'def f(a, b):\n    return a * b\n# not a heading\n  - item';
+      const el = renderMarkup(`<pre>${text}</pre>`);
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe(text);
+      expect(pre.querySelector('p, h1, ul')).toBeNull();
+    });
+
+    it('keeps nested element and variable content literal in <pre>', () => {
+      useStoryStore.getState().setVariable('n', 3);
+      const el = renderMarkup('<pre><b>x:</b>\n    {$n} * 2\n# end</pre>');
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe('x:\n    3 * 2\n# end');
+      expect(pre.querySelector('p, h1, em')).toBeNull();
+    });
+
+    it('keeps macro body content literal in <pre>', () => {
+      const el = renderMarkup(
+        '<pre>{if true}  * not a list\n    kept{/if}\n{for @x of [1, 2]}  - {@x}\n{/for}</pre>',
+      );
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe('  * not a list\n    kept\n  - 1\n  - 2\n');
+      expect(pre.querySelector('p, ul, li')).toBeNull();
+    });
+
+    it('keeps <textarea> content literal', () => {
+      const el = renderMarkup('<textarea># title\n    *indented*</textarea>');
+      const textarea = el.querySelector('textarea')!;
+      expect(textarea.value).toBe('# title\n    *indented*');
+    });
+
+    it('still renders markdown in a block element next to <pre>', () => {
+      const el = renderMarkup('<div>**bold**</div><pre>**raw**</pre>');
+      expect(el.querySelector('div strong')!.textContent).toBe('bold');
+      expect(el.querySelector('pre')!.textContent).toBe('**raw**');
+    });
+  });
+
   it('renders single newline as soft break, double newline as paragraph boundary', () => {
     // Single newline → within same <p> (CommonMark soft break)
     const single = renderMarkup('Line 1\nLine 2');

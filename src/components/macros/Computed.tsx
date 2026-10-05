@@ -38,22 +38,28 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   );
 }
 
+/**
+ * Evaluate `expr` against the current values — the store's state and the
+ * enclosing locals scope's live values (`getLocals`) — and write the result
+ * to the target if it changed. Reading live values rather than the render's
+ * snapshot means the first computation sees a local a preceding {set} just
+ * assigned (the scope's context value only catches up on its re-render), and
+ * the first computation and later recomputations read the same source.
+ */
 function computeAndApply(
   expr: string,
   name: string,
   isTemp: boolean,
   isLocal: boolean,
-  variables: Record<string, unknown>,
-  temporary: Record<string, unknown>,
-  locals: Record<string, unknown>,
-  transient: Record<string, unknown>,
+  getLocals: () => Record<string, unknown>,
   rawArgs: string,
   prevRef: { current: unknown },
   localsUpdate: ((key: string, value: unknown) => void) | null,
 ): void {
   let newValue: unknown;
   try {
-    newValue = evaluate(expr, variables, temporary, locals, transient);
+    const { variables, temporary, transient } = useStoryStore.getState();
+    newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
     console.error(
       `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
@@ -114,26 +120,22 @@ defineMacro({
         name,
         isTemp,
         isLocal,
-        mergedVars,
-        mergedTemps,
-        mergedLocals,
-        mergedTrans,
+        ctx.getValues,
         rawArgs,
         prevOutput,
         localsUpdate,
       );
     }
 
+    // The merged values only decide when to recompute; computeAndApply reads
+    // the current ones.
     ctx.hooks.useLayoutEffect(() => {
       computeAndApply(
         expr,
         name,
         isTemp,
         isLocal,
-        mergedVars,
-        mergedTemps,
-        mergedLocals,
-        mergedTrans,
+        ctx.getValues,
         rawArgs,
         prevOutput,
         localsUpdate,

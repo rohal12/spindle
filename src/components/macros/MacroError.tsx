@@ -1,4 +1,5 @@
 import { currentSourceLocation } from '../../utils/source-location';
+import { errorMessage } from '../../utils/error-message';
 
 export function MacroError({
   macro,
@@ -12,7 +13,7 @@ export function MacroError({
       class="error"
       title={String(error)}
     >
-      {`{${macro} error${currentSourceLocation()}: ${error instanceof Error ? error.message : String(error)}}`}
+      {`{${macro} error${currentSourceLocation()}: ${errorMessage(error)}}`}
     </span>
   );
 }
