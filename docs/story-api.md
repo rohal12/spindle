@@ -65,6 +65,8 @@ Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.r
 
 The same holds for everything else running code sets off: a `{link}`, `{button}`, input or menubar action it performs with `Story.performAction()` (or a click or input event it dispatches), and the `{set}`, `{unset}`, `{computed}` and `{goto}` in a link or button body that runs. Their writes take effect at that point, as if the code had made them: the code reads them next, and a later write of the code's own wins over them, while one made before them does not.
 
+Watchers, `variableChanged` handlers and anything else reading story state while the code runs see the state at that point in the code: before such a write reaches the story, the code's own assignments so far do (and stay, even if the code throws afterwards). In `{do}$a = 1; Story.set("b", 2){/do}`, `variableChanged` reports the change of `$a` and then that of `$b`, and a handler of the latter reads `$a` as 1. A `Story.watch()` called by the code starts from the code's state.
+
 ### `Story.back()`
 
 Go to the previous passage in history.
