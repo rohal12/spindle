@@ -8,6 +8,7 @@ import {
   NobrContext,
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
+import { liveLocalsView } from '../../utils/live-locals';
 
 function parseArgs(rawArgs: string): {
   display: string;
@@ -45,7 +46,7 @@ function renderChildrenDetached(
       { value: { update, getValues } },
       h(
         LocalsValuesContext.Provider,
-        { value: getValues() },
+        { value: liveLocalsView(getValues) },
         renderNodes(children),
       ),
     ),
