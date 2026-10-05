@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  # npm trusted publishing (OIDC): no npm token.
+  id-token: write
 
 jobs:
   release:
@@ -21,7 +23,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # OIDC publishing needs npm 11.5.1+; Node 22 ships npm 10.
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - run: bun install --frozen-lockfile
@@ -34,7 +37,6 @@ jobs:
 
       - name: Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
