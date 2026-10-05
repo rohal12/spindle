@@ -241,7 +241,7 @@ Story.save('day-3', { day: 3, phase: 'morning' }); // with custom metadata
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot.
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage: variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot
@@ -272,6 +272,8 @@ if (info) {
 ```
 
 The `SaveInfo` object contains: `slot`, `title`, `passage`, `createdAt`, `updatedAt`, `custom`.
+
+The default save reports `slot` as `''`. Every slot method accepts `''` for the default slot as well, so you can pass `slot` from `getSaveInfo()` or `listSaves()` straight to `load()`, `deleteSave()`, `exportSave()` and `importSave()`.
 
 ### `Story.listSaves()`
 
@@ -591,6 +593,16 @@ Story.on('variableChanged', function (changed) {
   for (var key in changed) {
     console.log(key + ': ' + changed[key].from + ' → ' + changed[key].to);
   }
+});
+
+// Loading a game: `slot` is the named slot passed to Story.load(slot),
+// or undefined for the default slot, the saves dialog, and session
+// restore after a page refresh
+Story.on('beforeload', function (slot) {
+  console.log('Loading ' + (slot || 'game'));
+});
+Story.on('afterload', function (slot) {
+  console.log('Loaded', Story.get('health'));
 });
 
 // Later: stop listening

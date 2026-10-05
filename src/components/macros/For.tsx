@@ -88,6 +88,10 @@ function ForIteration({
 
   const getValues = useCallback(() => valuesRef.current, []);
   const update = useCallback((key: string, value: unknown) => {
+    // Apply synchronously so later macros in the same render pass (e.g. a
+    // second {set}) read the new value via getValues(); the state update
+    // then re-renders consumers of LocalsValuesContext.
+    valuesRef.current = { ...valuesRef.current, [key]: value };
     setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);

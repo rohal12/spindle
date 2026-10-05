@@ -1,4 +1,5 @@
-import { evaluate, execute } from './expression';
+import { evaluate } from './expression';
+import { executeMutation } from './execute-mutation';
 import { useStoryStore } from './store';
 
 export interface WatchOptions {
@@ -25,6 +26,8 @@ interface Trigger {
   options?: WatchOptions;
   lastResult: boolean;
   priority: number;
+  /** Identity of a {watch} macro's watcher (see addMacroTrigger). */
+  macroKey?: string;
 }
 
 let nextId = 0;
@@ -58,9 +61,10 @@ function evalCondition(condition: string): boolean {
   }
 }
 
-export function addTrigger(
+function registerTrigger(
   condition: string,
   callbackOrOptions: (() => void) | WatchOptions,
+  macroKey?: string,
 ): () => void {
   const id = nextId++;
   const isCallback = typeof callbackOrOptions === 'function';
@@ -75,6 +79,7 @@ export function addTrigger(
     options,
     lastResult: evalCondition(condition),
     priority: options?.priority ?? 0,
+    macroKey,
   };
 
   triggers.push(trigger);
@@ -83,6 +88,32 @@ export function addTrigger(
   return () => {
     triggers = triggers.filter((t) => t.id !== id);
   };
+}
+
+export function addTrigger(
+  condition: string,
+  callbackOrOptions: (() => void) | WatchOptions,
+): () => void {
+  return registerTrigger(condition, callbackOrOptions);
+}
+
+/**
+ * Register the watcher of a {watch} macro. Watchers outlive the passage
+ * that declared them, and that passage mounts its macros again on every
+ * visit (and on re-renders that remount them), so an identical watcher
+ * (same condition and options) that is still registered is kept instead
+ * of being added a second time.
+ */
+export function addMacroTrigger(
+  condition: string,
+  options: WatchOptions,
+): void {
+  const sortedOptions = Object.fromEntries(
+    Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  const macroKey = JSON.stringify([condition, sortedOptions]);
+  if (triggers.some((t) => t.macroKey === macroKey)) return;
+  registerTrigger(condition, options, macroKey);
 }
 
 export function removeTrigger(name: string): void {
@@ -100,8 +131,16 @@ function fireTrigger(trigger: Trigger): void {
   if (!options) return;
 
   if (options.run) {
-    const state = useStoryStore.getState();
-    execute(options.run, state.variables, state.temporary);
+    // Store state is frozen; go through the mutation pipeline so the run
+    // action works on clones and its changes are committed to the store.
+    try {
+      executeMutation(options.run, {}, () => {});
+    } catch (err) {
+      console.error(
+        `spindle: Error in watch run action for "${trigger.condition}":`,
+        err,
+      );
+    }
   }
 
   if (options.dialog) {
@@ -116,40 +155,103 @@ function fireTrigger(trigger: Trigger): void {
 
 const MAX_RECHECK_DEPTH = 10;
 
+function runCheckLoop(): void {
+  for (let depth = 0; depth < MAX_RECHECK_DEPTH; depth++) {
+    let anyFired = false;
+
+    // Snapshot triggers list — firing may remove `once` triggers
+    const current = [...triggers];
+    for (const trigger of current) {
+      // Skip if removed during this cycle
+      if (!triggers.includes(trigger)) continue;
+
+      const result = evalCondition(trigger.condition);
+      const wasFalse = !trigger.lastResult;
+      trigger.lastResult = result;
+
+      if (result && wasFalse) {
+        anyFired = true;
+
+        if (trigger.options?.once) {
+          triggers = triggers.filter((t) => t.id !== trigger.id);
+        }
+
+        fireTrigger(trigger);
+      }
+    }
+
+    if (!anyFired) break;
+  }
+}
+
 export function checkTriggers(): void {
   if (checking) return;
   checking = true;
 
   try {
-    for (let depth = 0; depth < MAX_RECHECK_DEPTH; depth++) {
-      let anyFired = false;
-
-      // Snapshot triggers list — firing may remove `once` triggers
-      const current = [...triggers];
-      for (const trigger of current) {
-        // Skip if removed during this cycle
-        if (!triggers.includes(trigger)) continue;
-
-        const result = evalCondition(trigger.condition);
-        const wasFalse = !trigger.lastResult;
-        trigger.lastResult = result;
-
-        if (result && wasFalse) {
-          anyFired = true;
-
-          if (trigger.options?.once) {
-            triggers = triggers.filter((t) => t.id !== trigger.id);
-          }
-
-          fireTrigger(trigger);
-        }
-      }
-
-      if (!anyFired) break;
-    }
+    runCheckLoop();
   } finally {
     checking = false;
   }
+}
+
+/** Number of live connectTriggersToStore() subscriptions. */
+let connections = 0;
+
+/**
+ * Check watchers against a navigation that navigate() has just completed.
+ * Called by the store before it records the entered moment, so run actions
+ * become part of that moment. Runs even when the navigation itself came
+ * from a watcher (a check already in progress), since that check started
+ * before the navigation and cannot see it.
+ */
+export function checkTriggersOnNavigation(): void {
+  if (connections === 0) return;
+  const wasChecking = checking;
+  checking = true;
+
+  try {
+    runCheckLoop();
+  } finally {
+    checking = wasChecking;
+  }
+}
+
+/**
+ * Re-evaluate watchers whenever a namespace their conditions can read
+ * ($variables, _temporary, %transient) changes. Navigation is left to the
+ * store: navigate() checks watchers once the new moment is complete
+ * (checkTriggersOnNavigation), while history traversal and loads
+ * reinitialize watcher state instead of firing.
+ */
+export function connectTriggersToStore(): () => void {
+  let prev = useStoryStore.getState();
+  connections++;
+  const unsubscribe = useStoryStore.subscribe((state) => {
+    const before = prev;
+    // Update before checking: run/goto actions re-enter this listener.
+    prev = state;
+
+    if (state.navigationId !== before.navigationId) return;
+
+    if (
+      state.variables === before.variables &&
+      state.temporary === before.temporary &&
+      state.transient === before.transient
+    ) {
+      return;
+    }
+
+    checkTriggers();
+  });
+
+  let connected = true;
+  return () => {
+    if (!connected) return;
+    connected = false;
+    connections--;
+    unsubscribe();
+  };
 }
 
 export function reinitTriggerState(): void {

@@ -6,6 +6,7 @@ import { useStoryStore } from '../../src/store';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 // Ensure PassageDisplay macro is registered
@@ -54,6 +55,9 @@ describe('PassageDisplay transition state machine', () => {
   });
 
   afterEach(() => {
+    act(() => {
+      render(null, container);
+    });
     document.body.removeChild(container);
     vi.useRealTimers();
   });
@@ -296,4 +300,182 @@ describe('PassageDisplay transition state machine', () => {
     expect(passageDiv).not.toBeNull();
     expect(passageDiv!.getAttribute('data-transition')).toBe('none');
   });
+});
+
+describe('PassageDisplay remounts on every navigation', () => {
+  let container: HTMLElement;
+
+  const counter = '{set $x = $x + 1}<span id="result">{$x}</span>';
+
+  function result(): string | null | undefined {
+    return container.querySelector('#result')?.textContent;
+  }
+
+  function settle(): void {
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      render(null, container);
+    });
+    document.body.removeChild(container);
+    useStoryStore.getState().setTransition(null);
+    vi.useRealTimers();
+  });
+
+  it('re-runs the passage when navigating to the same passage', () => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'A', counter)]), { x: 0 });
+    renderPassageMacro(container);
+    expect(result()).toBe('1');
+
+    act(() => {
+      useStoryStore.getState().navigate('A');
+    });
+    settle();
+    expect(useStoryStore.getState().visitCounts.A).toBe(2);
+    expect(result()).toBe('2');
+  });
+
+  it('re-runs the start passage on restart while it is displayed', () => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'A', counter)]), { x: 0 });
+    renderPassageMacro(container);
+    expect(result()).toBe('1');
+
+    act(() => {
+      useStoryStore.getState().restart();
+    });
+    settle();
+    expect(result()).toBe('1');
+    expect(useStoryStore.getState().variables.x).toBe(1);
+  });
+
+  it('re-runs the passage on back/forward between same-name moments', () => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'A', counter)]), { x: 0 });
+    renderPassageMacro(container);
+    act(() => {
+      useStoryStore.getState().navigate('A');
+    });
+    settle();
+    expect(result()).toBe('2');
+
+    act(() => {
+      useStoryStore.getState().goBack();
+    });
+    settle();
+    expect(result()).toBe('1');
+
+    act(() => {
+      useStoryStore.getState().goForward();
+    });
+    settle();
+    expect(result()).toBe('2');
+  });
+
+  it('re-runs the passage when loading a save of the visible passage', () => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'A', counter)]), { x: 0 });
+    renderPassageMacro(container);
+    const payload = useStoryStore.getState().getSavePayload();
+    act(() => {
+      useStoryStore.getState().setVariable('x', 10);
+    });
+    expect(result()).toBe('10');
+
+    act(() => {
+      useStoryStore.getState().loadFromPayload(payload);
+    });
+    settle();
+    // The entry snapshot (x = 0) is restored and the passage runs once more
+    expect(result()).toBe('1');
+  });
+
+  it('runs the passage once when a page refresh restores the session', () => {
+    sessionStorage.clear();
+    const storyData = () =>
+      makeStoryData([
+        makePassage(1, 'S', 'start'),
+        makePassage(2, 'A', counter),
+      ]);
+    useStoryStore.getState().init(storyData(), { x: 0 });
+    renderPassageMacro(container);
+    act(() => {
+      useStoryStore.getState().navigate('A');
+    });
+    settle();
+    expect(result()).toBe('1');
+    // A change made on the passage after entering it is not restored
+    act(() => {
+      useStoryStore.getState().setVariable('x', 10);
+    });
+
+    // Refresh: tear down, re-init, restore the session, render again
+    act(() => {
+      render(null, container);
+    });
+    useStoryStore.getState().init(storyData(), { x: 0 });
+    useStoryStore.getState().loadFromPayload(loadSession('test')!);
+    renderPassageMacro(container);
+    settle();
+    expect(result()).toBe('1');
+  });
+
+  it('re-runs PassageReady when navigating to the same passage', () => {
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([
+          makePassage(1, 'A', 'A'),
+          makePassage(2, 'PassageReady', '{set $ready = $ready + 1}'),
+        ]),
+        { ready: 0 },
+      );
+    renderPassageMacro(container);
+    expect(useStoryStore.getState().variables.ready).toBe(1);
+
+    act(() => {
+      useStoryStore.getState().navigate('A');
+    });
+    settle();
+    expect(useStoryStore.getState().variables.ready).toBe(2);
+  });
+
+  it.each(['fade', 'fade-through', 'crossfade'] as const)(
+    'runs a %s transition when revisiting the same passage',
+    (type) => {
+      useStoryStore
+        .getState()
+        .init(makeStoryData([makePassage(1, 'A', counter)]), { x: 0 });
+      useStoryStore.getState().setTransition({ type, duration: 300 });
+      renderPassageMacro(container);
+
+      act(() => {
+        useStoryStore.getState().navigate('A');
+      });
+      if (type !== 'fade') {
+        expect(container.querySelector('.passage-snapshot')).not.toBeNull();
+      }
+      settle();
+      expect(container.querySelector('.passage-snapshot')).toBeNull();
+      expect(
+        container.querySelector('.passage')!.getAttribute('data-transition'),
+      ).toBe(type);
+      expect(result()).toBe('2');
+    },
+  );
 });

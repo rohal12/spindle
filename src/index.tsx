@@ -10,13 +10,14 @@ import {
 } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { executeStoryInit } from './story-init';
-import { checkTriggers, reinitTriggerState } from './triggers';
+import { connectTriggersToStore } from './triggers';
 import { loadSession } from './saves/save-manager';
 import {
   parseStoryVariables,
   validatePassages,
   extractDefaults,
 } from './story-variables';
+import { getMacroRegistry } from './registry';
 import { tokenize } from './markup/tokenizer';
 import { buildAST, registerBlockMacro } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
@@ -97,7 +98,11 @@ export function boot() {
   }
 
   const schema = parseStoryVariables(storyVarsPassage.content);
-  const errors = validatePassages(storyData.passages, schema);
+  // Include input macros registered by author JS, which ran above.
+  const storeVarMacros = getMacroRegistry()
+    .filter((m) => m.storeVar)
+    .map((m) => m.name);
+  const errors = validatePassages(storyData.passages, schema, storeVarMacros);
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
@@ -194,29 +199,18 @@ export function boot() {
     }
   }
 
-  // Reset action ID counters on passage change
-  let prevPassage = '';
+  // Reset action ID counters on every navigation (the passage remounts even
+  // when its name is unchanged)
+  let prevNavigationId = useStoryStore.getState().navigationId;
   useStoryStore.subscribe((state) => {
-    if (state.currentPassage !== prevPassage) {
-      prevPassage = state.currentPassage;
+    if (state.navigationId !== prevNavigationId) {
+      prevNavigationId = state.navigationId;
       resetIdCounters();
     }
   });
 
   // Wire up trigger system: check triggers on variable mutations, reinit on history nav/load
-  let prevVars = useStoryStore.getState().variables;
-  let prevHistoryIndex = useStoryStore.getState().historyIndex;
-  useStoryStore.subscribe((state) => {
-    if (state.variables !== prevVars) {
-      if (state.historyIndex === prevHistoryIndex) {
-        checkTriggers();
-      } else {
-        reinitTriggerState();
-      }
-    }
-    prevVars = state.variables;
-    prevHistoryIndex = state.historyIndex;
-  });
+  connectTriggersToStore();
 
   // Warn if StoryInterface passage exists but doesn't contain {passage}
   const storyInterfacePassage = storyData.passages.get('StoryInterface');

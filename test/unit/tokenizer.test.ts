@@ -1058,3 +1058,192 @@ describe('tokenize', () => {
     });
   });
 });
+
+describe('tokenize — braces inside quoted strings (#169)', () => {
+  it('keeps a } inside a double-quoted macro argument', () => {
+    const tokens = tokenize('{set $x = "}"}Value: {$x}');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      name: 'set',
+      rawArgs: '$x = "}"',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'Value: ' });
+    expect(tokens[2]).toMatchObject({ type: 'variable', name: 'x' });
+  });
+
+  it('keeps a { inside a single-quoted macro argument', () => {
+    const tokens = tokenize("{set $x = '{'}after");
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "$x = '{'" });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('handles escaped quotes inside strings', () => {
+    const tokens = tokenize('{set $x = "a\\"}"}after');
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: '$x = "a\\"}"' });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside template literals, including ${} parts', () => {
+    const tokens = tokenize('{set $x = `}${"}" + `{`}{`}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      rawArgs: '$x = `}${"}" + `{`}{`',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in selector-prefixed macros', () => {
+    const tokens = tokenize('{.c set $x = "}"}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'macro',
+      className: 'c',
+      rawArgs: '$x = "}"',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it.each([
+    ['{$x + "}"}', '$x + "}"'],
+    ["{_x + '{'}", "_x + '{'"],
+    ['{@x + `}`}', '@x + `}`'],
+    ['{%x + "{"}', '%x + "{"'],
+  ])('keeps braces inside strings in expression display %s', (src, expr) => {
+    const tokens = tokenize(src + 'after');
+    expect(tokens[0]).toMatchObject({ type: 'expression', expression: expr });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in selector-prefixed expressions', () => {
+    const tokens = tokenize('{.c $x + "}"}after');
+    expect(tokens[0]).toMatchObject({
+      type: 'expression',
+      expression: '$x + "}"',
+      className: 'c',
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+
+  it('keeps braces inside strings in HTML attribute interpolation', () => {
+    const tokens = tokenize(`<span title='{"{" + $x}'>t</span>`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag: 'span',
+      attributes: { title: '{"{" + $x}' },
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 't' });
+  });
+
+  it('does not treat prose apostrophes as strings', () => {
+    const tokens = tokenize("{if $x}don't{/if} and 'quoted' {$y}");
+    expect(tokens.map((t) => t.type)).toEqual([
+      'macro',
+      'text',
+      'macro',
+      'text',
+      'variable',
+    ]);
+  });
+
+  it('does not treat apostrophes inside unquoted macro args as strings', () => {
+    const tokens = tokenize("{goto Bob's room} and {goto Al's}");
+    expect(tokens).toHaveLength(3);
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "Bob's room" });
+    expect(tokens[2]).toMatchObject({ type: 'macro', rawArgs: "Al's" });
+  });
+
+  it('treats a quote not closed on the same line as a plain character', () => {
+    const tokens = tokenize("{print ' + $x}\nmore '");
+    expect(tokens[0]).toMatchObject({ type: 'macro', rawArgs: "' + $x" });
+  });
+});
+
+describe('tokenize — HTML void elements (#170)', () => {
+  const VOID = [
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ];
+
+  it.each(VOID)('treats <%s> as self-closing', (tag) => {
+    const tokens = tokenize(`<${tag} class="x">after`);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag,
+      isClose: false,
+      isSelfClose: true,
+    });
+  });
+
+  it.each(VOID)('drops a redundant </%s> closing tag', (tag) => {
+    const tokens = tokenize(`<${tag}></${tag}>after`);
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toMatchObject({ type: 'html', isSelfClose: true });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'after' });
+  });
+});
+
+describe('tokenize — raw {do} bodies (#176)', () => {
+  it('keeps a compact object literal as text', () => {
+    const tokens = tokenize('{do}const obj={foo:1}; $x=obj.foo;{/do}after');
+    expect(tokens).toEqual([
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        isClose: false,
+        start: 0,
+        end: 4,
+      },
+      {
+        type: 'text',
+        value: 'const obj={foo:1}; $x=obj.foo;',
+        start: 4,
+        end: 34,
+      },
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        isClose: true,
+        start: 34,
+        end: 39,
+      },
+      { type: 'text', value: 'after', start: 39, end: 44 },
+    ]);
+  });
+
+  it('keeps HTML, macros, links and escapes in strings untouched', () => {
+    const body = 'if(a<b){$s="<b>{x}</b> [[L]] {$y} \\{"}';
+    const tokens = tokenize(`{DO}${body}{/Do}`);
+    expect(tokens).toHaveLength(3);
+    expect(tokens[1]).toMatchObject({ type: 'text', value: body });
+    expect(tokens[2]).toMatchObject({ type: 'macro', isClose: true });
+  });
+
+  it('handles selector-prefixed {do}', () => {
+    const tokens = tokenize('{.c do}x={a:1}{/do}');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'text', 'macro']);
+    expect(tokens[1]).toMatchObject({ value: 'x={a:1}' });
+  });
+
+  it('produces no text token for an empty body', () => {
+    const tokens = tokenize('{do}{/do}');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'macro']);
+  });
+
+  it('leaves an unclosed {do} to the AST builder', () => {
+    const tokens = tokenize('{do}x = 1');
+    expect(tokens.map((t) => t.type)).toEqual(['macro', 'text']);
+  });
+});

@@ -87,7 +87,9 @@ $character = { strength: 5, dexterity: 5, intelligence: 5, name: "Adventurer", a
 
 These defaults are applied before `StoryInit` runs and are restored on restart.
 
-When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable produces a console warning, helping catch typos early.
+When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early.
+
+Only real references are checked: `{$var}` displays, macro arguments, `{do}` bodies, and `{$var}` interpolations inside strings and HTML attributes. A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
 
 ## Dot Notation
 

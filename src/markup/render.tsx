@@ -124,6 +124,43 @@ const INLINE_ELEMENTS = new Set([
   'wbr',
 ]);
 
+/**
+ * HTML boolean attributes. Their presence means "on", but a parsed bare or
+ * `=""` attribute has the value '', which Preact would assign to the DOM
+ * property as a falsy value — so present ones are passed as `true` (#177).
+ */
+const BOOLEAN_ATTRIBUTES = new Set([
+  'allowfullscreen',
+  'async',
+  'autofocus',
+  'autoplay',
+  'checked',
+  'controls',
+  'default',
+  'defer',
+  'disabled',
+  'formnovalidate',
+  'hidden',
+  'inert',
+  'ismap',
+  'itemscope',
+  'loop',
+  'multiple',
+  'muted',
+  'nomodule',
+  'novalidate',
+  'open',
+  'playsinline',
+  'readonly',
+  'required',
+  'reversed',
+  'selected',
+]);
+
+function isPresentBooleanAttribute(name: string, value: string): boolean {
+  return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+}
+
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const resolve = useInterpolate();
   const nobr = useContext(NobrContext);
@@ -131,7 +168,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const inSvg = useContext(SvgContext);
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = resolve(v) ?? v;
+    attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
   }
   const isSvgRoot = node.tag.toLowerCase() === 'svg';
   const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
@@ -161,7 +198,26 @@ function ChildrenSlot() {
   return <>{renderNodes(childrenAST, { nobr, locals })}</>;
 }
 
-function renderMacro(node: MacroNode, key: number) {
+/**
+ * Stable per-node keys. Keying rendered children by AST node identity (not
+ * by position) makes Preact remount components when different content
+ * occupies the same slot — e.g. when an {if}/{switch} branch or an included
+ * passage changes — so mount-only macros like {set} and {do} run for the new
+ * content, while re-rendering the same AST keeps existing instances (#175).
+ */
+const nodeKeys = new WeakMap<ASTNode, string>();
+let nextNodeKey = 0;
+
+function nodeKey(node: ASTNode): string {
+  let key = nodeKeys.get(node);
+  if (key === undefined) {
+    key = `n${nextNodeKey++}`;
+    nodeKeys.set(node, key);
+  }
+  return key;
+}
+
+function renderMacro(node: MacroNode, key: string) {
   if (isSubMacro(node.name)) return null;
 
   const widget = getWidget(node.name);
@@ -204,14 +260,10 @@ function renderMacro(node: MacroNode, key: number) {
 /**
  * Render a non-text AST node to a Preact element.
  */
-function renderSingleNode(
-  node: ASTNode,
-  key: number,
-): preact.ComponentChildren {
+function renderSingleNode(node: ASTNode): preact.ComponentChildren {
+  if (node.type === 'text') return node.value;
+  const key = nodeKey(node);
   switch (node.type) {
-    case 'text':
-      return node.value;
-
     case 'variable':
       if (node.scope === 'local' && node.name === 'children') {
         return <ChildrenSlot key={key} />;
@@ -261,7 +313,7 @@ function renderSingleNode(
  */
 export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
   if (nodes.length === 0) return null;
-  return nodes.map((node, i) => renderSingleNode(node, i));
+  return nodes.map((node) => renderSingleNode(node));
 }
 
 function hasUnclosedBacktick(s: string): boolean {
@@ -298,8 +350,11 @@ function getVariableTextValue(
  * Characters/patterns that trigger CommonMark or GFM transformations.
  * Any match → fall through to the full micromark pipeline.
  * False positives (e.g. `-` used as text, not list) just use the slower path.
+ * Includes character references (`&amp;`, `&#123;`) and two-space hard line
+ * breaks, which micromark decodes / turns into <br> (#171).
  */
-const MARKDOWN_SYNTAX_RE = /[*_`#|~\[>\\\-+=]|!\[|\d+\./;
+const MARKDOWN_SYNTAX_RE =
+  /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
 const BLANK_LINE_RE = /\n\s*\n/;
 const PLACEHOLDER_SPLIT_RE = /(<span data-tw="\d+"><\/span>)/;
 const PLACEHOLDER_IDX_RE = /^<span data-tw="(\d+)"><\/span>$/;
@@ -358,7 +413,7 @@ export function renderNodes(
       n.type === 'text' && (n.value.trim() !== '' || /\n\s*\n/.test(n.value)),
   );
   if (!needsMarkdown) {
-    return nodes.map((node, i) => renderSingleNode(node, i));
+    return nodes.map((node) => renderSingleNode(node));
   }
 
   // Build combined markdown string with placeholders for non-text nodes
@@ -375,7 +430,7 @@ export function renderNodes(
       combined += getVariableTextValue(node, locals);
     } else {
       const phIdx = components.length;
-      components.push(renderSingleNode(node, i));
+      components.push(renderSingleNode(node));
       combined += `<span data-tw="${phIdx}"></span>`;
     }
   }

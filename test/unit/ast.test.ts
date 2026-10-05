@@ -5,6 +5,7 @@ import {
   registerBlockMacro,
   unregisterBlockMacro,
   type ASTNode,
+  type HtmlNode,
   type MacroNode,
 } from '../../src/markup/ast';
 
@@ -719,5 +720,69 @@ describe('buildAST', () => {
         'switch',
       ]);
     });
+  });
+});
+
+describe('buildAST — HTML void elements (#170)', () => {
+  const VOID = [
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ];
+
+  it.each(VOID)('parses <%s> without a closing tag', (tag) => {
+    expect(parse(`<${tag}>`)).toEqual([
+      { type: 'html', tag, attributes: {}, children: [] },
+    ]);
+  });
+
+  it.each(VOID)('parses <%s> inside a container', (tag) => {
+    const ast = parse(`<div><${tag} class="x"><span>After</span></div>`);
+    expect(ast).toHaveLength(1);
+    const div = ast[0] as HtmlNode;
+    expect(div.children.map((n) => (n as HtmlNode).tag)).toEqual([tag, 'span']);
+  });
+
+  it('parses <input type="text"><span>After</span> (issue repro)', () => {
+    const ast = parse('<input type="text"><span>After</span>');
+    expect(ast.map((n) => (n as HtmlNode).tag)).toEqual(['input', 'span']);
+  });
+
+  it('still accepts the explicit closing-tag form', () => {
+    const ast = parse(
+      '<video><source src="a.mp4"></source><track src="a.vtt"></track></video>',
+    );
+    const video = ast[0] as HtmlNode;
+    expect(video.children.map((n) => (n as HtmlNode).tag)).toEqual([
+      'source',
+      'track',
+    ]);
+  });
+});
+
+describe('buildAST — raw {do} bodies (#176)', () => {
+  it('gives {do} a single text child with the source verbatim', () => {
+    const ast = parse('{do}const o={foo:1}; if(a<b){f("<b>{x}</b>")}{/do}');
+    expect(ast).toEqual([
+      {
+        type: 'macro',
+        name: 'do',
+        rawArgs: '',
+        children: [
+          { type: 'text', value: 'const o={foo:1}; if(a<b){f("<b>{x}</b>")}' },
+        ],
+      },
+    ]);
   });
 });

@@ -17,12 +17,17 @@ import type {
 import { isSaveExport } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { emit } from './event-emitter';
-import { resetTriggers } from './triggers';
+import {
+  resetTriggers,
+  checkTriggersOnNavigation,
+  reinitTriggerState,
+} from './triggers';
 import {
   initSaveSystem,
   startNewPlaythrough,
   getCurrentPlaythroughId,
   quickSave,
+  saveWithHooks,
   loadQuickSave,
   populateKnownSaves,
   getSlotSaveInfo,
@@ -36,7 +41,7 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { deepClone, serialize, deserialize } from './class-registry';
+import { deepClone, serialize } from './class-registry';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -106,6 +111,19 @@ function computeVarPatches(
   return { forward: clonePatches(forward), inverse: clonePatches(inverse) };
 }
 
+/**
+ * Replace the variable snapshot recorded for the newest history moment
+ * (e.g. with changes made by watchers reacting to the navigation into it).
+ */
+function rerecordNewestMoment(vars: Record<string, unknown>): void {
+  const last = patchEntries.length - 1;
+  if (last < 0) {
+    variableBase = vars;
+  } else {
+    patchEntries[last] = computeVarPatches(reconstructVarsAt(last), vars);
+  }
+}
+
 /** Reconstruct variables at a given history moment by replaying patches. */
 function reconstructVarsAt(index: number): Record<string, unknown> {
   let vars: Record<string, unknown> = variableBase;
@@ -133,7 +151,8 @@ function persistSession(get: () => StoryState): void {
   } = get();
   if (!storyData) return;
 
-  // Trim cache when history was truncated (goBack then navigate)
+  // Trim cache when history shrank (navigate() drops discarded forward
+  // moments itself, since a replacement branch may keep the same length)
   if (serializedHistory.length > history.length) {
     serializedHistory.length = history.length;
   }
@@ -156,10 +175,9 @@ function persistSession(get: () => StoryState): void {
       for (let i = 0; i < history.length; i++) {
         if (i > 0) vars = applyPatches(vars, patchEntries[i - 1]!.forward);
         if (i >= serializedHistory.length) {
-          const v = i === history.length - 1 ? variables : vars;
           serializedHistory[i] = {
             passage: history[i]!.passage,
-            variables: serialize(v),
+            variables: serialize(vars),
             timestamp: history[i]!.timestamp,
             prng: history[i]!.prng,
           };
@@ -179,12 +197,39 @@ function persistSession(get: () => StoryState): void {
   });
 }
 
+/** True while navigate() lets watchers react to the moment it entered. */
+let navigationTriggerPhase = false;
+
+/** Navigations requested during the trigger phase, run once it is over. */
+let deferredNavigations: string[] = [];
+
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
 function resetModuleState(base: Record<string, unknown>): void {
   variableBase = base;
   patchEntries = [];
   lastNavigationVars = base;
   serializedHistory = [];
+}
+
+/**
+ * Record the state StoryInit left behind as the start moment: its variable
+ * snapshot (the history base) and PRNG state. Called by executeStoryInit()
+ * after the StoryInit passage has rendered; init()/restart() record the
+ * start moment before StoryInit runs. A no-op once the story has moved on.
+ */
+export function recordStoryInitState(): void {
+  const { history, historyIndex, variables } = useStoryStore.getState();
+  if (history.length !== 1 || historyIndex !== 0) return;
+
+  variableBase = variables;
+  patchEntries = [];
+  lastNavigationVars = variables;
+  serializedHistory = [];
+
+  const prng = snapshotPRNG();
+  useStoryStore.setState((state) => {
+    state.history[0]!.prng = prng;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +276,25 @@ function normalizeHotkey(key: unknown): string | null {
   return typeof key === 'string' && key !== '' ? key : null;
 }
 
+/**
+ * The history moment whose entry snapshot a load restores: the moment at
+ * `historyIndex`, provided it is in range and belongs to the saved passage.
+ * Otherwise (malformed or foreign payloads) the load falls back to the
+ * payload's live variables.
+ */
+function loadedEntryMoment(
+  payload: SavePayload,
+): SaveHistoryMoment | undefined {
+  const { history, historyIndex } = payload;
+  if (!Number.isInteger(historyIndex)) return undefined;
+  const moment = history[historyIndex];
+  if (!moment || moment.passage !== payload.passage) return undefined;
+  if (typeof moment.variables !== 'object' || moment.variables === null) {
+    return undefined;
+  }
+  return moment;
+}
+
 /** Restore or reset PRNG from a history moment's snapshot. */
 function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
   if (moment?.prng) {
@@ -246,9 +310,21 @@ export interface HistoryMoment {
   prng?: PRNGSnapshot | null;
 }
 
+/** The variable namespaces watch conditions and mutations can touch. */
+export interface VariableNamespaces {
+  variables: Record<string, unknown>;
+  temporary: Record<string, unknown>;
+  transient: Record<string, unknown>;
+}
+
 export interface StoryState {
   storyData: StoryData | null;
   currentPassage: string;
+  /**
+   * Incremented on every navigation (navigate, back, forward, restart, load)
+   * so the passage display can remount even when the passage name is unchanged.
+   */
+  navigationId: number;
   variables: Record<string, unknown>;
   variableDefaults: Record<string, unknown>;
   transient: Record<string, unknown>;
@@ -287,6 +363,11 @@ export interface StoryState {
   deleteTemporary: (name: string) => void;
   setTransient: (name: string, value: unknown) => void;
   deleteTransient: (name: string) => void;
+  /**
+   * Apply changes to several variables as one store update, so subscribers
+   * (watchers, components) see them together instead of half-applied.
+   */
+  updateVariables: (recipe: (draft: VariableNamespaces) => void) => void;
   trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string, custom?: Record<string, unknown>) => void;
@@ -301,7 +382,11 @@ export interface StoryState {
   clearAllData: () => void;
   deletePlaythrough: (playthroughId: string) => void;
   getSavePayload: () => SavePayload;
-  loadFromPayload: (payload: SavePayload) => void;
+  /**
+   * Replace the game state with a live (deserialized) payload. `slot` is
+   * passed to the `beforeload`/`afterload` events.
+   */
+  loadFromPayload: (payload: SavePayload, slot?: string) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
@@ -314,6 +399,7 @@ export const useStoryStore = create<StoryState>()(
   immer((set, get) => ({
     storyData: null,
     currentPassage: '',
+    navigationId: 0,
     variables: {},
     variableDefaults: {},
     transient: {},
@@ -371,6 +457,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.storyData = storyData as StoryData;
         state.currentPassage = startPassage.name;
+        state.navigationId++;
         state.variables = initialVars;
         state.variableDefaults = variableDefaults;
         state.transient = deepClone(transientDefaults);
@@ -420,7 +507,14 @@ export const useStoryStore = create<StoryState>()(
     },
 
     navigate: (passageName: string) => {
-      const { storyData, variables: currVars } = get();
+      // A watcher (goto action or callback) reacting to a navigation must not
+      // start another one before the first has recorded its moment.
+      if (navigationTriggerPhase) {
+        deferredNavigations.push(passageName);
+        return;
+      }
+
+      const { storyData } = get();
       if (!storyData) return;
 
       if (SPECIAL_PASSAGES.has(passageName)) {
@@ -438,16 +532,21 @@ export const useStoryStore = create<StoryState>()(
       const previousPassage = get().currentPassage;
       emit('beforenavigate', passageName);
 
-      // Compute variable delta before Immer set()
-      const patchEntry = computeVarPatches(lastNavigationVars, currVars);
+      // Compute variable delta before Immer set(). Read the variables after
+      // beforenavigate so changes made by its handlers are recorded.
+      const patchEntry = computeVarPatches(lastNavigationVars, get().variables);
 
       set((state) => {
         state.temporary = {};
         state.currentPassage = passageName;
+        state.navigationId++;
 
         // Truncate forward history if we navigated back then chose a new path
         state.history = state.history.slice(0, state.historyIndex + 1);
         patchEntries.length = state.historyIndex;
+        if (serializedHistory.length > state.historyIndex + 1) {
+          serializedHistory.length = state.historyIndex + 1;
+        }
 
         // Push new transition and moment
         patchEntries.push(patchEntry);
@@ -476,32 +575,59 @@ export const useStoryStore = create<StoryState>()(
           (state.renderCounts[passageName] ?? 0) + 1;
       });
 
+      // Watchers react to the completed transition (visit counts, cleared
+      // temporaries). Like beforenavigate changes, their run actions belong
+      // to the entered moment; navigations they request run afterwards.
+      const enteredVars = get().variables;
+      navigationTriggerPhase = true;
+      try {
+        checkTriggersOnNavigation();
+      } finally {
+        navigationTriggerPhase = false;
+      }
+      const deferred = deferredNavigations;
+      deferredNavigations = [];
+      if (get().variables !== enteredVars) {
+        rerecordNewestMoment(get().variables);
+      }
+      const prng = snapshotPRNG();
+      const recorded = get().history[get().historyIndex]!.prng;
+      if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
+        set((state) => {
+          state.history[state.historyIndex]!.prng = prng;
+        });
+      }
+
       lastNavigationVars = get().variables;
       persistSession(get);
 
       emit('afternavigate', passageName, previousPassage);
+
+      for (const next of deferred) get().navigate(next);
     },
 
     goBack: () => {
-      const { historyIndex, variables } = get();
+      const { historyIndex } = get();
       if (historyIndex <= 0) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = get().history[historyIndex - 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply inverse transition: moment historyIndex → historyIndex−1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex - 1]!.inverse),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex - 1));
 
       set((state) => {
         state.historyIndex--;
         state.currentPassage = state.history[state.historyIndex]!.passage;
+        state.navigationId++;
         state.variables = restoredVars;
         state.temporary = {};
       });
 
+      // Restored state is not a change watchers react to
+      reinitTriggerState();
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
@@ -510,25 +636,27 @@ export const useStoryStore = create<StoryState>()(
     },
 
     goForward: () => {
-      const { historyIndex, history: hist, variables } = get();
+      const { historyIndex, history: hist } = get();
       if (historyIndex >= hist.length - 1) return;
 
       const previousPassage = get().currentPassage;
       const targetPassage = hist[historyIndex + 1]!.passage;
       emit('beforenavigate', targetPassage);
 
-      // Apply forward transition: moment historyIndex → historyIndex+1
-      const restoredVars = deepClone(
-        applyPatches(variables, patchEntries[historyIndex]!.forward),
-      );
+      // Restore the recorded snapshot; live variables may hold edits made
+      // since the current moment was recorded.
+      const restoredVars = deepClone(reconstructVarsAt(historyIndex + 1));
 
       set((state) => {
         state.historyIndex++;
         state.currentPassage = state.history[state.historyIndex]!.passage;
+        state.navigationId++;
         state.variables = restoredVars;
         state.temporary = {};
       });
 
+      // Restored state is not a change watchers react to
+      reinitTriggerState();
       lastNavigationVars = get().variables;
       restorePRNGFromMoment(get().history[get().historyIndex]);
       persistSession(get);
@@ -572,6 +700,12 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
+    updateVariables: (recipe: (draft: VariableNamespaces) => void) => {
+      set((state) => {
+        recipe(state);
+      });
+    },
+
     trackRender: (passageName: string) => {
       set((state) => {
         state.renderCounts[passageName] =
@@ -606,6 +740,7 @@ export const useStoryStore = create<StoryState>()(
 
       set((state) => {
         state.currentPassage = startPassage.name;
+        state.navigationId++;
         state.variables = initialVars;
         state.transient = deepClone(transientDefaults);
         state.temporary = {};
@@ -648,30 +783,29 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, playthroughId } = get();
       if (!storyData) return;
 
-      emit('beforesave', slot, custom);
-
-      const payload = get().getSavePayload();
-
-      set((state) => {
-        state.saveError = null;
-      });
-      quickSave(storyData.ifid, playthroughId, payload, slot, custom)
-        .then(() => {
+      saveWithHooks(
+        slot,
+        custom,
+        () => get().getSavePayload(),
+        async (payload) => {
+          set((state) => {
+            state.saveError = null;
+          });
+          await quickSave(storyData.ifid, playthroughId, payload, slot, custom);
           set((state) => {
             state.knownSaves = {
               ...state.knownSaves,
               [slot ?? '']: true,
             };
           });
-          emit('aftersave', slot);
-        })
-        .catch((err) => {
-          console.error('spindle: failed to save', err);
-          set((state) => {
-            state.saveError =
-              err instanceof Error ? err.message : 'Failed to save';
-          });
+        },
+      ).catch((err) => {
+        console.error('spindle: failed to save', err);
+        set((state) => {
+          state.saveError =
+            err instanceof Error ? err.message : 'Failed to save';
         });
+      });
     },
 
     load: (slot?: string) => {
@@ -684,7 +818,7 @@ export const useStoryStore = create<StoryState>()(
       loadQuickSave(storyData.ifid, slot)
         .then((payload) => {
           if (!payload) return;
-          get().loadFromPayload(payload);
+          get().loadFromPayload(payload, slot);
         })
         .catch((err) => {
           console.error('spindle: failed to load save', err);
@@ -832,41 +966,49 @@ export const useStoryStore = create<StoryState>()(
       };
     },
 
-    loadFromPayload: (payload: SavePayload) => {
+    loadFromPayload: (payload: SavePayload, slot?: string) => {
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
 
-      emit('beforeload', undefined);
+      emit('beforeload', slot);
 
+      // Restore the state on entering the saved passage, not the payload's
+      // live variables: the passage remounts and runs its {set}/{do} again,
+      // so restoring their results as well would apply them twice. Changes
+      // made after entering it (input, clicks) are not restored, as with
+      // back/forward.
+      const entry = loadedEntryMoment(payload);
+
+      // The payload is already live (deserialized at the storage boundary by
+      // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
-      const base = deserialize(payload.history[0]?.variables ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const base = deepClone(payload.history[0]?.variables ?? {});
       const newPatchEntries: PatchEntry[] = [];
 
       let prevVars: Record<string, unknown> = base;
       for (let i = 1; i < payload.history.length; i++) {
-        const currVars = deserialize(payload.history[i]!.variables) as Record<
-          string,
-          unknown
-        >;
+        const currVars = deepClone(payload.history[i]!.variables);
         newPatchEntries.push(computeVarPatches(prevVars, currVars));
         prevVars = currVars;
       }
 
       variableBase = deepClone(base);
       patchEntries = newPatchEntries;
-      serializedHistory = [];
+      // Seed the session cache from the payload's own snapshots, so
+      // persistSession does not rebuild them from the live variables.
+      serializedHistory = payload.history.map((m) => ({
+        passage: m.passage,
+        variables: serialize(m.variables),
+        timestamp: m.timestamp,
+        prng: m.prng,
+      }));
 
       set((state) => {
         state.currentPassage = payload.passage;
-        state.variables = deserialize(payload.variables) as Record<
-          string,
-          unknown
-        >;
+        state.navigationId++;
+        state.variables = deepClone(entry?.variables ?? payload.variables);
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
@@ -882,15 +1024,26 @@ export const useStoryStore = create<StoryState>()(
         state.transient = deepClone(get().transientDefaults);
       });
 
-      lastNavigationVars = get().variables;
+      // Loaded state is not a change watchers react to
+      reinitTriggerState();
 
-      if (payload.prng) {
-        restorePRNG(payload.prng.seed, payload.prng.pull);
+      // The next navigate() diffs from the snapshot recorded for the current
+      // moment (the live variables, unless the load fell back to them)
+      lastNavigationVars = reconstructVarsAt(get().historyIndex);
+
+      // Replay the passage's random rolls from its entry PRNG state; saves
+      // whose moments predate PRNG snapshots use the payload's.
+      const prng = entry?.prng !== undefined ? entry.prng : payload.prng;
+      if (prng) {
+        restorePRNG(prng.seed, prng.pull);
       } else {
         resetPRNG();
       }
 
-      emit('afterload', undefined);
+      // Write the loaded game to the session so a refresh restores it
+      persistSession(get);
+
+      emit('afterload', slot);
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {

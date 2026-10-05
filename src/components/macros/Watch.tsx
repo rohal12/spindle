@@ -1,5 +1,5 @@
 import { defineMacro } from '../../define-macro';
-import { addTrigger, removeTrigger } from '../../triggers';
+import { addMacroTrigger, removeTrigger } from '../../triggers';
 import type { WatchOptions } from '../../triggers';
 
 defineMacro({
@@ -48,10 +48,11 @@ defineMacro({
 
     // Register during render (like {set}) — triggers survive navigation
     // and are cleaned up via resetTriggers() on restart or {unwatch}.
+    // Remounts (revisits, re-rendered branches) keep the registered watcher.
     const registered = hooks.useRef(false);
     if (!registered.current) {
       registered.current = true;
-      addTrigger(condition, options);
+      addMacroTrigger(condition, options);
     }
 
     return null;

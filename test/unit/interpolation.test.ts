@@ -162,3 +162,19 @@ describe('interpolateExpression', () => {
     expect(interpolateExpression('$missing', {}, {}, {})).toBe('');
   });
 });
+
+describe('interpolate — braces inside strings (#169)', () => {
+  it('handles } inside a double-quoted string', () => {
+    expect(interpolate('[{$x + "}"}]', { x: 'a' }, {}, {})).toBe('[a}]');
+  });
+
+  it('handles { inside a single-quoted string', () => {
+    expect(interpolate("[{$x + '{'}]", { x: 'a' }, {}, {})).toBe('[a{]');
+  });
+
+  it('handles braces inside template literals', () => {
+    expect(interpolate('[{$x + `}${$x}{`}]', { x: 'a' }, {}, {})).toBe(
+      '[a}a{]',
+    );
+  });
+});
