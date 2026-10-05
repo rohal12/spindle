@@ -419,18 +419,25 @@ const MARKDOWN_SYNTAX_RE =
 const BLANK_LINE_RE = /\n\s*\n/;
 const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
 
+/** Whitespace that markdown strips at the start and end of a paragraph. */
+const LEADING_WS_RE = /^[ \t\r\n]*/;
+const TRAILING_WS_RE = /[ \t\r\n]*$/;
+
 /**
  * Build Preact vnodes from a combined string that contains only plain text
- * and placeholders. No micromark, no innerHTML.
+ * and placeholders. No micromark, no innerHTML. The text is the content of
+ * one paragraph, so like micromark it drops spaces and tabs around line
+ * endings; its edges are already split off by the caller.
  */
 function buildPlainTextVnodes(
-  combined: string,
+  core: string,
   ph: Placeholders,
   unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
-  const children = expandPlaceholderText(combined, ph).filter(
-    (part) => part !== '',
-  );
+  const children = expandPlaceholderText(
+    core.replace(/[ \t]*\n[ \t]*/g, '\n'),
+    ph,
+  ).filter((part) => part !== '');
   return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
 }
 
@@ -498,14 +505,33 @@ export function renderNodes(
   // produce the same text they started with (issue #145).
   // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
   const unwrapParagraphs = !!(options?.nobr || options?.inline);
+
+  // Markdown strips whitespace at paragraph edges. Without <p> wrappers that
+  // whitespace separates this content from its neighbours (as in
+  // `<span>*HP*: </span>{$hp}`), so it is kept around the output there.
+  const lead = LEADING_WS_RE.exec(combined)![0];
+  const trail =
+    lead.length === combined.length ? '' : TRAILING_WS_RE.exec(combined)![0];
+  const core = combined.slice(lead.length, combined.length - trail.length);
+  const edges = (content: preact.ComponentChildren) =>
+    unwrapParagraphs && (lead || trail) ? (
+      <>
+        {lead}
+        {content}
+        {trail}
+      </>
+    ) : (
+      content
+    );
+
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, ph, unwrapParagraphs);
+    return edges(buildPlainTextVnodes(core, ph, unwrapParagraphs));
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, ph, unwrapParagraphs);
+  return edges(htmlToPreact(html, ph, unwrapParagraphs));
 }
