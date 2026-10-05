@@ -42,6 +42,8 @@ export function renderPassageContent(passage: PassageData) {
 interface PassageProps {
   passage: PassageData;
   dataTransition?: string;
+  /** The navigation this passage displays; omitted for placeholders. */
+  navigationId?: number;
 }
 
 const CODE_PASSAGES = new Set([
@@ -51,7 +53,11 @@ const CODE_PASSAGES = new Set([
   'PassageDone',
 ]);
 
-export function Passage({ passage, dataTransition }: PassageProps) {
+export function Passage({
+  passage,
+  dataTransition,
+  navigationId,
+}: PassageProps) {
   const storyData = useStoryStore((s) => s.storyData);
   const isCodePassage = CODE_PASSAGES.has(passage.name);
   const [doneReady, setDoneReady] = useState(false);
@@ -121,11 +127,11 @@ export function Passage({ passage, dataTransition }: PassageProps) {
   // Passage so every navigation that shows a passage mounts a new one.
   const elRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    markPassageRendered(passage.name);
+    if (navigationId !== undefined) markPassageRendered(navigationId);
     if (elRef.current) {
       emitFromRender('passagerender', passage.name, elRef.current);
     }
-  }, [passage.name]);
+  }, [passage.name, navigationId]);
 
   const nobr = passage.tags.includes('nobr');
 
