@@ -356,7 +356,16 @@ const valueArb: fc.Arbitrary<unknown> = fc.oneof(
   fc.boolean(),
   fc.constant(null),
   fc.array(fc.integer(), { maxLength: 3 }),
-  fc.record({ k: fc.integer(), deep: fc.record({ v: fc.string() }) }),
+  // Story variables come from StoryVariables and story code as plain objects;
+  // null-prototype values are covered by test/property/serialization.test.ts.
+  // The model copies with structuredClone, which would drop a null prototype.
+  fc.record(
+    {
+      k: fc.integer(),
+      deep: fc.record({ v: fc.string() }, { noNullPrototype: true }),
+    },
+    { noNullPrototype: true },
+  ),
 );
 
 const simpleCommands: fc.Arbitrary<Cmd>[] = [
@@ -433,7 +442,10 @@ describe('history model', () => {
       fc.assert(
         fc.property(
           fc.integer({ min: 1, max: 6 }),
-          fc.record({ x: fc.integer({ min: 0, max: 9 }), y: valueArb }),
+          fc.record(
+            { x: fc.integer({ min: 0, max: 9 }), y: valueArb },
+            { noNullPrototype: true },
+          ),
           allCommands,
           (maxHistory, defaults, cmds) => {
             sessionStorage.clear();
