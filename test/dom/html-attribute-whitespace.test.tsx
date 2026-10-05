@@ -110,3 +110,84 @@ describe('character references in attribute values', () => {
     expect(el.querySelector('span')!.getAttribute('title')).toBe('{$name} &');
   });
 });
+
+// Found by property testing: author attributes went through Preact (and
+// preact/compat) as props, which read some names as something else.
+describe('author attribute names', () => {
+  beforeEach(() => {
+    useStoryStore.getState().init(makeStoryData());
+    useStoryStore.getState().setVariable('name', 'Hero');
+  });
+
+  it.each([
+    // Preact assigned these DOM properties, where "false" counts as true
+    ['<span draggable="false">x</span>', 'draggable', 'false'],
+    ['<span spellcheck="false">x</span>', 'spellcheck', 'false'],
+    // preact/compat removed translate="no" and an empty class
+    ['<span translate="no">x</span>', 'translate', 'no'],
+    ['<span class>x</span>', 'class', ''],
+    // Preact consumed these props
+    ['<div key="k">x</div>', 'key', 'k'],
+    ['<div children="c">x</div>', 'children', 'c'],
+    ['<div className="c">x</div>', 'classname', 'c'],
+    // setAttribute rejects the name; the HTML parser accepts it
+    ['<div @click="go()">x</div>', '@click', 'go()'],
+    ['<div :value="v">x</div>', ':value', 'v'],
+  ])('%s keeps the attribute as written', (markup, name, value) => {
+    const el = renderMarkup(markup);
+    expect(el.querySelector('.error')).toBeNull();
+    expect(el.firstElementChild!.getAttribute(name)).toBe(value);
+  });
+
+  it('renders an element with a ref attribute instead of throwing', () => {
+    const el = renderMarkup('<div ref="nav">x</div>');
+    expect(el.querySelector('div')!.getAttribute('ref')).toBe('nav');
+  });
+
+  it('keeps inline event handler attributes instead of throwing', () => {
+    const el = renderMarkup(
+      '<button onclick="go()" onFocus="f()">x</button><svg><rect onclick="r()"/></svg>',
+    );
+    expect(el.querySelector('button')!.getAttribute('onclick')).toBe('go()');
+    expect(el.querySelector('button')!.getAttribute('onfocus')).toBe('f()');
+    expect(el.querySelector('rect')!.getAttribute('onclick')).toBe('r()');
+  });
+
+  it('updates directly set attributes with their variables', () => {
+    const el = renderMarkup('<span onclick="say({$name})">x</span>');
+    const span = el.querySelector('span')!;
+    expect(span.getAttribute('onclick')).toBe('say(Hero)');
+    act(() => {
+      useStoryStore.getState().setVariable('name', 'Ann');
+    });
+    expect(span.getAttribute('onclick')).toBe('say(Ann)');
+  });
+
+  it('switches a boolean attribute with an interpolation', () => {
+    useStoryStore.getState().setVariable('locked', '');
+    const el = renderMarkup(
+      '<button disabled="{$locked}">x</button><button disabled="false">y</button>',
+    );
+    const [toggled, literal] = Array.from(el.querySelectorAll('button'));
+    expect(toggled!.hasAttribute('disabled')).toBe(false);
+    // As in HTML, a written value means present, whatever it says.
+    expect(literal!.disabled).toBe(true);
+    act(() => {
+      useStoryStore.getState().setVariable('locked', 'disabled');
+    });
+    expect(toggled!.disabled).toBe(true);
+  });
+
+  it('keeps form state as live properties', () => {
+    const el = renderMarkup(
+      '<input value="{$name}"><input type="checkbox" checked>',
+    );
+    const [text, box] = Array.from(el.querySelectorAll('input'));
+    expect(text!.value).toBe('Hero');
+    expect(box!.checked).toBe(true);
+    act(() => {
+      useStoryStore.getState().setVariable('name', 'Ann');
+    });
+    expect(text!.value).toBe('Ann');
+  });
+});

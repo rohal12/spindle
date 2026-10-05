@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext } from 'preact/hooks';
+import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
@@ -300,9 +300,19 @@ const INLINE_ELEMENTS = new Set([
 ]);
 
 /**
- * HTML boolean attributes. Their presence means "on", but a parsed bare or
- * `=""` attribute has the value '', which Preact would assign to the DOM
- * property as a falsy value — so present ones are passed as `true` (#177).
+ * Attributes that Preact keeps as DOM properties on author HTML elements:
+ * the live state of form controls and media, which then follows its
+ * variable even after the reader changed it. Boolean ones written bare or
+ * as `=""` are passed as `true`, since '' is falsy (#177); one that only
+ * resolves to '' through an interpolation stays ''.
+ */
+const LIVE_PROPERTIES = new Set(['value', 'checked', 'selected', 'muted']);
+
+/**
+ * HTML boolean attributes: present means on. Written bare or with a value
+ * they are present, as in HTML; one whose interpolation resolves to ''
+ * (`disabled="{$locked ? 'disabled' : ''}"`) is left out, so a variable can
+ * switch it off.
  */
 const BOOLEAN_ATTRIBUTES = new Set([
   'allowfullscreen',
@@ -332,8 +342,76 @@ const BOOLEAN_ATTRIBUTES = new Set([
   'selected',
 ]);
 
-function isPresentBooleanAttribute(name: string, value: string): boolean {
-  return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+/** Names Preact consumes instead of setting (case-sensitive). */
+const PREACT_RESERVED = new Set([
+  'key',
+  'ref',
+  'children',
+  'dangerouslySetInnerHTML',
+]);
+
+/** Attribute names setAttribute accepts (`@click` is parsed, not settable). */
+const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
+
+/**
+ * Set an attribute exactly as written, also one whose name setAttribute
+ * rejects but the HTML parser accepts: such an attribute is parsed and its
+ * node copied over.
+ */
+function setRawAttribute(el: Element, name: string, value: string) {
+  if (SETTABLE_NAME.test(name)) {
+    el.setAttribute(name, value);
+    return;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = `<i ${name}=""></i>`;
+  const parsed = (template.content.firstChild as Element).attributes[0];
+  if (!parsed) return;
+  const attr = parsed.cloneNode() as Attr;
+  attr.value = value;
+  el.setAttributeNode(attr);
+}
+
+/**
+ * Split author attributes into Preact props and attributes to set directly.
+ *
+ * Author HTML means attributes, but as props Preact assigns names of DOM
+ * properties to the property (so `draggable="false"` and
+ * `spellcheck="false"` meant true), registers `on…` as event listeners (an
+ * `onclick="…"` string threw) and consumes `key`, `ref` (a string threw),
+ * `children` and `dangerouslySetInnerHTML`; preact/compat, which spindle
+ * loads, also drops an empty `class` and `translate="no"`.
+ *
+ * On HTML elements an upper-case prop name avoids all of these, and
+ * setAttribute lower-cases it back. Names compat matches in any case
+ * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
+ * whose names are case-sensitive, Preact's reserved names are set directly
+ * instead.
+ */
+function splitAttributes(
+  attributes: [name: string, value: string, written: string][],
+  svg: boolean,
+): { props: Record<string, unknown>; direct: [string, string][] } {
+  const props: Record<string, unknown> = {};
+  const direct: [string, string][] = [];
+  for (const [name, value, written] of attributes) {
+    const lower = name.toLowerCase();
+    if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
+      continue;
+    } else if (!svg && LIVE_PROPERTIES.has(lower)) {
+      props[lower] = lower !== 'value' && written === '' ? true : value;
+    } else if (
+      !SETTABLE_NAME.test(name) ||
+      lower.startsWith('on') ||
+      lower === 'translate' ||
+      (svg && (PREACT_RESERVED.has(name) || name === '__proto__'))
+    ) {
+      direct.push([name, value]);
+    } else {
+      props[svg ? name : name.toUpperCase()] = value;
+    }
+  }
+  return { props, direct };
 }
 
 const decodedAttributeText = new Map<string, string>();
@@ -380,13 +458,26 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const locals = useContext(LocalsValuesContext);
   const inSvg = useContext(SvgContext);
   const parentInline = useContext(InlineContext);
-  const attrs: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = isPresentBooleanAttribute(k, v)
-      ? true
-      : resolveAttributeValue(v, resolve);
-  }
+  const resolved = Object.entries(node.attributes).map(
+    ([k, v]): [string, string, string] => [
+      k,
+      resolveAttributeValue(v, resolve),
+      v,
+    ],
+  );
   const isSvgRoot = node.tag.toLowerCase() === 'svg';
+  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
+  const elementRef = useRef<Element>(null);
+  const directKey = JSON.stringify(direct);
+  useLayoutEffect(() => {
+    const el = elementRef.current;
+    if (!el || direct.length === 0) return;
+    for (const [name, value] of direct) setRawAttribute(el, name, value);
+    return () => {
+      for (const [name] of direct) el.removeAttribute(name);
+    };
+  }, [directKey]);
+  if (direct.length > 0) props.ref = elementRef;
   const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
   // Inside SVG, skip markdown processing entirely — markdown wraps content
   // in <p> tags which break the SVG namespace.
@@ -409,7 +500,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       }
     }
   }
-  const element = h(node.tag, attrs, children);
+  const element = h(node.tag, props, children);
   return isSvgRoot ? (
     <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
   ) : (
