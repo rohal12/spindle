@@ -102,6 +102,10 @@ export async function getCurrentPlaythroughId(
  * before `getPayload()` captures the state, so data a hook sets is part of the
  * save; `aftersave` fires once `write` has stored it. Every user-facing save
  * path goes through here.
+ *
+ * The hook and capture run synchronously, but an error they throw (a failing
+ * hook, an unserializable payload) rejects the returned promise like a failed
+ * write rather than escaping to the caller.
  */
 export function saveWithHooks<T>(
   slot: string | undefined,
@@ -109,12 +113,16 @@ export function saveWithHooks<T>(
   getPayload: () => SavePayload,
   write: (payload: SavePayload) => Promise<T>,
 ): Promise<T> {
-  emit('beforesave', slot, custom);
-  const payload = getPayload();
-  return write(payload).then((result) => {
-    emit('aftersave', slot);
-    return result;
-  });
+  try {
+    emit('beforesave', slot, custom);
+    const payload = getPayload();
+    return write(payload).then((result) => {
+      emit('aftersave', slot);
+      return result;
+    });
+  } catch (err) {
+    return Promise.reject(err);
+  }
 }
 
 // --- Save CRUD ---
