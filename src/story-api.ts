@@ -25,6 +25,7 @@ import {
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
+import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -114,37 +115,6 @@ function ensureVariableChangedSubscription(): void {
       emit('variableChanged', changed);
     }
   });
-}
-
-/** Traverse a dot-delimited path on an object and return the value. */
-function getByPath(obj: Record<string, unknown>, path: string): unknown {
-  const segments = path.split('.');
-  let current: unknown = obj[segments[0]!];
-  for (let i = 1; i < segments.length; i++) {
-    if (current == null) return undefined;
-    current = (current as Record<string, unknown>)[segments[i]!];
-  }
-  return current;
-}
-
-/** Set a value at a dot-delimited path on an object (must be an Immer draft for mutation). */
-function setByPath(
-  obj: Record<string, unknown>,
-  path: string,
-  value: unknown,
-): void {
-  const segments = path.split('.');
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const next = current[segments[i]!];
-    if (next == null || typeof next !== 'object') {
-      throw new TypeError(
-        `spindle: Cannot set property "${segments[i + 1]}" on ${typeof next} (at "${segments.slice(0, i + 1).join('.')}")`,
-      );
-    }
-    current = next as Record<string, unknown>;
-  }
-  current[segments[segments.length - 1]!] = value;
 }
 
 export interface StoryAPI {
@@ -292,7 +262,7 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   const namespace = isTransient ? draft.transient : draft.variables;
 
   if (key.includes('.')) {
-    setByPath(namespace, key, value);
+    setByPath(namespace, key.split('.'), value);
   } else {
     namespace[key] = value;
   }
@@ -305,7 +275,7 @@ function createStoryAPI(): StoryAPI {
       const store = isTransient
         ? useStoryStore.getState().transient
         : useStoryStore.getState().variables;
-      return key.includes('.') ? getByPath(store, key) : store[key];
+      return key.includes('.') ? getByPath(store, key.split('.')) : store[key];
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
