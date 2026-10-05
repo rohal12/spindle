@@ -3,6 +3,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useStoryStore } from '../../src/store';
 import { executeMutation } from '../../src/execute-mutation';
 import { installStoryAPI } from '../../src/story-api';
+import {
+  addTrigger,
+  connectTriggersToStore,
+  resetTriggers,
+} from '../../src/triggers';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -132,5 +137,60 @@ describe('executeMutation', () => {
   it('still deletes variables removed by the code', () => {
     executeMutation('delete $other', {}, () => {});
     expect('other' in useStoryStore.getState().variables).toBe(false);
+  });
+});
+
+describe('executeMutation commit', () => {
+  let disconnect: () => void;
+
+  beforeEach(() => {
+    resetTriggers();
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([makePassage(1, 'Start', '')]),
+        { hp: 10, status: 'ok' },
+        { flag: 0 },
+      );
+    installStoryAPI();
+    disconnect = connectTriggersToStore();
+  });
+
+  afterEach(() => {
+    disconnect();
+    resetTriggers();
+  });
+
+  it('commits all changes in a single store update', () => {
+    let updates = 0;
+    const unsub = useStoryStore.subscribe(() => updates++);
+    executeMutation(
+      '$hp -= 200; $status = "hurt"; _t = 1; %flag = 2',
+      {},
+      () => {},
+    );
+    unsub();
+    expect(updates).toBe(1);
+  });
+
+  it('lets a watcher see the fully applied mutation', () => {
+    const seen: unknown[] = [];
+    addTrigger('$hp <= 0', () => {
+      seen.push(useStoryStore.getState().variables.status);
+    });
+    executeMutation('$hp -= 200; $status = "hurt"', {}, () => {});
+    expect(seen).toEqual(['hurt']);
+  });
+
+  it('keeps a watcher run action triggered by the mutation', () => {
+    addTrigger('$hp <= 0', { run: '$status = "dead"' });
+    executeMutation('$hp -= 200; $status = "hurt"', {}, () => {});
+    expect(useStoryStore.getState().variables.status).toBe('dead');
+  });
+
+  it('keeps a watcher run action triggered by Story.set with several keys', () => {
+    addTrigger('$hp <= 0', { run: '$status = "dead"' });
+    (globalThis as Record<string, any>).Story.set({ hp: -1, status: 'hurt' });
+    expect(useStoryStore.getState().variables.status).toBe('dead');
   });
 });

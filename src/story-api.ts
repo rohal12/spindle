@@ -1,4 +1,5 @@
 import { useStoryStore, trackRuntimeUnsub } from './store';
+import type { VariableNamespaces } from './store';
 import {
   on as emitterOn,
   emit,
@@ -232,23 +233,16 @@ export interface StoryAPI {
   };
 }
 
-/** Set a single variable, resolving dot-paths if present. */
-function setOne(name: string, value: unknown): void {
+/** Set a single variable on an Immer draft, resolving dot-paths if present. */
+function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   const isTransient = name.startsWith('%');
   const key = isTransient ? name.slice(1) : name;
-  const namespace = isTransient ? 'transient' : 'variables';
+  const namespace = isTransient ? draft.transient : draft.variables;
 
   if (key.includes('.')) {
-    useStoryStore.setState((state) => {
-      setByPath(state[namespace] as Record<string, unknown>, key, value);
-    });
+    setByPath(namespace, key, value);
   } else {
-    const state = useStoryStore.getState();
-    if (isTransient) {
-      state.setTransient(key, value);
-    } else {
-      state.setVariable(key, value);
-    }
+    namespace[key] = value;
   }
 }
 
@@ -264,13 +258,16 @@ function createStoryAPI(): StoryAPI {
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
-      if (typeof nameOrVars === 'string') {
-        setOne(nameOrVars, value);
-      } else {
-        for (const [k, v] of Object.entries(nameOrVars)) {
-          setOne(k, v);
+      // One store update for all keys, so watchers see them together
+      useStoryStore.getState().updateVariables((draft) => {
+        if (typeof nameOrVars === 'string') {
+          setOne(draft, nameOrVars, value);
+        } else {
+          for (const [k, v] of Object.entries(nameOrVars)) {
+            setOne(draft, k, v);
+          }
         }
-      }
+      });
     },
 
     goto(passageName: string): void {

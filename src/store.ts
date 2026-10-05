@@ -247,6 +247,13 @@ export interface HistoryMoment {
   prng?: PRNGSnapshot | null;
 }
 
+/** The variable namespaces watch conditions and mutations can touch. */
+export interface VariableNamespaces {
+  variables: Record<string, unknown>;
+  temporary: Record<string, unknown>;
+  transient: Record<string, unknown>;
+}
+
 export interface StoryState {
   storyData: StoryData | null;
   currentPassage: string;
@@ -293,6 +300,11 @@ export interface StoryState {
   deleteTemporary: (name: string) => void;
   setTransient: (name: string, value: unknown) => void;
   deleteTransient: (name: string) => void;
+  /**
+   * Apply changes to several variables as one store update, so subscribers
+   * (watchers, components) see them together instead of half-applied.
+   */
+  updateVariables: (recipe: (draft: VariableNamespaces) => void) => void;
   trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string, custom?: Record<string, unknown>) => void;
@@ -586,6 +598,12 @@ export const useStoryStore = create<StoryState>()(
     deleteTransient: (name: string) => {
       set((state) => {
         delete state.transient[name];
+      });
+    },
+
+    updateVariables: (recipe: (draft: VariableNamespaces) => void) => {
+      set((state) => {
+        recipe(state);
       });
     },
 
