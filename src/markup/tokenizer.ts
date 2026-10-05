@@ -399,12 +399,22 @@ export function tokenize(input: string): Token[] {
   }
 
   while (i < input.length) {
-    // Handle escaped braces: \{ and \}
-    if (input[i] === '\\' && (input[i + 1] === '{' || input[i + 1] === '}')) {
-      flushText(i);
-      tokens.push({ type: 'text', value: input[i + 1]!, start: i, end: i + 2 });
-      i += 2;
-      textStart = i;
+    // Escaped braces: \{ and \}. Count the whole backslash run so \\{ is a
+    // backslash pair before a live brace. In an odd run the last backslash
+    // escapes the brace; the even rest stays text, which markdown collapses
+    // pair by pair like any other \\ in the passage.
+    if (input[i] === '\\') {
+      let k = i + 1;
+      while (input[k] === '\\') k++;
+      const next = input[k];
+      if ((next === '{' || next === '}') && (k - i) % 2 === 1) {
+        flushText(k - 1);
+        tokens.push({ type: 'text', value: next, start: k - 1, end: k + 1 });
+        i = k + 1;
+        textStart = i;
+        continue;
+      }
+      i = k;
       continue;
     }
 

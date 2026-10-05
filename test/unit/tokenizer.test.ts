@@ -1313,3 +1313,45 @@ describe('tokenize — whitespace around attribute equals (#219)', () => {
     });
   });
 });
+
+describe('tokenize — backslash runs before braces', () => {
+  it('escapes a brace after a single backslash', () => {
+    expect(tokenize('\\{$x}')).toEqual([
+      { type: 'text', value: '{', start: 0, end: 2 },
+      { type: 'text', value: '$x}', start: 2, end: 5 },
+    ]);
+  });
+
+  it('does not escape a brace after an even backslash run', () => {
+    const tokens = tokenize('C:\\\\{$dir}');
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toEqual({
+      type: 'text',
+      value: 'C:\\\\',
+      start: 0,
+      end: 4,
+    });
+    expect(tokens[1]).toMatchObject({ type: 'variable', name: 'dir' });
+  });
+
+  it('escapes with the last backslash of an odd run and keeps the rest', () => {
+    expect(tokenize('C:\\\\\\{$dir}')).toEqual([
+      { type: 'text', value: 'C:\\\\', start: 0, end: 4 },
+      { type: 'text', value: '{', start: 4, end: 6 },
+      { type: 'text', value: '$dir}', start: 6, end: 11 },
+    ]);
+  });
+
+  it('applies the same rule to closing braces', () => {
+    expect(tokenize('a\\\\\\}')).toEqual([
+      { type: 'text', value: 'a\\\\', start: 0, end: 3 },
+      { type: 'text', value: '}', start: 3, end: 5 },
+    ]);
+  });
+
+  it('opens a macro after an even backslash run', () => {
+    const tokens = tokenize('\\\\{if true}y{/if}');
+    expect(tokens[0]).toMatchObject({ type: 'text', value: '\\\\' });
+    expect(tokens[1]).toMatchObject({ type: 'macro', name: 'if' });
+  });
+});

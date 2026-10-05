@@ -118,3 +118,125 @@ describe('variables inside markdown code spans (#223)', () => {
     expect(p.innerHTML).toBe('before <code>a 0 b</code> after');
   });
 });
+
+// Code-span detection must match micromark exactly: multi-backtick
+// delimiters, unmatched runs, backslash escapes and fenced code blocks.
+describe('variables in multi-backtick spans and fenced code', () => {
+  beforeEach(() => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'Start', 'Start')]), { x: 0 }, {});
+  });
+
+  function expectNoLeak(el: HTMLElement) {
+    expect(el.textContent).not.toContain('data-tw');
+    expect(el.textContent).not.toContain('');
+  }
+
+  it('updates a variable in a double-backtick span', () => {
+    const el = renderPassage('``{$x}``');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('0');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 2);
+    });
+    expect(el.querySelector('code')!.textContent).toBe('2');
+  });
+
+  it('updates a variable in a triple-backtick span', () => {
+    const el = renderPassage('a ```b {$x}``` c');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('b 0');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 3);
+    });
+    expect(el.querySelector('p')!.innerHTML).toBe('a <code>b 3</code> c');
+  });
+
+  it('keeps a single-backtick pair inside a double-backtick span literal', () => {
+    const el = renderPassage('`` `a` {$x} ``');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('`a` 0');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 6);
+    });
+    expect(el.querySelector('code')!.textContent).toBe('`a` 6');
+  });
+
+  it('keeps a single backtick inside a double-backtick span literal', () => {
+    const el = renderPassage('`` a ` {$x} `` and `` b ` `` {$x}');
+    expectNoLeak(el);
+    const codes = el.querySelectorAll('code');
+    expect(codes.length).toBe(2);
+    expect(codes[0]!.textContent).toBe('a ` 0');
+    expect(codes[1]!.textContent).toBe('b `');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 5);
+    });
+    expect(codes[0]!.textContent).toBe('a ` 5');
+    expect(el.textContent).toBe('a ` 5 and b ` 5');
+  });
+
+  it('treats an unmatched backtick run as literal text', () => {
+    const el = renderPassage('``a {$x} `b`');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('b');
+    expect(el.textContent).toBe('``a 0 b');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 1);
+    });
+    expect(el.textContent).toBe('``a 1 b');
+  });
+
+  it('does not open a code span at a backslash-escaped backtick', () => {
+    const el = renderPassage('\\` `{$x}`');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('0');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 4);
+    });
+    expect(el.querySelector('p')!.innerHTML).toBe('` <code>4</code>');
+  });
+
+  it('does not treat a backslash inside a code span as an escape', () => {
+    const el = renderPassage('`a\\`{$x}`');
+    expectNoLeak(el);
+    expect(el.querySelector('code')!.textContent).toBe('a\\');
+    expect(el.textContent).toBe('a\\0`');
+  });
+
+  it('updates a variable in a backtick fenced code block', () => {
+    const el = renderPassage('````\nx = {$x}\n````');
+    expectNoLeak(el);
+    const code = el.querySelector('pre > code')!;
+    expect(code.textContent).toBe('x = 0\n');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 9);
+    });
+    expect(code.textContent).toBe('x = 9\n');
+  });
+
+  it('updates a variable in a tilde fenced code block', () => {
+    const el = renderPassage('~~~\n{$x} and {$x + 1}\n~~~\n\nafter {$x}');
+    expectNoLeak(el);
+    expect(el.querySelector('pre > code')!.textContent).toBe('0 and 1\n');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 2);
+    });
+    expect(el.querySelector('pre > code')!.textContent).toBe('2 and 3\n');
+    expect(el.querySelector('p')!.textContent).toBe('after 2');
+  });
+
+  it('updates a variable in a fenced code block inside a blockquote', () => {
+    const el = renderPassage('> ````\n> {$x}\n> ````');
+    expectNoLeak(el);
+    expect(el.querySelector('blockquote pre > code')!.textContent).toBe('0\n');
+  });
+
+  it('renders a variable after closed spans as a normal component', () => {
+    const el = renderPassage('`a` *{$x}* `b`');
+    expectNoLeak(el);
+    expect(el.querySelector('em')!.textContent).toBe('0');
+    expect(el.querySelectorAll('code').length).toBe(2);
+  });
+});
