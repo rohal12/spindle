@@ -613,7 +613,7 @@ function storyStateGuard(
           : (draft) => {
               Object.assign(draft, updater);
             };
-      const routed = routeStoreUpdate(get(), recipe);
+      const routed = routeStoreUpdate(recipe);
       set((draft) => {
         (routed ?? recipe)(draft);
         keepNamespacesBare(draft);

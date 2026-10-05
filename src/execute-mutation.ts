@@ -7,7 +7,7 @@ import {
   type Patch,
 } from 'immer';
 import { useStoryStore } from './store';
-import type { VariableNamespaces } from './store';
+import type { StoryState, VariableNamespaces } from './store';
 import { execute } from './expression';
 import { deepClone, deepEqual } from './class-registry';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
@@ -49,6 +49,19 @@ const activeScopes: MutationScope[] = [];
  */
 export function getActiveMutationScope(): VariableNamespaces | undefined {
   return activeScopes[activeScopes.length - 1]?.work;
+}
+
+/**
+ * The story state in program order: the store's, with the variable
+ * namespaces of the innermost running mutation, which hold its pending
+ * writes, while mutation code runs. Readers that can run in the middle of
+ * mutation code (watcher conditions, {computed}, input bindings) read this,
+ * so they never see the store without the code's writes so far.
+ */
+export function readState(): StoryState {
+  const state = useStoryStore.getState();
+  const scope = getActiveMutationScope();
+  return scope ? { ...state, ...scope } : state;
 }
 
 const cloneValue = <T>(value: T): T =>
@@ -184,7 +197,7 @@ const NAMESPACE_KEYS: ReadonlySet<string> = new Set(NAMESPACES);
  */
 const scratch = new Immer({ autoFreeze: false });
 
-/** Set while commitScope() hands its commit to the store. */
+/** Set while commitScopes() hands its commit to the store. */
 let committing = false;
 
 /**
@@ -254,32 +267,38 @@ function writtenPaths(
  * one made by something the code called: Story.set, an input binding or a
  * {computed}/{unset} the code set off, a direct store action, a watcher.
  *
- * In program order such an update happens to the running code's state: its
- * recipe runs on the innermost mutation's working copies (so it reads the
- * code's pending writes, and a path is resolved as the code sees it; a path
- * the code's state cannot take throws before anything is written, as an
- * assignment would). The property paths it wrote there are then written to
- * the code's working copy at once, so the code reads them next, and are
+ * In program order such an update happens after the code's writes so far,
+ * so those are committed first, in one store update: subscribers (watchers,
+ * variableChanged handlers) see the program-order state before this write,
+ * and an error the code throws later does not undo them. The update then
+ * happens to the running code's state: its recipe runs on the innermost
+ * mutation's working copies (so it reads the code's state, and a path the
+ * code's state cannot take throws before this write is made, as an
+ * assignment would). The property paths it wrote there are written to the
+ * code's working copy at once, so the code reads them next, and are
  * returned as the recipe for the store: each write reaches the store at
- * once (for watchers and components), and where the store's state cannot
- * take the path, the code's state of the whole root is written instead.
- * Each write is also mirrored into every executing mutation (see mirror()),
- * so their commits neither drop nor revert it. Changes to the rest of the
- * store state are applied as they are.
+ * once (should the store's state not take the path, the code's state of
+ * the whole root is written instead). Each write is also mirrored into
+ * every executing mutation (see mirror()), so their commits neither drop
+ * nor revert it. Changes to the rest of the store state are applied as
+ * they are.
  */
 export function routeStoreUpdate<S extends VariableNamespaces>(
-  state: S,
   recipe: (draft: Draft<S>) => void,
 ): ((draft: Draft<S>) => void) | undefined {
   if (committing) {
     committing = false;
     return undefined;
   }
-  const inner = activeScopes[activeScopes.length - 1];
-  if (!inner) return undefined;
+  if (activeScopes.length === 0) return undefined;
 
+  // The store first takes the code's pending writes, which came before this
+  // one, so it goes from one program-order state to the next (watchers that
+  // commit fires run before this write, as they would in program order)
+  commitScopes(running());
+  const inner = activeScopes[activeScopes.length - 1]!;
   const view = {
-    ...state,
+    ...(useStoryStore.getState() as unknown as S),
     variables: inner.work.variables,
     temporary: inner.work.temporary,
     transient: inner.work.transient,
@@ -337,66 +356,90 @@ const cloneNamespaces = (from: VariableNamespaces): VariableNamespaces => ({
   transient: deepClone(from.transient),
 });
 
-/**
- * Commit the property paths `scope`'s code changed (work vs base) on top of
- * the current store state, so writes made elsewhere during execution to
- * other paths of the same objects survive, and hand them to the `enclosing`
- * mutations. With `keepRunning`, the code goes on running after the commit:
- * its working copy must stay its own (the store freezes what it is given),
- * and its base is moved up to the working copy so nothing commits twice.
- */
-function commitScope(
-  scope: MutationScope,
-  enclosing: readonly MutationScope[],
-  keepRunning: boolean,
-): void {
-  const changes = NAMESPACES.map((ns) => {
-    const list: PathChange[] = [];
-    diff(scope.base[ns], scope.work[ns], [], list, new Set());
-    return [ns, list] as const;
-  });
-  if (changes.every(([, list]) => list.length === 0)) return;
-  // Before the store update: watchers it fires may commit again (a goto)
-  if (keepRunning) scope.base = cloneNamespaces(scope.work);
-  const own = <T>(value: T): T => (keepRunning ? cloneValue(value) : value);
-  const current = useStoryStore.getState();
+/** A mutation to commit, and whether its code goes on running after. */
+interface Commit {
+  scope: MutationScope;
+  keepRunning: boolean;
+}
 
-  // One store update for everything: watchers must see the whole mutation,
+/**
+ * Commit the property paths each mutation's code changed (work vs base) on
+ * top of the current store state, so writes made elsewhere during execution
+ * to other paths of the same objects survive. `commits` lists running
+ * mutations from the outermost in: each one's changes are applied after
+ * those of the mutations it runs inside (which it started from, so they
+ * came first in program order) and handed to them. All of it is one store
+ * update, so the store goes from one program-order state to another:
+ * watchers and other subscribers never see some pending writes without
+ * the ones made before them.
+ *
+ * A mutation whose code goes on running (`keepRunning`) keeps its working
+ * copy its own (the store freezes what it is given), and its base is moved
+ * up to the working copy so nothing commits twice.
+ */
+function commitScopes(commits: readonly Commit[]): void {
+  const all = commits.map(({ scope, keepRunning }) => ({
+    scope,
+    keepRunning,
+    changes: NAMESPACES.map((ns) => {
+      const list: PathChange[] = [];
+      diff(scope.base[ns], scope.work[ns], [], list, new Set());
+      return [ns, list] as const;
+    }),
+  }));
+  const changed = all.filter(({ changes }) =>
+    changes.some(([, list]) => list.length > 0),
+  );
+  if (changed.length === 0) return;
+  // Before the store update: watchers it fires may commit again (a goto)
+  for (const { scope, keepRunning } of changed) {
+    if (keepRunning) scope.base = cloneNamespaces(scope.work);
+  }
+
+  // One store update for everything: watchers must see the whole state,
   // and a watcher's run action must not be overwritten by paths this commit
   // writes after it fired. It is the commit itself, not an update made by
   // running code (see routeStoreUpdate).
   committing = true;
   try {
-    current.updateVariables(commitRecipe);
+    useStoryStore.getState().updateVariables(commitRecipe);
   } finally {
     committing = false;
   }
 
   function commitRecipe(draft: VariableNamespaces): void {
-    for (const [ns, list] of changes) {
-      const replaced = new Set<string>();
-      for (const change of list) {
-        const root = change.path[0]!;
-        // A changed path already holding the value keeps its reference
-        if (replaced.has(root) || isApplied(current[ns], change)) continue;
-        try {
-          applyChange(
-            draft[ns],
-            change.deleted ? change : { ...change, value: own(change.value) },
-          );
-        } catch {
-          // An intermediate object the code wrote into is gone from the
-          // store: the code's view of the whole root wins.
-          draft[ns][root] = own(scope.work[ns][root]);
-          replaced.add(root);
+    all.forEach(({ scope, keepRunning, changes }, i) => {
+      const own = <T>(value: T): T => (keepRunning ? cloneValue(value) : value);
+      for (const [ns, list] of changes) {
+        const replaced = new Set<string>();
+        for (const change of list) {
+          const root = change.path[0]!;
+          // A changed path already holding the value keeps its reference
+          if (replaced.has(root) || isApplied(draft[ns], change)) continue;
+          try {
+            applyChange(
+              draft[ns],
+              change.deleted ? change : { ...change, value: own(change.value) },
+            );
+          } catch {
+            // An intermediate object the code wrote into is gone from the
+            // store: the code's view of the whole root wins.
+            draft[ns][root] = own(scope.work[ns][root]);
+            replaced.add(root);
+          }
         }
+        // Hand the changes to the mutations this one runs inside, before
+        // watchers fired by this update run.
+        const enclosing = all.slice(0, i).map((c) => c.scope);
+        for (const change of list) mirror(draft, ns, change, enclosing);
       }
-      // Hand the changes to the mutations this one runs inside, before
-      // watchers fired by this update run.
-      for (const change of list) mirror(draft, ns, change, enclosing);
-    }
+    });
   }
 }
+
+/** Every running mutation, to commit with its code going on. */
+const running = (): Commit[] =>
+  activeScopes.map((scope) => ({ scope, keepRunning: true }));
 
 /**
  * Bring a suspended mutation's copies up to the store after an action
@@ -430,11 +473,7 @@ function resync(scope: MutationScope): void {
  */
 export function runWithCommittedMutations<T>(action: () => T): T {
   if (activeScopes.length === 0) return action();
-  const scopes = [...activeScopes];
-  // Innermost first: each commit hands its changes to the enclosing ones
-  for (let i = scopes.length - 1; i >= 0; i--) {
-    commitScope(scopes[i]!, scopes.slice(0, i), true);
-  }
+  commitScopes(running());
   const suspended = activeScopes.splice(0);
   try {
     return action();
@@ -479,7 +518,9 @@ export function executeMutation(
     activeScopes.pop();
   }
 
-  commitScope(scope, activeScopes, false);
+  // With the pending writes of the mutations this one runs inside, which
+  // came before its own
+  commitScopes([...running(), { scope, keepRunning: false }]);
 
   for (const key of Object.keys(localsClone)) {
     if (!deepEqual(localsClone[key], mergedLocals[key])) {

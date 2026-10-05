@@ -1,5 +1,5 @@
 import { evaluate } from './expression';
-import { executeMutation } from './execute-mutation';
+import { executeMutation, readState } from './execute-mutation';
 import { useStoryStore } from './store';
 
 export interface WatchOptions {
@@ -46,8 +46,9 @@ interface DialogHostCallbacks {
 }
 let dialogHostCallbacks: DialogHostCallbacks | null = null;
 
+/** A condition's value in program order (see readState). */
 function evalCondition(condition: string): boolean {
-  const state = useStoryStore.getState();
+  const state = readState();
   try {
     return !!evaluate(
       condition,

@@ -21,7 +21,7 @@ import {
   renderInlineNodes,
 } from './markup/render';
 import type { ASTNode } from './markup/ast';
-import { executeMutation } from './execute-mutation';
+import { executeMutation, readState } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
@@ -196,8 +196,8 @@ export function defineMacro(
       }
       ctx.varName = varExpr;
       ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
-      ctx.getValue = () =>
-        getByPath(useStoryStore.getState().variables, segments);
+      // In program order, also when mutation code performs the input
+      ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = (value: unknown) => {
         useStoryStore.setState((state) => {
           setByPath(state.variables, segments, value, {
