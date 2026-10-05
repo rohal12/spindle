@@ -578,6 +578,32 @@ describe('macro components', () => {
       expect(meter!.id).toBe('hp');
     });
 
+    it('does not split on whitespace inside a string argument', () => {
+      useStoryStore.getState().setVariable('stats', { 'max hp': 200 });
+      const el = renderPassage('{meter "a b c".length $stats["max hp"]}');
+      expect(el.querySelector('.error')).toBeNull();
+      const label = el.querySelector('.macro-meter-label');
+      expect(label!.textContent).toBe('5 / 200');
+    });
+
+    it('does not split inside a template literal', () => {
+      useStoryStore.getState().setVariable('hp', 7);
+      const el = renderPassage('{meter `${$hp} pts`.length 10}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '5 / 10',
+      );
+    });
+
+    it('label mode supports escaped quotes', () => {
+      useStoryStore.getState().setVariable('hp', 75);
+      const el = renderPassage(String.raw`{meter $hp 100 "\"HP\""}`);
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '75 "HP" / 100 "HP"',
+      );
+    });
+
     it('renders error span on invalid expression', () => {
       const el = renderPassage('{meter $hp +}');
       const error = el.querySelector('.error');

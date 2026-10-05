@@ -149,6 +149,8 @@ Both arguments are expressions, so `{meter $health $stats.maxHealth}` works.
 {meter $hp 100 "HP"}       → "75 HP / 100 HP"
 ```
 
+Arguments are separated by whitespace, but whitespace inside strings, template literals and brackets doesn't split them, so `{meter $stats["max hp"] 100}` works. In the label, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
+
 The bar clamps between 0% and 100%.
 
 **Styling examples:**

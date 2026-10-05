@@ -1,61 +1,41 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
+import { isWhitespace, readQuoted, splitTopLevel } from './arg-utils';
 
-function parseArgs(rawArgs: string): {
+/**
+ * Parse `{meter currentExpr maxExpr ["label"]}`. Arguments are separated by
+ * whitespace outside string and template literals and bracket pairs; a
+ * trailing standalone `"…"` or `'…'` string is the label mode, with `\"`,
+ * `\'` and `\\` escapes.
+ */
+export function parseMeterArgs(rawArgs: string): {
   currentExpr: string;
   maxExpr: string;
   labelMode: string;
 } {
-  const trimmed = rawArgs.trim();
+  const tokens = splitTopLevel(rawArgs.trim(), isWhitespace).filter(Boolean);
 
-  // Extract quoted label mode from the end if present
   let labelMode = '';
-  let rest = trimmed;
-  const quoteMatch = rest.match(/\s+(?:"([^"]*)"|'([^']*)')$/);
-  if (quoteMatch) {
-    labelMode = quoteMatch[1] ?? quoteMatch[2] ?? '';
-    rest = rest.slice(0, quoteMatch.index ?? rest.length).trim();
+  const last = tokens[tokens.length - 1];
+  if (tokens.length >= 2 && last) {
+    const label = readQuoted(last, 0);
+    if (label && label.end === last.length) {
+      labelMode = label.value;
+      tokens.pop();
+    }
   }
 
-  // Split remaining into two expressions.
-  const exprs = splitExpressions(rest);
-  if (exprs.length < 2) {
+  if (tokens.length < 2) {
     throw new Error(
       'meter requires two arguments: {meter currentExpr maxExpr}',
     );
   }
 
   return {
-    currentExpr: exprs[0]!,
-    maxExpr: exprs.slice(1).join(' '),
+    currentExpr: tokens[0]!,
+    maxExpr: tokens.slice(1).join(' '),
     labelMode,
   };
-}
-
-function splitExpressions(input: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let depth = 0;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i]!;
-    if (ch === '(' || ch === '[') {
-      depth++;
-      current += ch;
-    } else if (ch === ')' || ch === ']') {
-      depth--;
-      current += ch;
-    } else if (/\s/.test(ch) && depth === 0 && current.length > 0) {
-      result.push(current);
-      current = '';
-      // Skip additional whitespace
-      while (i + 1 < input.length && /\s/.test(input[i + 1]!)) i++;
-    } else {
-      current += ch;
-    }
-  }
-  if (current.length > 0) result.push(current);
-  return result;
 }
 
 function formatLabel(
@@ -76,7 +56,7 @@ defineMacro({
   merged: true,
   render({ rawArgs }, ctx) {
     try {
-      const { currentExpr, maxExpr, labelMode } = parseArgs(rawArgs);
+      const { currentExpr, maxExpr, labelMode } = parseMeterArgs(rawArgs);
       const current = Number(ctx.evaluate!(currentExpr));
       const max = Number(ctx.evaluate!(maxExpr));
       const pct =
