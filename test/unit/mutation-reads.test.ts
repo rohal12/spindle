@@ -106,7 +106,7 @@ describe('variableChanged during mutation code', () => {
     });
     run('$o.a = 1; Story.set("o.b", 2)');
     expect(seen).not.toContainEqual({ a: 0, b: 2 });
-    expect(seen.at(-1)).toEqual({ a: 1, b: 2 });
+    expect(seen[seen.length - 1]).toEqual({ a: 1, b: 2 });
   });
 
   it('reports the code’s assignments before a Story.set it makes', () => {
