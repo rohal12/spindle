@@ -9,11 +9,13 @@
 // Core algorithm
 // ---------------------------------------------------------------------------
 
+const MULBERRY_STEP = 0x6d2b79f5;
+
 /** Mulberry32: fast, high-quality 32-bit PRNG. */
 function mulberry32(seed: number): () => number {
   let t = seed | 0;
   return () => {
-    t = (t + 0x6d2b79f5) | 0;
+    t = (t + MULBERRY_STEP) | 0;
     let r = Math.imul(t ^ (t >>> 15), t | 1);
     r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
     return ((r ^ (r >>> 14)) >>> 0) / 0x100000000;
@@ -77,14 +79,12 @@ export function initPRNG(seed?: string, useEntropy = true): void {
  */
 export function restorePRNG(seed: string, pull: number): void {
   currentSeed = seed;
-  currentPull = 0;
-  generator = mulberry32(hashSeed(seed));
+  // Fast-forward in constant time: each pull adds MULBERRY_STEP to the
+  // 32-bit state, so `pull` pulls add pull × MULBERRY_STEP (mod 2^32). A
+  // loop would hang on the large counts an imported save may hold.
+  const steps = Math.imul(pull % 0x100000000, MULBERRY_STEP);
+  generator = mulberry32((hashSeed(seed) + steps) | 0);
   enabled = true;
-
-  // Fast-forward
-  for (let i = 0; i < pull; i++) {
-    generator();
-  }
   currentPull = pull;
 }
 
