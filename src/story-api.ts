@@ -232,11 +232,63 @@ export interface StoryAPI {
   };
 }
 
+// Names declared in StoryVariables / StoryTransients, registered at boot.
+// null until a schema is registered (e.g. unit tests that init the store
+// directly), in which case Story.set() does not check names.
+let declaredVariables: ReadonlySet<string> | null = null;
+let declaredTransients: ReadonlySet<string> | null = null;
+const warnedUndeclared = new Set<string>();
+
+/** Register the declared variable names so Story.set() can flag typos. */
+export function setDeclaredVariables(
+  variables: Iterable<string>,
+  transients: Iterable<string> = [],
+): void {
+  declaredVariables = new Set(variables);
+  declaredTransients = new Set(transients);
+  warnedUndeclared.clear();
+}
+
+/** Test-only: forget the registered declarations. */
+export function _resetDeclaredVariables(): void {
+  declaredVariables = null;
+  declaredTransients = null;
+  warnedUndeclared.clear();
+}
+
+/**
+ * Split an API variable name into namespace and key. Accepts the bare name
+ * (`hp`), the `$` sigil authors use in passages (`$hp`), and `%` for
+ * transients (`%npcs`). Dot-paths are kept in the key.
+ */
+function parseName(name: string): {
+  isTransient: boolean;
+  key: string;
+} {
+  if (name.startsWith('%')) return { isTransient: true, key: name.slice(1) };
+  if (name.startsWith('$')) return { isTransient: false, key: name.slice(1) };
+  return { isTransient: false, key: name };
+}
+
+function warnIfUndeclared(isTransient: boolean, key: string): void {
+  const declared = isTransient ? declaredTransients : declaredVariables;
+  if (!declared) return;
+  const root = key.split('.')[0]!;
+  if (declared.has(root)) return;
+  const label = (isTransient ? '%' : '$') + root;
+  if (warnedUndeclared.has(label)) return;
+  warnedUndeclared.add(label);
+  const where = isTransient ? 'StoryTransients' : 'StoryVariables';
+  console.warn(
+    `spindle: Story.set() wrote ${label}, which is not declared in ${where}. Passages cannot reference it; check the name or declare it.`,
+  );
+}
+
 /** Set a single variable, resolving dot-paths if present. */
 function setOne(name: string, value: unknown): void {
-  const isTransient = name.startsWith('%');
-  const key = isTransient ? name.slice(1) : name;
+  const { isTransient, key } = parseName(name);
   const namespace = isTransient ? 'transient' : 'variables';
+  warnIfUndeclared(isTransient, key);
 
   if (key.includes('.')) {
     useStoryStore.setState((state) => {
@@ -255,8 +307,7 @@ function setOne(name: string, value: unknown): void {
 function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
-      const isTransient = name.startsWith('%');
-      const key = isTransient ? name.slice(1) : name;
+      const { isTransient, key } = parseName(name);
       const store = isTransient
         ? useStoryStore.getState().transient
         : useStoryStore.getState().variables;
