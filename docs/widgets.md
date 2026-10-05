@@ -78,7 +78,7 @@ Comma-separated arguments also work and are required when arguments contain oper
 {StatLine "Damage", $strength * 2, 100}
 ```
 
-Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared, the extra parameters are `undefined`.
+Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared (including none at all), the extra parameters are `undefined` — they shadow any outer `@` locals of the same name rather than inheriting them.
 
 ## Block Widgets (Wrapping Content)
 
