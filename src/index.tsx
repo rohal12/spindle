@@ -141,26 +141,15 @@ export function boot() {
   // Enter runtime phase — handlers registered from here on are cleaned on restart
   enterRuntimePhase();
 
-  // Execute StoryInit passage if it exists
-  executeStoryInit();
-
-  // Restore session state if the page was refreshed
-  const sessionPayload = loadSession(storyData.ifid);
-  if (sessionPayload) {
-    useStoryStore.getState().loadFromPayload(sessionPayload);
-  }
-
-  // Fire storyinit after all state is settled (defaults + StoryInit + session)
-  emit('storyinit');
-
-  // Pass 1: Pre-scan all widget passages to discover block widgets.
-  // Register them as block macros BEFORE any tokenize/buildAST calls,
-  // so that widget bodies using other block widgets parse correctly
-  // regardless of passage order.
+  // Pass 1: Pre-scan StoryInit and all widget passages to discover block
+  // widgets. Register them as block macros BEFORE any tokenize/buildAST
+  // calls (StoryInit's included), so that passages invoking block widgets
+  // and widget bodies using other block widgets parse correctly regardless
+  // of passage or definition order.
   const blockWidgetPattern =
     /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
-  for (const [, passage] of storyData.passages) {
-    if (passage.tags.includes('widget')) {
+  for (const [passageName, passage] of storyData.passages) {
+    if (passageName === 'StoryInit' || passage.tags.includes('widget')) {
       let match;
       while ((match = blockWidgetPattern.exec(passage.content)) !== null) {
         const name = match[1]!;
@@ -172,6 +161,18 @@ export function boot() {
       blockWidgetPattern.lastIndex = 0;
     }
   }
+
+  // Execute StoryInit passage if it exists
+  executeStoryInit();
+
+  // Restore session state if the page was refreshed
+  const sessionPayload = loadSession(storyData.ifid);
+  if (sessionPayload) {
+    useStoryStore.getState().loadFromPayload(sessionPayload);
+  }
+
+  // Fire storyinit after all state is settled (defaults + StoryInit + session)
+  emit('storyinit');
 
   // Pass 2: Full parse and register widgets from passages tagged "widget"
   for (const [, passage] of storyData.passages) {

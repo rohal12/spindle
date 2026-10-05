@@ -147,6 +147,8 @@ Block widgets can be nested inside each other:
 
 The presence of `{@children}` in the widget body is the signal — no extra syntax is needed in the definition header. Widgets without `{@children}` remain self-closing and work exactly as before.
 
+Block widgets defined in `StoryInit` or in `[widget]`-tagged passages are detected at startup, before any passage is parsed. They can therefore be invoked from any passage, and other widget definitions can use them, in any definition order.
+
 ### Notes
 
 - `@children` is a reserved name and cannot be used as a widget parameter name.
