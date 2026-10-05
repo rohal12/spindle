@@ -7,8 +7,10 @@ const STORY_HTML = `<!doctype html>
   <body>
     <div id="root"></div>
     <tw-storydata name="Hooks" startnode="1" ifid="HEADLESS-SAVE-HOOKS" format="spindle" format-version="0.0.0">
-      <tw-passagedata pid="1" name="Start" tags="">{set $visits = $visits + 1}Ext: {$ext}</tw-passagedata>
-      <tw-passagedata pid="2" name="StoryVariables" tags="">$ext = 0
+      <tw-passagedata pid="1" name="Start" tags="">{set $visits = $visits + 1}Ext: {$ext}
+[[Other]]</tw-passagedata>
+      <tw-passagedata pid="2" name="Other" tags="">Elsewhere</tw-passagedata>
+      <tw-passagedata pid="3" name="StoryVariables" tags="">$ext = 0
 $visits = 0</tw-passagedata>
     </tw-storydata>
   </body>
@@ -28,6 +30,10 @@ describe('bootStory save hooks', () => {
     );
 
     Story.set('ext', 0);
+    // Leave the saved passage, so waitForActions() below waits for the
+    // load to mount it again
+    Story.goto('Other');
+    await Story.waitForActions();
     await Story.load('s');
     expect(Story.get('ext')).toBe(42);
     await Story.waitForActions();
