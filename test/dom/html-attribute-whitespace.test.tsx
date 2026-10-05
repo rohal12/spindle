@@ -144,6 +144,25 @@ describe('author attribute names', () => {
     expect(el.querySelector('div')!.getAttribute('ref')).toBe('nav');
   });
 
+  it('keeps an empty SVG class and an SVG className as written', () => {
+    useStoryStore.getState().setVariable('c', '');
+    const el = renderMarkup(
+      '<svg><rect class=""/><circle className="c"/><path class="{$c}"/></svg>',
+    );
+    expect(el.querySelector('rect')!.getAttribute('class')).toBe('');
+    expect(el.querySelector('circle')!.getAttribute('className')).toBe('c');
+    expect(el.querySelector('circle')!.hasAttribute('class')).toBe(false);
+    expect(el.querySelector('path')!.getAttribute('class')).toBe('');
+    act(() => {
+      useStoryStore.getState().setVariable('c', 'on');
+    });
+    expect(el.querySelector('path')!.getAttribute('class')).toBe('on');
+    act(() => {
+      useStoryStore.getState().setVariable('c', '');
+    });
+    expect(el.querySelector('path')!.getAttribute('class')).toBe('');
+  });
+
   it('keeps inline event handler attributes instead of throwing', () => {
     const el = renderMarkup(
       '<button onclick="go()" onFocus="f()">x</button><svg><rect onclick="r()"/></svg>',

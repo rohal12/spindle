@@ -1,8 +1,20 @@
-import { describe, expect } from 'vitest';
+import { describe, expect, beforeAll, afterAll } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import { tokenize, type Token } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
+import { interpolateCode, interpolateText } from '../../src/interpolation';
+import {
+  registerWidget,
+  clearWidgets,
+} from '../../src/widgets/widget-registry';
 import { fcOptions } from './config';
+import {
+  TEXT_WIDGET,
+  codePieces,
+  outerLocal,
+  pieces,
+  textVars,
+} from './markup-text';
 import {
   linkArb,
   markupNoise,
@@ -44,7 +56,36 @@ function expectTokensTileInput(input: string, tokens: Token[]) {
   if (pos < input.length) expect(input.slice(pos)).toMatch(VOID_CLOSER);
 }
 
+/**
+ * In text mode (attribute values) tokens tile the input too, with no links
+ * or HTML; a backslash run before a brace shows one backslash per pair, and
+ * an odd run's brace as text.
+ */
+function expectTextTokensTileInput(input: string, tokens: Token[]) {
+  let pos = 0;
+  for (const t of tokens) {
+    expect(t.start).toBe(pos);
+    expect(t.end).toBeGreaterThan(t.start);
+    expect(['text', 'variable', 'expression', 'macro']).toContain(t.type);
+    if (t.type === 'text') {
+      const slice = input.slice(t.start, t.end);
+      if (slice !== t.value) {
+        const m = /^(\\+)([{}]?)$/.exec(slice);
+        expect(m, slice).not.toBeNull();
+        const run = m![1]!.length;
+        expect(m![2] !== '').toBe(run % 2 === 1);
+        expect(t.value).toBe('\\'.repeat(run >> 1) + m![2]);
+        // An even run is followed by the brace it leaves live.
+        if (run % 2 === 0) expect('{}').toContain(input[t.end]);
+      }
+    }
+    pos = t.end;
+  }
+  expect(pos).toBe(input.length);
+}
+
 function expectParsesOrReportsPosition(input: string) {
+  expectTextTokensTileInput(input, tokenize(input, { text: true }));
   const tokens = tokenize(input);
   expectTokensTileInput(input, tokens);
   try {
@@ -158,6 +199,53 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
         expect(ast).toHaveLength(2);
         expect(ast[1]!.type).not.toBe('text');
       }
+    },
+    propTimeout(5),
+  );
+});
+
+describe('text-only markup (#225)', () => {
+  beforeAll(() => {
+    registerWidget(
+      TEXT_WIDGET.name,
+      buildAST(tokenize(TEXT_WIDGET.body)),
+      TEXT_WIDGET.params,
+    );
+  });
+  afterAll(() => clearWidgets());
+
+  test.prop([pieces(3, { failing: true }), textVars, outerLocal], fcOptions)(
+    'evaluates to the reference text, references kept, errors reported',
+    (value, vars, outer) => {
+      const locals = outer === undefined ? {} : { o: outer };
+      const variables = { ...vars };
+      const result = interpolateText(value.src, {
+        variables,
+        temporary: {},
+        locals,
+        transient: {},
+      });
+      const out = value.ref({ vars, locals }, false);
+      expect(result.text, value.src).toBe(out.text);
+      expect(result.errors, value.src).toHaveLength(out.errors);
+      expect(variables, value.src).toEqual(vars);
+    },
+    propTimeout(5),
+  );
+
+  test.prop([codePieces, textVars, outerLocal], fcOptions)(
+    'code attribute values resolve only their sigil references',
+    (code, vars, outer) => {
+      const locals = outer === undefined ? {} : { o: outer };
+      const result = interpolateCode(code.src, {
+        variables: { ...vars },
+        temporary: {},
+        locals,
+        transient: {},
+      });
+      const out = code.ref({ vars, locals }, false);
+      expect(result.text, code.src).toBe(out.text);
+      expect(result.errors, code.src).toHaveLength(out.errors);
     },
     propTimeout(5),
   );

@@ -420,6 +420,20 @@ export interface MacroContext {
 }
 
 /**
+ * Context object passed to a macro's text form (`MacroDefinition.text`).
+ * @see {@link ../../src/registry.ts} for the implementation.
+ */
+export interface MacroTextContext {
+  /** Evaluate an expression in the current scope. */
+  evaluate: (expr: string) => unknown;
+  /**
+   * The text of AST nodes (a body or branch) in the current scope, with
+   * `locals` (keys without `@`) added on top of the current locals.
+   */
+  renderText: (nodes: ASTNode[], locals?: Record<string, unknown>) => string;
+}
+
+/**
  * Configuration object for `Story.defineMacro()`.
  * @see {@link ../../src/define-macro.ts} for the implementation.
  */
@@ -429,7 +443,7 @@ export interface MacroDefinition {
   subMacros?: string[];
   /** Accept a `{name}...{/name}` body. Inferred from `subMacros` when omitted. */
   block?: boolean;
-  /** Resolve `{$var}` interpolation in the macro's class/id (`ctx.resolve`). */
+  /** Resolve markup (`{$var}`, expressions, macros) in the macro's class/id, and provide `ctx.resolve`. */
   interpolate?: boolean;
   /** Provide `ctx.merged` and `ctx.evaluate` (variables, temporaries, locals, transients). */
   merged?: boolean;
@@ -440,6 +454,12 @@ export interface MacroDefinition {
   /** Tooling hint: positional parameters. */
   parameters?: ParameterDef[];
   render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  /**
+   * The macro's text form, used where markup becomes a string: HTML
+   * attribute values, image alt text and link titles, macro labels. Without
+   * one, the macro can't be used there and is reported as an error.
+   */
+  text?: (props: MacroProps, ctx: MacroTextContext) => string;
 }
 
 /**

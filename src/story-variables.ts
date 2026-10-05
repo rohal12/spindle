@@ -1,5 +1,6 @@
 import type { Passage } from './parser';
-import { tokenize } from './markup/tokenizer';
+import { tokenize, type Token } from './markup/tokenizer';
+import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 import { createNamespace, RESERVED_NAME } from './utils/namespace';
 
@@ -20,8 +21,6 @@ function declarationRegex(sigil: string): RegExp {
   return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
 }
 const VAR_REF_RE = /\$(\w+(?:\.\w+)*)/g;
-/** `{` followed by a sigil starts an interpolation block inside literal text. */
-const INTERP_START_RE = /^[$_@%]\w/;
 /** Quoted first argument of an input macro naming a story variable. */
 const QUOTED_VAR_ARG_RE = /^["']\$(\w+(?:\.\w+)*)["']?$/;
 const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
@@ -211,19 +210,31 @@ function findClosingQuote(code: string, start: number): number {
   return Math.min(i, code.length);
 }
 
+const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
+
 /**
- * Scan literal text (string contents, HTML attribute values) for `{$…}`
- * interpolation blocks, which interpolating macros and HTML attributes
- * resolve at runtime. A bare `$word` in literal text is not a reference.
+ * Scan the value of a code attribute (`onclick`, see isCodeAttribute) for
+ * the `{$…}` references resolved in it; its other braces are code.
  */
-function scanInterpolations(text: string, onRef: RefCallback): void {
-  let i = text.indexOf('{');
-  while (i !== -1) {
-    const next = INTERP_START_RE.test(text.slice(i + 1, i + 3))
-      ? scanCode(text, i + 1, onRef, true)
-      : i + 1;
-    i = text.indexOf('{', next);
+function scanSigilReferences(value: string, onRef: RefCallback): void {
+  for (const part of splitSigilTemplate(value)) {
+    if ('expr' in part) scanCode(part.expr, 0, onRef);
   }
+}
+
+/**
+ * Scan literal text (string contents, HTML attribute values) for the markup
+ * that labels and HTML attributes evaluate at runtime: `{$…}` displays,
+ * expressions and macros, read as in passage text. A bare `$word` in
+ * literal text is not a reference.
+ */
+function scanInterpolations(
+  text: string,
+  onRef: RefCallback,
+  storeVarMacros: ReadonlySet<string> = NO_STORE_VAR_MACROS,
+): void {
+  if (!text.includes('{')) return;
+  collectTokenRefs(text, tokenize(text, { text: true }), storeVarMacros, onRef);
 }
 
 /**
@@ -310,7 +321,16 @@ function collectPassageRefs(
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
 ): void {
-  const tokens = tokenize(content);
+  collectTokenRefs(content, tokenize(content), storeVarMacros, onRef);
+}
+
+/** Report the `$var` references in the tokens of `content`. */
+function collectTokenRefs(
+  content: string,
+  tokens: Token[],
+  storeVarMacros: ReadonlySet<string>,
+  onRef: RefCallback,
+): void {
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
     if (token.type === 'variable') {
@@ -318,8 +338,9 @@ function collectPassageRefs(
     } else if (token.type === 'expression') {
       scanCode(token.expression, 0, onRef);
     } else if (token.type === 'html') {
-      for (const value of Object.values(token.attributes)) {
-        scanInterpolations(value, onRef);
+      for (const [name, value] of Object.entries(token.attributes)) {
+        if (isCodeAttribute(name)) scanSigilReferences(value, onRef);
+        else scanInterpolations(value, onRef, storeVarMacros);
       }
     } else if (token.type === 'macro' && !token.isClose) {
       scanCode(token.rawArgs, 0, onRef);

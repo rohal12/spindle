@@ -45,4 +45,12 @@ defineMacro({
 
     return null;
   },
+  text({ branches = [] }, ctx) {
+    for (const branch of branches) {
+      if (branch.rawArgs === '' || ctx.evaluate(branch.rawArgs)) {
+        return ctx.renderText(branch.children);
+      }
+    }
+    return '';
+  },
 });

@@ -16,4 +16,5 @@ defineMacro({
       </span>
     );
   },
+  text: () => useStoryStore.getState().storyData?.name || '',
 });

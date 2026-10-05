@@ -33,11 +33,14 @@ import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import {
   registerMacro,
+  registerMacroText,
   registerSubMacro,
   registerMacroMetadata,
 } from './registry';
-import type { MacroProps, ParameterDef } from './registry';
+import type { MacroProps, MacroTextContext, ParameterDef } from './registry';
 import { registerBlockMacro } from './markup/ast';
+
+export type { MacroTextContext };
 
 export function macroClass(type: string, className?: string): string {
   const base = `macro-${type}`;
@@ -93,6 +96,12 @@ export interface MacroDefinition {
   description?: string;
   parameters?: ParameterDef[];
   render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  /**
+   * The macro's text form, used where markup becomes a string: HTML
+   * attribute values, image alt text and link titles, macro labels. Without
+   * one, the macro can't be used there and is reported as an error.
+   */
+  text?: (props: MacroProps, ctx: MacroTextContext) => string;
 }
 
 const sharedHooks = {
@@ -211,6 +220,7 @@ export function defineMacro(
   }
 
   registerMacro(config.name, Wrapper);
+  registerMacroText(config.name, config.text);
 
   // Store metadata for tooling API
   const isBlock =

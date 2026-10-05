@@ -6,4 +6,5 @@ defineMacro({
   render({ children = [] }, ctx) {
     return ctx.wrap(ctx.renderNodes(children));
   },
+  text: ({ children = [] }, ctx) => ctx.renderText(children),
 });

@@ -4,6 +4,8 @@ All macros are case-insensitive. Block macros require a closing `{/macroName}` t
 
 Every macro that renders visible output supports optional CSS selectors: `{.class#id macroName args}`.
 
+`{if}`, `{switch}`, `{for}`, `{print}`, `{nobr}`, `{span}`, `{story-title}` and widgets also work inside HTML attribute values and labels, where they stand for their text: `<div class="card {if $selected}active{/if}">`. See [Markup in attribute values](markup.md#markup-in-attribute-values).
+
 ## Control Flow
 
 ### `{if}` / `{elseif}` / `{else}`
@@ -237,11 +239,12 @@ Runs during rendering, so the passage changes instantly.
 
 ### `{button}`
 
-A clickable button that runs its body macros on click. The label goes in the opening tag (supports interpolation), the body contains macros like `{set}` or `{do}`.
+A clickable button that runs its body macros on click. The label goes in the opening tag (it takes variables, expressions and text macros, as [attribute values](markup.md#markup-in-attribute-values) do), the body contains macros like `{set}` or `{do}`.
 
 ```
 {button "Take damage"}{do}$health -= 10{/do}{/button}
 {button "Count: {$count}"}{set $count = $count + 1}{/button}
+{button "{if $lamp}Turn off{else}Turn on{/if}"}{set $lamp = !$lamp}{/button}
 ```
 
 Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.

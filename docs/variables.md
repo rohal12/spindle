@@ -89,7 +89,7 @@ These defaults are applied before `StoryInit` runs and are restored on restart.
 
 When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early.
 
-Only real references are checked: `{$var}` displays, macro arguments, `{do}` bodies, and `{$var}` interpolations inside strings and HTML attributes. A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
+Only real references are checked: `{$var}` displays, expressions, macro arguments, `{do}` bodies, and the same markup inside strings and HTML attributes (`<b class="{if $lit}on{/if}">`). A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
 
 ## Variable Names
 

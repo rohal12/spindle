@@ -26,6 +26,7 @@ export interface MacroDefinition {
   description?: string;
   parameters?: ParameterDef[];
   render: (...args: any[]) => any;
+  text?: (...args: any[]) => string;
 }
 
 /**

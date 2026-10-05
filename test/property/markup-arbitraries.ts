@@ -181,11 +181,21 @@ const jsOperand = fc.oneof(
   fc.constant('[1, 2]'),
 );
 
+/** Expressions open with a sigil, or with `(` or `!` (#225). */
 const expressionArb: fc.Arbitrary<Generated> = fc
-  .tuple(sigil, varPath, fc.constantFrom('+', '===', '||', '?? '), jsOperand)
-  .chain(([s, name, op, operand]) =>
-    fc.tuple(fc.constant(`${s}${name} ${op} ${operand}`), optSelectors),
+  .tuple(
+    sigil,
+    varPath,
+    fc.constantFrom('+', '===', '||', '?? '),
+    jsOperand,
+    fc.constantFrom('', '!', '('),
   )
+  .chain(([s, name, op, operand, open]) => {
+    const body = `${s}${name} ${op} ${operand}`;
+    const expression =
+      open === '(' ? `(${body})` : open === '!' ? `!${body}` : body;
+    return fc.tuple(fc.constant(expression), optSelectors);
+  })
   .map(([expression, sel]) => ({
     src: sel ? `{${sel.src} ${expression}}` : `{${expression}}`,
     ast: [withSelectors({ type: 'expression', expression } as ASTNode, sel)],

@@ -177,4 +177,19 @@ defineMacro({
 
     return ctx.wrap(content);
   },
+  text({ rawArgs, children = [] }, ctx) {
+    const { itemVar, indexVar, listExpr } = parseForArgs(rawArgs);
+    const list = ctx.evaluate(listExpr);
+    if (!Array.isArray(list)) {
+      throw new Error('expression did not evaluate to an array');
+    }
+    return list
+      .map((item, i) =>
+        ctx.renderText(children, {
+          [itemVar]: item,
+          ...(indexVar ? { [indexVar]: i } : undefined),
+        }),
+      )
+      .join('');
+  },
 });
