@@ -115,7 +115,7 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$health = 100\n$name = "Hero"');
     const passages = makePassages(
       ['StoryVariables', '$health = 100\n$name = "Hero"'],
-      ['Start', 'Your health is $health and name is $name'],
+      ['Start', 'Your health is {$health} and name is {print $name}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -125,7 +125,7 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(
       ['StoryVariables', '$health = 100'],
-      ['Start', 'Your score is $score'],
+      ['Start', 'Your score is {$score}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toHaveLength(1);
@@ -139,7 +139,7 @@ describe('validatePassages', () => {
     );
     const passages = makePassages(
       ['StoryVariables', '$player = { health: 100, name: "Hero" }'],
-      ['Start', 'Mana: $player.mana'],
+      ['Start', 'Mana: {$player.mana}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -149,7 +149,10 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$inventory = []\n$journal = []');
     const passages = makePassages(
       ['StoryVariables', '$inventory = []\n$journal = []'],
-      ['Start', '$inventory.find and $journal.push and $inventory.length'],
+      [
+        'Start',
+        '{set _x = $inventory.find((i) => i)}{do}$journal.push(1){/do}{$inventory.length}',
+      ],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -159,7 +162,7 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(
       ['StoryVariables', '$health = 100'],
-      ['Start', 'Value: $health.something'],
+      ['Start', 'Value: {$health.something}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toHaveLength(1);
@@ -194,7 +197,7 @@ describe('validatePassages', () => {
     );
     const passages = makePassages(
       ['StoryVariables', '$game = { player: { stats: { hp: 50 } } }'],
-      ['Start', 'HP: $game.player.stats.hp'],
+      ['Start', 'HP: {$game.player.stats.hp}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -206,7 +209,7 @@ describe('validatePassages', () => {
     );
     const passages = makePassages(
       ['StoryVariables', '$game = { player: { stats: { hp: 50 } } }'],
-      ['Start', 'MP: $game.player.stats.mp'],
+      ['Start', 'MP: {$game.player.stats.mp}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -216,8 +219,8 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(
       ['StoryVariables', '$health = 100'],
-      ['Start', 'Score: $score'],
-      ['Room', 'Gold: $gold'],
+      ['Start', 'Score: {$score}'],
+      ['Room', 'Gold: {print $gold}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toHaveLength(2);
@@ -229,7 +232,7 @@ describe('validatePassages', () => {
     // it had odd references, it should be skipped
     const passages = makePassages(
       ['StoryVariables', '$health = 100'],
-      ['Start', 'HP: $health'],
+      ['Start', 'HP: {$health}'],
     );
     const errors = validatePassages(passages, schema);
     expect(errors).toEqual([]);
@@ -239,7 +242,7 @@ describe('validatePassages', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(
       ['StoryVariables', '$health = 100'],
-      ['Start', 'HP: $health'],
+      ['Start', 'HP: {$health}'],
       ['StoryInit', '{set $score = 0}'],
     );
     const errors = validatePassages(passages, schema);
@@ -247,5 +250,78 @@ describe('validatePassages', () => {
     expect(errors[0]).toMatch(
       /Passage "StoryInit".*Undeclared variable.*\$score/,
     );
+  });
+});
+
+describe('validatePassages: only real references (#178)', () => {
+  const schema = parseStoryVariables('$health = 100');
+
+  function errorsFor(content: string, storeVarMacros?: string[]): string[] {
+    return validatePassages(
+      makePassages(['StoryVariables', '$health = 100'], ['A', content]),
+      schema,
+      storeVarMacros,
+    );
+  }
+
+  it.each([
+    ['double-quoted string', '{print "Price: $cost"}'],
+    ['single-quoted string', "{print 'Price: $cost'}"],
+    ['escaped quote inside string', '{print "say \\"$cost\\" now"}'],
+    ['template literal text', '{print `Price: $cost`}'],
+    ['link label string', '{link "Pay $cost" "Shop"}{/link}'],
+    ['string in set', '{set _label = "$cost each"}'],
+    ['literal prose', 'It costs $cost, or $5.'],
+    ['prose in HTML', '<span title="$cost">Price: $cost</span>'],
+    ['link markup', '[[Pay $cost->Shop]]'],
+    ['escaped braces', '\\{$cost\\}'],
+    [
+      'line comment in do body',
+      '{do}\n// uses $cost later\n$health = 1\n{/do}',
+    ],
+    ['block comment in do body', '{do}/* $cost */ $health = 1{/do}'],
+    ['block comment in expression', '{print $health /* $cost */}'],
+    ['string inside do body', '{do}$health = "$cost".length{/do}'],
+  ])('ignores $cost in %s', (_label, content) => {
+    expect(errorsFor(content)).toEqual([]);
+  });
+
+  it.each([
+    ['variable display', '{$cost}'],
+    ['variable display with selector', '{.big $cost}'],
+    ['expression display', '{$cost + 1}'],
+    ['print argument', '{print $cost}'],
+    ['print after a string', '{print "Price: " + $cost}'],
+    ['set target', '{set $cost = 5}'],
+    ['if condition', '{if $cost > 1}x{/if}'],
+    ['template interpolation', '{print `Price: ${$cost}`}'],
+    ['nested template interpolation', '{print `a ${`b ${$cost}`}`}'],
+    ['string interpolation block', '{link "Pay {$cost}" "Shop"}{/link}'],
+    ['HTML attribute interpolation', '<img src="{$cost}.png">'],
+    ['do body', '{do}$cost = 1{/do}'],
+    ['do body after a comment', '{do}// note\n$cost = 1{/do}'],
+    ['do body with braces', '{do}if ($health) { $cost = {a: 1} }{/do}'],
+    ['quoted input macro variable', '{textbox "$cost" "Enter"}'],
+    ['unquoted input macro variable', '{numberbox $cost}'],
+    ['widget invocation argument', '{Card $cost}'],
+  ])('reports undeclared $cost in %s', (_label, content) => {
+    const errors = errorsFor(content);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/Passage "A": Undeclared variable: \$cost/);
+  });
+
+  it('reports a real reference next to an ignored string', () => {
+    const errors = errorsFor('{print "$price: " + $cost}');
+    expect(errors).toEqual(['Passage "A": Undeclared variable: $cost']);
+  });
+
+  it('validates field access on real references only', () => {
+    expect(errorsFor('{print "$health.foo"}')).toEqual([]);
+    expect(errorsFor('{print $health.foo}')).toHaveLength(1);
+  });
+
+  it('uses the given input macro names for quoted variables', () => {
+    expect(errorsFor('{picker "$cost"}')).toEqual([]);
+    expect(errorsFor('{picker "$cost"}', ['Picker'])).toHaveLength(1);
   });
 });
