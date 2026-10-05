@@ -62,7 +62,7 @@ export function SaveManagerContent() {
 
   const storyData = useStoryStore((s) => s.storyData);
   const playthroughId = useStoryStore((s) => s.playthroughId);
-  const getSavePayload = useStoryStore((s) => s.getSavePayload);
+  const beginSave = useStoryStore((s) => s.beginSave);
   const loadFromPayload = useStoryStore((s) => s.loadFromPayload);
   const ifid = storyData?.ifid ?? '';
 
@@ -108,7 +108,7 @@ export function SaveManagerContent() {
   const handleNewSave = async () => {
     if (!ifid || !playthroughId) return;
     try {
-      await saveWithHooks(undefined, undefined, getSavePayload, (payload) =>
+      await saveWithHooks(undefined, undefined, beginSave, (payload) =>
         createSave(ifid, playthroughId, payload),
       );
       showStatus('Save created');
@@ -120,16 +120,11 @@ export function SaveManagerContent() {
 
   const handleOverwrite = async (saveId: string) => {
     try {
-      await saveWithHooks(
-        undefined,
-        undefined,
-        getSavePayload,
-        async (payload) => {
-          if (!(await overwriteSave(saveId, payload))) {
-            throw new Error('Save not found');
-          }
-        },
-      );
+      await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
+        if (!(await overwriteSave(saveId, payload))) {
+          throw new Error('Save not found');
+        }
+      });
       showStatus('Save overwritten');
       await refresh();
     } catch {

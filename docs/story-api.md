@@ -248,7 +248,7 @@ renderSlots(await Story.listSaves()); // includes slot-2
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage: variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage, plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot
