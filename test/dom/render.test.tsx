@@ -5,6 +5,8 @@ import { act } from 'preact/test-utils';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { markdownOptions } from '../../src/markup/markdown';
+import { micromark } from 'micromark';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -684,6 +686,40 @@ describe('renderNodes', () => {
       const strong = box!.querySelector('strong');
       expect(strong).not.toBeNull();
       expect(strong!.textContent).toBe('bold');
+    });
+  });
+
+  // Found by property testing: text with no other markdown syntax skipped
+  // micromark, so a raw HTML block (a comment, processing instruction or
+  // declaration opening a line) showed as text, and CR line endings kept
+  // the spaces before them and made no hard breaks or paragraphs, unlike
+  // the same text with any markdown in it.
+  describe('text that only looks plain', () => {
+    it.each([
+      '<!A b',
+      'x\n<?y',
+      '<!-- b',
+      'a <?php x ?> b',
+      'a \r\nb',
+      'a  \r\nb',
+      'a\r\rb',
+    ])('%j renders as micromark renders it', (markup) => {
+      // micromark's HTML, but for comment nodes, which aren't rendered
+      const expected = document.createElement('div');
+      expected.innerHTML = micromark(markup, markdownOptions());
+      const walker = document.createTreeWalker(
+        expected,
+        NodeFilter.SHOW_COMMENT,
+      );
+      const comments: Node[] = [];
+      while (walker.nextNode()) comments.push(walker.currentNode);
+      for (const comment of comments) comment.parentNode!.removeChild(comment);
+      expect(renderMarkup(markup).innerHTML).toBe(expected.innerHTML);
+    });
+
+    it('makes a hard break and paragraphs at CR line endings', () => {
+      expect(renderMarkup('a  \r\nb').querySelector('br')).not.toBeNull();
+      expect(renderMarkup('a\r\rb').querySelectorAll('p')).toHaveLength(2);
     });
   });
 

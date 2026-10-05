@@ -721,11 +721,16 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
  * Any match → fall through to the full micromark pipeline.
  * False positives (e.g. `-` used as text, not list) just use the slower path.
  * Includes character references (`&amp;`, `&#123;`) and two-space hard line
- * breaks, which micromark decodes / turns into <br> (#171).
+ * breaks, which micromark decodes / turns into <br> (#171), and the openers
+ * of raw HTML comments, processing instructions, CDATA sections and
+ * declarations (`<!`, `<?`), which micromark passes through as HTML. A CR
+ * line ending (`\r\n` or `\r`) also takes the full pipeline, which reads
+ * it as micromark does.
  */
 const MARKDOWN_SYNTAX_RE =
-  /[*_`#|~\[>\\\-+=]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n/;
-const BLANK_LINE_RE = /\n\s*\n/;
+  /[*_`#|~\[>\\\-+=\r]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n|<[!?]/;
+/** Two line endings (LF, CRLF or CR) with only whitespace between them. */
+const BLANK_LINE_RE = /(?:\r\n|\r(?!\n)|\n)\s*[\r\n]/;
 const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
 
 /** Whitespace that markdown strips at the start and end of a paragraph. */
@@ -818,7 +823,8 @@ export function renderNodes(
   // have markdown semantics (paragraph separation).
   const needsMarkdown = nodes.some(
     (n) =>
-      n.type === 'text' && (n.value.trim() !== '' || /\n\s*\n/.test(n.value)),
+      n.type === 'text' &&
+      (n.value.trim() !== '' || BLANK_LINE_RE.test(n.value)),
   );
   if (!needsMarkdown) {
     return nodes.map((node) => renderSingleNode(node));

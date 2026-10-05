@@ -6,7 +6,8 @@ import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
-import { markdownToHtml } from '../../src/markup/markdown';
+import { micromark } from 'micromark';
+import { markdownOptions } from '../../src/markup/markdown';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import { NUM_RUNS, fcOptions } from './config';
 import {
@@ -176,9 +177,29 @@ beforeEach(() => {
   installStoryAPI();
 });
 
+/**
+ * micromark's own HTML for `text` with spindle's extensions, in an element.
+ * Raw HTML comments, processing instructions and declarations parse to
+ * comment nodes, which a passage doesn't render: they are left out.
+ */
+function micromarkElement(text: string, inline = false): HTMLElement {
+  const el = document.createElement('div');
+  el.innerHTML = micromark(text, markdownOptions({ inline })).trim();
+  const drop = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.COMMENT_NODE) child.remove();
+      else drop(child);
+    }
+  };
+  drop(el);
+  return el;
+}
+
 describe('markdown parity', () => {
-  // Text without spindle markup ({, [[, <) must render exactly as micromark
-  // renders it with spindle's extensions, whichever internal path is taken.
+  // Text without spindle markup ({, [[, < and a letter) must render exactly
+  // as micromark renders it with spindle's extensions, whichever internal
+  // path is taken: raw HTML comments, processing instructions, CDATA and
+  // declarations, closed or not, included.
   const markupFreeText = fc
     .array(
       fc.oneof(
@@ -194,6 +215,13 @@ describe('markdown parity', () => {
             ...['}', '=', '===', '"', "'", '    ', '```', '~~~', 'é'],
           ),
         },
+        {
+          weight: 2,
+          arbitrary: fc.constantFrom(
+            ...['<!--', '-->', '<!-->', '<?', '?>', '<?x@y.z>', '<!A', '>'],
+            ...['<![CDATA[', ']]>', '\r\n', '<!-'],
+          ),
+        },
       ),
       { maxLength: 25 },
     )
@@ -203,8 +231,7 @@ describe('markdown parity', () => {
   test.prop([markupFreeText], domOptions)(
     'markup-free text renders the same HTML as micromark',
     (text) => {
-      const expected = document.createElement('div');
-      expected.innerHTML = markdownToHtml(text);
+      const expected = micromarkElement(text);
       withPassage(text, (el) => {
         expect(el.innerHTML.trim()).toBe(expected.innerHTML.trim());
       });
@@ -218,10 +245,9 @@ describe('markdown parity', () => {
    * whitespace at its edges, which separates it from its neighbours.
    */
   function unwrappedMarkdown(text: string, inline: boolean): string {
-    const lead = /^[ \t\n]*/.exec(text)![0];
-    const trail = lead === text ? '' : /[ \t\n]*$/.exec(text)![0];
-    const ref = document.createElement('div');
-    ref.innerHTML = markdownToHtml(text, { inline }).trim();
+    const lead = /^[ \t\r\n]*/.exec(text)![0];
+    const trail = lead === text ? '' : /[ \t\r\n]*$/.exec(text)![0];
+    const ref = micromarkElement(text, inline);
     for (const p of Array.from(ref.querySelectorAll(':scope > p'))) {
       p.replaceWith(...Array.from(p.childNodes));
     }
