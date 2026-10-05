@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { getBackend, resetBackend } from '../../src/saves/storage';
+import { populateKnownSaves } from '../../src/saves/save-manager';
 import type { StoryData, Passage } from '../../src/parser';
 import type { SaveExport } from '../../src/saves/types';
 
@@ -254,5 +255,70 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
     for (const info of listed) Story.deleteSave(info.slot);
     await vi.waitFor(async () => expect(await Story.listSaves()).toEqual([]));
+  });
+
+  it('indexes every slot when saving to new slots concurrently', async () => {
+    Story.save('parallel-a');
+    Story.save('parallel-b');
+    Story.save('parallel-c');
+    await vi.waitFor(() => {
+      expect(Story.hasSave('parallel-a')).toBe(true);
+      expect(Story.hasSave('parallel-b')).toBe(true);
+      expect(Story.hasSave('parallel-c')).toBe(true);
+    });
+
+    expect((await Story.listSaves()).map((s) => s.slot).sort()).toEqual([
+      'parallel-a',
+      'parallel-b',
+      'parallel-c',
+    ]);
+    // After a reload, known saves are rebuilt from the slot index
+    expect(await populateKnownSaves(ifid)).toEqual({
+      'parallel-a': true,
+      'parallel-b': true,
+      'parallel-c': true,
+    });
+  });
+
+  it('indexes every slot when importing into new slots concurrently', async () => {
+    await saveTo();
+    const data = (await Story.exportSave())!;
+
+    await Promise.all([
+      Story.importSave(data, 'import-a'),
+      Story.importSave(data, 'import-b'),
+      Story.importSave(data, 'import-c'),
+    ]);
+
+    expect((await Story.listSaves()).map((s) => s.slot).sort()).toEqual([
+      '',
+      'import-a',
+      'import-b',
+      'import-c',
+    ]);
+    expect(await populateKnownSaves(ifid)).toEqual({
+      '': true,
+      'import-a': true,
+      'import-b': true,
+      'import-c': true,
+    });
+  });
+
+  it('removes every slot from the index when deleting slots concurrently', async () => {
+    await saveTo('slot-1');
+    await saveTo('slot-2');
+    await saveTo('slot-3');
+
+    Story.deleteSave('slot-1');
+    Story.deleteSave('slot-2');
+    Story.save('slot-4');
+    await vi.waitFor(() => {
+      expect(Story.hasSave('slot-1')).toBe(false);
+      expect(Story.hasSave('slot-2')).toBe(false);
+      expect(Story.hasSave('slot-4')).toBe(true);
+    });
+
+    const index = await (await getBackend()).getMeta(`slotIndex.${ifid}`);
+    expect(index).toEqual(['slot-3', 'slot-4']);
   });
 });

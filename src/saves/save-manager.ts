@@ -304,15 +304,40 @@ function slotMetaKey(ifid: string, slot?: string): string {
     : `${AUTOSAVE_KEY_PREFIX}${ifid}`;
 }
 
+/** Tail of the queue that serializes slot index updates. */
+let slotIndexQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Read-modify-write the per-story slot index. Updates are queued so that
+ * concurrent saves, imports and deletes can't overwrite each other's change.
+ */
+function updateSlotIndex(
+  ifid: string,
+  update: (slots: string[]) => string[],
+): Promise<void> {
+  const run = slotIndexQueue.then(async () => {
+    const backend = await getBackend();
+    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
+    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
+    const updated = update(existing);
+    if (updated !== existing) await backend.setMeta(indexKey, updated);
+  });
+  slotIndexQueue = run.catch(() => {});
+  return run;
+}
+
 /** Record a named slot in the per-story slot index (no-op for the default slot). */
-async function addToSlotIndex(ifid: string, slot?: string): Promise<void> {
-  if (!isNamedSlot(slot)) return;
-  const backend = await getBackend();
-  const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-  const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
-  if (!existing.includes(slot)) {
-    await backend.setMeta(indexKey, [...existing, slot]);
-  }
+function addToSlotIndex(ifid: string, slot?: string): Promise<void> {
+  if (!isNamedSlot(slot)) return Promise.resolve();
+  return updateSlotIndex(ifid, (slots) =>
+    slots.includes(slot) ? slots : [...slots, slot],
+  );
+}
+
+/** Remove a named slot from the per-story slot index (no-op for the default slot). */
+function removeFromSlotIndex(ifid: string, slot?: string): Promise<void> {
+  if (!isNamedSlot(slot)) return Promise.resolve();
+  return updateSlotIndex(ifid, (slots) => slots.filter((s) => s !== slot));
 }
 
 /** Named slots in the per-story slot index. */
@@ -459,12 +484,7 @@ export async function deleteSlotSave(
   await backend.deleteMeta(metaKey);
 
   // Remove from slot index if named
-  if (isNamedSlot(slot)) {
-    const indexKey = `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
-    const existing = (await backend.getMeta<string[]>(indexKey)) ?? [];
-    const updated = existing.filter((s) => s !== slot);
-    await backend.setMeta(indexKey, updated);
-  }
+  await removeFromSlotIndex(ifid, slot);
 }
 
 // --- Session Persistence (survives F5, cleared on tab close) ---
