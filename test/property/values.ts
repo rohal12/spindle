@@ -72,7 +72,8 @@ const isObj = (v: unknown): v is object => typeof v === 'object' && v !== null;
  * deepEqual: same prototype at every node, Object.is on primitives (so
  * NaN equals NaN and -0 differs from 0), Date by time value (invalid dates
  * are equal), RegExp by source and flags, Map and Set entries in insertion
- * order, arrays by length and index (a hole equals undefined) and objects by
+ * order, arrays by length and index (a hole differs from an undefined
+ * element: deepClone and saves keep holes) and objects by
  * their own enumerable keys. Cycles are compared coinductively.
  */
 export function structEq(
@@ -113,7 +114,7 @@ export function structEq(
     const bb = b as unknown[];
     if (a.length !== bb.length) return false;
     for (let i = 0; i < a.length; i++) {
-      if (!structEq(a[i], bb[i], assumed)) return false;
+      if (i in a !== i in bb || !structEq(a[i], bb[i], assumed)) return false;
     }
     return true;
   }

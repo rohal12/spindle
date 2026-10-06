@@ -4,6 +4,7 @@ import { readState } from '../../execute-mutation';
 import { deepEqual } from '../../structural';
 import { defineMacro } from '../../define-macro';
 import { MacroError, logMacroError } from './MacroError';
+import { currentSourceLocation } from '../../utils/source-location';
 import { checkVariableName } from '../../utils/namespace';
 
 /**
@@ -54,13 +55,15 @@ function computeAndApply(
   prevRef: { current: unknown },
   localsUpdate: ((key: string, value: unknown) => void) | null,
 ): void {
+  // Before evaluating: the expression may navigate away from this passage
+  const location = currentSourceLocation();
   let newValue: unknown;
   try {
     // In program order, also when mutation code sets this off
     const { variables, temporary, transient } = readState();
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
-    logMacroError(`computed ${rawArgs}`, err);
+    logMacroError(`computed ${rawArgs}`, err, location);
     return;
   }
 
@@ -70,7 +73,7 @@ function computeAndApply(
       try {
         localsUpdate!(name, newValue);
       } catch (err) {
-        logMacroError(`computed ${rawArgs}`, err);
+        logMacroError(`computed ${rawArgs}`, err, location);
       }
     } else {
       const state = useStoryStore.getState();

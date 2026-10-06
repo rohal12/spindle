@@ -17,7 +17,7 @@ import {
   renameSave,
   exportSave,
   importSave,
-  deserializePayload,
+  decodeSavePayload,
   saveWithHooks,
   type PlaythroughGroup,
 } from '../../saves/save-manager';
@@ -160,7 +160,7 @@ export function SaveManagerContent() {
       // Stored records hold serialized variables; the store expects live
       // ones. The game moves to the save's playthrough.
       loadFromPayload(
-        deserializePayload(save.payload),
+        decodeSavePayload(save.payload),
         undefined,
         save.meta.playthroughId,
       );

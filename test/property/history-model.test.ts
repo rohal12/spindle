@@ -17,9 +17,9 @@ import { executeStoryInit } from '../../src/story-init';
 import { executeMutation } from '../../src/execute-mutation';
 import { resetEmitter } from '../../src/event-emitter';
 import { resetTriggers } from '../../src/triggers';
-import { clearRegistry, serialize } from '../../src/class-registry';
-import { loadSession, deserializePayload } from '../../src/saves/save-manager';
-import type { SavePayload } from '../../src/saves/types';
+import { clearRegistry } from '../../src/class-registry';
+import { encodePayload } from '../../src/saves/format';
+import { loadSession, decodeSavePayload } from '../../src/saves/save-manager';
 import { fcOptions } from './config';
 import {
   PASSAGES,
@@ -345,20 +345,11 @@ class SaveLoad implements Cmd {
   check = () => true;
   run(m: HistoryModel, r: Real): void {
     const live = store().getSavePayload();
-    // As stored: serialized variables, through JSON
-    const stored = JSON.parse(
-      JSON.stringify({
-        ...live,
-        variables: serialize(live.variables),
-        history: live.history.map((h) => ({
-          ...h,
-          variables: serialize(h.variables),
-        })),
-      }),
-    ) as SavePayload;
+    // As stored: encoded, through JSON
+    const stored = JSON.parse(JSON.stringify(encodePayload(live)));
     const saved = cloneVars({ ...m, start: undefined });
     for (const cmd of this.between) cmd.run(m, r);
-    store().loadFromPayload(deserializePayload(stored));
+    store().loadFromPayload(decodeSavePayload(stored));
     m.moments = saved.moments;
     m.index = saved.index;
     m.visitCounts = saved.visitCounts;

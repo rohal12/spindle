@@ -1,5 +1,13 @@
 import type { PRNGSnapshot } from '../prng';
-import { isDeserializable } from '../class-registry';
+import { hasOwn } from '../utils/namespace';
+import {
+  checkFormatVersion,
+  decodePayload,
+  IncompatibleSaveError,
+  type EncodedPayload,
+} from './format';
+
+export type { EncodedPayload } from './format';
 
 /** History moment as persisted in saves (full variable snapshots). */
 export interface SaveHistoryMoment {
@@ -38,7 +46,8 @@ export interface SaveMeta {
 
 export interface SaveRecord {
   meta: SaveMeta;
-  payload: SavePayload;
+  /** The payload as stored, with its format version (see format.ts). */
+  payload: EncodedPayload;
 }
 
 export interface PlaythroughRecord {
@@ -59,111 +68,85 @@ export interface SaveInfo {
 }
 
 export interface SaveExport {
-  version: 1;
+  /** The save format version of the export (see SAVE_FORMAT_VERSION). */
+  formatVersion: number;
   ifid: string;
   exportedAt: string;
   save: SaveRecord;
 }
 
-export function isSaveExport(value: unknown): value is SaveExport {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  if (obj.version !== 1 || typeof obj.ifid !== 'string') return false;
-  if (typeof obj.save !== 'object' || obj.save === null) return false;
-
-  const save = obj.save as Record<string, unknown>;
-  if (typeof save.meta !== 'object' || save.meta === null) return false;
-  if (typeof save.payload !== 'object' || save.payload === null) return false;
-
-  const meta = save.meta as Record<string, unknown>;
-  if (typeof meta.id !== 'string' || typeof meta.passage !== 'string')
-    return false;
-  if (typeof meta.ifid !== 'string') return false;
-  if (typeof meta.playthroughId !== 'string') return false;
-  if (typeof meta.createdAt !== 'string') return false;
-  if (typeof meta.updatedAt !== 'string') return false;
-  if (typeof meta.title !== 'string') return false;
-
-  return isImportablePayload(save.payload);
-}
+const INVALID_FILE = 'Invalid save file format';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Absent, null, or a `{ seed, pull }` PRNG snapshot. */
-function isOptionalPRNGSnapshot(value: unknown): boolean {
-  if (value == null) return true;
-  return (
-    isRecord(value) &&
-    typeof value.seed === 'string' &&
-    typeof value.pull === 'number' &&
-    Number.isInteger(value.pull) &&
-    value.pull >= 0
-  );
-}
+const META_STRINGS = [
+  'id',
+  'passage',
+  'ifid',
+  'playthroughId',
+  'createdAt',
+  'updatedAt',
+  'title',
+] as const;
 
-/** A variable container whose values deserialize() can restore. */
-function isSerializedVariables(value: unknown): boolean {
-  return isRecord(value) && isDeserializable(value);
-}
-
-function isSaveHistoryMoment(value: unknown): value is SaveHistoryMoment {
-  return (
-    isRecord(value) &&
-    typeof value.passage === 'string' &&
-    isSerializedVariables(value.variables) &&
-    typeof value.timestamp === 'number' &&
-    isOptionalPRNGSnapshot(value.prng)
-  );
+/** decodePayload(), without the warnings for unregistered classes. */
+function decodeQuietly(encoded: unknown): void {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    decodePayload(encoded);
+  } finally {
+    console.warn = warn;
+  }
 }
 
 /**
- * Full check of a payload from outside the running story (an imported save):
- * every history moment is well formed, `historyIndex` is an integer that
- * points at a moment of the payload's passage, and the encoded values (Map,
- * Set, Date, RegExp, class instances) in the live variables and every
- * moment's variables have the shape deserialize() expects. Anything that
- * passes can be stored and later loaded.
+ * Check data from outside the running story (an imported save) in full:
+ * the export's and the payload's format versions, the record's metadata,
+ * and that the payload decodes (see decodePayload). Throws an
+ * IncompatibleSaveError for a missing or unknown format version, and an
+ * "Invalid save file format" error for anything else that is wrong.
+ * Anything that passes can be stored and later loaded.
  */
-function isImportablePayload(value: unknown): value is SavePayload {
-  if (!isRecord(value)) return false;
-  if (typeof value.passage !== 'string') return false;
-  if (!isSerializedVariables(value.variables)) return false;
+export function checkSaveExport(value: unknown): asserts value is SaveExport {
+  if (!isRecord(value)) throw new Error(INVALID_FILE);
+  // An export from before format versions has `version: 1`: incompatible.
+  // Data that is no export at all is invalid.
+  if (!hasOwn(value, 'formatVersion')) {
+    throw value.version === 1
+      ? new IncompatibleSaveError()
+      : new Error(INVALID_FILE);
+  }
+  checkFormatVersion(value.formatVersion);
+  if (typeof value.ifid !== 'string') throw new Error(INVALID_FILE);
+  const save = value.save;
+  if (!isRecord(save) || !isRecord(save.meta)) throw new Error(INVALID_FILE);
+  const meta = save.meta;
+  if (META_STRINGS.some((key) => typeof meta[key] !== 'string')) {
+    throw new Error(INVALID_FILE);
+  }
+  try {
+    decodeQuietly(save.payload);
+  } catch (err) {
+    if (err instanceof IncompatibleSaveError) throw err;
+    throw new Error(INVALID_FILE);
+  }
+}
 
-  const { history, historyIndex } = value;
-  if (!Array.isArray(history) || history.length === 0) return false;
-  // Array.from: every() skips the holes of a sparse array
-  if (!Array.from(history).every(isSaveHistoryMoment)) return false;
-  if (
-    typeof historyIndex !== 'number' ||
-    !Number.isInteger(historyIndex) ||
-    historyIndex < 0 ||
-    historyIndex >= history.length
-  ) {
+/** Whether checkSaveExport() accepts `value`. */
+export function isSaveExport(value: unknown): value is SaveExport {
+  try {
+    checkSaveExport(value);
+    return true;
+  } catch {
     return false;
   }
-  if (history[historyIndex]!.passage !== value.passage) return false;
-
-  if (value.visitCounts !== undefined && !isRecord(value.visitCounts))
-    return false;
-  if (value.renderCounts !== undefined && !isRecord(value.renderCounts))
-    return false;
-  return isOptionalPRNGSnapshot(value.prng);
 }
 
-export function isSavePayload(value: unknown): value is SavePayload {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  if (typeof obj.passage !== 'string') return false;
-  if (typeof obj.variables !== 'object' || obj.variables === null) return false;
-  if (!Array.isArray(obj.history) || obj.history.length === 0) return false;
-  if (typeof obj.historyIndex !== 'number') return false;
-  return true;
-}
-
-/** Estimated byte size of a serialized save payload. */
-export function estimatePayloadBytes(payload: SavePayload): number {
+/** Estimated byte size of a stored payload. */
+export function estimatePayloadBytes(payload: EncodedPayload): number {
   return JSON.stringify(payload).length;
 }
 

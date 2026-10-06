@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
-import { loadSession } from '../../src/saves/save-manager';
+import { decodeSavePayload, loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage } from '../../src/parser';
 
 const IFID = 'HISTORY-TEST-IFID';
@@ -123,7 +123,9 @@ describe('history navigation', () => {
 
   describe('lowering maxHistory', () => {
     const session = () =>
-      JSON.parse(sessionStorage.getItem(`spindle.session.${IFID}`)!) as {
+      decodeSavePayload(
+        JSON.parse(sessionStorage.getItem(`spindle.session.${IFID}`)!),
+      ) as unknown as {
         passage: string;
         history: { passage: string; variables: Record<string, unknown> }[];
         historyIndex: number;
@@ -220,9 +222,9 @@ describe('history navigation', () => {
       store().setVariable('x', 4);
       store().navigate('D');
 
-      const raw = JSON.parse(
-        sessionStorage.getItem(`spindle.session.${IFID}`)!,
-      );
+      const raw = decodeSavePayload(
+        JSON.parse(sessionStorage.getItem(`spindle.session.${IFID}`)!),
+      ) as any;
       expect(raw.passage).toBe('D');
       expect(raw.history.map((m: { passage: string }) => m.passage)).toEqual([
         'A',
@@ -253,9 +255,9 @@ describe('history navigation', () => {
       store().setVariable('x', 9);
       store().navigate('D');
 
-      const raw = JSON.parse(
-        sessionStorage.getItem(`spindle.session.${IFID}`)!,
-      );
+      const raw = decodeSavePayload(
+        JSON.parse(sessionStorage.getItem(`spindle.session.${IFID}`)!),
+      ) as any;
       expect(raw.history.map((m: { passage: string }) => m.passage)).toEqual([
         'A',
         'B',

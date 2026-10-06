@@ -4,6 +4,7 @@ import { useStoryFields } from '../hooks/use-story-fields';
 import { NobrContext } from '../markup/render';
 import { StoryInterface } from './StoryInterface';
 import { TriggerDialogHost } from './TriggerDialogHost';
+import { RuntimeErrors } from './RuntimeErrors';
 
 export function App() {
   const { storyData, currentPassage, nobr } = useStoryFields(
@@ -36,6 +37,7 @@ export function App() {
     <>
       <StoryInterface />
       <TriggerDialogHost />
+      <RuntimeErrors />
     </>
   );
 

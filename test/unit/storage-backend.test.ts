@@ -6,6 +6,7 @@ import {
   getBackend,
   resetBackend,
 } from '../../src/saves/storage';
+import { decodePayload, encodePayload } from '../../src/saves/format';
 import { quickSave, hasQuickSave } from '../../src/saves/save-manager';
 import type {
   StorageBackend,
@@ -29,12 +30,12 @@ function makeSaveRecord(
       passage: 'Start',
       custom: {},
     },
-    payload: {
+    payload: encodePayload({
       passage: 'Start',
       variables: { hp: 100 },
       history: [{ passage: 'Start', variables: {}, timestamp: Date.now() }],
       historyIndex: 0,
-    },
+    }),
   };
 }
 
@@ -94,7 +95,7 @@ function runBackendSuite(
 
         const read = (await backend.getSave('s-copy'))!;
         read.meta.custom.slot = 'changed after get';
-        read.payload.variables.hp = 0;
+        read.payload.data = 'changed after get';
         (await backend.getSavesByIfid(ifid))[0]!.meta.title = 'changed';
 
         await backend.putPlaythrough(makePlaythroughRecord('pt-copy', ifid));
@@ -109,9 +110,10 @@ function runBackendSuite(
           title: 'Save s-copy',
           custom: {},
         });
-        expect((await backend.getSave('s-copy'))!.payload.variables.hp).toBe(
-          100,
-        );
+        expect(
+          decodePayload((await backend.getSave('s-copy'))!.payload).variables
+            .hp,
+        ).toBe(100);
         expect((await backend.getPlaythroughsByIfid(ifid))[0]!.label).toBe(
           'Playthrough pt-copy',
         );

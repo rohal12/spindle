@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { current } from 'immer';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
@@ -371,7 +372,9 @@ describe('load pipeline', () => {
       await saveTo('hooked');
 
       expect(Story.prng.pull).toBe(1);
-      const payload = (await Story.exportSave('hooked'))!.save.payload;
+      const payload = decodeSavePayload(
+        (await Story.exportSave('hooked'))!.save.payload,
+      );
       // The fallback for saves whose moments have no PRNG state
       expect(payload.prng).toEqual({ seed: 'seed', pull: 1 });
     });

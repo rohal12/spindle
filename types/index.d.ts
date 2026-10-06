@@ -575,7 +575,18 @@ export interface SaveMeta {
  */
 export interface SaveRecord {
   meta: SaveMeta;
-  payload: SavePayload;
+  /** The payload as stored: serialized in one piece, with its format version. */
+  payload: EncodedPayload;
+}
+
+/**
+ * A save payload as stored. `data` is opaque serialized text; read it with
+ * the Story API (loading a save), not directly.
+ */
+export interface EncodedPayload {
+  /** The save format version `data` was written in. */
+  formatVersion: number;
+  data: string;
 }
 
 /**
@@ -584,7 +595,8 @@ export interface SaveRecord {
  * @see {@link ../../src/saves/types.ts} for the implementation.
  */
 export interface SaveExport {
-  version: 1;
+  /** The save format version of the export. */
+  formatVersion: number;
   /** IFID of the story the save belongs to. Imports into other stories are rejected. */
   ifid: string;
   /** ISO 8601 timestamp of the export. */
@@ -614,13 +626,18 @@ export interface StoryAPI {
   set(name: string, value: unknown): void;
   set(vars: Record<string, unknown>): void;
 
-  /** Navigate to a passage by name. */
+  /**
+   * Navigate to a passage by name. Writes the session: if the variables hold
+   * a value a save cannot hold (a function, an instance of an unregistered
+   * class, a unique symbol), the navigation completes and then throws an
+   * error naming the variable.
+   */
   goto(passageName: string): void;
 
-  /** Go back one step in history. */
+  /** Go back one step in history. Throws like `goto()`. */
   back(): void;
 
-  /** Go forward one step in history. */
+  /** Go forward one step in history. Throws like `goto()`. */
   forward(): void;
 
   /** Restart the story from the beginning. */
@@ -629,7 +646,9 @@ export interface StoryAPI {
   /**
    * Save the current state. Pass `slot` for a named save, `custom` for metadata.
    * Resolves once the save is persisted (after `aftersave` handlers ran and
-   * `hasSave(slot)` is true); rejects if persisting fails.
+   * `hasSave(slot)` is true); rejects if persisting fails, or if the state
+   * holds a value a save cannot hold (a function, an instance of an
+   * unregistered class, a unique symbol, a symbol key), naming it.
    */
   save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
 
@@ -638,7 +657,8 @@ export interface StoryAPI {
    * playthrough, in call order: a save issued after the load belongs to it.
    * Resolves once the loaded state is applied (immediately if the slot is
    * empty, without loading if a restart was issued after the load); rejects
-   * if loading fails.
+   * if loading fails, e.g. for a save holding an instance of a class that is
+   * not registered, or one from an incompatible save format version.
    */
   load(slot?: string): Promise<void>;
 
@@ -744,7 +764,11 @@ export interface StoryAPI {
   /** Check whether any dialog is currently open. */
   isDialogOpen(): boolean;
 
-  /** Register a class constructor for use in story expressions. */
+  /**
+   * Register a class so its instances keep their class through clones,
+   * history, saves and loads. A save refuses instances of classes that are
+   * not registered.
+   */
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
 
   /** Register a custom macro. */
