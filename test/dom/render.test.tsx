@@ -9,6 +9,7 @@ import { markdownOptions } from '../../src/markup/markdown';
 import { micromark } from 'micromark';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
+import { expectAboutLinear } from '../support/linear-time';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -727,17 +728,6 @@ describe('renderNodes', () => {
   // around its line endings was found with regexes (`/[ \t]*$/`) that try
   // every position of a whitespace run, quadratic in its length.
   describe('long whitespace runs', () => {
-    /** Milliseconds to render `markup`, best of three. */
-    function time(markup: string): number {
-      let best = Infinity;
-      for (let run = 0; run < 3; run++) {
-        const t0 = performance.now();
-        renderMarkup(markup);
-        best = Math.min(best, performance.now() - t0);
-      }
-      return best;
-    }
-
     it.each([
       ['plain text', (ws: string) => `a${ws}b`],
       ['markdown', (ws: string) => `*a*${ws}b`],
@@ -746,10 +736,14 @@ describe('renderNodes', () => {
     ])('render in about linear time in %s', (_, markup) => {
       useStoryStore.getState().setVariable('x', 'X');
       for (const unit of [' ', '\t', ' \t']) {
-        const small = time(markup(unit.repeat(2000)));
-        const large = time(markup(unit.repeat(16000)));
-        // 8× the input may take 8× the time, not the 64× of a quadratic scan
-        expect(large).toBeLessThan(Math.max(small, 1) * 24);
+        const small = markup(unit.repeat(2000));
+        const large = markup(unit.repeat(16000));
+        // 8× the input may take about 8× the time, not a quadratic scan's 64×
+        expectAboutLinear(
+          () => renderMarkup(small),
+          () => renderMarkup(large),
+          { floorMs: 1 },
+        );
       }
     });
 

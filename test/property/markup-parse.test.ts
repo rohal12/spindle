@@ -30,6 +30,7 @@ import {
   passageArb,
   propTimeout,
 } from './markup-arbitraries';
+import { expectAboutLinear } from '../support/linear-time';
 
 /** One or more redundant void-element closers, which the tokenizer drops. */
 const VOID_CLOSER =
@@ -298,23 +299,14 @@ describe('tokenize running time', () => {
     '</a?<a onclick="{$a/[',
   ];
 
-  /** Milliseconds to tokenize `src`, best of three. */
-  function time(src: string): number {
-    let best = Infinity;
-    for (let run = 0; run < 3; run++) {
-      const t0 = performance.now();
-      tokenize(src);
-      best = Math.min(best, performance.now() - t0);
-    }
-    return best;
-  }
-
   it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
-    const small = time(pattern.repeat(500));
-    const large = time(pattern.repeat(4000));
-    // 8× the input may take 8× the time; allow generous noise, but not the
-    // 64× of a quadratic scan.
-    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+    const small = pattern.repeat(500);
+    const large = pattern.repeat(4000);
+    // 8× the input may take about 8× the time, not a quadratic scan's 64×
+    expectAboutLinear(
+      () => tokenize(small),
+      () => tokenize(large),
+    );
   });
 });
 

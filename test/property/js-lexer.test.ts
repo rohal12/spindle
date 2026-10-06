@@ -14,6 +14,7 @@ import {
 } from '../../src/js-lexer';
 import { NUM_RUNS, fcOptions } from './config';
 import { jsArbitraries, render } from './arbitraries/js';
+import { expectAboutLinear } from '../support/linear-time';
 
 /** Characters that steer the lexer's state machine. */
 const LEXICAL = [
@@ -297,28 +298,24 @@ describe('findCodeEnd running time', () => {
     '@ </b>',
   ];
 
-  /** Milliseconds to scan `src` from each `@`, best of three. */
-  function time(src: string): number {
+  /** Scan `src` from each `@` with one fresh shared cache. */
+  function scanAll(src: string): () => void {
     const starts: number[] = [];
     for (let i = src.indexOf('@'); i !== -1; i = src.indexOf('@', i + 1)) {
       starts.push(i + 1);
     }
-    let best = Infinity;
-    for (let run = 0; run < 3; run++) {
+    return () => {
       const cache = createJsScanCache();
-      const t0 = performance.now();
       for (const start of starts) findCodeEnd(src, start, { cache });
-      best = Math.min(best, performance.now() - t0);
-    }
-    return best;
+    };
   }
 
   it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
-    const small = time(pattern.repeat(500));
-    const large = time(pattern.repeat(4000));
-    // 8× the input may take 8× the time; allow generous noise, but not the
-    // 64× of a quadratic scan.
-    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+    // 8× the input may take about 8× the time, not a quadratic scan's 64×
+    expectAboutLinear(
+      scanAll(pattern.repeat(500)),
+      scanAll(pattern.repeat(4000)),
+    );
   });
 });
 
@@ -345,22 +342,11 @@ describe('lexJs running time', () => {
     '$a.$b._c ',
   ];
 
-  /** Milliseconds to lex `src`, best of three. */
-  function time(src: string): number {
-    let best = Infinity;
-    for (let run = 0; run < 3; run++) {
-      const t0 = performance.now();
-      lexJs(src, { code() {}, literal() {}, variable() {} });
-      best = Math.min(best, performance.now() - t0);
-    }
-    return best;
-  }
+  const lex = (src: string) => () =>
+    lexJs(src, { code() {}, literal() {}, variable() {} });
 
   it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
-    const small = time(pattern.repeat(500));
-    const large = time(pattern.repeat(4000));
-    // 8× the input may take 8× the time; allow generous noise, but not the
-    // 64× of a quadratic scan.
-    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+    // 8× the input may take about 8× the time, not a quadratic scan's 64×
+    expectAboutLinear(lex(pattern.repeat(500)), lex(pattern.repeat(4000)));
   });
 });

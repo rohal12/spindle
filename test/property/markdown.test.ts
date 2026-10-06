@@ -8,6 +8,7 @@ import { test, fc } from '@fast-check/vitest';
 import { micromark } from 'micromark';
 import { markdownOptions, markdownToHtml } from '../../src/markup/markdown';
 import { fcOptions } from './config';
+import { expectAboutLinear } from '../support/linear-time';
 
 /** micromark with spindle's extensions, as it renders on its own. */
 function reference(text: string, inline: boolean): string {
@@ -98,23 +99,16 @@ describe('markdownToHtml running time', () => {
     '| a<!-- |\n',
   ];
 
-  /** Milliseconds to render `src`, best of five. */
-  function time(src: string): number {
-    let best = Infinity;
-    for (let run = 0; run < 5; run++) {
-      const t0 = performance.now();
-      markdownToHtml(src);
-      best = Math.min(best, performance.now() - t0);
-    }
-    return best;
+  /** 8× the input may take about 8× the time, not a quadratic scan's 64×. */
+  function expectLinear(small: string, large: string): void {
+    expectAboutLinear(
+      () => markdownToHtml(small),
+      () => markdownToHtml(large),
+    );
   }
 
   it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
-    const small = time(pattern.repeat(500));
-    const large = time(pattern.repeat(4000));
-    // 8× the input may take 8× the time; allow generous noise, but not the
-    // 64× of a quadratic scan.
-    expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+    expectLinear(pattern.repeat(500), pattern.repeat(4000));
   });
 
   // micromark's offsets skip a byte order mark and container markers, and
@@ -122,9 +116,7 @@ describe('markdownToHtml running time', () => {
   it.each(['﻿', 'x\r\n> ', '\t- ', '> > '])(
     'stays about linear after %j',
     (prefix) => {
-      const small = time(prefix + 'a<!--'.repeat(500));
-      const large = time(prefix + 'a<!--'.repeat(4000));
-      expect(large).toBeLessThan(Math.max(small, 0.5) * 24);
+      expectLinear(prefix + 'a<!--'.repeat(500), prefix + 'a<!--'.repeat(4000));
     },
   );
 });
