@@ -32,8 +32,9 @@ import type { ParameterDef } from './registry';
 import {
   MacroArgumentError,
   parseMacroArgs,
+  passageTarget,
+  type PassageTarget,
 } from './components/macros/macro-args';
-import { readWholeJsString } from './components/macros/arg-utils';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -82,6 +83,8 @@ export interface CodePiece {
   passage?: boolean;
   /** Whether it is the code in a quoted string, as in `{watch}`. */
   inString?: boolean;
+  /** The macro it is the argument of, for a `passage` argument. */
+  macro?: string;
 }
 
 /** A passage name written out in markup, at `offset` in it. */
@@ -91,6 +94,10 @@ export interface PassagePiece {
   offset: number;
   /** The markup it is in, for the error: `[[Go->Hall]]`. */
   label: string;
+  /** How much of the markup is the name, as written. */
+  length: number;
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
 }
 
 /** Macro arguments that don't have their parameters' forms. */
@@ -173,6 +180,8 @@ export function* codeAndText(
         kind: 'passage',
         name: token.target,
         offset: locate(src, token.target, token.start),
+        length: token.target.length,
+        macro: 'link',
         label: src.slice(token.start, token.end),
       };
     } else if (token.type === 'expression') {
@@ -238,6 +247,8 @@ export function* codeAndText(
             kind: 'passage',
             name: passage,
             offset: locate(src, passage, token.end),
+            length: passage.length,
+            macro: name,
             label: src.slice(token.start, token.end),
           };
         }
@@ -308,19 +319,30 @@ export function* argPieces(
           goal,
           label,
         };
-        if (param.type === 'passage') piece.passage = true;
+        if (param.type === 'passage') {
+          piece.passage = true;
+          piece.macro = macro.toLowerCase();
+        }
         if (!codeGoal(param)) piece.inString = true;
         yield piece;
       }
       // A passage written out: a quoted `passage` argument, or a string
-      const name =
+      const written = param.type === 'passage' ? value.trim() : value;
+      const target =
         param.type === 'passage'
-          ? readWholeJsString(value.trim())
+          ? passageTarget(value)
           : passageStrings.includes(param.name)
-            ? value
+            ? ({ kind: 'name', name: value } as const)
             : null;
-      if (name !== null) {
-        yield { kind: 'passage', name, offset: offset + at, label };
+      if (target?.kind === 'name') {
+        yield {
+          kind: 'passage',
+          name: target.name,
+          offset: offset + at + value.indexOf(written),
+          length: written.length,
+          macro: macro.toLowerCase(),
+          label,
+        };
       }
       if (
         !goal &&
@@ -348,4 +370,53 @@ function locate(text: string, part: string, from: number): number {
   if (at >= 0) return at;
   const anywhere = text.indexOf(part);
   return anywhere >= 0 ? anywhere : from;
+}
+
+/** A passage a piece of markup names, and where. */
+export interface PassageReference {
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
+  /** The name written out, or the expression whose value is the name. */
+  target: PassageTarget;
+  /** Where the name is written, as it is written (quotes included). */
+  start: number;
+  end: number;
+}
+
+/**
+ * The passages the markup `src` (with the `tokens` it tokenizes to) names:
+ * `[[…]]` links, the passage argument of `{goto}`, `{include}` and `{link}`
+ * (and of macros that declare one), the `goto` and `dialog` actions of
+ * `{watch}` and the body of `{dialog}`, in source order. A name written out
+ * is a literal; the others are expressions, which name a passage when they
+ * run.
+ */
+export function collectPassageReferences(
+  src: string,
+  tokens: readonly Token[],
+  parametersOf: (macro: string) => readonly ParameterDef[] | undefined,
+): PassageReference[] {
+  const refs: PassageReference[] = [];
+  for (const piece of codeAndText(src, tokens, parametersOf)) {
+    if (piece.kind === 'passage') {
+      refs.push({
+        macro: piece.macro,
+        target: { kind: 'name', name: piece.name },
+        start: piece.offset,
+        end: piece.offset + piece.length,
+      });
+    } else if (piece.kind === 'code' && piece.passage) {
+      refs.push({
+        macro: piece.macro!,
+        target: passageTarget(piece.code),
+        start: piece.offset,
+        end: piece.offset + piece.code.length,
+      });
+    }
+  }
+  return refs.filter(
+    (ref, i) =>
+      refs.findIndex((r) => r.start === ref.start && r.macro === ref.macro) ===
+      i,
+  );
 }

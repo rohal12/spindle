@@ -19,6 +19,7 @@ export function compileGrammar(grammar: string, path: string): string {
     output: 'source',
     format: 'es',
     allowedStartRules: START_RULES,
+    dependencies: { shared: './grammar-shared' },
     grammarSource: path,
   });
 }

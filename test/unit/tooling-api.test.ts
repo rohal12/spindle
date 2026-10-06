@@ -3,6 +3,7 @@
  * the same functions the runtime parses with.
  */
 import { describe, it, expect } from 'vitest';
+import { getMacroRegistry } from '../../src/registry';
 import {
   MarkupError,
   SIGIL_SCOPES,
@@ -19,7 +20,12 @@ import {
   splitTopLevel,
   stripLooseQuotes,
   tokenizeMarkup,
+  tokenizeMarkupTolerant,
+  transform,
   unescapeQuoted,
+  collectStoryPassageReferences,
+  evaluatePassageName,
+  passageTarget,
 } from '../../src/tooling';
 
 describe('tooling API: the JavaScript lexer', () => {
@@ -154,5 +160,118 @@ describe('tooling API: argument rules', () => {
       inline: false,
       passage: '"a" + inline',
     });
+  });
+});
+
+describe('tooling API: tolerant tokens', () => {
+  const tolerant = (src: string) => tokenizeMarkupTolerant(src);
+
+  it('gives the tokens of well-formed markup, and no errors', () => {
+    const src = 'Hi {$a}, [[Go->Hall]] {if $x}yes{/if}';
+    expect(tolerant(src)).toEqual({ tokens: tokenizeMarkup(src), errors: [] });
+  });
+
+  it.each([
+    ['an unclosed macro', 'Hi {$a} then {if $x', 13],
+    ['an unclosed link', 'a {$b} [[Go->Hal', 7],
+    ['an unclosed attribute value', 'x {$b} <a href="oops', 15],
+  ])('keeps the tokens before %s', (_, src, offset) => {
+    const { tokens, errors } = tolerant(src);
+    expect(errors.map((e) => e.offset)).toEqual([offset]);
+    expect(tokens.filter((t) => t.type === 'variable')).toHaveLength(1);
+    // Every character is in exactly one token, in order
+    let at = 0;
+    for (const t of tokens) {
+      expect(t.start).toBe(at);
+      at = t.end;
+    }
+    expect(at).toBe(src.length);
+  });
+
+  it('reads on after an error, with offsets in the source', () => {
+    const src = '{if $x\n[[a]] {$b} [[open\n{$c}';
+    const { tokens, errors } = tolerant(src);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toMatchObject({ offset: 0, line: 1, column: 1 });
+    expect(errors[1]).toMatchObject({ line: 2 });
+    const link = tokens.find((t) => t.type === 'link')!;
+    expect(src.slice(link.start, link.end)).toBe('[[a]]');
+    const variables = tokens.filter((t) => t.type === 'variable');
+    expect(variables.map((t) => src.slice(t.start, t.end))).toEqual([
+      '{$b}',
+      '{$c}',
+    ]);
+  });
+});
+
+describe('tooling API: passage targets', () => {
+  it('reads a quoted name as its JavaScript literal, else an expression', () => {
+    expect(passageTarget('"Hall"')).toEqual({ kind: 'name', name: 'Hall' });
+    expect(passageTarget(' "\\u0048all" ')).toEqual({
+      kind: 'name',
+      name: 'Hall',
+    });
+    expect(passageTarget('$room')).toEqual({
+      kind: 'expression',
+      expression: '$room',
+    });
+    expect(passageTarget('"a" + $b')).toEqual({
+      kind: 'expression',
+      expression: '"a" + $b',
+    });
+  });
+
+  it('evaluates a name as the story does', () => {
+    const state = {
+      storyData: { passages: new Map([['Hall', {}]]) },
+      currentPassage: 'Start',
+    } as never;
+    expect(evaluatePassageName('$x', () => 'Hall', state)).toBe('Hall');
+    expect(() => evaluatePassageName('$x', () => 'Nope', state)).toThrow(
+      'No passage named "Nope" (in passage "Start")',
+    );
+  });
+
+  it('transforms sigil references into namespace lookups', () => {
+    expect(transform('$a + _b + @c + %d + "$e"')).toBe(
+      'variables["a"] + temporary["b"] + locals["c"] + transient["d"] + "$e"',
+    );
+    expect(transform('$a = 1; _b++', 'statements')).toBe(
+      'variables["a"] = 1; temporary["b"]++',
+    );
+    expect(() => transform('$__proto__')).toThrow(SyntaxError);
+  });
+});
+
+describe('tooling API: passage references', () => {
+  const macros = getMacroRegistry();
+  const refs = (src: string) => collectStoryPassageReferences(src, macros);
+  const at = (src: string, ref: { start: number; end: number }) =>
+    src.slice(ref.start, ref.end);
+
+  it('finds links, macro arguments, watch actions and dialog bodies', () => {
+    const src = [
+      '[[Go->Hall]]',
+      '{goto "Cellar"}',
+      '{include $room}',
+      '{link "Go" "Attic"}{/link}',
+      '{watch "$x" goto "Roof" dialog "Hint"}',
+      '{dialog "Title"}Basement{/dialog}',
+    ].join('\n');
+    const found = refs(src);
+    expect(found.map((r) => [r.macro, r.target, at(src, r)])).toEqual([
+      ['link', { kind: 'name', name: 'Hall' }, 'Hall'],
+      ['goto', { kind: 'name', name: 'Cellar' }, '"Cellar"'],
+      ['include', { kind: 'expression', expression: '$room' }, '$room'],
+      ['link', { kind: 'name', name: 'Attic' }, '"Attic"'],
+      ['watch', { kind: 'name', name: 'Roof' }, 'Roof'],
+      ['watch', { kind: 'name', name: 'Hint' }, 'Hint'],
+      ['dialog', { kind: 'name', name: 'Basement' }, 'Basement'],
+    ]);
+  });
+
+  it('reads half-typed markup', () => {
+    const src = '[[Go->Hall]] {goto "Cellar"} {goto "Att';
+    expect(refs(src).map((r) => at(src, r))).toEqual(['Hall', '"Cellar"']);
   });
 });

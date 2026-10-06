@@ -18,13 +18,14 @@
 //   isBlock(name), isRaw(name)  whether a macro takes a body / a raw body
 //   isCodeAttribute(name)  whether an attribute value is code (onclick)
 //
+// SIGIL_SCOPES and withSelectors come from tokens.ts (see grammar-shared.ts)
 // Note: Peggy's code blocks count braces without reading JavaScript strings,
 // so the code here writes literal braces as LB and RB.
 
 {{
 const LB = String.fromCharCode(123);
 const RB = String.fromCharCode(125);
-const SIGIL_SCOPES = { $: 'variable', _: 'temporary', '@': 'local', '%': 'transient' };
+const { SIGIL_SCOPES, withSelectors } = shared;
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const BRANCH_PARENT = { elseif: 'if', else: 'if', case: 'switch', default: 'switch', next: 'timed' };
 const BRANCHING = new Set(['if', 'switch', 'timed']);
@@ -45,12 +46,6 @@ function parseLink(inner) {
 
 function quoteArg(value) {
   return '"' + value.replace(/[\\"]/g, '\\$&') + '"';
-}
-
-function withSelectors(target, from) {
-  if (from.className) target.className = from.className;
-  if (from.id) target.id = from.id;
-  return target;
 }
 
 function selectorsOf(parts) {

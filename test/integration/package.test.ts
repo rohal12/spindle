@@ -114,6 +114,11 @@ describe('@rohal12/spindle/tooling', async () => {
       'scanStringLiteral',
       'parseSelectors',
       'tokenizeMarkup',
+      'tokenizeMarkupTolerant',
+      'transform',
+      'passageTarget',
+      'evaluatePassageName',
+      'collectPassageReferences',
       'isSigil',
       'splitArgs',
       'splitTopLevel',
@@ -132,6 +137,13 @@ describe('@rohal12/spindle/tooling', async () => {
       end: 5,
     });
     expect(tooling.tokenizeMarkup('{$x}')[0].type).toBe('variable');
+    expect(tooling.tokenizeMarkupTolerant('{$x} {if').errors).toHaveLength(1);
+    expect(tooling.transform('$x')).toBe('variables["x"]');
+    expect(
+      tooling
+        .collectPassageReferences('[[Go->Hall]] {goto "Roof"}')
+        .map((r: { macro: string }) => r.macro),
+    ).toEqual(['link', 'goto']);
   });
 
   it('does not load or bundle the runtime', () => {

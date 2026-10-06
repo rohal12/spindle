@@ -131,3 +131,75 @@ export function parseSelectors(
   };
   return { ...found, end: at + found.end };
 }
+
+/** The tokens of markup that may be malformed, and its errors. */
+export interface TolerantTokens {
+  tokens: Token[];
+  /** One for each malformed tag, in source order, with offsets in the source. */
+  errors: MarkupError[];
+}
+
+/**
+ * `tokenizeMarkup` for half-typed markup: the tokens it can read, and every
+ * error, instead of throwing at the first. At a malformed tag, the tokens
+ * before it are kept, its first character is read as text and tokenizing
+ * resumes after it, so what follows is read as if the tag had not been
+ * started. Tokens and errors have offsets in `source`; for well-formed
+ * markup the tokens are those of `tokenizeMarkup` and there are no errors.
+ */
+export function tokenizeMarkupTolerant(
+  source: string,
+  options: ParseMarkupOptions = {},
+): TolerantTokens {
+  const tokens: Token[] = [];
+  const errors: MarkupError[] = [];
+  /** `text` shifted by `base`, tokenized: the tokens or the error. */
+  const attempt = (text: string, base: number): Token[] | MarkupError => {
+    try {
+      return tokenizeMarkup(text, options).map((token) => shift(token, base));
+    } catch (error) {
+      if (!(error instanceof MarkupError)) throw error;
+      return error;
+    }
+  };
+  let base = 0;
+  while (base <= source.length) {
+    const rest = source.slice(base);
+    const result = attempt(rest, base);
+    if (Array.isArray(result)) {
+      tokens.push(...result);
+      break;
+    }
+    const at = base + result.offset;
+    const { line, column } = lineColumn(source, at);
+    errors.push(new MarkupError(result.reason, at, line, column));
+    // The longest prefix that tokenizes: the error may be inside a tag
+    // (an attribute value) of which the prefix is itself malformed
+    let cut = result.offset;
+    let prefix = attempt(rest.slice(0, cut), base);
+    while (!Array.isArray(prefix)) {
+      cut = prefix.offset;
+      prefix = attempt(rest.slice(0, cut), base);
+    }
+    tokens.push(...prefix);
+    // The character that started the damage is text
+    if (cut < rest.length) {
+      const start = base + cut;
+      tokens.push({
+        type: 'text',
+        value: rest[cut]!,
+        start,
+        end: start + 1,
+      });
+    }
+    base += cut + 1;
+  }
+  return { tokens, errors };
+}
+
+/** `token` with its offsets moved `by` on. */
+function shift(token: Token, by: number): Token {
+  return by === 0
+    ? token
+    : { ...token, start: token.start + by, end: token.end + by };
+}

@@ -393,3 +393,81 @@ export declare function splitIncludeFlag(rawArgs: string): {
   inline: boolean;
   passage: string | undefined;
 };
+
+/** The tokens of markup that may be malformed, and its errors. */
+export interface TolerantTokens {
+  tokens: Token[];
+  /** One for each malformed tag, in source order, with offsets in the source. */
+  errors: MarkupError[];
+}
+
+/**
+ * `tokenizeMarkup` for half-typed markup: the tokens it can read, and every
+ * error, instead of throwing at the first. At a malformed tag the tokens
+ * before it are kept, its first character is read as text, and tokenizing
+ * resumes after it. Offsets are in `source`. For well-formed markup the
+ * tokens are those of `tokenizeMarkup` and there are no errors.
+ */
+export declare function tokenizeMarkupTolerant(
+  source: string,
+  options?: ParseMarkupOptions,
+): TolerantTokens;
+
+/**
+ * The code Spindle runs for `expr`: its variable references (`$var`, `_var`,
+ * `@var`, `%var`) turned into namespace lookups (`variables["var"]`).
+ * String, template and regex literals and comments are untouched. `goal` is
+ * `'statements'` for a `{do}` body. Throws a `SyntaxError` for code that is
+ * not well-formed, and for a reference to a variable named `__proto__`.
+ */
+export declare function transform(expr: string, goal?: JsGoal): string;
+
+/** What a `passage` argument is: a quoted name, or an expression. */
+export type PassageTarget =
+  | { kind: 'name'; name: string }
+  | { kind: 'expression'; expression: string };
+
+/**
+ * Read a `passage` argument (`{goto "Hall"}`, `{include $room}`) as written:
+ * a quoted string is the name its JavaScript literal has (`"Hall"` is
+ * `Hall`), anything else an expression whose value, as a string, is the name
+ * when it runs.
+ */
+export declare function passageTarget(arg: string): PassageTarget;
+
+/**
+ * The passage a `passage` argument names, as `{goto}`, `{include}` and
+ * `{link}` find it: `String(evaluate(expr))`. Throws what `evaluate` throws,
+ * and an error naming the current passage if the story has no passage of
+ * that name.
+ */
+export declare function evaluatePassageName(
+  expr: string | undefined,
+  evaluate: (expr: string) => unknown,
+  state: {
+    storyData: { passages: { has(name: string): boolean } } | null;
+    currentPassage: string;
+  },
+): string;
+
+/** A passage that markup names, and where. */
+export interface PassageReference {
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
+  /** The name written out, or the expression whose value is the name. */
+  target: PassageTarget;
+  /** Where it is written, as written (quotes included): offsets in `source`. */
+  start: number;
+  end: number;
+}
+
+/**
+ * The passages the markup of `source` names, in source order: `[[…]]` links,
+ * the passage of `{goto}`, `{include}` and `{link}` (and of macros that
+ * declare a `passage` argument), the `goto` and `dialog` actions of
+ * `{watch}` and the body of `{dialog}`. Malformed tags are skipped, so
+ * half-typed markup reads.
+ */
+export declare function collectPassageReferences(
+  source: string,
+): PassageReference[];

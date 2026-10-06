@@ -22,6 +22,7 @@ import {
   endsWithOperator,
   isWhitespace,
   readQuoted,
+  readWholeJsString,
   readWholeQuoted,
   stripLooseQuotes,
   topLevelIndices,
@@ -298,6 +299,25 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   });
   readGroup(parameters.slice(groupStart), rest, args);
   return args as MacroArgs<P>;
+}
+
+/** What a `passage` argument is: a quoted name, or an expression. */
+export type PassageTarget =
+  | { kind: 'name'; name: string }
+  | { kind: 'expression'; expression: string };
+
+/**
+ * Read a `passage` argument as written (`{goto "Hall"}`, `{goto $room}`): a
+ * quoted string is the name its JavaScript literal has (`"\u0048all"` is
+ * `Hall`), anything else an expression, whose value is the name when it
+ * runs (see evaluatePassageName).
+ */
+export function passageTarget(arg: string): PassageTarget {
+  const expression = arg.trim();
+  const name = readWholeJsString(expression);
+  return name === null
+    ? { kind: 'expression', expression }
+    : { kind: 'name', name };
 }
 
 /**
