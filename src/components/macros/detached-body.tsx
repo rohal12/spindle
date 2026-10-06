@@ -9,6 +9,7 @@ import {
   WidgetChildrenContext,
 } from '../../markup/render';
 import type { ASTNode } from '../../markup/ast';
+import { useRenderOptions } from '../../hooks/use-render-options';
 import { liveLocalsView } from '../../utils/live-locals';
 import { runWithCommittedMutations } from '../../execute-mutation';
 import { RepeatContext } from './Repeat';
@@ -35,8 +36,7 @@ import { DialogCloseContext } from '../PassageDialog';
  */
 export function useDetachedBody(): (children: ASTNode[]) => void {
   const updater = useContext(LocalsUpdateContext);
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
+  const { nobr, inline } = useRenderOptions();
   const widgetChildren = useContext(WidgetChildrenContext);
   const repeat = useContext(RepeatContext);
   const closeDialog = useContext(DialogCloseContext);

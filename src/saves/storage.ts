@@ -1,6 +1,109 @@
 import type { SaveRecord, PlaythroughRecord, StorageBackend } from './types';
 
 // ---------------------------------------------------------------------------
+// Backend operations, over the tables each backend provides
+// ---------------------------------------------------------------------------
+
+/**
+ * One kind of record a backend stores, by key: saves, playthroughs or meta
+ * values. Each backend implements these few operations; every operation of
+ * a StorageBackend is built on them once, by createBackend().
+ */
+interface Table<T> {
+  get(key: string): Promise<T | undefined>;
+  put(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<void>;
+  /** The records whose indexed `field` (see makeTables) holds `value`. */
+  find(field: string, value: string): Promise<T[]>;
+  /** Every key, in the backend's order. */
+  keys(): Promise<string[]>;
+}
+
+type TableName = 'saves' | 'playthroughs' | 'meta';
+
+/** A table's indexed fields, and how to read them from a record. */
+type Indexes<T> = Record<string, (record: T) => string>;
+
+type MakeTable = <T>(name: TableName, indexes: Indexes<T>) => Table<T>;
+
+interface Tables {
+  saves: Table<SaveRecord>;
+  playthroughs: Table<PlaythroughRecord>;
+  meta: Table<unknown>;
+}
+
+/** A backend's tables, made by its `table` function. */
+function makeTables(table: MakeTable): Tables {
+  return {
+    saves: table<SaveRecord>('saves', {
+      ifid: (r) => r.meta.ifid,
+      playthroughId: (r) => r.meta.playthroughId,
+    }),
+    playthroughs: table<PlaythroughRecord>('playthroughs', {
+      ifid: (r) => r.ifid,
+    }),
+    meta: table('meta', {}),
+  };
+}
+
+function createBackend(
+  type: StorageBackend['type'],
+  { saves, playthroughs, meta }: Tables,
+  destroy: () => Promise<void>,
+): StorageBackend {
+  /** Delete the records `field` finds, resolving to their keys. */
+  async function deleteFound<T>(
+    table: Table<T>,
+    keyOf: (record: T) => string,
+    field: string,
+    value: string,
+  ): Promise<string[]> {
+    const keys = (await table.find(field, value)).map(keyOf);
+    for (const key of keys) await table.delete(key);
+    return keys;
+  }
+
+  async function deleteMetaWhere(test: (key: string) => boolean) {
+    for (const key of await meta.keys()) {
+      if (test(key)) await meta.delete(key);
+    }
+  }
+
+  const saveId = (r: SaveRecord) => r.meta.id;
+  const playthroughId = (r: PlaythroughRecord) => r.id;
+
+  return {
+    type,
+    putSave: (record) => saves.put(record.meta.id, record),
+    getSave: (id) => saves.get(id),
+    deleteSave: (id) => saves.delete(id),
+    getSavesByIfid: (ifid) => saves.find('ifid', ifid),
+    deleteSavesByIfid: async (ifid) => {
+      await deleteFound(saves, saveId, 'ifid', ifid);
+    },
+    deleteSavesByPlaythrough: (id) =>
+      deleteFound(saves, saveId, 'playthroughId', id),
+
+    putPlaythrough: (record) => playthroughs.put(record.id, record),
+    getPlaythroughsByIfid: (ifid) => playthroughs.find('ifid', ifid),
+    deletePlaythroughsByIfid: async (ifid) => {
+      await deleteFound(playthroughs, playthroughId, 'ifid', ifid);
+    },
+    deletePlaythroughById: (id) => playthroughs.delete(id),
+
+    getMeta: <T>(key: string) => meta.get(key) as Promise<T | undefined>,
+    setMeta: (key, value) => meta.put(key, value),
+    deleteMeta: (key) => meta.delete(key),
+    deleteMetaByPrefix: (prefix) =>
+      deleteMetaWhere((key) => key.startsWith(prefix)),
+    deleteMetaByIfid: (ifid) => deleteMetaWhere((key) => key.includes(ifid)),
+    getAllMetaKeys: () => meta.keys(),
+
+    destroy,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Memory backend
 // ---------------------------------------------------------------------------
 
@@ -11,116 +114,47 @@ import type { SaveRecord, PlaythroughRecord, StorageBackend } from './types';
  */
 export function createMemoryBackend(): StorageBackend {
   const copy = <T>(value: T): T => structuredClone(value);
-  const saves = new Map<string, SaveRecord>();
-  const playthroughs = new Map<string, PlaythroughRecord>();
-  const meta = new Map<string, unknown>();
+  const maps: Map<string, unknown>[] = [];
 
-  return {
-    type: 'memory',
+  function table<T>(_name: TableName, indexes: Indexes<T>): Table<T> {
+    const rows = new Map<string, T>();
+    maps.push(rows);
+    return {
+      get: async (key) => copy(rows.get(key)),
+      put: async (key, value) => {
+        rows.set(key, copy(value));
+      },
+      delete: async (key) => {
+        rows.delete(key);
+      },
+      find: async (field, value) =>
+        [...rows.values()]
+          .filter((r) => indexes[field]!(r) === value)
+          .map(copy),
+      keys: async () => [...rows.keys()],
+    };
+  }
 
-    async putSave(record: SaveRecord): Promise<void> {
-      saves.set(record.meta.id, copy(record));
-    },
-
-    async getSave(id: string): Promise<SaveRecord | undefined> {
-      const record = saves.get(id);
-      return record && copy(record);
-    },
-
-    async deleteSave(id: string): Promise<void> {
-      saves.delete(id);
-    },
-
-    async getSavesByIfid(ifid: string): Promise<SaveRecord[]> {
-      return [...saves.values()].filter((s) => s.meta.ifid === ifid).map(copy);
-    },
-
-    async deleteSavesByIfid(ifid: string): Promise<void> {
-      for (const id of [...saves.keys()]) {
-        const s = saves.get(id);
-        if (s && s.meta.ifid === ifid) saves.delete(id);
-      }
-    },
-
-    async deleteSavesByPlaythrough(playthroughId: string): Promise<string[]> {
-      const deleted: string[] = [];
-      for (const id of [...saves.keys()]) {
-        const s = saves.get(id);
-        if (s && s.meta.playthroughId === playthroughId) {
-          saves.delete(id);
-          deleted.push(id);
-        }
-      }
-      return deleted;
-    },
-
-    async putPlaythrough(record: PlaythroughRecord): Promise<void> {
-      playthroughs.set(record.id, copy(record));
-    },
-
-    async getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]> {
-      return [...playthroughs.values()]
-        .filter((p) => p.ifid === ifid)
-        .map(copy);
-    },
-
-    async deletePlaythroughsByIfid(ifid: string): Promise<void> {
-      for (const id of [...playthroughs.keys()]) {
-        const p = playthroughs.get(id);
-        if (p && p.ifid === ifid) playthroughs.delete(id);
-      }
-    },
-
-    async deletePlaythroughById(id: string): Promise<void> {
-      playthroughs.delete(id);
-    },
-
-    async getMeta<T = unknown>(key: string): Promise<T | undefined> {
-      return copy(meta.get(key)) as T | undefined;
-    },
-
-    async setMeta(key: string, value: unknown): Promise<void> {
-      meta.set(key, copy(value));
-    },
-
-    async deleteMeta(key: string): Promise<void> {
-      meta.delete(key);
-    },
-
-    async deleteMetaByPrefix(prefix: string): Promise<void> {
-      for (const key of [...meta.keys()]) {
-        if (key.startsWith(prefix)) meta.delete(key);
-      }
-    },
-
-    async deleteMetaByIfid(ifid: string): Promise<void> {
-      for (const key of [...meta.keys()]) {
-        if (key.includes(ifid)) meta.delete(key);
-      }
-    },
-
-    async getAllMetaKeys(): Promise<string[]> {
-      return [...meta.keys()];
-    },
-
-    async destroy(): Promise<void> {
-      saves.clear();
-      playthroughs.clear();
-      meta.clear();
-    },
-  };
+  return createBackend('memory', makeTables(table), async () => {
+    for (const rows of maps) rows.clear();
+  });
 }
 
 // ---------------------------------------------------------------------------
 // localStorage backend
 // ---------------------------------------------------------------------------
 
-const LS_SAVE_PREFIX = 'spindle.save.';
-const LS_PT_PREFIX = 'spindle.pt.';
-const LS_META_PREFIX = 'spindle.meta.';
-const LS_IDX_SAVES_PREFIX = 'spindle.idx.saves.';
-const LS_IDX_PT_PREFIX = 'spindle.idx.pt.';
-const LS_IDX_SAVES_PT_PREFIX = 'spindle.idx.saves-pt.';
+/** Key prefixes: of the records, and of each index's ID lists. */
+const LS_PREFIXES: Record<TableName, string> = {
+  saves: 'spindle.save.',
+  playthroughs: 'spindle.pt.',
+  meta: 'spindle.meta.',
+};
+const LS_INDEX_PREFIXES: Record<string, string> = {
+  'saves.ifid': 'spindle.idx.saves.',
+  'saves.playthroughId': 'spindle.idx.saves-pt.',
+  'playthroughs.ifid': 'spindle.idx.pt.',
+};
 
 function lsGet<T>(key: string): T | undefined {
   const raw = localStorage.getItem(key);
@@ -152,162 +186,67 @@ function lsIndexAdd(key: string, entry: string): void {
   }
 }
 
+/** Remove an ID from an index; an index left empty is removed. */
 function lsIndexRemove(key: string, entry: string): void {
   const arr = lsIndex(key).filter((e) => e !== entry);
-  lsSet(key, arr);
+  if (arr.length > 0) lsSet(key, arr);
+  else lsDel(key);
 }
 
+/** The keys of every stored item that start with `prefix`. */
+const lsKeys = (prefix: string): string[] =>
+  Object.keys(localStorage).filter((key) => key.startsWith(prefix));
+
 export function createLocalStorageBackend(): StorageBackend {
-  return {
-    type: 'localstorage',
+  function table<T>(name: TableName, fields: Indexes<T>): Table<T> {
+    const prefix = LS_PREFIXES[name];
+    const indexes = Object.entries(fields).map(([field, read]) => ({
+      field,
+      read,
+      prefix: LS_INDEX_PREFIXES[`${name}.${field}`]!,
+    }));
+    /** The index lists `record` is in. */
+    const listsOf = (record: T) =>
+      indexes.map((index) => `${index.prefix}${index.read(record)}`);
 
-    async putSave(record: SaveRecord): Promise<void> {
-      const id = record.meta.id;
-      // A save rewritten under another playthrough (an overwrite after a
-      // restart) leaves its old playthrough's index
-      const previous = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-      if (previous && previous.meta.playthroughId !== record.meta.playthroughId)
-        lsIndexRemove(
-          `${LS_IDX_SAVES_PT_PREFIX}${previous.meta.playthroughId}`,
-          id,
-        );
-      lsSet(`${LS_SAVE_PREFIX}${id}`, record);
-      lsIndexAdd(`${LS_IDX_SAVES_PREFIX}${record.meta.ifid}`, id);
-      lsIndexAdd(`${LS_IDX_SAVES_PT_PREFIX}${record.meta.playthroughId}`, id);
-    },
-
-    async getSave(id: string): Promise<SaveRecord | undefined> {
-      return lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-    },
-
-    async deleteSave(id: string): Promise<void> {
-      const record = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-      if (record) {
-        lsIndexRemove(`${LS_IDX_SAVES_PREFIX}${record.meta.ifid}`, id);
-        lsIndexRemove(
-          `${LS_IDX_SAVES_PT_PREFIX}${record.meta.playthroughId}`,
-          id,
-        );
-      }
-      lsDel(`${LS_SAVE_PREFIX}${id}`);
-    },
-
-    async getSavesByIfid(ifid: string): Promise<SaveRecord[]> {
-      const ids = lsIndex(`${LS_IDX_SAVES_PREFIX}${ifid}`);
-      const results: SaveRecord[] = [];
-      for (const id of ids) {
-        const record = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-        if (record) results.push(record);
-      }
-      return results;
-    },
-
-    async deleteSavesByIfid(ifid: string): Promise<void> {
-      const ids = lsIndex(`${LS_IDX_SAVES_PREFIX}${ifid}`);
-      for (const id of ids) {
-        const record = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-        if (record) {
-          lsIndexRemove(
-            `${LS_IDX_SAVES_PT_PREFIX}${record.meta.playthroughId}`,
-            id,
-          );
+    return {
+      get: async (key) => lsGet<T>(`${prefix}${key}`),
+      async put(key, value) {
+        // A record rewritten under another index value (a save overwritten
+        // after a restart, under the new playthrough) leaves the old list
+        const previous = lsGet<T>(`${prefix}${key}`);
+        const lists = listsOf(value);
+        if (previous !== undefined) {
+          for (const list of listsOf(previous)) {
+            if (!lists.includes(list)) lsIndexRemove(list, key);
+          }
         }
-        lsDel(`${LS_SAVE_PREFIX}${id}`);
-      }
-      lsDel(`${LS_IDX_SAVES_PREFIX}${ifid}`);
-    },
-
-    async deleteSavesByPlaythrough(playthroughId: string): Promise<string[]> {
-      const ids = lsIndex(`${LS_IDX_SAVES_PT_PREFIX}${playthroughId}`);
-      for (const id of ids) {
-        const record = lsGet<SaveRecord>(`${LS_SAVE_PREFIX}${id}`);
-        if (record) {
-          lsIndexRemove(`${LS_IDX_SAVES_PREFIX}${record.meta.ifid}`, id);
+        lsSet(`${prefix}${key}`, value);
+        for (const list of lists) lsIndexAdd(list, key);
+      },
+      async delete(key) {
+        const record = lsGet<T>(`${prefix}${key}`);
+        if (record !== undefined) {
+          for (const list of listsOf(record)) lsIndexRemove(list, key);
         }
-        lsDel(`${LS_SAVE_PREFIX}${id}`);
-      }
-      lsDel(`${LS_IDX_SAVES_PT_PREFIX}${playthroughId}`);
-      return ids;
-    },
-
-    async putPlaythrough(record: PlaythroughRecord): Promise<void> {
-      lsSet(`${LS_PT_PREFIX}${record.id}`, record);
-      lsIndexAdd(`${LS_IDX_PT_PREFIX}${record.ifid}`, record.id);
-    },
-
-    async getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]> {
-      const ids = lsIndex(`${LS_IDX_PT_PREFIX}${ifid}`);
-      const results: PlaythroughRecord[] = [];
-      for (const id of ids) {
-        const record = lsGet<PlaythroughRecord>(`${LS_PT_PREFIX}${id}`);
-        if (record) results.push(record);
-      }
-      return results;
-    },
-
-    async deletePlaythroughsByIfid(ifid: string): Promise<void> {
-      const ids = lsIndex(`${LS_IDX_PT_PREFIX}${ifid}`);
-      for (const id of ids) {
-        lsDel(`${LS_PT_PREFIX}${id}`);
-      }
-      lsDel(`${LS_IDX_PT_PREFIX}${ifid}`);
-    },
-
-    async deletePlaythroughById(id: string): Promise<void> {
-      const record = lsGet<PlaythroughRecord>(`${LS_PT_PREFIX}${id}`);
-      if (record) {
-        lsIndexRemove(`${LS_IDX_PT_PREFIX}${record.ifid}`, id);
-      }
-      lsDel(`${LS_PT_PREFIX}${id}`);
-    },
-
-    async getMeta<T = unknown>(key: string): Promise<T | undefined> {
-      return lsGet<T>(`${LS_META_PREFIX}${key}`);
-    },
-
-    async setMeta(key: string, value: unknown): Promise<void> {
-      lsSet(`${LS_META_PREFIX}${key}`, value);
-    },
-
-    async deleteMeta(key: string): Promise<void> {
-      lsDel(`${LS_META_PREFIX}${key}`);
-    },
-
-    async deleteMetaByPrefix(prefix: string): Promise<void> {
-      const fullPrefix = `${LS_META_PREFIX}${prefix}`;
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith(fullPrefix)) {
-          localStorage.removeItem(key);
+        lsDel(`${prefix}${key}`);
+      },
+      async find(field, value) {
+        const index = indexes.find((i) => i.field === field)!;
+        const results: T[] = [];
+        for (const id of lsIndex(`${index.prefix}${value}`)) {
+          const record = lsGet<T>(`${prefix}${id}`);
+          if (record !== undefined) results.push(record);
         }
-      }
-    },
+        return results;
+      },
+      keys: async () => lsKeys(prefix).map((key) => key.slice(prefix.length)),
+    };
+  }
 
-    async deleteMetaByIfid(ifid: string): Promise<void> {
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith(LS_META_PREFIX) && key.includes(ifid)) {
-          localStorage.removeItem(key);
-        }
-      }
-    },
-
-    async getAllMetaKeys(): Promise<string[]> {
-      const keys: string[] = [];
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith(LS_META_PREFIX)) {
-          keys.push(key.slice(LS_META_PREFIX.length));
-        }
-      }
-      return keys;
-    },
-
-    async destroy(): Promise<void> {
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith('spindle.')) {
-          localStorage.removeItem(key);
-        }
-      }
-    },
-  };
+  return createBackend('localstorage', makeTables(table), async () => {
+    for (const key of lsKeys('spindle.')) lsDel(key);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -358,15 +297,6 @@ function createIDBBackend(): StorageBackend {
     return dbPromise;
   }
 
-  function tx(
-    storeName: string,
-    mode: IDBTransactionMode,
-  ): Promise<IDBObjectStore> {
-    return openDB().then((db) =>
-      db.transaction(storeName, mode).objectStore(storeName),
-    );
-  }
-
   function idbReq<T>(req: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
@@ -374,156 +304,53 @@ function createIDBBackend(): StorageBackend {
     });
   }
 
-  async function getAllFromIndex<T>(
-    storeName: string,
-    indexName: string,
-    value: string,
-  ): Promise<T[]> {
-    const store = await tx(storeName, 'readonly');
-    const index = store.index(indexName);
-    const result = await idbReq(index.getAll(value));
-    return (result ?? []) as T[];
+  /**
+   * An object store. Records hold their own key (keyPath); meta values are
+   * stored as `{ key, value }` rows.
+   */
+  function table<T>(name: TableName): Table<T> {
+    const rows = name === 'meta';
+    /** Run one request in a transaction of its own. */
+    const request = async <R>(
+      mode: IDBTransactionMode,
+      make: (store: IDBObjectStore) => IDBRequest<R>,
+    ): Promise<R> => {
+      const db = await openDB();
+      return idbReq(make(db.transaction(name, mode).objectStore(name)));
+    };
+
+    return {
+      async get(key) {
+        const result = await request('readonly', (s) => s.get(key));
+        return (rows ? result?.value : result) as T | undefined;
+      },
+      async put(key, value) {
+        await request('readwrite', (s) => s.put(rows ? { key, value } : value));
+      },
+      async delete(key) {
+        await request('readwrite', (s) => s.delete(key));
+      },
+      async find(field, value) {
+        const result = await request('readonly', (s) =>
+          s.index(field).getAll(value),
+        );
+        return (result ?? []) as T[];
+      },
+      keys: async () =>
+        (await request('readonly', (s) => s.getAllKeys())) as string[],
+    };
   }
 
-  return {
-    type: 'indexeddb',
-
-    async putSave(record: SaveRecord): Promise<void> {
-      const store = await tx('saves', 'readwrite');
-      await idbReq(store.put(record));
-    },
-
-    async getSave(id: string): Promise<SaveRecord | undefined> {
-      const store = await tx('saves', 'readonly');
-      return (
-        ((await idbReq(store.get(id))) as SaveRecord | undefined) ?? undefined
-      );
-    },
-
-    async deleteSave(id: string): Promise<void> {
-      const store = await tx('saves', 'readwrite');
-      await idbReq(store.delete(id));
-    },
-
-    async getSavesByIfid(ifid: string): Promise<SaveRecord[]> {
-      return getAllFromIndex<SaveRecord>('saves', 'ifid', ifid);
-    },
-
-    async deleteSavesByIfid(ifid: string): Promise<void> {
-      const records = await getAllFromIndex<SaveRecord>('saves', 'ifid', ifid);
-      const store = await tx('saves', 'readwrite');
-      for (const r of records) {
-        await idbReq(store.delete(r.meta.id));
-      }
-    },
-
-    async deleteSavesByPlaythrough(playthroughId: string): Promise<string[]> {
-      const records = await getAllFromIndex<SaveRecord>(
-        'saves',
-        'playthroughId',
-        playthroughId,
-      );
-      const store = await tx('saves', 'readwrite');
-      const ids: string[] = [];
-      for (const r of records) {
-        await idbReq(store.delete(r.meta.id));
-        ids.push(r.meta.id);
-      }
-      return ids;
-    },
-
-    async putPlaythrough(record: PlaythroughRecord): Promise<void> {
-      const store = await tx('playthroughs', 'readwrite');
-      await idbReq(store.put(record));
-    },
-
-    async getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]> {
-      return getAllFromIndex<PlaythroughRecord>('playthroughs', 'ifid', ifid);
-    },
-
-    async deletePlaythroughsByIfid(ifid: string): Promise<void> {
-      const records = await getAllFromIndex<PlaythroughRecord>(
-        'playthroughs',
-        'ifid',
-        ifid,
-      );
-      const store = await tx('playthroughs', 'readwrite');
-      for (const r of records) {
-        await idbReq(store.delete(r.id));
-      }
-    },
-
-    async deletePlaythroughById(id: string): Promise<void> {
-      const store = await tx('playthroughs', 'readwrite');
-      await idbReq(store.delete(id));
-    },
-
-    async getMeta<T = unknown>(key: string): Promise<T | undefined> {
-      const store = await tx('meta', 'readonly');
-      const row = (await idbReq(store.get(key))) as
-        | { key: string; value: T }
-        | undefined;
-      return row ? row.value : undefined;
-    },
-
-    async setMeta(key: string, value: unknown): Promise<void> {
-      const store = await tx('meta', 'readwrite');
-      await idbReq(store.put({ key, value }));
-    },
-
-    async deleteMeta(key: string): Promise<void> {
-      const store = await tx('meta', 'readwrite');
-      await idbReq(store.delete(key));
-    },
-
-    async deleteMetaByPrefix(prefix: string): Promise<void> {
-      const store = await tx('meta', 'readwrite');
-      const allRows = (await idbReq(store.getAll())) as Array<{
-        key: string;
-        value: unknown;
-      }>;
-      for (const row of allRows) {
-        if (row.key.startsWith(prefix)) {
-          const delStore = await tx('meta', 'readwrite');
-          await idbReq(delStore.delete(row.key));
-        }
-      }
-    },
-
-    async deleteMetaByIfid(ifid: string): Promise<void> {
-      const store = await tx('meta', 'readwrite');
-      const allRows = (await idbReq(store.getAll())) as Array<{
-        key: string;
-        value: unknown;
-      }>;
-      for (const row of allRows) {
-        if (row.key.includes(ifid)) {
-          const delStore = await tx('meta', 'readwrite');
-          await idbReq(delStore.delete(row.key));
-        }
-      }
-    },
-
-    async getAllMetaKeys(): Promise<string[]> {
-      const store = await tx('meta', 'readonly');
-      const allRows = (await idbReq(store.getAll())) as Array<{
-        key: string;
-        value: unknown;
-      }>;
-      return allRows.map((r) => r.key);
-    },
-
-    async destroy(): Promise<void> {
-      const db = await openDB();
-      db.close();
-      dbPromise = null;
-      await new Promise<void>((resolve, reject) => {
-        const req = indexedDB.deleteDatabase(IDB_DB_NAME);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
-      });
-    },
-  };
+  return createBackend('indexeddb', makeTables(table), async () => {
+    const db = await openDB();
+    db.close();
+    dbPromise = null;
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(IDB_DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------

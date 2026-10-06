@@ -1,20 +1,19 @@
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
-import { readWholeQuoted } from './arg-utils';
 
 defineMacro({
   name: 'dialog',
   block: true,
   interpolate: true,
-  render({ rawArgs, children = [] }, ctx) {
+  parameters: [
+    { name: 'label', type: 'text', required: true },
+    { name: 'noclose', type: 'flag' },
+  ],
+  render({ children = [] }, ctx) {
     const [open, setOpen] = ctx.hooks.useState(false);
 
-    const noclose = /\bnoclose\s*$/.test(rawArgs);
-    const labelRaw = rawArgs.replace(/\bnoclose\s*$/, '').trim();
-    const label =
-      ctx.resolve?.(
-        readWholeQuoted(labelRaw) ?? labelRaw.replace(/^["']|["']$/g, ''),
-      ) ?? labelRaw;
+    const { noclose } = ctx.args;
+    const label = ctx.resolve!(ctx.args.label ?? '');
     const passageName = ctx
       .collectText(children)
       .trim()

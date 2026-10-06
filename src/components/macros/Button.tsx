@@ -1,15 +1,13 @@
 import { defineMacro } from '../../define-macro';
-import { readWholeQuoted } from './arg-utils';
 import { useDetachedBody } from './detached-body';
 
 defineMacro({
   name: 'button',
   block: true,
   interpolate: true,
+  parameters: [{ name: 'label', type: 'text', required: true }],
   render({ rawArgs, children = [] }, ctx) {
-    const text =
-      readWholeQuoted(rawArgs.trim()) ?? rawArgs.replace(/^["']|["']$/g, '');
-    const label = ctx.resolve?.(text) ?? rawArgs;
+    const label = ctx.resolve?.(ctx.args.label ?? '') ?? rawArgs;
     const runBody = useDetachedBody();
 
     // Run the body outside the passage tree: all macro side effects ({set},

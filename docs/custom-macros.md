@@ -419,6 +419,34 @@ You can add optional metadata to your macro definition to help LSP servers, lint
 | `parameters[].name`        | `string`   | Parameter name                                 |
 | `parameters[].required`    | `boolean?` | Whether the parameter is required              |
 | `parameters[].description` | `string?`  | Human-readable description of the parameter    |
+| `parameters[].type`        | `string?`  | How the argument is read (see below)           |
+
+### Reading Arguments
+
+The declared parameters are also how your macro reads its arguments: `ctx.args` holds each one by name, read from `props.rawArgs` the way the built-in macros read theirs. Arguments are separated by whitespace outside quotes and brackets, and quoted strings accept `\"`, `\'` and `\\` escapes. The last `expression` or `text` parameter takes whatever the other parameters leave, so in the example above `{damage $hp $str * 2}` gives `ctx.args.target === "$hp"` and `ctx.args.amount === "$str * 2"`. An argument that is missing is `undefined`.
+
+| `type`         | Reads                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| `"expression"` | Code, as written (the default)                                                                  |
+| `"variable"`   | A variable reference such as `$name` or `"$name"`, as written                                   |
+| `"string"`     | One quoted string, unquoted; anything else leaves the argument `undefined`                      |
+| `"text"`       | One quoted string, or text with any loose quotes stripped                                       |
+| `"names"`      | A comma-separated list of names, as an array (`@item, @i`)                                      |
+| `"delay"`      | A duration (`2s`, `500ms`, `300`) in milliseconds                                               |
+| `"number"`     | A number                                                                                        |
+| `"flag"`       | The parameter's name as a keyword at the start or end of the arguments: `true` or `false`       |
+| `"separator"`  | A word such as `of` (or `=`) between the parameters before and after it: `true` or `false`      |
+| `"options"`    | Keywords named by its own `parameters`, each followed by a quoted string or a number: an object |
+
+For example, `{loot "Gold" 50 rare}` with these parameters gives `ctx.args` `{ rare: true, item: "Gold", amount: "50" }`:
+
+```js
+parameters: [
+  { name: 'item', type: 'string' },
+  { name: 'amount', type: 'expression' },
+  { name: 'rare', type: 'flag' },
+];
+```
 
 This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests)). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 
@@ -436,24 +464,25 @@ This metadata is accessible at runtime via `Story.getMacroRegistry()` and from N
 
 ### Always-Available Context
 
-| Property                         | Description                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `ctx.h(tag, attrs, ...children)` | Create HTML elements (like JSX but as a function call)                                       |
-| `ctx.renderNodes(nodes)`         | Render child nodes as block content                                                          |
-| `ctx.renderInlineNodes(nodes)`   | Render child nodes as inline content                                                         |
-| `ctx.className`                  | Resolved CSS class string (or raw if `interpolate` is off)                                   |
-| `ctx.id`                         | Resolved CSS id string (or raw if `interpolate` is off)                                      |
-| `ctx.cls`                        | Pre-built `"macro-{name} {className}"` class string                                          |
-| `ctx.wrap(content)`              | Wrap content in `<span>` with class/id if set, bare content otherwise                        |
-| `ctx.mutate(code)`               | Run a Spindle expression that modifies variables                                             |
-| `ctx.update(key, val)`           | Directly update a local (`@`) variable                                                       |
-| `ctx.getValues()`                | Get the current local variable values                                                        |
-| `ctx.collectText(nodes)`         | Extract plain text from child AST nodes (e.g. for labels or code strings)                    |
-| `ctx.sourceLocation()`           | Returns a string like `" (in passage 'Forest')"` for error messages                          |
-| `ctx.parseVarArgs(rawArgs)`      | Parse `"$var 'placeholder'"` into `{ varName, placeholder }` — useful for input macros       |
-| `ctx.extractOptions(children)`   | Walk child AST nodes to collect `{option}` sub-macro values as a `string[]`                  |
-| `ctx.useAction(config)`          | Register an action for testing/automation tools                                              |
-| `ctx.hooks`                      | `useState`, `useRef`, `useEffect`, `useLayoutEffect`, `useCallback`, `useMemo`, `useContext` |
+| Property                         | Description                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `ctx.h(tag, attrs, ...children)` | Create HTML elements (like JSX but as a function call)                                           |
+| `ctx.args`                       | The arguments, read into the declared `parameters` (see [Reading Arguments](#reading-arguments)) |
+| `ctx.renderNodes(nodes)`         | Render child nodes as block content                                                              |
+| `ctx.renderInlineNodes(nodes)`   | Render child nodes as inline content                                                             |
+| `ctx.className`                  | Resolved CSS class string (or raw if `interpolate` is off)                                       |
+| `ctx.id`                         | Resolved CSS id string (or raw if `interpolate` is off)                                          |
+| `ctx.cls`                        | Pre-built `"macro-{name} {className}"` class string                                              |
+| `ctx.wrap(content)`              | Wrap content in `<span>` with class/id if set, bare content otherwise                            |
+| `ctx.mutate(code)`               | Run a Spindle expression that modifies variables                                                 |
+| `ctx.update(key, val)`           | Directly update a local (`@`) variable                                                           |
+| `ctx.getValues()`                | Get the current local variable values                                                            |
+| `ctx.collectText(nodes)`         | Extract plain text from child AST nodes (e.g. for labels or code strings)                        |
+| `ctx.sourceLocation()`           | Returns a string like `" (in passage 'Forest')"` for error messages                              |
+| `ctx.parseVarArgs(rawArgs)`      | Parse `"$var 'placeholder'"` into `{ varName, placeholder }` — useful for input macros           |
+| `ctx.extractOptions(children)`   | Walk child AST nodes to collect `{option}` sub-macro values as a `string[]`                      |
+| `ctx.useAction(config)`          | Register an action for testing/automation tools                                                  |
+| `ctx.hooks`                      | `useState`, `useRef`, `useEffect`, `useLayoutEffect`, `useCallback`, `useMemo`, `useContext`     |
 
 Rendered nodes are tracked by identity: when `ctx.renderNodes()` is given different nodes than on the previous render (for example, another branch), the old content is unmounted and the new content is mounted fresh, so its `{set}` and `{do}` macros run. Passing the same nodes again only updates them. Pass the nodes from `props.children` or `props.branches` as they are. Don't build new node objects on every render.
 

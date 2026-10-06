@@ -9,6 +9,7 @@ import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useTextScope } from '../hooks/use-interpolate';
+import { useRenderOptions } from '../hooks/use-render-options';
 import {
   hasInterpolation,
   interpolateCode,
@@ -524,11 +525,8 @@ function resolveAttributeValue(
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const scope = useTextScope();
-  const nobr = useContext(NobrContext);
-  const locals = useContext(LocalsValuesContext);
-  const inRaw = useContext(RawTextContext);
+  const { nobr, locals, raw: inRaw, inline: parentInline } = useRenderOptions();
   const inSvg = useContext(SvgContext);
-  const parentInline = useContext(InlineContext);
   const tag = node.tag.toLowerCase();
   const isSvgRoot = tag === 'svg';
   const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));

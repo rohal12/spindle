@@ -1,19 +1,16 @@
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
+import { evaluatePassageName } from './macro-args';
 
 defineMacro({
   name: 'goto',
   merged: true,
-  render({ rawArgs }, ctx) {
+  parameters: [{ name: 'passage', type: 'expression', required: true }],
+  render(_props, ctx) {
     ctx.hooks.useLayoutEffect(() => {
-      let passageName: string;
-      try {
-        const result = ctx.evaluate!(rawArgs);
-        passageName = String(result);
-      } catch {
-        passageName = rawArgs.replace(/^["']|["']$/g, '');
-      }
-      useStoryStore.getState().navigate(passageName);
+      useStoryStore
+        .getState()
+        .navigate(evaluatePassageName(ctx.args.passage, ctx.evaluate!));
     }, []);
 
     return null;

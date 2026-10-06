@@ -11,12 +11,9 @@ import {
 } from 'preact/hooks';
 import { useInterpolate } from './hooks/use-interpolate';
 import { useMergedLocals } from './hooks/use-merged-locals';
+import { useRenderOptions } from './hooks/use-render-options';
 import {
   LocalsUpdateContext,
-  LocalsValuesContext,
-  NobrContext,
-  InlineContext,
-  RawTextContext,
   renderNodes as _renderNodes,
   renderInlineNodes,
 } from './markup/render';
@@ -32,22 +29,33 @@ import { collectText } from './utils/extract-text';
 import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import {
+  parseMacroArgs,
+  readBoundVariable,
+} from './components/macros/macro-args';
+import {
   registerMacro,
   registerMacroText,
   registerSubMacro,
   registerMacroMetadata,
 } from './registry';
-import type { MacroProps, MacroTextContext, ParameterDef } from './registry';
+import type {
+  MacroArgs,
+  MacroProps,
+  MacroTextContext,
+  ParameterDef,
+} from './registry';
 import { registerBlockMacro } from './markup/ast';
 
-export type { MacroTextContext };
+export type { MacroArgs, MacroTextContext, ParameterDef };
 
 export function macroClass(type: string, className?: string): string {
   const base = `macro-${type}`;
   return className ? `${base} ${className}` : base;
 }
 
-export interface MacroContext {
+export interface MacroContext<A = MacroArgs> {
+  /** The arguments, read into the declared parameters (see ParameterDef). */
+  args: A;
   className?: string;
   id?: string;
   resolve?: (s: string | undefined) => string | undefined;
@@ -86,7 +94,9 @@ export interface MacroContext {
   };
 }
 
-export interface MacroDefinition {
+export interface MacroDefinition<
+  P extends readonly ParameterDef[] = ParameterDef[],
+> {
   name: string;
   subMacros?: string[];
   block?: boolean;
@@ -94,14 +104,20 @@ export interface MacroDefinition {
   merged?: boolean;
   storeVar?: boolean;
   description?: string;
-  parameters?: ParameterDef[];
-  render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  parameters?: P;
+  render: (
+    props: MacroProps,
+    ctx: MacroContext<MacroArgs<P>>,
+  ) => ComponentChildren;
   /**
    * The macro's text form, used where markup becomes a string: HTML
    * attribute values, image alt text and link titles, macro labels. Without
    * one, the macro can't be used there and is reported as an error.
    */
-  text?: (props: MacroProps, ctx: MacroTextContext) => string;
+  text?: (
+    props: MacroProps,
+    ctx: MacroTextContext & { args: MacroArgs<P> },
+  ) => string;
 }
 
 const sharedHooks = {
@@ -114,10 +130,12 @@ const sharedHooks = {
   useContext,
 };
 
-export function defineMacro(
-  config: MacroDefinition,
+export function defineMacro<const P extends readonly ParameterDef[] = []>(
+  config: MacroDefinition<P>,
   source: 'builtin' | 'user' = 'builtin',
 ): void {
+  const parameters: readonly ParameterDef[] = config.parameters ?? [];
+
   function Wrapper(props: MacroProps) {
     // className/id resolved first (interpolate may transform them)
     let className = props.className;
@@ -131,10 +149,7 @@ export function defineMacro(
 
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
-    const nobr = useContext(NobrContext);
-    const inline = useContext(InlineContext);
-    const raw = useContext(RawTextContext);
-    const localsValues = useContext(LocalsValuesContext);
+    const renderOptions = useRenderOptions();
     const renderNodes = (
       nodes: ASTNode[],
       options?: {
@@ -143,15 +158,9 @@ export function defineMacro(
         inline?: boolean;
         raw?: boolean;
       },
-    ) =>
-      _renderNodes(nodes, {
-        nobr,
-        inline,
-        raw,
-        locals: localsValues,
-        ...options,
-      });
-    const ctx: MacroContext = {
+    ) => _renderNodes(nodes, { ...renderOptions, ...options });
+    const ctx: MacroContext<MacroArgs<P>> = {
+      args: parseMacroArgs(props.rawArgs, parameters) as MacroArgs<P>,
       collectText,
       sourceLocation: currentSourceLocation,
       parseVarArgs,
@@ -183,8 +192,7 @@ export function defineMacro(
     }
 
     if (config.storeVar) {
-      const firstToken =
-        props.rawArgs.trim().split(/\s+/)[0]?.replace(/["']/g, '') ?? '';
+      const firstToken = readBoundVariable(props.rawArgs).replace(/["']/g, '');
 
       if (firstToken.startsWith('%')) {
         return h(
@@ -220,7 +228,16 @@ export function defineMacro(
   }
 
   registerMacro(config.name, Wrapper);
-  registerMacroText(config.name, config.text);
+  const text = config.text;
+  registerMacroText(
+    config.name,
+    text &&
+      ((props, ctx) =>
+        text(props, {
+          ...ctx,
+          args: parseMacroArgs(props.rawArgs, parameters) as MacroArgs<P>,
+        })),
+  );
 
   // Store metadata for tooling API
   const isBlock =
@@ -234,7 +251,7 @@ export function defineMacro(
     interpolate: config.interpolate,
     merged: config.merged,
     description: config.description,
-    parameters: config.parameters,
+    parameters: config.parameters && [...config.parameters],
     source,
   });
 

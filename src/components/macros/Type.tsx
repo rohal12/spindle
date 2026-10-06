@@ -1,13 +1,13 @@
-import { parseDelay } from '../../utils/parse-delay';
 import { defineMacro } from '../../define-macro';
 
 defineMacro({
   name: 'type',
   block: true,
   interpolate: true,
-  render({ rawArgs, children = [] }, ctx) {
+  parameters: [{ name: 'delay', type: 'delay', required: true }],
+  render({ children = [] }, ctx) {
     const { useState, useEffect, useRef } = ctx.hooks;
-    const speed = parseDelay(rawArgs);
+    const speed = ctx.args.delay ?? 0;
     const containerRef = useRef<HTMLSpanElement>(null);
     const [totalChars, setTotalChars] = useState(0);
     const [visibleChars, setVisibleChars] = useState(0);

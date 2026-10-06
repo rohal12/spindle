@@ -2,9 +2,8 @@ import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { readState } from '../../execute-mutation';
 import { deepEqual } from '../../class-registry';
-import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
-import { MacroError } from './MacroError';
+import { MacroError, logMacroError } from './MacroError';
 import { checkVariableName } from '../../utils/namespace';
 
 /**
@@ -14,38 +13,26 @@ import { checkVariableName } from '../../utils/namespace';
  */
 const UNSET: unique symbol = Symbol('unset');
 
-function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
-  const trimmed = rawArgs.trim();
-
-  let depth = 0;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (ch === '=' && depth === 0) {
-      if (trimmed[i + 1] === '=') {
-        i++;
-        continue;
-      }
-      if (i > 0 && trimmed[i - 1] === '!') continue;
-
-      const target = trimmed.slice(0, i).trim();
-      const expr = trimmed.slice(i + 1).trim();
-
-      if (!target.match(/^[$_@]\w+$/)) {
-        throw new Error(
-          `{computed}: target must be $name, _name, or @name, got "${target}"`,
-        );
-      }
-
-      checkVariableName(target.slice(1), target);
-      return { target, expr };
-    }
+/** Check the arguments of "target = expression". */
+function assignmentArgs(
+  rawArgs: string,
+  args: { target?: string; '=': boolean; expression?: string },
+): { target: string; expr: string } {
+  if (!args['=']) {
+    throw new Error(
+      `{computed}: expected "target = expression", got "${rawArgs}"`,
+    );
   }
 
-  throw new Error(
-    `{computed}: expected "target = expression", got "${rawArgs}"`,
-  );
+  const { target = '', expression: expr = '' } = args;
+  if (!target.match(/^[$_@]\w+$/)) {
+    throw new Error(
+      `{computed}: target must be $name, _name, or @name, got "${target}"`,
+    );
+  }
+
+  checkVariableName(target.slice(1), target);
+  return { target, expr };
 }
 
 /**
@@ -73,10 +60,7 @@ function computeAndApply(
     const { variables, temporary, transient } = readState();
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
-    console.error(
-      `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
-      err,
-    );
+    logMacroError(`computed ${rawArgs}`, err);
     return;
   }
 
@@ -86,10 +70,7 @@ function computeAndApply(
       try {
         localsUpdate!(name, newValue);
       } catch (err) {
-        console.error(
-          `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
-          err,
-        );
+        logMacroError(`computed ${rawArgs}`, err);
       }
     } else {
       const state = useStoryStore.getState();
@@ -102,13 +83,18 @@ function computeAndApply(
 defineMacro({
   name: 'computed',
   merged: true,
+  parameters: [
+    { name: 'target', type: 'variable', required: true },
+    { name: '=', type: 'separator' },
+    { name: 'expression', type: 'expression', required: true },
+  ],
   render({ rawArgs }, ctx) {
     const [mergedVars, mergedTemps, mergedLocals, mergedTrans] = ctx.merged!;
 
     let target: string;
     let expr: string;
     try {
-      ({ target, expr } = parseComputedArgs(rawArgs));
+      ({ target, expr } = assignmentArgs(rawArgs, ctx.args));
     } catch (err) {
       return (
         <MacroError
@@ -124,9 +110,7 @@ defineMacro({
 
     const prevOutput = ctx.hooks.useRef<unknown>(UNSET);
 
-    const ran = ctx.hooks.useRef(false);
-    if (!ran.current) {
-      ran.current = true;
+    const compute = () =>
       computeAndApply(
         expr,
         name,
@@ -137,22 +121,21 @@ defineMacro({
         prevOutput,
         localsUpdate,
       );
+
+    const ran = ctx.hooks.useRef(false);
+    if (!ran.current) {
+      ran.current = true;
+      compute();
     }
 
     // The merged values only decide when to recompute; computeAndApply reads
     // the current ones.
-    ctx.hooks.useLayoutEffect(() => {
-      computeAndApply(
-        expr,
-        name,
-        isTemp,
-        isLocal,
-        ctx.getValues,
-        rawArgs,
-        prevOutput,
-        localsUpdate,
-      );
-    }, [mergedVars, mergedTemps, mergedLocals, mergedTrans]);
+    ctx.hooks.useLayoutEffect(compute, [
+      mergedVars,
+      mergedTemps,
+      mergedLocals,
+      mergedTrans,
+    ]);
 
     return null;
   },

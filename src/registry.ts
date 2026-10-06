@@ -67,11 +67,59 @@ export function isSubMacro(name: string): boolean {
   return subMacros.has(name.toLowerCase());
 }
 
+/**
+ * How a macro argument is read (see components/macros/macro-args.ts).
+ * Quoted strings accept `\"`, `\'` and `\\` escapes.
+ * - `expression`: code, as written (the default).
+ * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
+ * - `string`: one quoted string; anything else leaves the argument unset.
+ * - `text`: one quoted string, or text with any loose quotes stripped.
+ * - `names`: a comma-separated list of names (`@item, @i`).
+ * - `delay`: a duration (`2s`, `500ms`, `300`) in milliseconds.
+ * - `number`: a number.
+ * - `flag`: a keyword, the parameter's name, at the start or end; a boolean.
+ * - `separator`: a word (`of`) or `=` separating the parameters before it
+ *   from those after it; a boolean.
+ * - `options`: keywords, the names of its `parameters`, each followed by a
+ *   quoted string or a number unless it is a flag.
+ */
+export type ParameterType =
+  | 'expression'
+  | 'variable'
+  | 'string'
+  | 'text'
+  | 'names'
+  | 'delay'
+  | 'number'
+  | 'flag'
+  | 'separator'
+  | 'options';
+
 export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
+  type?: ParameterType;
+  /** The options of an `options` parameter. */
+  parameters?: readonly ParameterDef[];
 }
+
+type ArgValue<T, D> = T extends 'flag' | 'separator'
+  ? boolean
+  : T extends 'names'
+    ? string[] | undefined
+    : T extends 'delay' | 'number'
+      ? number | undefined
+      : T extends 'options'
+        ? D extends { parameters: infer Q extends readonly ParameterDef[] }
+          ? Partial<MacroArgs<Q>>
+          : Partial<MacroArgs>
+        : string | undefined;
+
+/** The arguments of a macro declaring `parameters`, by parameter name. */
+export type MacroArgs<P extends readonly ParameterDef[] = ParameterDef[]> = {
+  [D in P[number] as D['name']]: ArgValue<D['type'], D>;
+};
 
 export interface MacroMetadata {
   name: string;

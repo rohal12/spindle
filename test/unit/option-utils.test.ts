@@ -3,8 +3,7 @@ import {
   extractOptions,
   parseVarArgs,
 } from '../../src/components/macros/option-utils';
-import { parseCheckboxLabel } from '../../src/components/macros/Checkbox';
-import { parseRadioArgs } from '../../src/components/macros/Radiobutton';
+import { parseCheckboxLabel, parseRadioArgs } from '../support/macro-args';
 import type { ASTNode } from '../../src/markup/ast';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
