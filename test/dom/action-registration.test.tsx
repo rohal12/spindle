@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
@@ -176,6 +176,63 @@ describe('action registration', () => {
       expect(tb!.label).toBe('Enter name');
     });
   });
+  // #233: navigation resets the ID counters while controls outside the
+  // passage (StoryInterface) stay mounted
+  describe('controls that outlive a navigation', () => {
+    const containers: HTMLElement[] = [];
+    let warn: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      for (const c of containers.splice(0)) act(() => render(null, c));
+      warn.mockRestore();
+    });
+    function mount(content: string): HTMLElement {
+      const container = document.createElement('div');
+      containers.push(container);
+      act(() => {
+        render(
+          <Passage passage={makePassage(1, 'Test', content)} />,
+          container,
+        );
+      });
+      return container;
+    }
+    const forestIds = () =>
+      getActions()
+        .filter((a) => a.target === 'Forest')
+        .map((a) => a.id)
+        .sort();
+
+    it('a passage control mounted after the reset gets an unused ID', () => {
+      mount('[[Forest]]'); // persistent
+      resetIdCounters();
+      mount('[[Forest]]');
+      expect(forestIds()).toEqual(['link:Forest', 'link:Forest:2']);
+    });
+
+    it("unmounting the passage control keeps the persistent one's registration", () => {
+      mount('[[Forest]]'); // persistent
+      resetIdCounters();
+      const passage = mount('[[Forest]]');
+      act(() => render(null, passage));
+      expect(forestIds()).toEqual(['link:Forest']);
+    });
+
+    it('unmounting one of two controls sharing an author ID keeps the other', () => {
+      const first = mount('[[#shared Go|Forest]]');
+      mount('[[#shared Also go|Forest]]');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(getActions().filter((a) => a.id === 'shared')).toHaveLength(1);
+
+      act(() => render(null, first));
+      expect(getActions().find((a) => a.id === 'shared')?.label).toBe(
+        'Also go',
+      );
+    });
+  });
+
   describe('when an action changes', () => {
     // Components rendered by earlier tests stay mounted, so these tests use
     // their own variable, only look at the actions they render and unmount

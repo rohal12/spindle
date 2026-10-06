@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   registerAction,
-  updateAction,
   generateActionId,
+  type ActionRegistration,
   type ActionType,
   type StoryAction,
 } from '../action-registry';
@@ -47,8 +47,14 @@ export function useAction(opts: UseActionOptions): string {
     return action;
   };
 
-  // Registered for the component's lifetime.
-  useLayoutEffect(() => registerAction(buildAction()), [id]);
+  // Registered for the component's lifetime. Unregistering removes only this
+  // registration, never another control's holding the same ID (#233).
+  const registration = useRef<ActionRegistration | null>(null);
+  useLayoutEffect(() => {
+    const own = registerAction(buildAction());
+    registration.current = own;
+    return () => own.unregister();
+  }, [id]);
 
   // When what the action exposes changes (e.g. an input's value), replace it
   // in place: one `actionsChanged` notification, and it keeps its position in
@@ -60,7 +66,7 @@ export function useAction(opts: UseActionOptions): string {
       registered.current = true; // the registration above is current
       return;
     }
-    updateAction(buildAction());
+    registration.current?.update(buildAction());
   }, [
     opts.type,
     opts.label,

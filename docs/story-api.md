@@ -575,7 +575,9 @@ IDs are generated automatically from the action type and a content-based key:
 
 When multiple actions share the same base ID (e.g. two links to the same passage), a suffix is added: `link:Forest`, `link:Forest:2`, `link:Forest:3`.
 
-Authors can override the generated ID using the `#id` syntax: `[[#my-link Go|Forest]]`.
+Suffixes are counted afresh on every navigation, so a passage's actions get the same IDs each time it is shown. Controls that stay mounted across navigations, such as those in `StoryInterface`, keep their IDs, and the passage's actions skip them: with `[[Forest]]` in both `StoryInterface` and the passage, the interface link is `link:Forest` and the passage link `link:Forest:2`.
+
+Authors can override the generated ID using the `#id` syntax: `[[#my-link Go|Forest]]`. Author IDs should be unique among the controls on screen: when two mounted controls share one, a warning is logged and `Story.getActions()` lists only the newer.
 
 ### `Story.performAction(id, value?)`
 
