@@ -145,15 +145,14 @@ function scanRegex(
   };
   let i = start + 1;
   while (i < src.length) {
+    // Unterminated at the end of the line: leave the rest to the parser
+    const lineEnd = regexLineEnd(src, i);
+    if (lineEnd !== -1) return done(lineEnd, false);
     const c = src.charAt(i);
     if (c === '\\') {
-      // An escaped line break ends the line, and the regex, too
-      if (LINE_TERMINATOR_RE.test(src.charAt(i + 1))) return done(i + 1, false);
       i += 2;
       continue;
     }
-    // Unterminated at the end of the line: leave the rest to the parser
-    if (LINE_TERMINATOR_RE.test(c)) return done(i, false);
     if (c === '[') {
       // A class, where `/` does not close
       i = scanRegexClass(src, i, cache);
@@ -191,22 +190,34 @@ function scanRegexClass(
   const opens = [open];
   let i = open + 1;
   while (i < src.length) {
+    const lineEnd = regexLineEnd(src, i);
+    if (lineEnd !== -1) {
+      i = lineEnd;
+      break;
+    }
     const c = src.charAt(i);
     if (c === '\\') {
-      if (LINE_TERMINATOR_RE.test(src.charAt(i + 1))) {
-        i++;
-        break;
-      }
       i += 2;
       continue;
     }
-    if (c === ']' || LINE_TERMINATOR_RE.test(c)) break;
+    if (c === ']') break;
     if (c === '[' && cache) opens.push(i);
     i++;
   }
   i = Math.min(i, src.length);
   if (cache) for (const o of opens) cache.classes.set(o, i);
   return i;
+}
+
+/**
+ * Index of the line break at `i`, escaped (`\` then a line break) or not,
+ * where a regex literal or class ends unterminated; -1 if there is none.
+ */
+function regexLineEnd(src: string, i: number): number {
+  const c = src.charAt(i);
+  if (LINE_TERMINATOR_RE.test(c)) return i;
+  if (c === '\\' && LINE_TERMINATOR_RE.test(src.charAt(i + 1))) return i + 1;
+  return -1;
 }
 
 /**

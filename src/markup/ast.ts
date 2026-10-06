@@ -1,40 +1,39 @@
-import type { Token } from './tokenizer';
+import {
+  withSelectors,
+  type HtmlToken,
+  type MacroToken,
+  type Selectors,
+  type Token,
+  type VariableScope,
+} from './tokenizer';
 
 export interface TextNode {
   type: 'text';
   value: string;
 }
 
-export interface VariableNode {
+export interface VariableNode extends Selectors {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary' | 'local' | 'transient';
-  className?: string;
-  id?: string;
+  scope: VariableScope;
 }
 
-export interface ExpressionNode {
+export interface ExpressionNode extends Selectors {
   type: 'expression';
   expression: string;
-  className?: string;
-  id?: string;
 }
 
-export interface Branch {
+export interface Branch extends Selectors {
   rawArgs: string;
-  className?: string;
-  id?: string;
   children: ASTNode[];
 }
 
-export interface MacroNode {
+export interface MacroNode extends Selectors {
   type: 'macro';
   name: string;
   rawArgs: string;
   children: ASTNode[];
   branches?: Branch[];
-  className?: string;
-  id?: string;
 }
 
 export interface HtmlNode {
@@ -99,6 +98,24 @@ function quoteArg(value: string): string {
   return `"${value.replace(/[\\"]/g, '\\$&')}"`;
 }
 
+/** A new branch for the macro token opening it, with its selectors. */
+function newBranch(token: MacroToken): Branch {
+  return withSelectors<Branch>({ rawArgs: token.rawArgs, children: [] }, token);
+}
+
+/** A macro or HTML element, or a token opening or closing one. */
+type Tagged = MacroNode | HtmlNode | MacroToken | HtmlToken;
+
+/** The name of a macro or HTML element. */
+function tagName(tagged: Tagged): string {
+  return tagged.type === 'html' ? tagged.tag : tagged.name;
+}
+
+/** The tag closing a macro or HTML element, as written in markup. */
+function closerOf(tagged: Tagged): string {
+  return tagged.type === 'html' ? `</${tagged.tag}>` : `{/${tagged.name}}`;
+}
+
 /**
  * Build an AST from a token array. Block macros are nested into trees
  * using a stack. Throws on unclosed or mismatched macros.
@@ -119,6 +136,32 @@ export function buildAST(tokens: Token[]): ASTNode[] {
     return top.children;
   }
 
+  /**
+   * Pop the node on top of the stack, which the closing `token` (`</b>`,
+   * `{/if}`) must close. Names match ignoring case.
+   */
+  function close(token: MacroToken | HtmlToken) {
+    const found = closerOf(token);
+    if (stack.length === 0) {
+      throw new Error(
+        `Unexpected closing ${found} (at character ${token.start})`,
+      );
+    }
+
+    const top = stack[stack.length - 1]!;
+    if (
+      top.node.type !== token.type ||
+      tagName(top.node).toLowerCase() !== tagName(token).toLowerCase()
+    ) {
+      throw new Error(
+        `Expected ${closerOf(top.node)} but found ${found} (at character ${token.start})`,
+      );
+    }
+
+    stack.pop();
+    current().push(top.node);
+  }
+
   for (const token of tokens) {
     switch (token.type) {
       case 'text':
@@ -127,119 +170,63 @@ export function buildAST(tokens: Token[]): ASTNode[] {
 
       case 'link': {
         const rawArgs = `${quoteArg(token.display)} ${quoteArg(token.target)}`;
-        const macroNode: MacroNode = {
-          type: 'macro',
-          name: 'link',
-          rawArgs,
-          children: [],
-        };
-        if (token.className) macroNode.className = token.className;
-        if (token.id) macroNode.id = token.id;
-        current().push(macroNode);
+        current().push(
+          withSelectors<MacroNode>(
+            { type: 'macro', name: 'link', rawArgs, children: [] },
+            token,
+          ),
+        );
         break;
       }
 
-      case 'variable': {
-        const varNode: VariableNode = {
-          type: 'variable',
-          name: token.name,
-          scope: token.scope,
-        };
-        if (token.className) varNode.className = token.className;
-        if (token.id) varNode.id = token.id;
-        current().push(varNode);
+      case 'variable':
+        current().push(
+          withSelectors<VariableNode>(
+            { type: 'variable', name: token.name, scope: token.scope },
+            token,
+          ),
+        );
         break;
-      }
 
-      case 'expression': {
-        const exprNode: ExpressionNode = {
-          type: 'expression',
-          expression: token.expression,
-        };
-        if (token.className) exprNode.className = token.className;
-        if (token.id) exprNode.id = token.id;
-        current().push(exprNode);
+      case 'expression':
+        current().push(
+          withSelectors<ExpressionNode>(
+            { type: 'expression', expression: token.expression },
+            token,
+          ),
+        );
         break;
-      }
 
       case 'html': {
-        if (token.isSelfClose) {
-          // Self-closing HTML tag (br, hr, img, etc.)
-          current().push({
-            type: 'html',
-            tag: token.tag,
-            attributes: token.attributes,
-            children: [],
-          });
-          break;
-        }
-
-        if (token.isClose) {
-          // Closing HTML tag — pop from stack
-          if (stack.length === 0) {
-            throw new Error(
-              `Unexpected closing </${token.tag}> (at character ${token.start})`,
-            );
-          }
-
-          const top = stack[stack.length - 1]!;
-          if (
-            top.node.type !== 'html' ||
-            top.node.tag.toLowerCase() !== token.tag.toLowerCase()
-          ) {
-            const expected =
-              top.node.type === 'html'
-                ? `</${top.node.tag}>`
-                : `{/${top.node.name}}`;
-            throw new Error(
-              `Expected ${expected} but found </${token.tag}> (at character ${token.start})`,
-            );
-          }
-
-          stack.pop();
-          current().push(top.node);
-          break;
-        }
-
-        // Opening HTML tag — push onto stack
         const htmlNode: HtmlNode = {
           type: 'html',
           tag: token.tag,
           attributes: token.attributes,
           children: [],
         };
-        stack.push({ node: htmlNode, start: token.start });
+        if (token.isSelfClose) {
+          // Self-closing HTML tag (br, hr, img, etc.)
+          current().push(htmlNode);
+        } else if (token.isClose) {
+          // Closing HTML tag — pop from stack
+          close(token);
+        } else {
+          // Opening HTML tag — push onto stack
+          stack.push({ node: htmlNode, start: token.start });
+        }
         break;
       }
 
       case 'macro': {
+        if (token.isClose) {
+          // Closing tag — pop from stack
+          close(token);
+          break;
+        }
+
         // Normalize macro name to lowercase — registration is lowercase,
         // but the tokenizer preserves original casing from passage markup.
         const name = token.name.toLowerCase();
-
-        if (token.isClose) {
-          // Closing tag — pop from stack
-          if (stack.length === 0) {
-            throw new Error(
-              `Unexpected closing {/${token.name}} (at character ${token.start})`,
-            );
-          }
-
-          const top = stack[stack.length - 1]!;
-          if (top.node.type !== 'macro' || top.node.name !== name) {
-            const expected =
-              top.node.type === 'macro'
-                ? `{/${top.node.name}}`
-                : `</${top.node.tag}>`;
-            throw new Error(
-              `Expected ${expected} but found {/${token.name}} (at character ${token.start})`,
-            );
-          }
-
-          stack.pop();
-          current().push(top.node);
-          break;
-        }
 
         // Handle branch macros (elseif/else, case/default, next)
         const expectedParent = Object.prototype.hasOwnProperty.call(
@@ -261,55 +248,29 @@ export function buildAST(tokens: Token[]): ASTNode[] {
             );
           }
 
-          const branch: Branch = {
-            rawArgs: token.rawArgs,
-            children: [],
-          };
-          if (token.className) branch.className = token.className;
-          if (token.id) branch.id = token.id;
-          topNode.branches!.push(branch);
+          topNode.branches!.push(newBranch(token));
           break;
         }
 
-        // Block macro — push onto stack
-        if (BLOCK_MACROS.has(name)) {
-          const node: MacroNode = {
-            type: 'macro',
-            name,
-            rawArgs: token.rawArgs,
-            children: [],
-          };
+        const node: MacroNode = {
+          type: 'macro',
+          name,
+          rawArgs: token.rawArgs,
+          children: [],
+        };
 
-          // Branching blocks: className/id goes on the first branch, not the node
-          if (BRANCHING_BLOCK_MACROS.has(name)) {
-            const firstBranch: Branch = {
-              rawArgs: token.rawArgs,
-              children: [],
-            };
-            if (token.className) firstBranch.className = token.className;
-            if (token.id) firstBranch.id = token.id;
-            node.branches = [firstBranch];
-          } else {
-            if (token.className) node.className = token.className;
-            if (token.id) node.id = token.id;
-          }
-
-          stack.push({ node, start: token.start });
+        if (!BLOCK_MACROS.has(name)) {
+          // Self-closing macro (set, print, etc.)
+          current().push(withSelectors(node, token));
           break;
         }
 
-        // Self-closing macro (set, print, etc.)
-        {
-          const macroNode: MacroNode = {
-            type: 'macro',
-            name,
-            rawArgs: token.rawArgs,
-            children: [],
-          };
-          if (token.className) macroNode.className = token.className;
-          if (token.id) macroNode.id = token.id;
-          current().push(macroNode);
-        }
+        // Block macro — push onto stack. Branching blocks: className/id
+        // goes on the first branch, not the node
+        if (BRANCHING_BLOCK_MACROS.has(name))
+          node.branches = [newBranch(token)];
+        else withSelectors(node, token);
+        stack.push({ node, start: token.start });
         break;
       }
 

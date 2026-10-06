@@ -21,6 +21,7 @@ import { tokenize } from './markup/tokenizer';
 import { buildAST, registerBlockMacro } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
 import { astContainsChildren } from './widgets/ast-scanner';
+import { parseWidgetDef } from './components/macros/Widget';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
@@ -173,14 +174,10 @@ export function boot() {
       const widgetAST = buildAST(widgetTokens);
       for (const node of widgetAST) {
         if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
-          const tokens2 = node.rawArgs.trim().split(/\s+/);
-          const widgetName = tokens2[0]!.replace(/["']/g, '');
-          const params = tokens2
-            .slice(1)
-            .filter(
-              (t) =>
-                t.startsWith('$') || t.startsWith('_') || t.startsWith('@'),
-            );
+          const { name: widgetName, params } = parseWidgetDef(
+            node.rawArgs,
+            '$_@',
+          );
           const children = node.children as ASTNode[];
           const isBlock = astContainsChildren(children);
           try {

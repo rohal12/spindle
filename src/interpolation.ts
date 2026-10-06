@@ -14,7 +14,13 @@
  * string, so it is reported instead of being run or shown as source.
  */
 import { evaluate } from './expression';
-import { tokenize } from './markup/tokenizer';
+import {
+  SCOPE_SIGILS,
+  SIGIL_SCOPES,
+  tokenize,
+  type VariableScope,
+} from './markup/tokenizer';
+import type { Sigil } from './js-lexer';
 import { buildAST } from './markup/ast';
 import type { ASTNode, MacroNode, TextNode } from './markup/ast';
 import { getMacro, getMacroText, isSubMacro } from './registry';
@@ -116,15 +122,6 @@ function display(value: unknown): string {
   return value == null ? '' : String(value);
 }
 
-type VariableKind = 'variable' | 'temporary' | 'local' | 'transient';
-
-const KIND_SIGILS = {
-  variable: '$',
-  temporary: '_',
-  local: '@',
-  transient: '%',
-} as const;
-
 /**
  * The value of a variable reference (`name` without its sigil, with an
  * optional dot path), as `{$name}` shows it in passage text (see
@@ -133,12 +130,12 @@ const KIND_SIGILS = {
  */
 function resolveVariable(
   scope: TextScope,
-  kind: VariableKind,
+  kind: VariableScope,
   name: string,
 ): unknown {
   const parts = name.split('.');
   const root = parts[0]!;
-  checkVariableName(root, KIND_SIGILS[kind] + root);
+  checkVariableName(root, SCOPE_SIGILS[kind] + root);
   const store =
     kind === 'variable'
       ? scope.variables
@@ -210,12 +207,16 @@ class TextEvaluator {
   }
 
   /** A variable reference, or '' and an error if it can't be one. */
-  private variable(kind: VariableKind, name: string, scope: TextScope): string {
+  private variable(
+    kind: VariableScope,
+    name: string,
+    scope: TextScope,
+  ): string {
     try {
       return display(resolveVariable(scope, kind, name));
     } catch (error) {
       // Reported as passage text reports it: `{$__proto__ error: …}`
-      this.errors.push({ macro: KIND_SIGILS[kind] + name, error });
+      this.errors.push({ macro: SCOPE_SIGILS[kind] + name, error });
       return '';
     }
   }
@@ -341,13 +342,6 @@ export function interpolateText(
   return renderText(parsed.nodes, scope);
 }
 
-const SIGIL_KINDS = {
-  $: 'variable',
-  _: 'temporary',
-  '@': 'local',
-  '%': 'transient',
-} as const;
-
 /**
  * Resolve the sigil references in the value of a code attribute (see
  * isCodeAttribute): `{$x}`, `{_x.y}`, `{$n + 1}`. Everything else, other
@@ -367,7 +361,7 @@ export function interpolateCode(
     } else if ('verbatim' in part) {
       text += part.verbatim;
     } else if (/^[$_@%][\w.]+$/.test(part.expr)) {
-      const kind = SIGIL_KINDS[part.expr[0] as keyof typeof SIGIL_KINDS];
+      const kind = SIGIL_SCOPES[part.expr[0] as Sigil];
       try {
         text += display(resolveVariable(scope, kind, part.expr.slice(1)));
       } catch (error) {
