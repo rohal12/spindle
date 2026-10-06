@@ -1,5 +1,11 @@
 import { micromark } from 'micromark';
-import type { Construct, Extension, Options } from 'micromark-util-types';
+import type {
+  Code,
+  Construct,
+  Extension,
+  Options,
+  Resolver,
+} from 'micromark-util-types';
 import { gfmTable, gfmTableHtml } from 'micromark-extension-gfm-table';
 import {
   gfmStrikethrough,
@@ -42,7 +48,7 @@ export function markdownOptions(options?: { inline?: boolean }): Options {
 /**
  * Parse a text string as CommonMark markdown and return an HTML string, as
  * micromark does with `markdownOptions`, but in about linear time (see
- * `unclosedHtml`).
+ * `unclosedHtml` and `textData`).
  */
 export function markdownToHtml(
   text: string,
@@ -51,9 +57,73 @@ export function markdownToHtml(
   const base = markdownOptions(options);
   return micromark(text, {
     ...base,
-    extensions: [...(base.extensions ?? []), unclosedHtml(text)],
+    extensions: [...(base.extensions ?? []), unclosedHtml(text), textData],
   });
 }
+
+/** Join a data token just read to a data token right before it. */
+const joinData: Resolver = (events) => {
+  const at = events.length - 2;
+  const before = events[at - 1];
+  if (before && before[0] === 'exit' && before[1].type === 'data') {
+    before[1].end = events[at]![1].end;
+    events.length = at;
+  }
+  return events;
+};
+
+/**
+ * Text that no construct takes, read as data joined to the data before it.
+ *
+ * Where every text construct fails at a character (a `!` without `[`, a `]`
+ * without a label, a `\` before a letter, an unclosed `<!--`), micromark
+ * reads it, on to the next character a construct may start at, as a new data
+ * token. Runs of data tokens are joined only after the paragraph is read,
+ * each run by splicing the paragraph's whole list of events: time quadratic
+ * in the number of runs where other tokens part them (`\]a!` repeated: an
+ * escape, data `a`, data `!`), and erratically so, as the cost of moving
+ * the list's elements depends on where the garbage collector keeps it.
+ *
+ * Tried where micromark's text tries constructs, after all of them (as a
+ * construct of every character), this reads that data as micromark would
+ * and joins it to the data before it at once, at the end of the list.
+ */
+const textData: Extension = {
+  text: {
+    null: {
+      name: 'textData',
+      tokenize(effects, ok) {
+        const self = this;
+        const constructs = this.parser.constructs.text;
+
+        /** Whether a construct may start at `code`, as micromark's text asks. */
+        function atBreak(code: Code): boolean {
+          if (code === null) return true;
+          const list = constructs[code] ?? [];
+          return (Array.isArray(list) ? list : [list]).some(
+            (item) => !item.previous || item.previous.call(self, self.previous),
+          );
+        }
+
+        function data(code: Code) {
+          if (atBreak(code)) {
+            effects.exit('data');
+            return ok(code);
+          }
+          effects.consume(code);
+          return data;
+        }
+
+        return (code) => {
+          effects.enter('data');
+          effects.consume(code);
+          return data;
+        };
+      },
+      resolveTo: joinData,
+    },
+  },
+};
 
 /** Characters of an email autolink's local part (micromark's `asciiAtext`). */
 const ATEXT = /[#-'*+\--9=?A-Z^-~]/;
@@ -132,6 +202,7 @@ function unclosedHtml(text: string): Extension {
 
   const construct: Construct = {
     name: 'unclosedHtml',
+    resolveTo: joinData,
     tokenize(effects, ok, nok) {
       const at = this.now().offset + shift;
       return (code) => {
