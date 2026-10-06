@@ -46,7 +46,7 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { deepClone, serialize } from './class-registry';
+import { deepClone, deepEqual, serialize } from './class-registry';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -55,6 +55,7 @@ import {
 } from './prng';
 import { errorMessage } from './utils/error-message';
 import {
+  isMergeable,
   routeStoreUpdate,
   runWithCommittedMutations,
 } from './execute-mutation';
@@ -531,13 +532,14 @@ function loadedEntryMoment(
 }
 
 /**
- * Copy the variables that changed between `before` and `after` (the live
- * variables around the `beforesave` hooks) into the payload's snapshot of the
- * saved moment. A load restores that snapshot, the state on entering the
- * passage, and runs the passage again, so data a hook adds to a save would
- * otherwise be lost on load (#227). Only the payload's copy changes: the live
- * history keeps the recorded snapshot (#159). Store updates are immutable, so
- * a value a hook did not touch keeps its identity.
+ * Write the changes between `before` and `after` (the live variables around
+ * the `beforesave` hooks) into the payload's snapshot of the saved moment. A
+ * load restores that snapshot, the state on entering the passage, and runs
+ * the passage again, so data a hook adds to a save would otherwise be lost
+ * on load (#227). Only the property paths the hooks changed are written: a
+ * whole variable would bring along what the passage did to the rest of it,
+ * which the passage then does again on load (#232). Only the payload's copy
+ * changes: the live history keeps the recorded snapshot (#159).
  */
 function keepHookWrites(
   payload: SavePayload,
@@ -546,15 +548,100 @@ function keepHookWrites(
 ): void {
   const moment = payload.history[payload.historyIndex];
   if (!moment) return;
-  const has = (vars: Record<string, unknown>, key: string) =>
-    Object.prototype.hasOwnProperty.call(vars, key);
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (!has(after, key)) {
-      delete moment.variables[key];
-    } else if (!has(before, key) || after[key] !== before[key]) {
-      moment.variables[key] = deepClone(after[key]);
+  mergeHookWrites(moment.variables, before, after, new Set());
+}
+
+const hasOwn = (obj: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
+/**
+ * Whether changes between `a` and `b` merge key by key: both are arrays,
+ * or both are objects of one class (see isMergeable).
+ */
+function mergeable(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b);
+  }
+  return (
+    isMergeable(a) &&
+    isMergeable(b) &&
+    Object.getPrototypeOf(a) === Object.getPrototypeOf(b)
+  );
+}
+
+/**
+ * Apply the hooks' change of a value, from `before` to `after`, to the
+ * snapshot's copy of it, `target[key]`. Store updates are immutable, so a
+ * value no hook touched keeps its identity; one rebuilt with equal content
+ * (mutation code commits whole values) is no change either. Where `target`
+ * lacks the key or holds another kind of value (the passage created or
+ * replaced it), the hooks' whole value is written.
+ */
+function mergeHookWrite(
+  target: Record<string, unknown>,
+  key: string,
+  before: unknown,
+  after: unknown,
+  ancestors: Set<object>,
+): void {
+  if (Object.is(before, after)) return;
+  if (
+    mergeable(before, after) &&
+    hasOwn(target, key) &&
+    mergeable(after, target[key]) &&
+    // Stop at cycles: deepEqual() and deepClone() handle them
+    !ancestors.has(after as object)
+  ) {
+    mergeHookWrites(
+      target[key] as Record<string, unknown>,
+      before as Record<string, unknown>,
+      after as Record<string, unknown>,
+      ancestors,
+    );
+  } else if (!deepEqual(before, after)) {
+    target[key] = deepClone(after);
+  }
+}
+
+/**
+ * Apply the changes between `before` and `after`, two objects or two arrays
+ * (see mergeable()), to the snapshot's `target`. Array elements merge by
+ * index. Elements the hooks removed from an array's end are removed from
+ * the snapshot's array at the same indices, and elements they added are
+ * appended to it: where the passage resized the array, its indices do not
+ * line up with the snapshot's, and the passage resizes it again on load.
+ */
+function mergeHookWrites(
+  target: Record<string, unknown>,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  ancestors: Set<object>,
+): void {
+  ancestors.add(after);
+  if (Array.isArray(target)) {
+    const b = before as unknown as unknown[];
+    const a = after as unknown as unknown[];
+    const shared = Math.min(b.length, a.length, target.length);
+    for (let i = 0; i < shared; i++) {
+      mergeHookWrite(target, String(i), b[i], a[i], ancestors);
+    }
+    if (a.length < b.length) {
+      target.length = Math.min(target.length, a.length);
+    }
+    for (let i = b.length; i < a.length; i++) target.push(deepClone(a[i]));
+  } else {
+    for (const key of Object.keys(before)) {
+      if (!hasOwn(after, key)) delete target[key];
+    }
+    for (const key of Object.keys(after)) {
+      if (hasOwn(before, key)) {
+        mergeHookWrite(target, key, before[key], after[key], ancestors);
+      } else {
+        target[key] = deepClone(after[key]);
+      }
     }
   }
+  ancestors.delete(after);
 }
 
 /** Restore or reset PRNG from a history moment's snapshot. */

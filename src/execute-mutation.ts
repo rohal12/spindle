@@ -82,7 +82,7 @@ export function frozenCopy<T>(value: T): T {
  * replaced as a whole, since their elements have no stable identity to
  * merge by (a shift moves every index).
  */
-function isMergeable(value: unknown): value is Record<string, unknown> {
+export function isMergeable(value: unknown): value is Record<string, unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&
