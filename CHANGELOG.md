@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An error in `{goto}`, or in `{do}`, `{set}` or `{computed}` code that navigated before it failed, is logged with the source location of the macro's own passage; it named the passage navigated to.
 - Dialogs honour the opened passage's `[nobr]` tag, like passages and `{include}` already did. ([#186](https://github.com/rohal12/spindle/issues/186))
 - `Story.setNobr()` docs described it as removing `<p>` wrapping "everywhere"; they now describe what it does: it removes wrapping for content nested inside macros, HTML elements and included passages, while a passage's top-level text keeps its paragraphs unless the passage is tagged `[nobr]`. Tests pin this behaviour. ([#186](https://github.com/rohal12/spindle/issues/186))
 - `Story.waitForActions()` resolved before a navigation's passage was mounted when Preact's effects or a `fade-through` transition ran later than two animation frames, returning the previous (or no) passage actions. It now also waits until the current passage has rendered. ([#187](https://github.com/rohal12/spindle/issues/187))
