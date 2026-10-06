@@ -23,8 +23,8 @@ import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
 import { frozenCopy, getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
-import { checkVariableName } from './utils/namespace';
-import { countOf } from './utils/counts';
+import { changedNames, checkVariableName, ownValue } from './utils/namespace';
+import { countQueries, currentPassage, previousPassage } from './expression';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -83,35 +83,24 @@ function ensureVariableChangedSubscription(): void {
   let prevTrans = useStoryStore.getState().transient;
   useStoryStore.subscribe((state) => {
     const changed: Record<string, { from: unknown; to: unknown }> = {};
-    let hasChanges = false;
-
-    // Check $variables
-    const allVarKeys = new Set([
-      ...Object.keys(prevVars),
-      ...Object.keys(state.variables),
-    ]);
-    for (const key of allVarKeys) {
-      if (state.variables[key] !== prevVars[key]) {
-        changed[key] = { from: prevVars[key], to: state.variables[key] };
-        hasChanges = true;
+    const collect = (
+      prev: Record<string, unknown>,
+      next: Record<string, unknown>,
+      prefix: string,
+    ) => {
+      for (const key of changedNames(prev, next)) {
+        changed[prefix + key] = {
+          from: ownValue(prev, key),
+          to: ownValue(next, key),
+        };
       }
-    }
-
-    // Check %transient
-    const allTransKeys = new Set([
-      ...Object.keys(prevTrans),
-      ...Object.keys(state.transient),
-    ]);
-    for (const key of allTransKeys) {
-      if (state.transient[key] !== prevTrans[key]) {
-        changed[`%${key}`] = { from: prevTrans[key], to: state.transient[key] };
-        hasChanges = true;
-      }
-    }
+    };
+    collect(prevVars, state.variables, '');
+    collect(prevTrans, state.transient, '%');
 
     prevVars = state.variables;
     prevTrans = state.transient;
-    if (hasChanges) {
+    if (Object.keys(changed).length > 0) {
       emit('variableChanged', changed);
     }
   });
@@ -271,6 +260,8 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
 }
 
 function createStoryAPI(): StoryAPI {
+  const visits = countQueries(() => useStoryStore.getState().visitCounts);
+  const renders = countQueries(() => useStoryStore.getState().renderCounts);
   return {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
@@ -284,7 +275,7 @@ function createStoryAPI(): StoryAPI {
       const namespace = isTransient ? source.transient : source.variables;
       const value = key.includes('.')
         ? getByPath(namespace, key.split('.'))
-        : namespace[key];
+        : ownValue(namespace, key);
       return scope ? frozenCopy(value) : value;
     },
 
@@ -357,55 +348,16 @@ function createStoryAPI(): StoryAPI {
       return useStoryStore.getState().importSave(data, slot);
     },
 
-    visited(name?: string): number {
-      const state = useStoryStore.getState();
-      return countOf(state.visitCounts, name ?? state.currentPassage);
-    },
-
-    hasVisited(name?: string): boolean {
-      return this.visited(name) > 0;
-    },
-
-    hasVisitedAny(...names: string[]): boolean {
-      const { visitCounts } = useStoryStore.getState();
-      return names.some((n) => countOf(visitCounts, n) > 0);
-    },
-
-    hasVisitedAll(...names: string[]): boolean {
-      const { visitCounts } = useStoryStore.getState();
-      return names.every((n) => countOf(visitCounts, n) > 0);
-    },
-
-    rendered(name?: string): number {
-      const state = useStoryStore.getState();
-      return countOf(state.renderCounts, name ?? state.currentPassage);
-    },
-
-    hasRendered(name?: string): boolean {
-      return this.rendered(name) > 0;
-    },
-
-    hasRenderedAny(...names: string[]): boolean {
-      const { renderCounts } = useStoryStore.getState();
-      return names.some((n) => countOf(renderCounts, n) > 0);
-    },
-
-    hasRenderedAll(...names: string[]): boolean {
-      const { renderCounts } = useStoryStore.getState();
-      return names.every((n) => countOf(renderCounts, n) > 0);
-    },
-
-    currentPassage(): Passage | undefined {
-      const state = useStoryStore.getState();
-      return state.storyData?.passages.get(state.currentPassage);
-    },
-
-    previousPassage(): Passage | undefined {
-      const state = useStoryStore.getState();
-      if (state.historyIndex <= 0) return undefined;
-      const prevName = state.history[state.historyIndex - 1]?.passage;
-      return prevName ? state.storyData?.passages.get(prevName) : undefined;
-    },
+    visited: visits.count,
+    hasVisited: visits.has,
+    hasVisitedAny: visits.any,
+    hasVisitedAll: visits.all,
+    rendered: renders.count,
+    hasRendered: renders.has,
+    hasRenderedAny: renders.any,
+    hasRenderedAll: renders.all,
+    currentPassage,
+    previousPassage,
 
     get title(): string {
       return useStoryStore.getState().storyData?.name || '';
