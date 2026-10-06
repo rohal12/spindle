@@ -272,6 +272,11 @@ describe('findCodeEnd', () => {
     expect(findCodeEnd(src, 0, { goal: 'statements' })).toBe(
       src.indexOf('} x'),
     );
+    // A static block holds statements: a function declaration, then a regex
+    const block = 'class C { static { function f() {} /}/ } } } x';
+    expect(findCodeEnd(block, 0, { goal: 'statements' })).toBe(
+      block.indexOf('} x'),
+    );
     expect(
       pieces('p.in\nfunction f() {}\n/a"/.test(s)', 'statements'),
     ).toContainEqual(['literal', '/a"/', 0]);
@@ -489,10 +494,12 @@ describe('parseCode', () => {
     expect(error('f() = 1', 'statements').reason).toBe('Assigning to rvalue');
   });
 
-  it('reads a %name the parser needs as an operand as a transient', () => {
+  it('reads a % as the parser needs it, where the tokens before mislead', () => {
     // The tokens before guess an operator: `of` reads as a variable here
     const { refs } = parseCode('for (const of of %list) {}', 'statements');
     expect(refs.map((r) => r.sigil + r.name)).toEqual(['%list']);
+    // …and the other way round: after a statement, `of % p` divides
+    expect(parseCode('a\nof % p', 'statements').refs).toEqual([]);
   });
 
   it('reads a keyword after ?. as a property name', () => {

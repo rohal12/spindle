@@ -88,6 +88,7 @@ interface ParserState {
   start: number;
   end: number;
   exprAllowed: boolean;
+  lastTokEnd: number;
   context: unknown[];
   nextToken(): void;
   finishToken(type: TokenType, value?: unknown): void;
@@ -143,13 +144,23 @@ const SigilParser = class extends (Parser as unknown as Base) {
   colonEndsTernary = false;
   /** The last `}` closed a block. */
   closedBlock = false;
+  /** The value of the token before the one being finished. */
+  prevValue: unknown;
   /** Look ahead after a `%name` starting a line (off in look-aheads). */
   lookahead = true;
-  /** Where a `%name` is a transient whatever the tokens before it. */
-  operandsAt?: ReadonlySet<number>;
+  /**
+   * Where a `%` is a transient (true) or the modulo operator (false)
+   * whatever the tokens before it (see parseCode).
+   */
+  percentAt?: ReadonlyMap<number, boolean>;
+  /** Where it read a `%name` as a transient. */
+  transientsRead?: Set<number>;
 
   readToken(code: number): void {
     const self = this as unknown as ParserState;
+    // acorn updates it only when parsing; its guesses read it when
+    // tokenizing too (`return {` on one line opens an object literal)
+    self.lastTokEnd = self.end;
     this.operandBeforeLast = this.operandHere;
     this.operandHere = self.exprAllowed;
     this.breakBeforeLast = this.breakHere;
@@ -166,13 +177,15 @@ const SigilParser = class extends (Parser as unknown as Base) {
         const afterPrefix =
           self.type === tt.incDec &&
           (this.operandBeforeLast || this.breakBeforeLast);
+        const forced = code === 37 ? this.percentAt?.get(at) : undefined;
         if (
           code === 64 ||
-          self.exprAllowed ||
-          this.operandsAt?.has(at) ||
-          afterPrefix ||
-          (this.lookahead && transientAssignment(self, end))
+          (forced ??
+            (self.exprAllowed ||
+              afterPrefix ||
+              (this.lookahead && transientAssignment(self, end))))
         ) {
+          if (code === 37) this.transientsRead?.add(at);
           self.pos = end;
           self.finishToken(tt.name, self.input.charAt(at) + name);
           return;
@@ -203,6 +216,7 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // or an object key (`class D { function; }`, `{ class: 1 }`)
     const self = this as unknown as ParserState;
     const prevType = self.type;
+    this.prevValue = self.value;
     const property =
       (type.keyword !== undefined &&
         (prevType === tt.dot || prevType === tt.questionDot)) ||
@@ -210,11 +224,24 @@ const SigilParser = class extends (Parser as unknown as Base) {
         notABody(self.input, self.pos));
     // @ts-expect-error acorn internals
     super.finishToken(property ? tt.name : type, value);
+    // A variable named `of` (`const of of list`): acorn takes it for the
+    // `of` of a for-of loop, after which an operand comes
+    if (
+      type === tt.name &&
+      value === 'of' &&
+      (prevType === tt._const ||
+        prevType === tt._var ||
+        this.prevValue === 'let')
+    ) {
+      self.exprAllowed = false;
+    }
   }
 
   braceIsBlock(prevType: TokenType): boolean {
     if (prevType === tt.colon && this.colonEndsTernary) return false;
     if (prevType === tt.braceR && this.closedBlock) return true;
+    // A class's static initialization block: `static { … }`
+    if (prevType === tt.name && this.prevValue === 'static') return true;
     // A statement ended by a line break (`p⏎{ }`): a block starts
     if (this.breakHere && OPERAND_ENDS.has(prevType)) {
       const { context } = this as unknown as ParserState;
@@ -457,44 +484,48 @@ export function parseCode(
   src: string,
   goal: JsGoal = 'expression',
 ): ParsedCode {
-  // Whether `%` is a transient or modulo is guessed from the tokens before
-  // it, as acorn guesses whether `/` opens a regex; where the guess makes
-  // the parser fail at a `%name`, it is a transient (`for (const of of
-  // %list)`), and the code is parsed again
-  const operandsAt = new Set<number>();
+  // Whether `%name` is a transient or `%` modulo is guessed from the tokens
+  // before it, as acorn guesses whether `/` opens a regex. Where the guess
+  // makes the parser fail at a `%`, the other reading is tried, and the
+  // code parsed again (`for (const of of %list)`, `a⏎of % p`).
+  const percentAt = new Map<number, boolean>();
   for (;;) {
+    const transientsRead = new Set<number>();
     try {
-      const ast = parseAst(src, goal, operandsAt);
+      const ast = parseAst(src, goal, percentAt, transientsRead);
       const out: ParsedCode = { refs: [], strings: [] };
       walk(ast, src, out, false, false);
       out.refs.sort((a, b) => a.start - b.start);
       return out;
     } catch (error) {
       const pos = (error as { pos?: number }).pos ?? -1;
-      if (!(error instanceof SyntaxError) || operandsAt.has(pos)) throw error;
+      if (!(error instanceof SyntaxError) || percentAt.has(pos)) throw error;
       TRANS_NAME_RE.lastIndex = pos + 1;
       if (src.charAt(pos) !== '%' || !TRANS_NAME_RE.test(src)) throw error;
-      operandsAt.add(pos);
+      percentAt.set(pos, !transientsRead.has(pos));
     }
   }
 }
 
-/** Parse `src` as `goal`, with `%name`s at `operandsAt` transients. */
+/**
+ * Parse `src` as `goal`, reading `%` as `percentAt` says where it says, and
+ * noting where it read a transient in `transientsRead`.
+ */
 function parseAst(
   src: string,
   goal: JsGoal,
-  operandsAt: ReadonlySet<number>,
+  percentAt: ReadonlyMap<number, boolean>,
+  transientsRead: Set<number>,
 ): AnyNode {
   try {
     const p = tokenizerAt(src, 0, goal) as ParserState & {
       parse(): AnyNode;
-      operandsAt?: ReadonlySet<number>;
+      percentAt?: ReadonlyMap<number, boolean>;
+      transientsRead?: Set<number>;
     };
-    p.operandsAt = operandsAt;
-    if (goal === 'statements') {
-      p.type = tt.eof;
-      return p.parse();
-    }
+    p.percentAt = percentAt;
+    p.transientsRead = transientsRead;
+    if (goal === 'statements') return p.parse();
     // As acorn's parseExpressionAt, and then the code must end
     p.nextToken();
     const ast = p.parseExpression();
