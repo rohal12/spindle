@@ -128,8 +128,25 @@ describe('extended macro components', () => {
 
     it('shows error for missing passage', () => {
       const el = renderPassage('{include "Nonexistent"}');
-      expect(el.querySelector('.error')).not.toBeNull();
-      expect(el.textContent).toContain('not found');
+      expect(el.querySelector('.error')!.textContent).toBe(
+        '{include error: No passage named "Nonexistent" (in passage "Start")}',
+      );
+    });
+
+    it('shows an error for an expression naming no passage', () => {
+      useStoryStore.getState().setVariable('part', 'Nowhere');
+      const el = renderPassage('Before {include $part} after');
+      expect(el.querySelector('.error')!.textContent).toBe(
+        '{include error: No passage named "Nowhere" (in passage "Start")}',
+      );
+      expect(el.textContent).toContain('after');
+    });
+
+    it('shows an error for an expression that throws, with no text fallback', () => {
+      const el = renderPassage('{include $missing.part}');
+      expect(el.querySelector('.error')!.textContent).toMatch(
+        /^\{include error: .*undefined/,
+      );
     });
 
     it('tracks render count for included passage', () => {
@@ -277,6 +294,41 @@ describe('extended macro components', () => {
       useStoryStore.getState().setVariable('dest', 'End');
       renderPassage('{goto $dest}');
       expect(useStoryStore.getState().currentPassage).toBe('End');
+    });
+
+    it('shows an error naming the passage when an expression names none', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      useStoryStore.getState().setVariable('dest', 'Nowhere');
+      let el!: HTMLElement;
+      // The error shows on the re-render the failed navigation causes
+      act(() => {
+        el = renderPassage('{goto $dest}');
+      });
+      expect(useStoryStore.getState().currentPassage).toBe('Start');
+      expect(el.querySelector('.error')!.textContent).toBe(
+        '{goto error: No passage named "Nowhere" (in passage "Start")}',
+      );
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining('Error in {goto}'),
+        expect.objectContaining({
+          message: 'No passage named "Nowhere" (in passage "Start")',
+        }),
+      );
+      error.mockRestore();
+    });
+
+    it('shows the error of an expression that throws, with no text fallback', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let el!: HTMLElement;
+      // The error shows on the re-render the failed navigation causes
+      act(() => {
+        el = renderPassage('{goto Room}');
+      });
+      expect(useStoryStore.getState().currentPassage).toBe('Start');
+      expect(el.querySelector('.error')!.textContent).toMatch(
+        /^\{goto error: .*Room/,
+      );
+      error.mockRestore();
     });
 
     it('navigates, and reports a session write error like an error in {do}', () => {

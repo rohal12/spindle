@@ -71,6 +71,21 @@ describe('@rohal12/spindle/tooling', async () => {
     ).toBe(true);
   });
 
+  it('defineMacro throws for a parameter without a type, as Story.defineMacro does', () => {
+    expect(() =>
+      tooling.defineMacro({
+        name: 'untyped',
+        parameters: [{ name: 'amount' }],
+        render: () => null,
+      }),
+    ).toThrow('The parameter "amount" of the macro {untyped} has no type.');
+    expect(
+      tooling
+        .getMacroRegistry()
+        .some((m: { name: string }) => m.name === 'untyped'),
+    ).toBe(false);
+  });
+
   it('exports parseStoryVariables for StoryVariables', () => {
     const schema = tooling.parseStoryVariables(
       '$hp = 100\n$name = "Hero"\n$pc = { stats: { str: 3 } }',

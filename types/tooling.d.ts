@@ -1,7 +1,9 @@
 /**
  * How a macro argument is read into `ctx.args`. Quoted strings accept `\"`,
  * `\'` and `\\` escapes.
- * - `expression`: code, as written (the default).
+ * - `expression`: code, as written.
+ * - `statements`: code run as statements (`{set}`), as written.
+ * - `passage`: a passage name: a quoted string or an expression, as written.
  * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
  * - `string`: one quoted string; anything else leaves the argument unset.
  * - `text`: one quoted string, or text with any loose quotes stripped.
@@ -16,6 +18,8 @@
  */
 export type ParameterType =
   | 'expression'
+  | 'statements'
+  | 'passage'
   | 'variable'
   | 'string'
   | 'text'
@@ -30,8 +34,8 @@ export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
-  /** How the argument is read (default `expression`). */
-  type?: ParameterType;
+  /** How the argument is read: required, there is no default. */
+  type: ParameterType;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
 }
@@ -128,9 +132,13 @@ export interface MarkupDiagnostic {
 /**
  * Validate the markup of a story's passages as Spindle does when the story
  * starts: malformed markup (unclosed or mismatched macros, tags, links,
- * braces and attribute values) and unknown macros, checked against the
- * built-in macros, those registered with `defineMacro` and the widgets the
- * passages define. Spindle refuses to start a story with any of these.
+ * braces and attribute values), unknown macros and syntax errors in the
+ * code passages run (`{$…}` expressions, `{do}` bodies, conditions and the
+ * `expression`/`statements`/`passage` arguments of macros), checked against
+ * the built-in macros, those registered with `defineMacro` and the widgets
+ * the passages define, and passage names that name none of `passages`
+ * (links, quoted `passage` arguments, `{link}`, `{dialog}`, `{watch}`).
+ * Spindle refuses to start a story with any of these.
  */
 export declare function validateMarkup(
   passages: Iterable<MarkupPassage>,

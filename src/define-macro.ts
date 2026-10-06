@@ -34,6 +34,7 @@ import {
   readBoundVariable,
 } from './components/macros/macro-args';
 import {
+  checkParameterTypes,
   registerMacro,
   registerMacroText,
   registerSubMacro,
@@ -136,6 +137,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
   source: 'builtin' | 'user' = 'builtin',
 ): void {
   const parameters: readonly ParameterDef[] = config.parameters ?? [];
+  checkParameterTypes(config.name, parameters);
 
   function Wrapper(props: MacroProps) {
     // className/id resolved first (interpolate may transform them)

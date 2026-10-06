@@ -2,7 +2,7 @@ import type { StoryState } from './store';
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
 import { random, randomInt } from './prng';
-import { lexJs, type JsGoal, type Sigil } from './js-lexer';
+import { parseCode, type JsGoal, type Sigil } from './js-lexer';
 import {
   EMPTY_NAMESPACE,
   asNamespace,
@@ -63,28 +63,32 @@ const IDENT_END_RE = /[\p{ID_Continue}$\u200c\u200d]$/u;
  * Exported for tests.
  */
 export function transform(expr: string, goal: JsGoal = 'expression'): string {
+  const key = goal === 'statements' ? 's' + expr : 'e' + expr;
+  const cached = transformCache.get(key);
+  if (cached !== undefined) return cached;
+  const { refs } = parseCode(expr, goal);
   let result = '';
-  lexJs(
-    expr,
-    {
-      code(ch) {
-        result += ch;
-      },
-      literal(text) {
-        result += text;
-      },
-      variable(sigil, name) {
-        const error = variableNameError(name, sigil + name);
-        if (error) throw new SyntaxError(`spindle: ${error}`);
-        // `typeof%x` needs a space once `%x` turns into an identifier.
-        if (IDENT_END_RE.test(result.slice(-2))) result += ' ';
-        result += `${NAMESPACES[sigil]}["${name}"]`;
-      },
-    },
-    goal,
-  );
+  let at = 0;
+  for (const ref of refs) {
+    const error = variableNameError(ref.name, ref.sigil + ref.name);
+    if (error) throw new SyntaxError(`spindle: ${error}`);
+    result += expr.slice(at, ref.start);
+    if (ref.shorthand) result += `${ref.name}: `;
+    // `typeof%x` needs a space once `%x` turns into an identifier.
+    else if (IDENT_END_RE.test(result.slice(-2))) result += ' ';
+    result += `${NAMESPACES[ref.sigil]}["${ref.name}"]`;
+    at = ref.end;
+  }
+  result += expr.slice(at);
+  if (transformCache.size >= FN_CACHE_MAX) {
+    transformCache.delete(transformCache.keys().next().value!);
+  }
+  transformCache.set(key, result);
   return result;
 }
+
+/** Transformed code by goal and source. */
+const transformCache = new Map<string, string>();
 
 const preamble =
   'const {currentPassage,previousPassage,visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=__fns;';
@@ -265,6 +269,7 @@ export function execute(code: string, ...namespaces: Namespaces): void {
 /** Clear the compiled expression cache. Useful for testing and HMR. */
 export function clearExpressionCache(): void {
   fnCache.clear();
+  transformCache.clear();
   cachedFns = null;
   cachedVisitCounts = null;
   cachedRenderCounts = null;

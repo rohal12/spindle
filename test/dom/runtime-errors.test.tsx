@@ -98,6 +98,19 @@ describe('runtime error banner', () => {
     ]);
   });
 
+  it('shows a navigation to a passage that does not exist, and stays', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    act(() => useStoryStore.getState().navigate('Nowhere'));
+    expect(useStoryStore.getState().currentPassage).toBe('Start');
+    expect(banners().map((b) => b.textContent)).toEqual([
+      'The story could not go to another passage: No passage named "Nowhere" (in passage "Start")✕',
+    ]);
+    expect(error).toHaveBeenCalledWith(
+      'spindle: No passage named "Nowhere" (in passage "Start")',
+    );
+    error.mockRestore();
+  });
+
   describe('when a navigation cannot write the session', () => {
     const session = () =>
       sessionStorage.getItem('spindle.session.runtime-errors');

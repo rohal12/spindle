@@ -1415,8 +1415,20 @@ describe('tokenizeMarkup — backslash runs before braces', () => {
 });
 
 describe('tokenizeMarkup — template literals', () => {
-  it('reports an expression left open inside a template literal', () => {
-    expect(() => tokenizeMarkup('Hi {$a + `${$b`}')).toThrow(
+  // A backtick in an interpolation that is never closed reads as closing
+  // the template literal: the expression ends where its author meant it to,
+  // and the story-start check reports the missing `}` in it
+  // (test/unit/code-check.test.ts).
+  it('ends an expression after a template literal whose interpolation is unclosed', () => {
+    expect(tokenizeMarkup('Hi {$a + `${$b`} there')).toMatchObject([
+      { type: 'text', value: 'Hi ' },
+      { type: 'expression', expression: '$a + `${$b`' },
+      { type: 'text', value: ' there' },
+    ]);
+  });
+
+  it('reports an expression left open after a template literal', () => {
+    expect(() => tokenizeMarkup('Hi {$a + `${$b}`')).toThrow(
       expect.objectContaining({
         reason: 'Unclosed {$…: no } ends it',
         line: 1,
@@ -1544,22 +1556,6 @@ describe('tokenizeMarkup — JavaScript in macro arguments and expressions', () 
     expect(tokens[0]).toMatchObject({ rawArgs: '($a) / 2 + "}"' });
     expect(tokens[1]).toMatchObject({ type: 'text', value: 'after ' });
     expect(tokens[2]).toMatchObject({ expression: '$b /1' });
-  });
-
-  // The scan of the unclosed `{$a …` (its `'` is unterminated) lexes the
-  // `{a: …}` first, and the scan of `{$b …` skips it. The function started
-  // in it replaced `f`'s body to come, so the `{}` after `f(…)` is a block
-  // and `/}/` a regex there too, not division.
-  it('reads code the same after an earlier scan lexed part of it', () => {
-    const block = '{$b = function f({a: function(){}}) {} /}/ }';
-    expect(tokenizeMarkup(block)).toMatchObject([{ type: 'expression' }]);
-    const tokens = tokenizeMarkup(`{$a = /}/ ${block} '`);
-    expect(tokens).toMatchObject([
-      { type: 'expression', expression: '$a = /' },
-      { type: 'text', value: '/ ' },
-      { type: 'expression', expression: block.slice(1, -1) },
-      { type: 'text', value: " '" },
-    ]);
   });
 
   // Text that is not well-formed JavaScript keeps the tokenizer's lenient

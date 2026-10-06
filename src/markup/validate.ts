@@ -1,13 +1,16 @@
 /**
  * Markup validation: parse every passage when the story starts and report
- * malformed markup and unknown macros with the passage, line and column
- * they are at, instead of failing when the passage renders. Tooling runs it
- * too (see src/tooling.ts).
+ * malformed markup, unknown macros, syntax errors in the code it runs and
+ * passage names that name no passage (see code-check.ts) with the passage,
+ * line and column they are at, instead of failing when the passage renders.
+ * Tooling runs it too (see src/tooling.ts).
  */
 import { lineColumn, MarkupError, parseMarkup, tokenizeMarkup } from './parse';
 import type { Token } from './tokens';
-import { isCodeAttribute } from './code-attributes';
 import { parseWidgetDef } from '../widgets/widget-def';
+import { codeAndText, parseOrError, withParseCache } from '../code-check';
+import { CodeSyntaxError } from '../js-lexer';
+import type { ParameterDef } from '../registry';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -49,6 +52,13 @@ export interface MarkupValidationOptions {
    * others are still read for the widgets they define.
    */
   only?(passage: MarkupPassage): boolean;
+  /**
+   * The declared parameters of a macro, whose `expression` and `statements`
+   * arguments are checked as code and whose `text` and `string` arguments
+   * as markup (see code-check.ts). Without them only the code of `{$…}`,
+   * `{do}`, branch conditions and attributes is checked.
+   */
+  parametersOf?(name: string): readonly ParameterDef[] | undefined;
 }
 
 /** Passages that hold no markup. */
@@ -83,8 +93,15 @@ function distance(a: string, b: string): number {
   return prev[b.length]!;
 }
 
-/** " Did you mean {name}?" for the closest known name, if one is close. */
-function suggestion(name: string, names: readonly string[]): string {
+/**
+ * " Did you mean …?" with the known name closest to `name`, written by
+ * `quote`, if one is close.
+ */
+function didYouMean(
+  name: string,
+  names: Iterable<string>,
+  quote: (name: string) => string,
+): string {
   const lower = name.toLowerCase();
   let best = '';
   let bestDistance = Math.max(2, Math.floor(lower.length / 3)) + 1;
@@ -95,8 +112,15 @@ function suggestion(name: string, names: readonly string[]): string {
       bestDistance = d;
     }
   }
-  return best ? ` Did you mean {${best}}?` : '';
+  return best ? ` Did you mean ${quote(best)}?` : '';
 }
+
+/** What a passage argument may be, after an error in one. */
+const PASSAGE_ARGUMENT_HINT =
+  ' (a passage name is a quoted string or an expression)';
+
+/** A passage argument that is one bare word (`{goto Kitchen}`). */
+const BARE_WORD_RE = /^[A-Za-z][\w$]*$/;
 
 /** The name of the widget a `{widget}` with these arguments defines. */
 function widgetName(rawArgs: string): string | undefined {
@@ -107,7 +131,10 @@ function widgetName(rawArgs: string): string | undefined {
   }
 }
 
-/** Validate the markup of every passage. */
+/**
+ * Validate the markup of every passage. Passage names written out (links,
+ * quoted `passage` arguments) must name one of `passages`.
+ */
 export function validateMarkup(
   passages: Iterable<MarkupPassage>,
   options: MarkupValidationOptions,
@@ -136,7 +163,9 @@ export function validateMarkup(
   // Parse every passage first: the widgets they define are known macros.
   const parsed: [MarkupPassage, Token[]][] = [];
   const widgets = new Set<string>();
+  const passageNames = new Set<string>();
   for (const passage of passages) {
+    passageNames.add(passage.name);
     if (NOT_MARKUP.has(passage.name)) continue;
     if (passage.tags?.some((tag) => NOT_MARKUP_TAGS.includes(tag))) continue;
     const reported = !options.only || options.only(passage);
@@ -181,39 +210,72 @@ export function validateMarkup(
       report(
         passage,
         base + token.start,
-        `${where}Unknown macro {${token.name}}.${suggestion(token.name, names)}`,
+        `${where}Unknown macro {${token.name}}.${didYouMean(token.name, names, (n) => `{${n}}`)}`,
       );
     }
   };
 
-  for (const [passage, tokens] of parsed) {
-    checkMacros(passage, tokens, 0, '');
-    for (const token of tokens) {
-      if (token.type !== 'html') continue;
-      for (const [attr, value] of Object.entries(token.attributes)) {
-        if (isCodeAttribute(attr) || !value.includes('{')) continue;
-        // The value is the source text between its quotes
-        const found = passage.content.indexOf(value, token.start);
-        const at = found === -1 ? token.start : found;
-        const where = `In the ${attr} attribute of <${token.tag}>: `;
-        try {
-          parseMarkup(value, { text: true, hooks });
-          checkMacros(
-            passage,
-            tokenizeMarkup(value, { text: true }),
-            at,
-            where,
-          );
-        } catch (err) {
-          if (!(err instanceof MarkupError)) throw err;
+  const parametersOf = options.parametersOf ?? (() => undefined);
+
+  /**
+   * Check `tokens`, the tokens of `src`, which starts at `base` in the
+   * passage: their macros, the code in them and the markup in their text.
+   */
+  const checkTokens = (
+    passage: MarkupPassage,
+    src: string,
+    tokens: Token[],
+    base: number,
+    where: string,
+  ) => {
+    checkMacros(passage, tokens, base, where);
+    for (const piece of codeAndText(src, tokens, parametersOf)) {
+      const at = base + piece.offset;
+      if (piece.kind === 'passage') {
+        if (!passageNames.has(piece.name)) {
+          const hint = didYouMean(piece.name, passageNames, JSON.stringify);
           report(
             passage,
-            found === -1 ? at : at + err.offset,
-            where + err.reason,
+            at,
+            `${where}No passage named ${JSON.stringify(piece.name)} in ${piece.label}.${hint}`,
           );
         }
+        continue;
+      }
+      if (piece.kind === 'code') {
+        const result = parseOrError(piece.code, piece.goal);
+        const code = piece.code.trim();
+        if (result instanceof CodeSyntaxError) {
+          const reason = result.reasonIn(passage.content, at);
+          report(
+            passage,
+            at + result.pos,
+            `${where}${reason} in ${piece.label}` +
+              (piece.passage ? PASSAGE_ARGUMENT_HINT : ''),
+          );
+        } else if (piece.passage && BARE_WORD_RE.test(code)) {
+          report(
+            passage,
+            at,
+            `${where}Unquoted passage name in ${piece.label}: write ${JSON.stringify(code)}${PASSAGE_ARGUMENT_HINT}`,
+          );
+        }
+        continue;
+      }
+      if (!piece.text.includes('{')) continue;
+      try {
+        parseMarkup(piece.text, { text: true, hooks });
+        const inner = tokenizeMarkup(piece.text, { text: true });
+        checkTokens(passage, piece.text, inner, at, piece.where);
+      } catch (err) {
+        if (!(err instanceof MarkupError)) throw err;
+        report(passage, at + err.offset, piece.where + err.reason);
       }
     }
+  };
+
+  for (const [passage, tokens] of parsed) {
+    withParseCache(() => checkTokens(passage, passage.content, tokens, 0, ''));
   }
   return diagnostics;
 }

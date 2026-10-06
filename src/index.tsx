@@ -62,17 +62,23 @@ function stopWithErrors(errors: string[]): never {
 }
 
 /**
- * The markup errors (malformed markup, unknown macros) of the passages for
- * which `only` holds, with the macros and widgets known now.
+ * The markup errors (malformed markup, unknown macros, syntax errors in
+ * code) of the passages for which `only` holds, with the macros and widgets
+ * known now.
  */
 function markupErrors(
   storyData: StoryData,
   only: (passage: MarkupPassage) => boolean,
 ): string[] {
+  const macros = getMacroRegistry();
+  const parameters = new Map(
+    macros.map((m) => [m.name.toLowerCase(), m.parameters]),
+  );
   return validateMarkup(storyData.passages.values(), {
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
-    macroNames: getMacroRegistry().map((m) => m.name),
+    macroNames: macros.map((m) => m.name),
+    parametersOf: (name) => parameters.get(name),
     only,
   }).map(formatDiagnostic);
 }

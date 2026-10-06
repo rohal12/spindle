@@ -141,7 +141,7 @@ You can also use `{if}`, `{for}`, variables, links, and any other Spindle markup
 
 ## Error Banners
 
-Some runtime errors are shown on the page as well as in the browser console, for example when a navigation cannot write the [session](saves.md#session-persistence) because a variable holds a function. Each error is a banner, outside your StoryInterface layout, fixed at the top of the window:
+Some runtime errors are shown on the page as well as in the browser console, for example when a navigation cannot write the [session](saves.md#session-persistence) because a variable holds a function, or when code (`Story.goto()`) goes to a passage that doesn't exist. Each error is a banner, outside your StoryInterface layout, fixed at the top of the window:
 
 ```html
 <div class="spindle-error-banners">

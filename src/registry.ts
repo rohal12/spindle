@@ -69,9 +69,12 @@ export function isSubMacro(name: string): boolean {
 }
 
 /**
- * How a macro argument is read (see components/macros/macro-args.ts).
+ * How a macro argument is read (see components/macros/macro-args.ts). Every
+ * declared parameter names one: there is no default.
  * Quoted strings accept `\"`, `\'` and `\\` escapes.
- * - `expression`: code, as written (the default).
+ * - `expression`: code, as written.
+ * - `statements`: code run as statements (`{set}`), as written.
+ * - `passage`: a passage name: a quoted string or an expression, as written.
  * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
  * - `string`: one quoted string; anything else leaves the argument unset.
  * - `text`: one quoted string, or text with any loose quotes stripped.
@@ -84,25 +87,57 @@ export function isSubMacro(name: string): boolean {
  * - `options`: keywords, the names of its `parameters`, each followed by a
  *   quoted string or a number unless it is a flag.
  */
-export type ParameterType =
-  | 'expression'
-  | 'variable'
-  | 'string'
-  | 'text'
-  | 'names'
-  | 'delay'
-  | 'number'
-  | 'flag'
-  | 'separator'
-  | 'options';
+export const PARAMETER_TYPES = [
+  'expression',
+  'statements',
+  'passage',
+  'variable',
+  'string',
+  'text',
+  'names',
+  'delay',
+  'number',
+  'flag',
+  'separator',
+  'options',
+] as const;
+
+export type ParameterType = (typeof PARAMETER_TYPES)[number];
 
 export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
-  type?: ParameterType;
+  type: ParameterType;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
+}
+
+/**
+ * Throw if a parameter `macro` declares (or an option of one) has no type,
+ * or one that isn't a ParameterType: arguments are read by their type, and
+ * there is no default.
+ */
+export function checkParameterTypes(
+  macro: string,
+  parameters: readonly ParameterDef[],
+): void {
+  for (const param of parameters) {
+    const type: unknown = param.type;
+    if (!PARAMETER_TYPES.includes(type as ParameterType)) {
+      const problem =
+        type === undefined
+          ? 'has no type'
+          : `has the unknown type ${JSON.stringify(type)}`;
+      throw new Error(
+        `spindle: The parameter "${param.name}" of the macro {${macro}} ${problem}. ` +
+          `Give it one of the types ${PARAMETER_TYPES.join(', ')} ` +
+          '(see docs/custom-macros.md#parameter-types), ' +
+          'or declare no parameters and read props.rawArgs.',
+      );
+    }
+    if (param.parameters) checkParameterTypes(macro, param.parameters);
+  }
 }
 
 type ArgValue<T, D> = T extends 'flag' | 'separator'

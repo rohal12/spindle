@@ -547,6 +547,19 @@ describe('StoryAPI', () => {
       expect(typeof Story.defineMacro).toBe('function');
     });
 
+    it('throws when a declared parameter has no type', () => {
+      expect(() =>
+        Story.defineMacro({
+          name: 'shout',
+          parameters: [{ name: 'words' } as never],
+          render: () => null,
+        }),
+      ).toThrow(
+        'spindle: The parameter "words" of the macro {shout} has no type.',
+      );
+      expect(getMacro('shout')).toBeUndefined();
+    });
+
     it('registers with feature flags', async () => {
       const { defineMacro } = await import('../../src/define-macro');
       defineMacro({

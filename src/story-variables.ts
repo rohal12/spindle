@@ -3,7 +3,13 @@ import type { Token } from './markup/tokens';
 import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
-import { lexJs, scanStringLiteral, type JsGoal } from './js-lexer';
+import {
+  CodeSyntaxError,
+  lexJs,
+  scanStringLiteral,
+  type JsGoal,
+} from './js-lexer';
+import { parseOrError, withParseCache } from './code-check';
 import { createNamespace, variableNameError } from './utils/namespace';
 
 /**
@@ -246,6 +252,25 @@ function scanCode(
   onRef: RefCallback,
   goal: JsGoal = 'expression',
 ): void {
+  const parsed = parseOrError(code, goal);
+  if (parsed instanceof CodeSyntaxError) {
+    scanCodeLeniently(code, onRef, goal);
+    return;
+  }
+  for (const ref of parsed.refs) {
+    if (ref.sigil !== '$') continue;
+    VAR_PATH_RE.lastIndex = ref.start;
+    onRef(VAR_PATH_RE.exec(code)![1]!);
+  }
+  for (const text of parsed.strings) scanInterpolations(text, onRef);
+}
+
+/** `scanCode` for code acorn can't parse: lexed leniently. */
+function scanCodeLeniently(
+  code: string,
+  onRef: RefCallback,
+  goal: JsGoal,
+): void {
   /** Open template literals: their text so far, null in an interpolation. */
   const templates: { nesting: number; text: string | null }[] = [];
   lexJs(
@@ -295,7 +320,9 @@ function collectPassageRefs(
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
 ): void {
-  collectTokenRefs(content, tokensOf(content, false), storeVarMacros, onRef);
+  withParseCache(() =>
+    collectTokenRefs(content, tokensOf(content, false), storeVarMacros, onRef),
+  );
 }
 
 /** Report the `$var` references in the tokens of `content`. */
@@ -345,8 +372,9 @@ function collectTokenRefs(
 }
 
 /**
- * Scan all passages for $var references, check against schema.
- * Returns list of error messages (empty = valid).
+ * Check the `$var` references of all passages against the schema, at story
+ * start. Returns the error messages (empty = valid). (The syntax of their
+ * code is checked with their markup: see markup/validate.ts.)
  *
  * `storeVarMacros` lists the input macros whose first argument names a bound
  * variable; it defaults to the built-in ones.
@@ -366,7 +394,6 @@ export function validatePassages(
     if (name === 'StoryVariables' || name === 'StoryTransients') continue;
 
     const forLocals = extractForLocals(passage.content);
-
     collectPassageRefs(passage.content, storeVarSet, (ref) => {
       const error = validateRef(ref, schema, forLocals);
       if (error) {

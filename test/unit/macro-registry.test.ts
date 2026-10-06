@@ -72,7 +72,12 @@ describe('macro metadata registry', () => {
       merged: true,
       description: 'A rich macro',
       parameters: [
-        { name: 'target', required: true, description: 'The target variable' },
+        {
+          name: 'target',
+          type: 'variable',
+          required: true,
+          description: 'The target variable',
+        },
       ],
       source: 'user',
     });
@@ -145,14 +150,80 @@ describe('defineMacro stores metadata', () => {
     defineMacro({
       name: 'test-docs',
       description: 'A documented macro',
-      parameters: [{ name: 'value', required: true, description: 'The value' }],
+      parameters: [
+        {
+          name: 'value',
+          type: 'expression',
+          required: true,
+          description: 'The value',
+        },
+      ],
       render: () => null,
     });
     const meta = getMacroRegistry().find((m) => m.name === 'test-docs');
     expect(meta!.description).toBe('A documented macro');
     expect(meta!.parameters).toEqual([
-      { name: 'value', required: true, description: 'The value' },
+      {
+        name: 'value',
+        type: 'expression',
+        required: true,
+        description: 'The value',
+      },
     ]);
+  });
+
+  it('throws for a declared parameter without a type', () => {
+    expect(() =>
+      defineMacro({
+        name: 'untyped',
+        // @ts-expect-error: the type is required
+        parameters: [{ name: 'amount', required: true }],
+        render: () => null,
+      }),
+    ).toThrow(
+      'spindle: The parameter "amount" of the macro {untyped} has no type. ' +
+        'Give it one of the types expression, statements, passage, variable, ' +
+        'string, text, names, delay, number, flag, separator, options ' +
+        '(see docs/custom-macros.md#parameter-types), ' +
+        'or declare no parameters and read props.rawArgs.',
+    );
+    // Nothing is registered
+    expect(getMacroRegistry().find((m) => m.name === 'untyped')).toBe(
+      undefined,
+    );
+  });
+
+  it('throws for an option without a type, or an unknown type', () => {
+    expect(() =>
+      defineMacro({
+        name: 'opts',
+        parameters: [
+          {
+            name: 'options',
+            type: 'options',
+            // @ts-expect-error: the type is required
+            parameters: [{ name: 'once' }],
+          },
+        ],
+        render: () => null,
+      }),
+    ).toThrow('The parameter "once" of the macro {opts} has no type.');
+    expect(() =>
+      defineMacro({
+        name: 'typo',
+        // @ts-expect-error: not a parameter type
+        parameters: [{ name: 'amount', type: 'expresion' }],
+        render: () => null,
+      }),
+    ).toThrow(
+      'The parameter "amount" of the macro {typo} has the unknown type "expresion".',
+    );
+  });
+
+  it('accepts a macro that declares no parameters, which reads rawArgs', () => {
+    expect(() =>
+      defineMacro({ name: 'raw', render: (props) => props.rawArgs }),
+    ).not.toThrow();
   });
 
   it('defaults source to builtin', () => {

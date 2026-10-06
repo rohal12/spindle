@@ -70,7 +70,7 @@ It returns a `Map` from variable name to `{ name, type, default, fields? }` and 
 
 ### Checking markup in tests
 
-Spindle also checks the markup of every passage at startup (see [Markup errors](markup.md#markup-errors)). The tooling entry point runs the same check, against the built-in macros and those registered with its `defineMacro`:
+Spindle also checks the markup of every passage, and the [code](variables.md#code-in-passages) in it, at startup (see [Markup errors](markup.md#markup-errors)). The tooling entry point runs the same check, against the built-in macros and those registered with its `defineMacro`:
 
 ```ts
 import {
@@ -91,7 +91,7 @@ diagnostics.map(formatDiagnostic);
 // ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
 ```
 
-Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros.
+Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)).
 
 ## `StoryInterface`
 

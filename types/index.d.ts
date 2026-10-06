@@ -242,7 +242,9 @@ export interface StorageQuota {
 /**
  * How a macro argument is read into `ctx.args`. Quoted strings accept `\"`,
  * `\'` and `\\` escapes.
- * - `expression`: code, as written (the default).
+ * - `expression`: code, as written.
+ * - `statements`: code run as statements (`{set}`), as written.
+ * - `passage`: a passage name: a quoted string or an expression, as written.
  * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
  * - `string`: one quoted string; anything else leaves the argument unset.
  * - `text`: one quoted string, or text with any loose quotes stripped.
@@ -258,6 +260,8 @@ export interface StorageQuota {
  */
 export type ParameterType =
   | 'expression'
+  | 'statements'
+  | 'passage'
   | 'variable'
   | 'string'
   | 'text'
@@ -276,8 +280,8 @@ export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
-  /** How the argument is read (default `expression`). */
-  type?: ParameterType;
+  /** How the argument is read: required, there is no default. */
+  type: ParameterType;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
 }

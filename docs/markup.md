@@ -17,6 +17,8 @@ Navigate to another passage using double-bracket syntax:
 
 All four forms navigate to `Target` when clicked. The first form uses the passage name as the display text.
 
+`Target` must be the name of a passage: a link to a passage that doesn't exist stops the story when it starts, with the passage, line and column of the link and, for a near miss, the name it may mean (`No passage named "Kichen" in [[Cook->Kichen]]. Did you mean "Kitchen"?`). See [Markup errors](#markup-errors).
+
 A link ends at the first `]]`, so its text can't contain `[[`. A `[[` without a `]]` after it is an error.
 
 ### Links with CSS classes
@@ -149,7 +151,7 @@ Macro arguments, `{…}` expressions and the expressions in attribute values are
 
 The last line divides: `/` after a value is division, not the start of a regex. A `//` comment runs to the end of the line, so the `}` closing its macro goes on the next line.
 
-Arguments that are not valid JavaScript, such as `{goto Bob's room}`, are read as before: an apostrophe after a letter is text, and a quote that is not closed on the same line is a plain character.
+Arguments that are not valid JavaScript, such as the text in `{link Don't go}`, are read as before: an apostrophe after a letter is text, and a quote that is not closed on the same line is a plain character.
 
 ## HTML Tags
 
@@ -316,7 +318,12 @@ These are errors:
 | An HTML element without its closing tag, or misnested        | `<div>text`, `<b><i>x</b></i>`     |
 | A tag without its `>`, or with something no attribute can be | `<span class="x" {$hp}</span>`     |
 | An attribute value without its closing quote                 | `<img src="a.png alt="map">`       |
-| Any of these inside an attribute value                       | `<b title="{if $x}hi">`            |
+| Any of these inside an attribute value or a quoted label     | `<b title="{if $x}hi">`            |
+| Code that is not valid JavaScript                            | `{print $a +}`, `{do}if (x {{/do}` |
+| An unquoted passage name                                     | `{goto Kitchen}`, `{include A B}`  |
+| A link or passage name that names no passage                 | `[[Kichen]]`, `{goto "Kichen"}`    |
+
+Errors in code name what is wrong and the open bracket that is likely missing its closer: see [Code in passages](variables.md#code-in-passages).
 
 Text that only looks like markup is not an error: `{3}`, `{ x }`, `{"a": 1}`, `3 < 4` and a lone `]]` or `}` show as written. To show the rest as text, escape it: `\{` for a brace (see [Escaped Braces](#escaped-braces)) and `&lt;` for a `<` before a letter.
 

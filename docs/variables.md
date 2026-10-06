@@ -204,6 +204,31 @@ A sigil only starts a variable where a JavaScript identifier starts. Names that 
 {print $item._id}
 ```
 
+### Code in passages
+
+The code in a passage is JavaScript: valid, modern JavaScript, as a browser runs it outside strict mode, with the sigils above in place of variable names. Spindle reads it with the [acorn](https://github.com/acornjs/acorn) parser.
+
+**Syntax errors are found when the story starts.** Before the first passage shows, Spindle parses every piece of code in every passage: `{$…}` expressions, `{do}` bodies, the conditions of `{if}`, `{elseif}` and `{case}`, the code arguments of macros (`{set}`, `{print}`, `{switch}`, `{computed}`, `{for}`, `{meter}`, the condition and `run` action of `{watch}`, and the `expression` and `statements` arguments of [custom macros](custom-macros.md#parameter-types)), and the same markup inside quoted labels and HTML attribute values. If any of it is not valid, the story does not start; it shows the list of errors instead, with the [markup errors](markup.md#markup-errors). Each error names the passage, the line and column in the passage, what is wrong and the code it is in:
+
+```
+Passage "Shop", line 3, column 22: Unexpected end of code (missing ")" for the "(" at line 3, column 14) in {print ($gold + $count}
+Passage "Shop", line 7, column 14: Unterminated string constant in {set $name = "Bob}
+Passage "Intro", line 2, column 16: Unexpected "{" (missing ")" for the "(" at line 2, column 4) in {do}
+```
+
+The same errors show in place of a macro when its code runs, with the column in the code and the line marked where the error is: `{print error: Unexpected "$count" at column 7: $gold ▶$count}`.
+
+Passage-name arguments (`{goto}`, `{include}`, and the `passage` arguments of [custom macros](custom-macros.md#parameter-types)) are code too: a quoted string or an expression. An unquoted name is an error when the story starts, as a syntax error (`{goto Bob's room}`) or because it is a bare word (`{goto Kitchen}`: `Unquoted passage name in {goto Kitchen}: write "Kitchen"`). A quoted name must also name a passage, as links must (see [Links](markup.md#links)). An expression is evaluated when the macro runs; if its value names no passage, the macro shows an error naming that passage and the passage the macro is in.
+
+These restrictions follow from reading the code as JavaScript:
+
+- **Sigil variables can't be declared.** `let _x = 1`, `const $y`, `function f(_a) {}` and `(@b) => …` are errors: story, temporary, local and transient variables need no declaration. Name your own JavaScript variables and parameters without a sigil (`let x`, `(a) => …`).
+- **`@name` and `%name` can't be property names:** `obj.@x` is an error. (`obj.$x` and `obj._x` are ordinary property names.)
+- **A line that starts with `%name` after a complete expression** is read as a transient only when the line assigns to it: after `$x = 5`, a next line `%count[i] = 1` works. Otherwise `%` there is the modulo operator, as in JavaScript (`5 % n.go()`): to start such a line with a transient, end the line before with `;`.
+- **Code must be valid JavaScript, even where a browser would only fail when it runs it.** `++f()` and `f() = 1` are syntax errors.
+- **A few rare valid programs are rejected anyway**, because the parser guesses whether a `/` starts a regular expression before it knows the context: a line that starts with a variable named `of` divided by something (`of /= 2` after a complete statement) is one. Name such a variable differently, or end the previous line with `;`.
+- **A shorthand property** (`{ $gold }`) takes the variable's name without its sigil as its key: `{ gold: … }`. In a destructuring assignment, `({ $gold } = loot)` sets `$gold` to `loot.gold`.
+
 ### Passage tracking functions
 
 The following functions are available in any expression to check passage visit and render history:
