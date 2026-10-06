@@ -19,12 +19,18 @@ export function MacroError({
   );
 }
 
-/** Log an error in the macro `{label}` (its name, or name and arguments). */
-export function logMacroError(label: string, error: unknown): void {
-  console.error(
-    `spindle: Error in {${label}}${currentSourceLocation()}:`,
-    error,
-  );
+/**
+ * Log an error in the macro `{label}` (its name, or name and arguments) at
+ * `location`, the source location of the macro's passage. Take it before
+ * running the code that failed (see currentSourceLocation): code that
+ * navigates changes the current passage.
+ */
+export function logMacroError(
+  label: string,
+  error: unknown,
+  location: string = currentSourceLocation(),
+): void {
+  console.error(`spindle: Error in {${label}}${location}:`, error);
 }
 
 /**
@@ -38,11 +44,12 @@ export function useRunOnce(macro: string, rawArgs: string, effect: () => void) {
   const failure = useRef<{ error: unknown } | null>();
   if (failure.current === undefined) {
     failure.current = null;
+    const location = currentSourceLocation();
     try {
       effect();
     } catch (error) {
       failure.current = { error };
-      logMacroError(`${macro} ${rawArgs}`, error);
+      logMacroError(`${macro} ${rawArgs}`, error, location);
     }
   }
 

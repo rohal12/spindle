@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { bootStory } from '../../src/headless';
 
 const STORY_HTML = `<!doctype html>
@@ -25,9 +26,11 @@ describe('bootStory save hooks', () => {
 
     Story.on('beforesave', () => Story.set('ext', 42));
     await Story.save('s');
-    expect((await Story.exportSave('s'))!.save.payload.variables['ext']).toBe(
-      42,
-    );
+    expect(
+      decodeSavePayload((await Story.exportSave('s'))!.save.payload).variables[
+        'ext'
+      ],
+    ).toBe(42);
 
     Story.set('ext', 0);
     // Leave the saved passage, so waitForActions() below waits for the

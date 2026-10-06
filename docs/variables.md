@@ -160,10 +160,11 @@ Then use methods and getters in your passages:
 
 ### Requirements
 
-- **Register every class** with `Story.registerClass(name, constructor)` before creating instances. The name must be unique.
+- **Register every class** with `Story.registerClass(name, constructor)` before creating instances. The name must be unique. Saving an instance of a class that is not registered throws an error (see [What Cannot Be Saved](saves.md#what-cannot-be-saved)).
 - **Constructor should accept a plain data object.** On restart, Spindle passes the `StoryVariables` default (a plain object) to your constructor.
 - **Only own enumerable properties are saved.** Methods, getters, and prototype properties are restored automatically from the class prototype.
-- Class instances are fully supported by the save system, history navigation (back/forward), and restart.
+- Class instances are fully supported by the save system, history navigation (back/forward), and restart, including instances that refer to each other or to themselves.
+- **Don't store functions** in story variables, not even as properties of an instance: a save cannot hold them. Put behaviour in methods of the class.
 
 ## Expressions
 

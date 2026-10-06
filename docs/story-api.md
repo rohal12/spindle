@@ -75,6 +75,8 @@ Go to the previous passage in history.
 
 Go to the next passage in history (after going back).
 
+`Story.goto()`, `Story.back()` and `Story.forward()` write the [session](saves.md#session-persistence). If the story variables hold a value a save cannot hold (a function, an instance of an unregistered class, a unique symbol; see [What Cannot Be Saved](saves.md#what-cannot-be-saved)), the navigation completes and then throws an error naming the variable.
+
 ### `Story.restart()`
 
 Restart the story. Restores variable defaults and re-runs `StoryInit`.
@@ -249,7 +251,7 @@ Story.save('my-slot'); // named slot
 Story.save('day-3', { day: 3, phase: 'morning' }); // with custom metadata
 ```
 
-Returns a `Promise<void>` that resolves once the save is persisted: `aftersave` handlers have run, `hasSave(slot)` is `true` and `listSaves()` includes it. It rejects if storage fails (the error is also logged). Ignoring the promise is fine — a failure then only shows up in the console.
+Returns a `Promise<void>` that resolves once the save is persisted: `aftersave` handlers have run, `hasSave(slot)` is `true` and `listSaves()` includes it. It rejects if storage fails, or if the state holds a value a save cannot hold, with an error naming the variable (`spindle: Cannot save a function (at $player.onHit)`; see [What Cannot Be Saved](saves.md#what-cannot-be-saved)). The error is also logged. Ignoring the promise is fine — a failure then only shows up in the console.
 
 ```javascript
 await Story.save('slot-2');
@@ -269,7 +271,7 @@ Story.load('my-slot'); // load from named slot
 
 Loading moves the game to the playthrough of the loaded save, so saves made afterwards are grouped with it (no change if the save belongs to the current playthrough). The switch takes effect in call order: `Story.load('a'); Story.save('b');` puts `b` in the playthrough of the save in `a`. See [Playthroughs](saves.md#playthroughs).
 
-Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails. A restart called after `load()` (before the save has been read) wins over it: the promise then resolves without loading, and no `beforeload`/`afterload` events fire.
+Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails: for example if the save holds an instance of a class that is not registered, or was made by an incompatible version of Spindle (see [Save Format](saves.md#save-format)). A restart called after `load()` (before the save has been read) wins over it: the promise then resolves without loading, and no `beforeload`/`afterload` events fire.
 
 Inside running code, `Story.load()` takes its place among the save operations at the call, like `Story.save()` (the code's writes so far are applied first), but the loaded state replaces the game once the save has been read, after the code has finished.
 
@@ -338,7 +340,7 @@ if (data) {
 }
 ```
 
-The `SaveExport` object contains `version`, `ifid`, `exportedAt` and `save` (`{ meta, payload }`). Use `save.meta.title` and `save.meta.custom` to preview a file before importing it.
+The `SaveExport` object contains `formatVersion`, `ifid`, `exportedAt` and `save` (`{ meta, payload }`). `save.payload` is the stored form of the game (`{ formatVersion, data }`, see [Save Format](saves.md#save-format)); treat it as opaque. Use `save.meta.title` and `save.meta.custom` to preview a file before importing it.
 
 ### `Story.importSave(data, slot?)`
 
@@ -354,7 +356,7 @@ try {
 }
 ```
 
-The promise rejects, and the slot is left unchanged, if `data` is not a save export or if it comes from a different story (its IFID does not match). The imported save keeps its title and `custom` metadata. If its playthrough doesn't exist in this browser, it is grouped under an "Imported" playthrough. Importing does not load the save.
+The promise rejects, and the slot is left unchanged, if `data` is not a valid save export, if it was made by an incompatible version of Spindle (including exports from before save format versions, which have `version: 1` instead of `formatVersion`), or if it comes from a different story (its IFID does not match). The imported save keeps its title and `custom` metadata. If its playthrough doesn't exist in this browser, it is grouped under an "Imported" playthrough. Importing does not load the save.
 
 ### `Story.defineMacro(config)`
 
@@ -412,7 +414,7 @@ Each metadata object has these properties:
 
 ### `Story.registerClass(name, constructor)`
 
-Register a class so its instances can be cloned, saved, and restored with their prototype intact.
+Register a class so its instances can be cloned, saved, and restored with their prototype intact. A save refuses instances of classes that are not registered, and loading a save fails if a class it holds is no longer registered.
 
 | Parameter     | Type       | Description                                   |
 | ------------- | ---------- | --------------------------------------------- |

@@ -139,6 +139,46 @@ All standard macros work inside `StoryInterface`:
 
 You can also use `{if}`, `{for}`, variables, links, and any other Spindle markup.
 
+## Error Banners
+
+Some runtime errors are shown on the page as well as in the browser console, for example when a navigation cannot write the [session](saves.md#session-persistence) because a variable holds a function. Each error is a banner, outside your StoryInterface layout, fixed at the top of the window:
+
+```html
+<div class="spindle-error-banners">
+  <div
+    class="spindle-error-banner"
+    role="alert"
+  >
+    <span class="spindle-error-banner-context"
+      >The game could not be saved …</span
+    >
+    <span class="spindle-error-banner-message"
+      >Cannot save a function (at $cb)</span
+    >
+    <span class="spindle-error-banner-count"> (×2)</span>
+    <button
+      class="spindle-error-banner-dismiss"
+      aria-label="Dismiss"
+    >
+      ✕
+    </button>
+  </div>
+</div>
+```
+
+The count shows when the same error happened again while its banner was shown. Restyle the banners from your Story Stylesheet, for example:
+
+```css
+.spindle-error-banners {
+  top: auto;
+  bottom: 1em;
+}
+.spindle-error-banner {
+  background: #fff3f3;
+  color: #8a1c1c;
+}
+```
+
 ## Tips
 
 - Use the `story-menubar` class on your header element to get the default menubar styling.

@@ -5,6 +5,9 @@
   "description": "A Preact-based story format for Twine 2.",
   "license": "Unlicense",
   "author": "Rohal12",
+  "engines": {
+    "node": ">=22.17"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -64,6 +67,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "devalue": "^6",
     "immer": "^11.1.4",
     "micromark": "^4.0.2",
     "micromark-extension-gfm-strikethrough": "^2.1.0",

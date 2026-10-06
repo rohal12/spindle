@@ -13,6 +13,18 @@ Spindle automatically saves the current game state to the browser's session stor
 
 This is separate from the save system — no manual save/load is needed for refresh recovery.
 
+The session holds the same data as a save, so it is subject to the same [restrictions](#what-cannot-be-saved). When the state holds a value a save cannot hold, such as a function, the navigation still completes (the passage changes and `afternavigate` handlers run), and then:
+
+- the page shows an error banner that names the variable, for example "The game could not be saved for a page reload; a reload goes back to the last passage it could save: Cannot save a function (at $onHit)". The banner is announced to screen readers and stays until the player dismisses it; the same error on later navigations counts up on the same banner. See [Error banners](story-interface.md#error-banners) to style it;
+- the session keeps its last good copy: a refresh goes back to the last moment that could be written, not to the current passage;
+- the navigation throws the error (`spindle: Cannot save a function (at $onHit)`).
+
+Where the thrown error appears depends on what started the navigation:
+
+- A link or button the player clicks: the browser reports it as an uncaught error in the console, with its stack.
+- `{goto}`, or `Story.goto()` in `{do}`: it is logged to the console like any other error in that macro (`spindle: Error in {goto}…`).
+- `Story.goto()`, `Story.back()` or `Story.forward()` in your own JavaScript: it is thrown to your code.
+
 ## Quick Save and Quick Load
 
 The fastest way to save and load:
@@ -131,16 +143,54 @@ The handler's changes are stored with the saved passage's start state. The live 
 
 Random numbers the save and load handlers (`beforesave`, `aftersave`, `afterload`) draw with `random()` or `Story.random()` do not advance the seeded PRNG: the story draws the same values again afterwards. Saving never changes the rolls that follow, and the passage replays its rolls after a load. Use `Math.random()` there for values that must not repeat the story's next rolls.
 
-History is stored efficiently using Immer patches (only changed variables per navigation), but saves contain full snapshots for portability.
+The live history records only the variables that changed at each navigation. A save holds the variables of every moment, but a value that did not change between moments is stored once.
 
 ### Class Instances
 
-If you use [registered classes](variables.md#using-classes), their instances are automatically serialized when saving and restored when loading. Each instance is stored with a class name tag so Spindle knows which prototype to reattach.
+If you use [registered classes](variables.md#using-classes), their instances are saved and restored with their class: methods and getters work as soon as a save is loaded. A save records each instance's own enumerable properties and the name the class was registered under.
 
-- On save, class instances are tagged as `{ __spindle_class__: "Name", __spindle_data__: { ... } }` in the stored data.
-- On load, tagged objects are restored with the correct prototype — methods and getters work immediately.
-- If a class is not registered when a save is loaded (e.g. the class was removed), Spindle logs a warning and falls back to a plain object with the saved data fields.
+- An instance of a class that is not registered cannot be saved: the save throws an error naming the class and the variable. Register every class whose instances end up in story variables.
+- Loading a save that holds an instance of a class that is no longer registered (for example, the class was removed or renamed) fails with an error naming the class; the game is left as it was.
+- Cycles and shared references through instances are kept, as for any other value: an instance whose property points back at itself, or at another instance that points back, loads that way.
 
 ### Saved Values
 
-Besides plain objects, arrays, strings, numbers, booleans and `null`, saves keep `Map`, `Set`, `Date` (also an invalid one), `RegExp`, `bigint`, `undefined`, `NaN`, `Infinity`, `-Infinity` and `-0` exactly. They are tagged like class instances, since JSON cannot hold them. Two things cannot be saved, and saving them throws an error: circular references, and a property named `__proto__`.
+A save keeps every value exactly, including these:
+
+- plain objects, arrays (with their holes: `[1, , 3]` stays sparse), strings, numbers, booleans and `null`;
+- `undefined`, `NaN`, `Infinity` and `-Infinity` (and `-0`), and `bigint`;
+- `Map` and `Set`, in their insertion order;
+- `Date` (also an invalid one) and `RegExp`;
+- typed arrays (`Uint8Array`, `Float64Array`, `BigInt64Array`, …), `ArrayBuffer` and `DataView`;
+- `URL` and `URLSearchParams`;
+- errors: `Error`, `TypeError` and the other built-in errors, `AggregateError`, and registered subclasses of `Error`, with their message, `cause` and own properties;
+- boxed primitives (`new Number(1)`, `new String("s")`, …);
+- symbols from the global registry (`Symbol.for("key")`);
+- objects without a prototype (`Object.create(null)`);
+- `Temporal` values, in browsers that have `Temporal`;
+- instances of [registered classes](#class-instances).
+
+Values can refer to each other freely: a value referenced from several places is still one value after a load (changing it through one reference shows through the others), and cycles (an object that contains itself, directly or further down) load as cycles.
+
+### What Cannot Be Saved
+
+Saving these throws an error that names the variable, for example `spindle: Cannot save a function (at $player.onHit)`. The same error is thrown by the navigation that writes the [session](#session-persistence):
+
+- functions;
+- instances of classes that are not [registered](#class-instances);
+- symbols not from the global registry (`Symbol("x")`), and objects with symbol keys;
+- a property named `__proto__`.
+
+Some parts of a value are not saved, without an error:
+
+- A getter defined on an object itself (`Object.defineProperty(obj, "x", { get … })`) is saved as a plain property with its current value. Getters defined in a class are not affected: they come back with the class.
+- Properties that are not enumerable are not saved, and neither are properties added to an array besides its elements (`list.label = "x"`).
+- An error's `stack`, and the extra properties some browsers add to errors (`fileName`, `lineNumber`, `line`, …), are not saved.
+
+Values can be nested about 2,000 levels deep (an object in an object in an object …). A deeper value makes the save throw a "Maximum call stack size exceeded" error; the exact depth depends on the browser.
+
+### Save Format
+
+Saves, exports and the session store a payload as `{ formatVersion, data }`: `data` is the payload serialized as text (with [devalue](https://github.com/sveltejs/devalue)), and `formatVersion` is the version of that format, currently `1`. Treat `data` as opaque; read saves through the Story API.
+
+A save, export or session written in a format version this build of Spindle cannot read is refused with an error ("This save was made by an incompatible version of Spindle"); a stale session is dropped and the story starts fresh. Saves, exports and sessions made before format versions existed (Spindle 0.52 and earlier) cannot be loaded.

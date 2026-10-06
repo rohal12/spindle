@@ -6,7 +6,7 @@
  * named `__proto__` is refused with an error wherever a name enters.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useStoryStore } from '../../src/store';
+import { useStoryStore, type StoryState } from '../../src/store';
 import { evaluate, execute } from '../../src/expression';
 import { executeMutation } from '../../src/execute-mutation';
 import {
@@ -209,7 +209,7 @@ describe('store namespaces', () => {
     state().goForward();
     expect(state().variables.constructor).toBe(2);
 
-    const payload = deserialize(
+    const payload = deserialize<ReturnType<StoryState['getSavePayload']>>(
       JSON.parse(JSON.stringify(serialize(state().getSavePayload()))),
     );
     state().restart();
@@ -226,7 +226,7 @@ describe('history of inherited names', () => {
     state().navigate('Room');
     executeMutation('delete $toString', {}, () => {});
     state().navigate('Start');
-    const payload = deserialize(
+    const payload = deserialize<ReturnType<StoryState['getSavePayload']>>(
       JSON.parse(JSON.stringify(serialize(state().getSavePayload()))),
     );
     state().loadFromPayload(payload);

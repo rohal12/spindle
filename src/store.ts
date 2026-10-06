@@ -6,10 +6,7 @@ import {
   enableMapSet,
   enablePatches,
   isDraft,
-  produceWithPatches,
-  applyPatches,
   type Draft,
-  type Patch,
 } from 'immer';
 import type { StoryData } from './parser';
 import type { TransitionConfig } from './transition';
@@ -19,7 +16,6 @@ import type {
   SaveInfo,
   SaveExport,
 } from './saves/types';
-import { isSaveExport } from './saves/types';
 import { executeStoryInit } from './story-init';
 import { emit } from './event-emitter';
 import {
@@ -46,8 +42,10 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { serialize } from './class-registry';
-import { deepClone, mergeKeys, mergesWith } from './structural';
+
+import { deepClone, mergeKeys, mergesWith, shareEqual } from './structural';
+import { shallowCopy } from './utils/object-path';
+import { showRuntimeError } from './runtime-errors';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -66,6 +64,7 @@ import {
   createNamespace,
   hasOwn,
   isNamespace,
+  setOwn,
   type Counts,
   type Namespace,
 } from './utils/namespace';
@@ -92,9 +91,14 @@ const SPECIAL_PASSAGES = new Set([
 // Patch-based variable history (module-level, outside Zustand)
 // ---------------------------------------------------------------------------
 
+/** A change to one variable between two history moments. */
+type VarChange =
+  | { key: string; deleted: true }
+  | { key: string; deleted: false; value: unknown };
+
+/** The changes that turn one history moment's variables into the next's. */
 interface PatchEntry {
-  forward: Patch[];
-  inverse: Patch[];
+  forward: VarChange[];
 }
 
 /** Full variable snapshot at history index 0. */
@@ -110,31 +114,55 @@ let patchEntries: PatchEntry[] = [];
 /** Immer-produced reference to variables right after the last navigation. */
 let lastNavigationVars: Namespace = createNamespace();
 
-/** Deep-clone patch values so they are independent of future mutations. */
-function clonePatches(patches: Patch[]): Patch[] {
-  return patches.map((p) => ({
-    ...p,
-    value: p.value !== undefined ? deepClone(p.value) : undefined,
-  }));
-}
-
-/** Compute forward + inverse patches that transform `prev` into `curr`. */
+/**
+ * The variables that differ between `prev` and `curr`: added, replaced (by
+ * reference: store values are immutable, so an unchanged variable keeps its
+ * object) or deleted. A recorded value is a deep copy, so that changing a
+ * live value in place (a class instance is not frozen) cannot change
+ * history; instances of unregistered classes are kept, as the store keeps
+ * them (a save then refuses them).
+ */
 function computeVarPatches(
   prev: Record<string, unknown>,
   curr: Record<string, unknown>,
 ): PatchEntry {
-  const [, forward, inverse] = produceWithPatches(prev, (draft) => {
-    const d = draft as Record<string, unknown>;
-    for (const key of Object.keys(d)) {
-      // Own keys only: `curr` may be a plain object (a loaded snapshot),
-      // whose inherited `constructor` is no variable
-      if (!hasOwn(curr, key)) delete d[key];
+  const forward: VarChange[] = [];
+  for (const key of Object.keys(prev)) {
+    // Own keys only: `curr` may be a plain object (a loaded snapshot),
+    // whose inherited `constructor` is no variable
+    if (!hasOwn(curr, key)) forward.push({ key, deleted: true });
+  }
+  for (const key of Object.keys(curr)) {
+    if (!hasOwn(prev, key) || !Object.is(prev[key], curr[key])) {
+      forward.push({
+        key,
+        deleted: false,
+        value: deepClone(curr[key], { keepUnregistered: true }),
+      });
     }
-    for (const [key, val] of Object.entries(curr)) {
-      d[key] = val;
-    }
-  });
-  return { forward: clonePatches(forward), inverse: clonePatches(inverse) };
+  }
+  return { forward };
+}
+
+/**
+ * The variables of the moment after `vars`, by `changes`. The recorded
+ * values are used as they are, not copied, so values the moments share
+ * stay shared, and cycles and shared references in them hold (Immer's
+ * applyPatches copies each value, and recurses forever on a cycle).
+ */
+function applyVarPatches(
+  vars: Record<string, unknown>,
+  changes: readonly VarChange[],
+): Record<string, unknown> {
+  const next = Object.create(
+    Object.getPrototypeOf(vars) as object | null,
+  ) as Record<string, unknown>;
+  for (const key of Object.keys(vars)) setOwn(next, key, vars[key]);
+  for (const change of changes) {
+    if (change.deleted) delete next[change.key];
+    else setOwn(next, change.key, change.value);
+  }
+  return next;
 }
 
 /**
@@ -160,7 +188,7 @@ function forEachRecorded(
 ): void {
   let vars: Record<string, unknown> = variableBase;
   for (let i = 0; i < count; i++) {
-    if (i > 0) vars = applyPatches(vars, patchEntries[i - 1]!.forward);
+    if (i > 0) vars = applyVarPatches(vars, patchEntries[i - 1]!.forward);
     fn(vars, i);
   }
 }
@@ -179,7 +207,7 @@ function savedMoment<V>(moment: HistoryMoment, variables: V) {
 function reconstructVarsAt(index: number): Record<string, unknown> {
   let vars: Record<string, unknown> = variableBase;
   for (let i = 0; i < index; i++) {
-    vars = applyPatches(vars, patchEntries[i]!.forward);
+    vars = applyVarPatches(vars, patchEntries[i]!.forward);
   }
   return vars;
 }
@@ -188,8 +216,18 @@ function reconstructVarsAt(index: number): Record<string, unknown> {
 // Session persistence (sessionStorage — survives F5, cleared on tab close)
 // ---------------------------------------------------------------------------
 
-let serializedHistory: unknown[] = [];
+/**
+ * The history moments the session holds, with the variables recorded for
+ * each. Store state is immutable, so holding the recorded objects keeps
+ * them as they were; moments share the values that did not change between
+ * them, and the session stores those once (see encodePayload).
+ */
+let sessionMoments: SaveHistoryMoment[] = [];
 
+/**
+ * Write the game to the session: the whole payload, encoded in one piece
+ * on every navigation.
+ */
 function persistSession(get: () => StoryState): void {
   const {
     storyData,
@@ -204,22 +242,22 @@ function persistSession(get: () => StoryState): void {
 
   // Trim cache when history shrank (navigate() drops discarded forward
   // moments itself, since a replacement branch may keep the same length)
-  if (serializedHistory.length > history.length) {
-    serializedHistory.length = history.length;
+  if (sessionMoments.length > history.length) {
+    sessionMoments.length = history.length;
   }
 
   // Append new entries
-  if (serializedHistory.length < history.length) {
-    const gap = history.length - serializedHistory.length;
+  if (sessionMoments.length < history.length) {
+    const gap = history.length - sessionMoments.length;
     if (gap === 1) {
       // Common path: one new moment at the end — use current variables directly
       const i = history.length - 1;
-      serializedHistory[i] = savedMoment(history[i]!, serialize(variables));
+      sessionMoments[i] = savedMoment(history[i]!, variables);
     } else {
       // Bulk fill (after loadFromPayload) — reconstruct incrementally
       forEachRecorded(history.length, (vars, i) => {
-        if (i >= serializedHistory.length) {
-          serializedHistory[i] = savedMoment(history[i]!, serialize(vars));
+        if (i >= sessionMoments.length) {
+          sessionMoments[i] = savedMoment(history[i]!, vars);
         }
       });
     }
@@ -227,13 +265,43 @@ function persistSession(get: () => StoryState): void {
 
   saveSession(storyData.ifid, {
     passage: currentPassage,
-    variables: serialize(variables),
-    history: serializedHistory,
+    variables,
+    history: sessionMoments,
     historyIndex,
     visitCounts,
     renderCounts,
     prng: snapshotPRNG(),
   });
+}
+
+/** What the page shows before a session write error (see RuntimeErrors). */
+const SESSION_ERROR_CONTEXT =
+  'The game could not be saved for a page reload; a reload goes back to the last passage it could save:';
+
+/**
+ * Write the session, then run `after` (the rest of the operation: its
+ * events and queued navigations), then throw the session's error if writing
+ * it failed: a value a save cannot hold (a function, an instance of an
+ * unregistered class, a unique symbol) fails the operation that put it in
+ * the state's history, as it fails a save, but only after the operation is
+ * complete, so the story is not left half-way through it. The error is also
+ * shown on the page, and the session keeps its last good copy.
+ */
+function persistSessionThen(get: () => StoryState, after?: () => void): void {
+  let failure: { error: unknown } | undefined;
+  try {
+    persistSession(get);
+  } catch (error) {
+    failure = { error };
+    // The player sees it too: a reload would go back to the last moment
+    // the session could hold
+    showRuntimeError(SESSION_ERROR_CONTEXT, error);
+  }
+  try {
+    after?.();
+  } finally {
+    if (failure) throw failure.error;
+  }
 }
 
 /**
@@ -255,11 +323,11 @@ function trimHistory(state: {
   const end = start + state.maxHistory;
   // Advance base through trimmed transitions
   for (let i = 0; i < start; i++) {
-    variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
+    variableBase = applyVarPatches(variableBase, patchEntries[i]!.forward);
   }
   state.history = state.history.slice(start, end);
   patchEntries = patchEntries.slice(start, end - 1);
-  serializedHistory = serializedHistory.slice(start, end);
+  sessionMoments = sessionMoments.slice(start, end);
   state.historyIndex -= start;
   return true;
 }
@@ -309,19 +377,20 @@ function finishEnteredMoment(get: StoreGet, set: StoreSet): void {
 }
 
 /**
- * A deep copy of a variable namespace as save data: a plain object, as a
- * loaded save holds it (the store turns it back into a namespace on load).
+ * A variable namespace as save data: a plain object, as a loaded save holds
+ * it (the store turns it back into a namespace on load). The values are the
+ * store's own, immutable ones, not copies: the moments of a payload share
+ * the values that did not change between them, and a save stores those
+ * once (see encodePayload).
  */
-const plainCopy = (ns: Namespace): Record<string, unknown> => ({
-  ...deepClone(ns),
-});
+const plainCopy = (ns: Namespace): Record<string, unknown> => ({ ...ns });
 
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
 function resetModuleState(base: Namespace): void {
   variableBase = base;
   patchEntries = [];
   lastNavigationVars = base;
-  serializedHistory = [];
+  sessionMoments = [];
 }
 
 /**
@@ -382,9 +451,9 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   reinitTriggerState();
   lastNavigationVars = get().variables;
   restorePRNGFromMoment(get().history[get().historyIndex]);
-  persistSession(get);
-
-  emit('afternavigate', targetPassage, previousPassage);
+  persistSessionThen(get, () =>
+    emit('afternavigate', targetPassage, previousPassage),
+  );
 }
 
 /**
@@ -613,7 +682,8 @@ function loadedEntryMoment(
  * the `beforesave` hooks) into the payload's snapshot of the saved moment. A
  * load restores that snapshot, the state on entering the passage, and runs
  * the passage again, so data a hook adds to a save would otherwise be lost
- * on load (#227). Only the property paths the hooks changed are written: a
+ * on load (#227). Only the property paths the hooks changed are written (into
+ * copies of the objects on those paths, the rest staying shared): a
  * whole variable would bring along what the passage did to the rest of it,
  * which the passage then does again on load (#232). Only the payload's copy
  * changes: the live history keeps the recorded snapshot (#159).
@@ -652,7 +722,11 @@ function mergeHookWrites(
     ) {
       return false;
     }
-    mergeHookWrites(target[key] as Record<string, unknown>, b, a, ancestors);
+    // The snapshot's values are the history's own (immutable, see
+    // plainCopy): merge into a copy, made along the merged path only
+    const copy = shallowCopy(target[key] as object);
+    target[key] = copy;
+    mergeHookWrites(copy, b, a, ancestors);
     return true;
   });
   ancestors.delete(after);
@@ -984,7 +1058,7 @@ export const useStoryStore = create<StoryState>()(
         // A lower limit takes effect at once
         trimmed = trimHistory(state);
       });
-      if (trimmed) persistSession(get);
+      if (trimmed) persistSessionThen(get);
     },
 
     setQuickSaveKey: (key: string | null) => {
@@ -1090,8 +1164,8 @@ export const useStoryStore = create<StoryState>()(
         // Truncate forward history if we navigated back then chose a new path
         state.history = state.history.slice(0, state.historyIndex + 1);
         patchEntries.length = state.historyIndex;
-        if (serializedHistory.length > state.historyIndex + 1) {
-          serializedHistory.length = state.historyIndex + 1;
+        if (sessionMoments.length > state.historyIndex + 1) {
+          sessionMoments.length = state.historyIndex + 1;
         }
 
         // Push new transition and moment
@@ -1125,11 +1199,10 @@ export const useStoryStore = create<StoryState>()(
       const deferred = deferredNavigations;
       deferredNavigations = [];
       finishEnteredMoment(get, set);
-      persistSession(get);
-
-      emit('afternavigate', passageName, previousPassage);
-
-      for (const next of deferred) get().navigate(next);
+      persistSessionThen(get, () => {
+        emit('afternavigate', passageName, previousPassage);
+        for (const next of deferred) get().navigate(next);
+      });
     },
 
     goBack: () => moveInHistory(get, set, -1),
@@ -1344,8 +1417,8 @@ export const useStoryStore = create<StoryState>()(
     importSave: async (data: unknown, slot?: string): Promise<SaveInfo> => {
       const { storyData } = get();
       if (!storyData) throw new Error('spindle: Story is not initialized.');
-      if (!isSaveExport(data)) throw new Error('Invalid save file format');
 
+      // Checked in full (format version, structure) before it is stored
       const info = await importSlotSave(data, storyData.ifid, slot);
       recordKnownSave(set, slot, true);
       return info;
@@ -1420,15 +1493,29 @@ export const useStoryStore = create<StoryState>()(
         renderCounts,
       } = get();
 
-      // Reconstruct full variable snapshots from base + patches
+      // Reconstruct full variable snapshots from base + patches. Replaying
+      // the (deep-copied) patches gives every moment its own copy of a
+      // variable that changed; share what equals the previous moment's, so
+      // that a save stores it once (see encodePayload).
       const saveHistory: SaveHistoryMoment[] = [];
       forEachRecorded(history.length, (vars, i) => {
-        saveHistory.push(savedMoment(history[i]!, plainCopy(vars)));
+        const recorded = plainCopy(vars);
+        saveHistory.push(
+          savedMoment(
+            history[i]!,
+            i === 0
+              ? recorded
+              : shareEqual(saveHistory[i - 1]!.variables, recorded),
+          ),
+        );
       });
 
       return {
         passage: currentPassage,
-        variables: plainCopy(variables),
+        variables: shareEqual(
+          saveHistory[historyIndex]?.variables,
+          plainCopy(variables),
+        ),
         history: saveHistory,
         historyIndex,
         visitCounts: { ...visitCounts },
@@ -1478,27 +1565,20 @@ export const useStoryStore = create<StoryState>()(
 
       // The payload is already live (deserialized at the storage boundary by
       // loadSave/loadSession); deserializing again would corrupt built-ins.
-      // Convert full snapshots to patch entries
-      const base = createNamespace(
-        deepClone(payload.history[0]?.variables ?? {}),
+      // Convert full snapshots to patch entries. They are copied in one
+      // piece, so values the moments share stay shared, and a transition's
+      // patches hold only the variables that changed.
+      const snapshots = deepClone(payload.history.map((m) => m.variables)).map(
+        (vars) => createNamespace(vars),
       );
-      const newPatchEntries: PatchEntry[] = [];
-
-      let prevVars: Record<string, unknown> = base;
-      for (let i = 1; i < payload.history.length; i++) {
-        const currVars = createNamespace(
-          deepClone(payload.history[i]!.variables),
-        );
-        newPatchEntries.push(computeVarPatches(prevVars, currVars));
-        prevVars = currVars;
-      }
-
-      variableBase = deepClone(base);
-      patchEntries = newPatchEntries;
+      variableBase = deepClone(snapshots[0]!);
+      patchEntries = snapshots
+        .slice(1)
+        .map((curr, i) => computeVarPatches(snapshots[i]!, curr));
       // Seed the session cache from the payload's own snapshots, so
       // persistSession does not rebuild them from the live variables.
-      serializedHistory = payload.history.map((m) =>
-        savedMoment(m, serialize(m.variables)),
+      sessionMoments = payload.history.map((m, i) =>
+        savedMoment(m, snapshots[i]!),
       );
 
       set((state) => {
@@ -1535,11 +1615,11 @@ export const useStoryStore = create<StoryState>()(
       // whose moments predate PRNG snapshots use the payload's.
       restorePRNGFrom(entry?.prng !== undefined ? entry.prng : payload.prng);
 
-      // Write the loaded game to the session so a refresh restores it
-      persistSession(get);
-
+      // Write the loaded game to the session so a refresh restores it.
       // Draws made by the handlers would shift the passage's replayed rolls
-      withoutDraws(() => emit('afterload', slot));
+      persistSessionThen(get, () =>
+        withoutDraws(() => emit('afterload', slot)),
+      );
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {

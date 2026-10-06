@@ -18,6 +18,8 @@ A modern [Twine 2](https://twinery.org/) story format built with [Preact](https:
 npm install @rohal12/spindle
 ```
 
+The package (the compiler entry point, `@rohal12/spindle/tooling` and `@rohal12/spindle/headless`) needs Node.js 22.17 or later. Compiled stories run in current browsers.
+
 ## Features
 
 - Curly-brace macro syntax: `{if $health > 0}...{/if}`, `{set $name = "Hero"}`
