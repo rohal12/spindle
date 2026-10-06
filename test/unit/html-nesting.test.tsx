@@ -140,7 +140,7 @@ describe('issue #113: SVG with multi-line tags renders as escaped plaintext', ()
 });
 
 describe('issue #61: deeply nested HTML with {include}', () => {
-  describe('tokenize + buildAST (unit level)', () => {
+  describe('parseMarkup (unit level)', () => {
     it('parses DialogShell passage', () => {
       const ast = parse(shellContent);
       expect(ast).toHaveLength(1);

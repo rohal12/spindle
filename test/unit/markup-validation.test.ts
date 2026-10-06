@@ -104,6 +104,11 @@ describe('validateMarkup — typical mistakes', () => {
       'Passage "Start", line 2, column 14 (story.twee:12): In the title attribute of <b>: Unclosed {if}: no {/if} closes it',
     ],
     [
+      'an unknown macro in an attribute value',
+      'Look:\n<b title="{sett}">t</b>',
+      'Passage "Start", line 2, column 11 (story.twee:12): In the title attribute of <b>: Unknown macro {sett}. Did you mean {set}?',
+    ],
+    [
       'a < before a letter that starts no tag',
       'Since x<y holds,\nwe win.',
       'Passage "Start", line 1, column 8 (story.twee:11): Unclosed tag <y: no > ends it (write &lt; for a < that starts no tag)',

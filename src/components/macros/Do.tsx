@@ -5,7 +5,7 @@ defineMacro({
   name: 'do',
   block: true,
   render({ children = [] }, ctx) {
-    // The tokenizer keeps the body verbatim as a single text node
+    // The parser keeps the body verbatim as a single text node
     const code = ctx.collectText(children);
 
     ctx.hooks.useLayoutEffect(() => {

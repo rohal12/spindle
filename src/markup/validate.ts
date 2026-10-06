@@ -44,6 +44,11 @@ export interface MarkupValidationOptions {
   macroNames?: Iterable<string>;
   /** Whether a macro takes a body (default: the registered block macros). */
   isBlockMacro?(name: string): boolean;
+  /**
+   * Report on only the passages for which this holds (default: all). The
+   * others are still read for the widgets they define.
+   */
+  only?(passage: MarkupPassage): boolean;
 }
 
 /** Passages that hold no markup. */
@@ -135,52 +140,76 @@ export function validateMarkup(
     if (NOT_MARKUP.has(passage.name)) continue;
     if (passage.tags?.some((tag) => NOT_MARKUP_TAGS.includes(tag))) continue;
     try {
-      parseMarkup(passage.content, { hooks });
+      // The tokens first: they don't depend on which macros take a body
       const tokens = tokenizeMarkup(passage.content);
-      parsed.push([passage, tokens]);
       for (const token of tokens) {
         if (token.type !== 'macro' || token.isClose) continue;
         if (token.name.toLowerCase() !== 'widget') continue;
         const name = widgetName(token.rawArgs);
         if (name) widgets.add(name);
       }
+      parseMarkup(passage.content, { hooks });
+      parsed.push([passage, tokens]);
     } catch (err) {
       if (!(err instanceof MarkupError)) throw err;
-      report(passage, err.offset, err.reason);
+      if (!options.only || options.only(passage)) {
+        report(passage, err.offset, err.reason);
+      }
     }
   }
   const names = [...(options.macroNames ?? []), ...widgets];
 
-  for (const [passage, tokens] of parsed) {
+  /** Report the unknown macros among `tokens`, which start at `base`. */
+  const checkMacros = (
+    passage: MarkupPassage,
+    tokens: Token[],
+    base: number,
+    where: string,
+  ) => {
     for (const token of tokens) {
-      if (token.type === 'macro' && !token.isClose) {
-        const lower = token.name.toLowerCase();
-        if (
-          !BRANCH_MACROS.has(lower) &&
-          !widgets.has(lower) &&
-          !options.isKnownMacro(lower)
-        ) {
+      if (token.type !== 'macro' || token.isClose) continue;
+      const lower = token.name.toLowerCase();
+      if (
+        BRANCH_MACROS.has(lower) ||
+        widgets.has(lower) ||
+        options.isKnownMacro(lower)
+      ) {
+        continue;
+      }
+      report(
+        passage,
+        base + token.start,
+        `${where}Unknown macro {${token.name}}.${suggestion(token.name, names)}`,
+      );
+    }
+  };
+
+  for (const [passage, tokens] of parsed) {
+    if (options.only && !options.only(passage)) continue;
+    checkMacros(passage, tokens, 0, '');
+    for (const token of tokens) {
+      if (token.type !== 'html') continue;
+      for (const [attr, value] of Object.entries(token.attributes)) {
+        if (isCodeAttribute(attr) || !value.includes('{')) continue;
+        // The value is the source text between its quotes
+        const found = passage.content.indexOf(value, token.start);
+        const at = found === -1 ? token.start : found;
+        const where = `In the ${attr} attribute of <${token.tag}>: `;
+        try {
+          parseMarkup(value, { text: true, hooks });
+          checkMacros(
+            passage,
+            tokenizeMarkup(value, { text: true }),
+            at,
+            where,
+          );
+        } catch (err) {
+          if (!(err instanceof MarkupError)) throw err;
           report(
             passage,
-            token.start,
-            `Unknown macro {${token.name}}.${suggestion(token.name, names)}`,
+            found === -1 ? at : at + err.offset,
+            where + err.reason,
           );
-        }
-      } else if (token.type === 'html') {
-        for (const [attr, value] of Object.entries(token.attributes)) {
-          if (isCodeAttribute(attr) || !value.includes('{')) continue;
-          try {
-            parseMarkup(value, { text: true, hooks });
-          } catch (err) {
-            if (!(err instanceof MarkupError)) throw err;
-            // The value is the source text between its quotes
-            const at = passage.content.indexOf(value, token.start);
-            report(
-              passage,
-              at === -1 ? token.start : at + err.offset,
-              `In the ${attr} attribute of <${token.tag}>: ${err.reason}`,
-            );
-          }
         }
       }
     }

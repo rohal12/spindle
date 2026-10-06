@@ -190,7 +190,7 @@ describe('block widgets', () => {
       '{widget "Card" @name}{Section "Details"}{@name}{/Section}{/widget}';
 
     // If we parse passage B first WITHOUT pre-scanning, Section isn't
-    // in BLOCK_MACROS and buildAST would fail on {/Section}.
+    // in BLOCK_MACROS and parsing would fail on {/Section}.
     // Pre-scan passageA to register Section as block macro first.
     const pattern = /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
     let m;

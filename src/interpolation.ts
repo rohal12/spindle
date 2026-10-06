@@ -3,7 +3,7 @@
  * and macro labels resolve the inline markup of passage text (variables,
  * expressions, macros, widgets) to a string.
  *
- * Such a value is parsed with the passage tokenizer in text mode, so `{…}`
+ * Such a value is parsed with the passage parser in text mode, so `{…}`
  * means the same as in passage text, and its AST is evaluated directly to a
  * string rather than rendered: the result is ready during the render that
  * needs it (so it goes through the usual attribute handling, boolean

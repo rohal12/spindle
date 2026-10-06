@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { App } from './components/App';
-import { parseStoryData } from './parser';
+import { parseStoryData, type StoryData } from './parser';
 import { useStoryStore, enterRuntimePhase } from './store';
 import {
   installStoryAPI,
@@ -18,7 +18,11 @@ import {
 } from './story-variables';
 import { getMacro, getMacroRegistry, isSubMacro } from './registry';
 import { getWidget } from './widgets/widget-registry';
-import { formatDiagnostic, validateMarkup } from './markup/validate';
+import {
+  formatDiagnostic,
+  validateMarkup,
+  type MarkupPassage,
+} from './markup/validate';
 import { blockWidgetNames, parseWidgetDef } from './widgets/widget-def';
 import { parseMarkup } from './markup/parse';
 import { registerBlockMacro } from './markup/ast';
@@ -48,10 +52,36 @@ function renderErrors(root: HTMLElement, errors: string[]) {
   root.appendChild(container);
 }
 
+/** Show the validation errors instead of the story, and stop booting. */
+function stopWithErrors(errors: string[]): never {
+  const root = document.getElementById('root');
+  if (root) renderErrors(root, errors);
+  throw new Error(
+    `spindle: ${errors.length} validation error(s):\n${errors.join('\n')}`,
+  );
+}
+
+/**
+ * The markup errors (malformed markup, unknown macros) of the passages for
+ * which `only` holds, with the macros and widgets known now.
+ */
+function markupErrors(
+  storyData: StoryData,
+  only: (passage: MarkupPassage) => boolean,
+): string[] {
+  return validateMarkup(storyData.passages.values(), {
+    isKnownMacro: (name) =>
+      !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
+    macroNames: getMacroRegistry().map((m) => m.name),
+    only,
+  }).map(formatDiagnostic);
+}
+
 /**
  * Boot Spindle in the current document: parse `<tw-storydata>`, install the
- * `Story` API, run author JavaScript, validate `StoryVariables`, run
- * `StoryInit`, and render into `#root`. Dispatches `:storyready` when the
+ * `Story` API, run author JavaScript, validate `StoryVariables` and
+ * `StoryInit`'s markup, run `StoryInit`, validate the other passages' markup
+ * (with the macros StoryInit defined), and render into `#root`. Dispatches `:storyready` when the
  * first passage is shown. Call once per page (module state is global).
  * The browser story format calls it from `main.tsx`.
  */
@@ -113,13 +143,9 @@ export function boot() {
   }
 
   const errors = validatePassages(storyData.passages, schema, storeVarMacros);
-  // Malformed markup and unknown macros, in every passage
-  const diagnostics = validateMarkup(storyData.passages.values(), {
-    isKnownMacro: (name) =>
-      !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
-    macroNames: getMacroRegistry().map((m) => m.name),
-  });
-  errors.push(...diagnostics.map(formatDiagnostic));
+  // StoryInit's markup must be valid before it runs; the other passages are
+  // validated once it has run, as it may define macros (see below).
+  errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
@@ -142,13 +168,7 @@ export function boot() {
     transientDefaults = extractDefaults(transientSchema);
   }
 
-  if (errors.length > 0) {
-    const root = document.getElementById('root');
-    if (root) renderErrors(root, errors);
-    throw new Error(
-      `spindle: ${errors.length} validation error(s):\n${errors.join('\n')}`,
-    );
-  }
+  if (errors.length > 0) stopWithErrors(errors);
 
   defaults = extractDefaults(schema);
   setDeclaredVariables(Object.keys(defaults), Object.keys(transientDefaults));
@@ -161,6 +181,10 @@ export function boot() {
   // Run StoryInit, restore the session if the page was refreshed, and fire
   // storyinit after all state is settled (defaults + StoryInit + session)
   initializeStory(loadSession(storyData.ifid));
+
+  // Every other passage's markup, now that StoryInit may have defined macros
+  const markup = markupErrors(storyData, (p) => p.name !== 'StoryInit');
+  if (markup.length > 0) stopWithErrors(markup);
 
   // Pass 2: Full parse and register widgets from passages tagged "widget"
   for (const [, passage] of storyData.passages) {
