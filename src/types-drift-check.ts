@@ -115,5 +115,5 @@ const _exampleMacro: PublishedMacroDefinition = {
 // metadata.
 declare const validateStoryMarkup: typeof SourceValidateStoryMarkup;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _validateMarkup: typeof PublishedValidateMarkup = (passages) =>
-  validateStoryMarkup(passages, []);
+const _validateMarkup: typeof PublishedValidateMarkup = (passages, options) =>
+  validateStoryMarkup(passages, [], options);

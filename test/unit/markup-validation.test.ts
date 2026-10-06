@@ -273,4 +273,15 @@ describe('validateStoryMarkup (tooling)', () => {
       ),
     ).toEqual([]);
   });
+
+  it('checks passage names unless told not to, for part of a story', () => {
+    const passages = [
+      { name: 'A', content: '[[Elsewhere]]' },
+      { name: 'B', content: '{if 1}unclosed' },
+    ];
+    const messages = (options?: { checkPassageNames?: boolean }) =>
+      validateStoryMarkup(passages, macros, options).map((d) => d.passage);
+    expect(messages()).toEqual(['B', 'A']);
+    expect(messages({ checkPassageNames: false })).toEqual(['B']);
+  });
 });

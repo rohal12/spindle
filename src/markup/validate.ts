@@ -53,6 +53,11 @@ export interface MarkupValidationOptions {
    */
   only?(passage: MarkupPassage): boolean;
   /**
+   * Whether passage names written out must name one of the passages
+   * (default: true). Off when only part of a story is validated.
+   */
+  checkPassageNames?: boolean;
+  /**
    * The declared parameters of a macro, whose `expression` and `statements`
    * arguments are checked as code and whose `text` and `string` arguments
    * as markup (see code-check.ts). Without them only the code of `{$…}`,
@@ -232,7 +237,10 @@ export function validateMarkup(
     for (const piece of codeAndText(src, tokens, parametersOf)) {
       const at = base + piece.offset;
       if (piece.kind === 'passage') {
-        if (!passageNames.has(piece.name)) {
+        if (
+          options.checkPassageNames !== false &&
+          !passageNames.has(piece.name)
+        ) {
           const hint = didYouMean(piece.name, passageNames, JSON.stringify);
           report(
             passage,

@@ -19,6 +19,16 @@ export { formatDiagnostic } from './markup/validate';
 export type { MarkupDiagnostic, MarkupPassage } from './markup/validate';
 
 /** What tooling knows about a macro (see MacroMetadata). */
+/** Options for validating markup from tooling. */
+export interface ValidateMarkupOptions {
+  /**
+   * Whether passage names written out (links, quoted `passage` arguments)
+   * must name one of the passages given (default: true). Turn it off to
+   * validate only part of a story.
+   */
+  checkPassageNames?: boolean;
+}
+
 export interface ToolingMacro {
   name: string;
   block: boolean;
@@ -36,6 +46,7 @@ export interface ToolingMacro {
 export function validateStoryMarkup(
   passages: Iterable<MarkupPassage>,
   macros: Iterable<ToolingMacro>,
+  options: ValidateMarkupOptions = {},
 ): MarkupDiagnostic[] {
   const list = [...passages];
   const known = new Set<string>();
@@ -54,5 +65,6 @@ export function validateStoryMarkup(
     parametersOf: (name) => parameters.get(name),
     isBlockMacro: (name) =>
       blocks.has(name.toLowerCase()) || isBlockMacro(name),
+    checkPassageNames: options.checkPassageNames,
   });
 }
