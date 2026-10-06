@@ -14,14 +14,13 @@ import {
   deepClone,
   deepEqual,
   diffPaths,
-  hasOwn,
   isApplied,
   isMergeable,
   mergeKeys,
   type PathChange,
 } from './structural';
 import { getByPath } from './utils/object-path';
-import { asNamespace } from './utils/namespace';
+import { asNamespace, hasOwn } from './utils/namespace';
 
 type NamespaceName = keyof VariableNamespaces;
 

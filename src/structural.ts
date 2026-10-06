@@ -4,10 +4,8 @@
 // what a change is.
 
 import { registeredClassName } from './class-registry';
+import { hasOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-
-export const hasOwn = (obj: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(obj, key);
 
 /**
  * Set an own enumerable property. A "__proto__" key is defined as an own

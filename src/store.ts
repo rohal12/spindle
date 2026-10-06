@@ -47,7 +47,7 @@ import {
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
 import { serialize } from './class-registry';
-import { deepClone, hasOwn, mergeKeys, mergesWith } from './structural';
+import { deepClone, mergeKeys, mergesWith } from './structural';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -64,6 +64,7 @@ import {
   checkVariableName,
   createCounts,
   createNamespace,
+  hasOwn,
   isNamespace,
   type Counts,
   type Namespace,
@@ -127,7 +128,7 @@ function computeVarPatches(
     for (const key of Object.keys(d)) {
       // Own keys only: `curr` may be a plain object (a loaded snapshot),
       // whose inherited `constructor` is no variable
-      if (!Object.prototype.hasOwnProperty.call(curr, key)) delete d[key];
+      if (!hasOwn(curr, key)) delete d[key];
     }
     for (const [key, val] of Object.entries(curr)) {
       d[key] = val;
@@ -1307,7 +1308,7 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, knownSaves } = get();
       if (!storyData) return false;
       // Own entries only: slot names like 'constructor' are not inherited saves
-      return Object.prototype.hasOwnProperty.call(knownSaves, slot ?? '');
+      return hasOwn(knownSaves, slot ?? '');
     },
 
     getSaveInfo: async (slot?: string): Promise<SaveInfo | null> => {
