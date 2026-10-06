@@ -147,6 +147,36 @@ describe('state snapshots taken by running mutation code', () => {
     expect(state().variables).toMatchObject({ hp: 5, obj: { a: 1, b: 0 } });
   });
 
+  it('records the entered moment before a watcher reacting to it goes back', () => {
+    // Recording it after the watchers wrote the restored state into it
+    addTrigger('$flag == 1', { run: '$hp = 7; Story.goto("Room")' });
+    addTrigger('$hp == 7', { run: '$obj.a = 1; Story.back()' });
+    run('Story.set("flag", 1)');
+    expect(state().currentPassage).toBe('Start');
+    expect(state().variables).toMatchObject({ hp: 100, flag: 0 });
+    expect(state().getHistoryVariables(1)).toMatchObject({
+      hp: 7,
+      flag: 1,
+      obj: { a: 1, b: 0 },
+    });
+    Story.forward();
+    expect(state().variables).toMatchObject({ hp: 7, obj: { a: 1, b: 0 } });
+  });
+
+  it('records writes made after a watcher went back in the next moment', () => {
+    // The next navigation diffed from the variables as they were when the
+    // watcher had finished, not from the snapshot it went back to
+    addTrigger('$flag == 1', { run: '$hp = 7; Story.goto("Room")' });
+    addTrigger('$hp == 7', { run: 'Story.back(); $obj.a = 1' });
+    run('Story.set("flag", 1)');
+    expect(state().variables.obj).toEqual({ a: 1, b: 0 });
+    Story.goto('Room');
+    expect(state().getHistoryVariables(1).obj).toEqual({ a: 1, b: 0 });
+    Story.back();
+    Story.forward();
+    expect(state().variables.obj).toEqual({ a: 1, b: 0 });
+  });
+
   it('records pending writes in the moment a watcher run action enters', () => {
     addTrigger('$flag == 1', { run: '$hp = 6; Story.goto("Room")' });
     run('$obj.a = 1; Story.set("flag", 1); $obj.b = 2');

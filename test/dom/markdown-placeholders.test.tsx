@@ -128,7 +128,8 @@ describe('backslash before a placeholder', () => {
 });
 
 describe('placeholder-like author text', () => {
-  const FAKE = '<span data-tw="0"></span>';
+  // Placeholders look like `<span data-tw=NONCE:INDEX></span>`.
+  const FAKE = '<span data-tw=0:0></span>';
   const x: ASTNode = { type: 'variable', name: 'x', scope: 'variable' };
 
   function renderAst(nodes: ASTNode[]): HTMLElement {
@@ -140,7 +141,7 @@ describe('placeholder-like author text', () => {
   }
 
   it('keeps entity-decoded placeholder text literal', () => {
-    const el = renderPassage('&lt;span data-tw="0"&gt;&lt;/span&gt; *{$x}*');
+    const el = renderPassage('&lt;span data-tw=0:0&gt;&lt;/span&gt; *{$x}*');
     expect(el.textContent).toBe(`${FAKE} V`);
     expect(el.querySelector('em')!.textContent).toBe('V');
   });
@@ -174,5 +175,76 @@ describe('markdown syntax next to a placeholder', () => {
     const el = renderPassage(src);
     expectNoLeak(el);
     expect(el.innerHTML).toBe(html);
+  });
+});
+
+// Found by property testing: a placeholder in image alt text was written into
+// the alt attribute as raw HTML (breaking the <img> and leaking `/>` as text),
+// one in a link title leaked as attribute text, and a double-quoted title
+// containing one stopped being a link at all.
+describe('variables in markdown attributes', () => {
+  function expectNoAttributeLeak(el: HTMLElement) {
+    expectNoLeak(el);
+    for (const node of Array.from(el.querySelectorAll('*'))) {
+      for (const attr of Array.from(node.attributes)) {
+        expect(attr.value).not.toContain('data-tw');
+      }
+    }
+  }
+
+  it.each([
+    ['![a {$x} b](i.png)', '<p><img src="i.png" alt="a V b"></p>'],
+    ['![`{$x}`](i.png)', '<p><img src="i.png" alt="V"></p>'],
+    ['![{$x + 1}](i.png)', '<p><img src="i.png" alt="V1"></p>'],
+    ['![a <b>c</b> {$x}](i.png)', '<p><img src="i.png" alt="a c V"></p>'],
+    ['![p {print 1}](i.png)', '<p><img src="i.png" alt="p 1"></p>'],
+    ['[l](http://u "t {$x}")', '<p><a href="http://u" title="t V">l</a></p>'],
+    ["[l](http://u 't {$x}')", '<p><a href="http://u" title="t V">l</a></p>'],
+    ['[l](http://u (t {$x}))', '<p><a href="http://u" title="t V">l</a></p>'],
+    [
+      '![{$x}](i.png "T {$dir}")',
+      '<p><img src="i.png" alt="V" title="T D"></p>',
+    ],
+  ])('%j interpolates the value into the attribute', (src, html) => {
+    const el = renderPassage(src);
+    expectNoAttributeLeak(el);
+    expect(el.innerHTML).toBe(html);
+  });
+
+  it('updates the attribute when the variable changes', () => {
+    const el = renderPassage('![{$x}](i.png) [l](http://u "{$x}")');
+    act(() => {
+      useStoryStore.getState().setVariable('x', 'W');
+    });
+    expect(el.querySelector('img')!.getAttribute('alt')).toBe('W');
+    expect(el.querySelector('a')!.getAttribute('title')).toBe('W');
+  });
+
+  it('keeps literal braces next to an interpolated variable literal', () => {
+    const el = renderPassage('![\\{$dir} {$x}](i.png)');
+    expect(el.querySelector('img')!.getAttribute('alt')).toBe('{$dir} V');
+  });
+
+  // A link has no text form, so in alt text or a title it shows an error in
+  // front of the element, as in an HTML attribute value (#225). Found by
+  // property testing, where a link in alt text was expected to vanish.
+  it.each([
+    ['![a [[Start]] b](i.png)', 'alt', 'a  b'],
+    ['![{if true}[[Start]]a{/if} ](i.png)', 'alt', 'a '],
+    ['![a {link "x" "Start"}{/link}](i.png)', 'alt', 'a '],
+    ['![a](i.png "t [[Start]]")', 'title', 't '],
+    ['[a](http://u "t [[Start]]")', 'title', 't '],
+  ])('%j shows a link in %s as an error', (src, attribute, value) => {
+    const el = renderPassage(src);
+    expectNoAttributeLeak(el);
+    const errors = el.querySelectorAll('.error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.textContent).toBe(
+      `{link error: in attribute "${attribute}": {link} has no text form, ` +
+        `so it can't be used in an attribute value or label}`,
+    );
+    expect(el.querySelector('a.macro-link')).toBeNull();
+    const element = errors[0]!.nextElementSibling!;
+    expect(element.getAttribute(attribute)).toBe(value);
   });
 });

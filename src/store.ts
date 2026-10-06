@@ -1,9 +1,14 @@
 import { create } from './preact-store';
 import { immer } from 'zustand/middleware/immer';
+import type { StateCreator } from 'zustand/vanilla';
 import {
+  current,
+  enableMapSet,
   enablePatches,
+  isDraft,
   produceWithPatches,
   applyPatches,
+  type Draft,
   type Patch,
 } from 'immer';
 import type { StoryData } from './parser';
@@ -23,12 +28,12 @@ import {
   reinitTriggerState,
 } from './triggers';
 import {
-  initSaveSystem,
+  establishPlaythrough,
   startNewPlaythrough,
-  getCurrentPlaythroughId,
   quickSave,
   saveWithHooks,
-  loadQuickSave,
+  loadSlotSave,
+  adoptPlaythrough,
   populateKnownSaves,
   getSlotSaveInfo,
   listSlotSaves,
@@ -48,8 +53,22 @@ import {
   resetPRNG,
   type PRNGSnapshot,
 } from './prng';
+import { errorMessage } from './utils/error-message';
+import {
+  routeStoreUpdate,
+  runWithCommittedMutations,
+} from './execute-mutation';
+import {
+  checkVariableName,
+  createNamespace,
+  isNamespace,
+  type Namespace,
+} from './utils/namespace';
 
 enablePatches();
+// Story state holds Map and Set values: Immer must be able to draft them
+// when a write (a dot path, a macro binding) reaches one
+enableMapSet();
 
 const SPECIAL_PASSAGES = new Set([
   'StoryInit',
@@ -74,7 +93,7 @@ interface PatchEntry {
 }
 
 /** Full variable snapshot at history index 0. */
-let variableBase: Record<string, unknown> = {};
+let variableBase: Namespace = createNamespace();
 
 /**
  * Transitions between consecutive history moments.
@@ -84,7 +103,7 @@ let variableBase: Record<string, unknown> = {};
 let patchEntries: PatchEntry[] = [];
 
 /** Immer-produced reference to variables right after the last navigation. */
-let lastNavigationVars: Record<string, unknown> = {};
+let lastNavigationVars: Namespace = createNamespace();
 
 /** Deep-clone patch values so they are independent of future mutations. */
 function clonePatches(patches: Patch[]): Patch[] {
@@ -102,7 +121,9 @@ function computeVarPatches(
   const [, forward, inverse] = produceWithPatches(prev, (draft) => {
     const d = draft as Record<string, unknown>;
     for (const key of Object.keys(d)) {
-      if (!(key in curr)) delete d[key];
+      // Own keys only: `curr` may be a plain object (a loaded snapshot),
+      // whose inherited `constructor` is no variable
+      if (!Object.prototype.hasOwnProperty.call(curr, key)) delete d[key];
     }
     for (const [key, val] of Object.entries(curr)) {
       d[key] = val;
@@ -197,14 +218,88 @@ function persistSession(get: () => StoryState): void {
   });
 }
 
+/**
+ * Trim history to `state.maxHistory` moments: keep the newest moments that
+ * include the current one. After a navigation (the current moment is the
+ * newest) that drops the oldest; when the player has gone back further than
+ * the limit allows, the moments after the newest kept one are dropped too.
+ * Call it inside a store update; the module-level variable history
+ * (base, patches, session cache) is trimmed alongside.
+ */
+function trimHistory(state: {
+  history: HistoryMoment[];
+  historyIndex: number;
+  maxHistory: number;
+}): boolean {
+  const excess = state.history.length - state.maxHistory;
+  if (excess <= 0) return false;
+  const start = Math.min(state.historyIndex, excess);
+  const end = start + state.maxHistory;
+  // Advance base through trimmed transitions
+  for (let i = 0; i < start; i++) {
+    variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
+  }
+  state.history = state.history.slice(start, end);
+  patchEntries = patchEntries.slice(start, end - 1);
+  serializedHistory = serializedHistory.slice(start, end);
+  state.historyIndex -= start;
+  return true;
+}
+
 /** True while navigate() lets watchers react to the moment it entered. */
 let navigationTriggerPhase = false;
 
 /** Navigations requested during the trigger phase, run once it is over. */
 let deferredNavigations: string[] = [];
 
+/**
+ * The moment navigate() entered, while its watchers may still change it:
+ * the navigation it belongs to and the variables it was recorded with.
+ */
+let enteredMoment: {
+  navigationId: number;
+  variables: Record<string, unknown>;
+} | null = null;
+
+/**
+ * Record the entered moment as it is now (watcher run actions and the PRNG
+ * rolls they made belong to it), unless the story has left it already.
+ * navigate() calls this after its watchers, and back/forward before they
+ * leave the moment: a watcher that moves through history must not have the
+ * moment it leaves recorded with the state of the one it arrives at.
+ */
+function finishEnteredMoment(
+  get: () => StoryState,
+  set: (recipe: (state: StoryState) => void) => void,
+): void {
+  const moment = enteredMoment;
+  enteredMoment = null;
+  if (!moment || get().navigationId !== moment.navigationId) return;
+  if (get().variables !== moment.variables) {
+    rerecordNewestMoment(get().variables);
+  }
+  // The next navigate() diffs from this recorded snapshot. A watcher that
+  // left the moment has set it to the snapshot of the one it went to.
+  lastNavigationVars = get().variables;
+  const prng = snapshotPRNG();
+  const recorded = get().history[get().historyIndex]!.prng;
+  if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
+    set((state) => {
+      state.history[state.historyIndex]!.prng = prng;
+    });
+  }
+}
+
+/**
+ * A deep copy of a variable namespace as save data: a plain object, as a
+ * loaded save holds it (the store turns it back into a namespace on load).
+ */
+const plainCopy = (ns: Namespace): Record<string, unknown> => ({
+  ...deepClone(ns),
+});
+
 /** Reset all module-level state (called on init, restart, loadFromPayload). */
-function resetModuleState(base: Record<string, unknown>): void {
+function resetModuleState(base: Namespace): void {
   variableBase = base;
   patchEntries = [];
   lastNavigationVars = base;
@@ -239,27 +334,137 @@ export function recordStoryInitState(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Settles once the latest playthrough setup (init's lookup or creation, or a
- * restart's creation) is stored, with that setup's playthrough ID ('' if
- * init could not establish one). Each setup chains on the previous one, so
- * playthroughs are created and numbered in the order the game started them.
+ * Settles once the latest playthrough switch (init's lookup or creation, a
+ * restart's creation, the replacement of a deleted current playthrough, a
+ * load making the loaded save's playthrough current) is stored, with the
+ * playthrough ID it leaves the game in ('' if init could not establish one).
+ * Switches are storage operations, which run in call order, so playthroughs
+ * are created and numbered in the order the game started them, and a save
+ * issued after a switch is stored after it, in the playthrough it switched
+ * to.
  */
 let playthroughSetup: Promise<string> = Promise.resolve('');
 
-/** Bumped by every init()/restart(); a stale init must not adopt its ID. */
+/**
+ * Bumped by every playthrough switch; a switch that settles after a later
+ * one was issued must not set its ID.
+ */
 let playthroughGeneration = 0;
+
+/**
+ * Whether the latest switch is to a playthrough not known until a storage
+ * operation has run: the one init looks up, the playthrough of the save a
+ * load from a slot reads, or (while one of those is pending) the one a
+ * playthrough deletion leaves the game in. Meanwhile the store's
+ * `playthroughId` is the one before ('' at boot), and saves issued take the
+ * one the switch establishes.
+ */
+let playthroughPending = false;
+
+/** The game's playthrough now, or '' while a pending switch decides it. */
+function knownPlaythroughId(): string {
+  return playthroughPending ? '' : useStoryStore.getState().playthroughId;
+}
 
 /**
  * The playthrough a save issued now belongs to, once its record is stored.
  * Read synchronously at the call: restart() switches the store's
  * `playthroughId` at once, so a save issued after it (even before the new
  * playthrough is stored) belongs to the new playthrough, and a later restart
- * doesn't move it. Before init() has looked up the stored playthrough the
- * store's ID is '', and the save takes the one init establishes.
+ * doesn't move it. While a switch whose playthrough is not known yet is
+ * pending (init's lookup, a load from a slot), the save takes the one that
+ * switch establishes.
  */
 export function resolvePlaythroughId(): Promise<string> {
-  const current = useStoryStore.getState().playthroughId;
+  const current = knownPlaythroughId();
   return playthroughSetup.then((established) => current || established);
+}
+
+function setPlaythroughId(id: string): void {
+  if (useStoryStore.getState().playthroughId === id) return;
+  useStoryStore.setState((state) => {
+    state.playthroughId = id;
+  });
+}
+
+/**
+ * Switch to the playthrough `lookup` (a storage operation queued now)
+ * resolves to. Saves issued meanwhile belong to it; the store's
+ * `playthroughId` is set once it is known, unless a later switch was issued.
+ */
+function switchToLookedUpPlaythrough(lookup: Promise<string>): Promise<string> {
+  const generation = ++playthroughGeneration;
+  playthroughPending = true;
+  playthroughSetup = lookup.then((id) => {
+    if (generation === playthroughGeneration) {
+      playthroughPending = false;
+      setPlaythroughId(id);
+    }
+    return id;
+  });
+  return playthroughSetup;
+}
+
+/**
+ * Move the running game to the playthrough `id` at once: saves issued from
+ * here on belong to it. `stored` is the storage operation recording the
+ * switch, queued now, after those already issued (its failure is reported
+ * by the caller).
+ */
+function switchToPlaythrough(id: string, stored: Promise<unknown>): void {
+  ++playthroughGeneration;
+  playthroughPending = false;
+  playthroughSetup = stored.then(
+    () => id,
+    () => id,
+  );
+  setPlaythroughId(id);
+}
+
+/** Move the running game to a new playthrough at once (see restart). */
+function switchToNewPlaythrough(ifid: string): void {
+  const id = crypto.randomUUID();
+  const stored = startNewPlaythrough(ifid, id).catch((err) => {
+    console.error('spindle: failed to start new playthrough', err);
+  });
+  switchToPlaythrough(id, stored);
+}
+
+/**
+ * Move the running game to the playthrough of a save it loads, at once. A
+ * no-op if the game is in it already.
+ */
+function switchToLoadedPlaythrough(ifid: string, id: string): void {
+  if (knownPlaythroughId() === id) return;
+  const stored = adoptPlaythrough(ifid, id).catch((err) => {
+    console.error('spindle: failed to switch to the loaded playthrough', err);
+  });
+  switchToPlaythrough(id, stored);
+}
+
+// ---------------------------------------------------------------------------
+// Superseded loads
+// ---------------------------------------------------------------------------
+
+/**
+ * A load from a slot reads the save in the order of storage operations and
+ * applies it when the read completes. A restart, a boot or a direct load
+ * (loadFromPayload) issued after it replaces the game state at once; the
+ * slot load, completing later, must not undo that. Every replacement of the
+ * game state takes a number in call order, and a slot load applies only if
+ * no replacement issued after it has been applied. Loads from slots apply in
+ * call order anyway (their reads are queued), so they never supersede one
+ * another.
+ */
+let stateReplacementsIssued = 0;
+let latestStateApplied = 0;
+
+/** The number of the slot load that is calling loadFromPayload. */
+let slotLoadApplying: number | null = null;
+
+/** A replacement of the game state applied at its call. */
+function replaceStateNow(): void {
+  latestStateApplied = ++stateReplacementsIssued;
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +597,12 @@ export interface StoryState {
   visitCounts: Record<string, number>;
   renderCounts: Record<string, number>;
   knownSaves: Record<string, true>;
+  /**
+   * The playthrough the running game is in: its saves are grouped under it.
+   * Set by boot (the stored current playthrough), restart (a new one),
+   * loading a save (the save's) and deleting the current playthrough (a new
+   * one). '' until boot has looked it up.
+   */
   playthroughId: string;
   maxHistory: number;
   quickSaveKey: string | null;
@@ -428,6 +639,12 @@ export interface StoryState {
   trackRender: (passageName: string) => void;
   restart: () => void;
   save: (slot?: string, custom?: Record<string, unknown>) => Promise<void>;
+  /**
+   * Load the save in a slot and move the game to its playthrough. The switch
+   * takes effect in call order (a save issued after the load belongs to the
+   * loaded playthrough); the state is applied when the save has been read,
+   * unless a restart or another direct load was issued after this load.
+   */
   load: (slot?: string) => Promise<void>;
   hasSave: (slot?: string) => boolean;
   getSaveInfo: (slot?: string) => Promise<SaveInfo | null>;
@@ -435,9 +652,18 @@ export interface StoryState {
   deleteSave: (slot?: string) => Promise<void>;
   exportSave: (slot?: string) => Promise<SaveExport | null>;
   importSave: (data: unknown, slot?: string) => Promise<SaveInfo>;
-  clearGameData: () => void;
-  clearAllData: () => void;
-  deletePlaythrough: (playthroughId: string) => void;
+  /**
+   * Delete the story's saves and playthroughs and restart. The restart is
+   * immediate; the promise settles once the data is deleted.
+   */
+  clearGameData: () => Promise<void>;
+  /** As clearGameData, for all Spindle data (every story). */
+  clearAllData: () => Promise<void>;
+  /**
+   * Delete a playthrough and its saves. Deleting the current one moves the
+   * running game to a new playthrough.
+   */
+  deletePlaythrough: (playthroughId: string) => Promise<void>;
   getSavePayload: () => SavePayload;
   /**
    * Start capturing a save, before the `beforesave` hooks run. The returned
@@ -447,9 +673,15 @@ export interface StoryState {
   beginSave: () => () => SavePayload;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
-   * passed to the `beforeload`/`afterload` events.
+   * passed to the `beforeload`/`afterload` events. Pass the save's
+   * `playthroughId` when loading a save: the game moves to that playthrough
+   * (no change if it is the current one). Restoring the session passes none.
    */
-  loadFromPayload: (payload: SavePayload, slot?: string) => void;
+  loadFromPayload: (
+    payload: SavePayload,
+    slot?: string,
+    playthroughId?: string,
+  ) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
@@ -457,6 +689,94 @@ export interface StoryState {
   deferRender: () => void;
   clearDeferredRender: () => void;
 }
+
+const NAMESPACE_KEYS = ['variables', 'temporary', 'transient'] as const;
+
+type StoryRecipe = (draft: Draft<StoryState>) => void;
+
+/** Replace a namespace an update left with a prototype by one without. */
+function keepNamespacesBare(draft: Draft<StoryState>): void {
+  for (const key of NAMESPACE_KEYS) {
+    const ns = draft[key];
+    if (!isNamespace(ns)) {
+      draft[key] = createNamespace(isDraft(ns) ? current(ns) : ns);
+    }
+  }
+}
+
+/**
+ * Actions that record, replace or save story state. Called while mutation
+ * code runs (by Story.goto, a {link} or {back} the code performs, a
+ * watcher), they act in program order: the code's writes so far are
+ * committed first, and the code goes on from the state they leave (see
+ * runWithCommittedMutations). Outside mutation code they just run.
+ *
+ * A load from a slot (`load`) takes its place among the save operations
+ * (and switches playthroughs) at the call, but applies the save when its
+ * read completes, after the code has run.
+ */
+const PROGRAM_ORDER_ACTIONS = [
+  'navigate',
+  'goBack',
+  'goForward',
+  'restart',
+  'save',
+  'load',
+  'getSavePayload',
+  'loadFromPayload',
+] as const;
+
+/**
+ * Store middleware (inside `immer`) that every update goes through: the
+ * store's own actions and outside `setState` calls alike.
+ *
+ * - The variable namespaces stay records without a prototype, whatever an
+ *   update assigns (see utils/namespace.ts).
+ * - An update made while mutation code runs follows that code's pending
+ *   writes, in program order, and reaches its working copies (see
+ *   routeStoreUpdate in execute-mutation.ts).
+ * - The PROGRAM_ORDER_ACTIONS commit running mutation code first.
+ */
+function storyStateGuard(
+  creator: StateCreator<StoryState, [['zustand/immer', never]], []>,
+): StateCreator<StoryState, [['zustand/immer', never]], []> {
+  return (set, get, api) => {
+    const guarded = ((
+      updater: Partial<StoryState> | StoryRecipe,
+      replace?: boolean,
+    ) => {
+      if (replace) {
+        (set as (u: unknown, r: true) => void)(updater, true);
+        return;
+      }
+      const recipe: StoryRecipe =
+        typeof updater === 'function'
+          ? updater
+          : (draft) => {
+              Object.assign(draft, updater);
+            };
+      const routed = routeStoreUpdate(recipe);
+      set((draft) => {
+        (routed ?? recipe)(draft);
+        keepNamespacesBare(draft);
+      });
+    }) as typeof set;
+    api.setState = guarded;
+    const state = creator(guarded, get, api);
+    for (const name of PROGRAM_ORDER_ACTIONS) {
+      const action = state[name] as (...args: unknown[]) => unknown;
+      (state as unknown as Record<string, unknown>)[name] = (
+        ...args: unknown[]
+      ) => runWithCommittedMutations(() => action(...args));
+    }
+    return state;
+  };
+}
+
+/** The story store's middleware: Immer updates, guarded (see above). */
+const storyStore = (
+  creator: StateCreator<StoryState, [['zustand/immer', never]], []>,
+) => immer(storyStateGuard(creator));
 
 /**
  * Return `p` marked as handled: a caller that ignores the result of a
@@ -470,15 +790,15 @@ function handled<T>(p: Promise<T>): Promise<T> {
 }
 
 export const useStoryStore = create<StoryState>()(
-  immer((set, get) => ({
+  storyStore((set, get) => ({
     storyData: null,
     currentPassage: '',
     navigationId: 0,
-    variables: {},
+    variables: createNamespace(),
     variableDefaults: {},
-    transient: {},
+    transient: createNamespace(),
     transientDefaults: {},
-    temporary: {},
+    temporary: createNamespace(),
     history: [],
     historyIndex: -1,
     visitCounts: {},
@@ -496,9 +816,13 @@ export const useStoryStore = create<StoryState>()(
     renderDeferred: false,
 
     setMaxHistory: (limit: number) => {
+      let trimmed = false;
       set((state) => {
         state.maxHistory = Math.max(1, Math.round(limit));
+        // A lower limit takes effect at once
+        trimmed = trimHistory(state);
       });
+      if (trimmed) persistSession(get);
     },
 
     setQuickSaveKey: (key: string | null) => {
@@ -525,7 +849,7 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
-      const initialVars = deepClone(variableDefaults);
+      const initialVars = createNamespace(deepClone(variableDefaults));
       resetModuleState(deepClone(initialVars));
 
       set((state) => {
@@ -536,9 +860,9 @@ export const useStoryStore = create<StoryState>()(
         state.navigationId++;
         state.variables = initialVars;
         state.variableDefaults = variableDefaults;
-        state.transient = deepClone(transientDefaults);
+        state.transient = createNamespace(deepClone(transientDefaults));
         state.transientDefaults = transientDefaults;
-        state.temporary = {};
+        state.temporary = createNamespace();
         state.history = [
           {
             passage: startPassage.name,
@@ -553,36 +877,29 @@ export const useStoryStore = create<StoryState>()(
       // Update lastNavigationVars to the Immer-produced reference
       lastNavigationVars = get().variables;
 
-      // Init save system in the background. Saves issued meanwhile wait for
-      // it (see resolvePlaythroughId), so they are tagged with the
-      // playthrough it establishes and recorded after the known saves.
-      const ifid = storyData.ifid;
-      const generation = ++playthroughGeneration;
-      playthroughSetup = initSaveSystem()
-        .then(async () => {
-          const id =
-            (await getCurrentPlaythroughId(ifid)) ??
-            (await startNewPlaythrough(ifid));
-          // A restart issued meanwhile has already switched playthroughs
-          if (generation === playthroughGeneration) {
-            set((state) => {
-              state.playthroughId = id;
-            });
-          }
+      replaceStateNow();
 
-          // Populate knownSaves from IDB so hasSave() works after reload
-          const saves = await populateKnownSaves(ifid);
-          if (Object.keys(saves).length > 0) {
+      // Look up the story's playthrough and saves in the background, as a
+      // storage operation queued now: saves issued meanwhile are stored
+      // after it, tagged with the playthrough it establishes (see
+      // resolvePlaythroughId). The current playthrough is stored, so a page
+      // refresh stays in the playthrough the game was in, also after a load
+      // switched to the loaded save's.
+      switchToLookedUpPlaythrough(
+        establishPlaythrough(storyData.ifid)
+          .then(({ id, knownSaves }) => {
+            // So hasSave() works after a reload. Operations issued later
+            // update the cache after this.
             set((state) => {
-              state.knownSaves = saves;
+              state.knownSaves = knownSaves;
             });
-          }
-          return id;
-        })
-        .catch((err) => {
-          console.error('spindle: failed to init save system', err);
-          return '';
-        });
+            return id;
+          })
+          .catch((err) => {
+            console.error('spindle: failed to init save system', err);
+            return '';
+          }),
+      );
     },
 
     navigate: (passageName: string) => {
@@ -616,7 +933,7 @@ export const useStoryStore = create<StoryState>()(
       const patchEntry = computeVarPatches(lastNavigationVars, get().variables);
 
       set((state) => {
-        state.temporary = {};
+        state.temporary = createNamespace();
         state.currentPassage = passageName;
         state.navigationId++;
 
@@ -635,19 +952,9 @@ export const useStoryStore = create<StoryState>()(
           prng: snapshotPRNG(),
         });
 
-        // Trim oldest entries if over the limit
-        const overflow = state.history.length - state.maxHistory;
-        if (overflow > 0) {
-          // Advance base through trimmed transitions
-          for (let i = 0; i < overflow; i++) {
-            variableBase = applyPatches(variableBase, patchEntries[i]!.forward);
-          }
-          state.history = state.history.slice(overflow);
-          patchEntries = patchEntries.slice(overflow);
-          serializedHistory = serializedHistory.slice(overflow);
-        }
-
         state.historyIndex = state.history.length - 1;
+        // Trim oldest entries if over the limit
+        trimHistory(state);
         state.visitCounts[passageName] =
           (state.visitCounts[passageName] ?? 0) + 1;
         state.renderCounts[passageName] =
@@ -657,7 +964,10 @@ export const useStoryStore = create<StoryState>()(
       // Watchers react to the completed transition (visit counts, cleared
       // temporaries). Like beforenavigate changes, their run actions belong
       // to the entered moment; navigations they request run afterwards.
-      const enteredVars = get().variables;
+      enteredMoment = {
+        navigationId: get().navigationId,
+        variables: get().variables,
+      };
       navigationTriggerPhase = true;
       try {
         checkTriggersOnNavigation();
@@ -666,18 +976,7 @@ export const useStoryStore = create<StoryState>()(
       }
       const deferred = deferredNavigations;
       deferredNavigations = [];
-      if (get().variables !== enteredVars) {
-        rerecordNewestMoment(get().variables);
-      }
-      const prng = snapshotPRNG();
-      const recorded = get().history[get().historyIndex]!.prng;
-      if (prng?.seed !== recorded?.seed || prng?.pull !== recorded?.pull) {
-        set((state) => {
-          state.history[state.historyIndex]!.prng = prng;
-        });
-      }
-
-      lastNavigationVars = get().variables;
+      finishEnteredMoment(get, set);
       persistSession(get);
 
       emit('afternavigate', passageName, previousPassage);
@@ -688,6 +987,7 @@ export const useStoryStore = create<StoryState>()(
     goBack: () => {
       const { historyIndex } = get();
       if (historyIndex <= 0) return;
+      finishEnteredMoment(get, set);
 
       const previousPassage = get().currentPassage;
       const targetPassage = get().history[historyIndex - 1]!.passage;
@@ -702,7 +1002,7 @@ export const useStoryStore = create<StoryState>()(
         state.currentPassage = state.history[state.historyIndex]!.passage;
         state.navigationId++;
         state.variables = restoredVars;
-        state.temporary = {};
+        state.temporary = createNamespace();
       });
 
       // Restored state is not a change watchers react to
@@ -717,6 +1017,7 @@ export const useStoryStore = create<StoryState>()(
     goForward: () => {
       const { historyIndex, history: hist } = get();
       if (historyIndex >= hist.length - 1) return;
+      finishEnteredMoment(get, set);
 
       const previousPassage = get().currentPassage;
       const targetPassage = hist[historyIndex + 1]!.passage;
@@ -731,7 +1032,7 @@ export const useStoryStore = create<StoryState>()(
         state.currentPassage = state.history[state.historyIndex]!.passage;
         state.navigationId++;
         state.variables = restoredVars;
-        state.temporary = {};
+        state.temporary = createNamespace();
       });
 
       // Restored state is not a change watchers react to
@@ -745,36 +1046,42 @@ export const useStoryStore = create<StoryState>()(
 
     setVariable: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `$${name}`);
         state.variables[name] = value;
       });
     },
 
     setTemporary: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `_${name}`);
         state.temporary[name] = value;
       });
     },
 
     deleteVariable: (name: string) => {
       set((state) => {
+        checkVariableName(name, `$${name}`);
         delete state.variables[name];
       });
     },
 
     deleteTemporary: (name: string) => {
       set((state) => {
+        checkVariableName(name, `_${name}`);
         delete state.temporary[name];
       });
     },
 
     setTransient: (name: string, value: unknown) => {
       set((state) => {
+        checkVariableName(name, `%${name}`);
         state.transient[name] = value;
       });
     },
 
     deleteTransient: (name: string) => {
       set((state) => {
+        checkVariableName(name, `%${name}`);
         delete state.transient[name];
       });
     },
@@ -809,23 +1116,10 @@ export const useStoryStore = create<StoryState>()(
 
       // Switch to the new playthrough now, after beforerestart (whose saves
       // belong to the game being left) and before StoryInit, so every save
-      // issued from here on belongs to the new game. Storing its record is
-      // queued after the previous playthrough setup.
-      const newPlaythroughId = crypto.randomUUID();
-      ++playthroughGeneration;
-      set((state) => {
-        state.playthroughId = newPlaythroughId;
-      });
-      const ifid = storyData.ifid;
-      playthroughSetup = playthroughSetup
-        .then(() => startNewPlaythrough(ifid, newPlaythroughId))
-        .then(
-          () => newPlaythroughId,
-          (err) => {
-            console.error('spindle: failed to start new playthrough', err);
-            return newPlaythroughId;
-          },
-        );
+      // issued from here on belongs to the new game.
+      switchToNewPlaythrough(storyData.ifid);
+      // A load from a slot issued before the restart must not apply
+      replaceStateNow();
 
       const keepDeferred = get().renderDeferred;
 
@@ -834,15 +1128,15 @@ export const useStoryStore = create<StoryState>()(
 
       resetPRNG();
       resetTriggers();
-      const initialVars = deepClone(variableDefaults);
+      const initialVars = createNamespace(deepClone(variableDefaults));
       resetModuleState(deepClone(initialVars));
 
       set((state) => {
         state.currentPassage = startPassage.name;
         state.navigationId++;
         state.variables = initialVars;
-        state.transient = deepClone(transientDefaults);
-        state.temporary = {};
+        state.transient = createNamespace(deepClone(transientDefaults));
+        state.temporary = createNamespace();
         state.history = [
           {
             passage: startPassage.name,
@@ -880,8 +1174,8 @@ export const useStoryStore = create<StoryState>()(
           set((state) => {
             state.saveError = null;
           });
-          const playthroughId = await playthrough;
-          await quickSave(storyData.ifid, playthroughId, payload, slot, custom);
+          // Queued now, in call order with other storage operations
+          await quickSave(storyData.ifid, playthrough, payload, slot, custom);
           set((state) => {
             state.knownSaves = {
               ...state.knownSaves,
@@ -891,8 +1185,7 @@ export const useStoryStore = create<StoryState>()(
         }).catch((err) => {
           console.error('spindle: failed to save', err);
           set((state) => {
-            state.saveError =
-              err instanceof Error ? err.message : 'Failed to save';
+            state.saveError = errorMessage(err, 'Failed to save');
           });
           throw err;
         }),
@@ -906,17 +1199,35 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.loadError = null;
       });
+      // The game moves to the loaded save's playthrough in call order: the
+      // read, queued now, makes it the stored current playthrough, and saves
+      // issued after the load belong to it (a later restart or load moves
+      // the game on, as usual). An empty slot leaves the playthrough as it
+      // is.
+      const previous = resolvePlaythroughId();
+      const read = loadSlotSave(storyData.ifid, slot);
+      const switched = switchToLookedUpPlaythrough(
+        Promise.all([previous, read.catch(() => undefined)]).then(
+          ([prev, loaded]) => loaded?.playthroughId || prev,
+        ),
+      );
+      const replacement = ++stateReplacementsIssued;
       return handled(
-        loadQuickSave(storyData.ifid, slot)
-          .then((payload) => {
-            if (!payload) return;
-            get().loadFromPayload(payload, slot);
+        read
+          .then(async (loaded) => {
+            // The store names the loaded playthrough before the loaded
+            // state is applied (and `afterload` fires)
+            await switched;
+            if (!loaded) return;
+            // A restart, boot or direct load issued after this one won
+            if (latestStateApplied > replacement) return;
+            slotLoadApplying = replacement;
+            get().loadFromPayload(loaded.payload, slot);
           })
           .catch((err) => {
             console.error('spindle: failed to load save', err);
             set((state) => {
-              state.loadError =
-                err instanceof Error ? err.message : 'Failed to load';
+              state.loadError = errorMessage(err, 'Failed to load');
             });
             throw err;
           }),
@@ -982,50 +1293,83 @@ export const useStoryStore = create<StoryState>()(
 
     clearGameData: () => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smClearGameData(storyData.ifid)
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear game data', err);
+      // Queue the clearing, then restart now: the new playthrough is stored
+      // after it, and operations issued from here on belong to the new game.
+      // The slot cache empties once the clearing is done, after operations
+      // issued before it have updated it.
+      const cleared = smClearGameData(storyData.ifid).then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear game data', err);
+          throw err;
+        }),
+      );
     },
 
     clearAllData: () => {
-      const { storyData } = get();
-      if (!storyData) return;
-
-      smClearAllData()
-        .then(() => {
-          set((state) => {
-            state.knownSaves = {};
-          });
-          get().restart();
-        })
-        .catch((err) => {
-          console.error('spindle: failed to clear all data', err);
+      // As clearGameData: queue the clearing, then restart now
+      const cleared = smClearAllData().then(() => {
+        set((state) => {
+          state.knownSaves = {};
         });
+      });
+      get().restart();
+      return handled(
+        cleared.catch((err) => {
+          console.error('spindle: failed to clear all data', err);
+          throw err;
+        }),
+      );
     },
 
     deletePlaythrough: (playthroughId: string) => {
       const { storyData } = get();
-      if (!storyData) return;
+      if (!storyData) return Promise.resolve();
 
-      smDeletePlaythroughData(storyData.ifid, playthroughId)
-        .then(async () => {
-          const known = await populateKnownSaves(storyData.ifid);
-          set((state) => {
-            state.knownSaves = known;
-          });
-        })
-        .catch((err) => {
-          console.error('spindle: failed to delete playthrough', err);
-        });
+      // The running game can't go on in a deleted playthrough: its later
+      // saves would belong to no playthrough. It moves to a new one, as on
+      // restart but keeping its state. While the game's playthrough is not
+      // known yet (init is looking it up, or a load from a slot is reading
+      // the save that decides it), the deletion checks the one established.
+      const ifid = storyData.ifid;
+      const current = knownPlaythroughId();
+      const established = playthroughSetup;
+      const replacementId = crypto.randomUUID();
+      const deletion = smDeletePlaythroughData(ifid, playthroughId, {
+        current: current || established,
+        id: replacementId,
+      });
+      if (playthroughId !== '' && playthroughId === current) {
+        switchToPlaythrough(replacementId, deletion);
+      } else if (current === '') {
+        switchToLookedUpPlaythrough(
+          deletion.then(
+            (replaced) => (replaced ? replacementId : established),
+            () => established,
+          ),
+        );
+      }
+
+      return handled(
+        deletion
+          .then(async () => {
+            const known = await populateKnownSaves(storyData.ifid);
+            set((state) => {
+              state.knownSaves = known;
+            });
+          })
+          .catch((err) => {
+            console.error('spindle: failed to delete playthrough', err);
+            throw err;
+          }),
+      );
     },
 
     getSavePayload: (): SavePayload => {
@@ -1047,7 +1391,7 @@ export const useStoryStore = create<StoryState>()(
         }
         saveHistory.push({
           passage: history[i]!.passage,
-          variables: deepClone(vars),
+          variables: plainCopy(vars),
           timestamp: history[i]!.timestamp,
           prng: history[i]!.prng,
         });
@@ -1055,7 +1399,7 @@ export const useStoryStore = create<StoryState>()(
 
       return {
         passage: currentPassage,
-        variables: deepClone(variables),
+        variables: plainCopy(variables),
         history: saveHistory,
         historyIndex,
         visitCounts: { ...visitCounts },
@@ -1073,13 +1417,28 @@ export const useStoryStore = create<StoryState>()(
       };
     },
 
-    loadFromPayload: (payload: SavePayload, slot?: string) => {
+    loadFromPayload: (
+      payload: SavePayload,
+      slot?: string,
+      playthroughId?: string,
+    ) => {
+      const replacement = slotLoadApplying ?? ++stateReplacementsIssued;
+      slotLoadApplying = null;
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
       }
+      latestStateApplied = replacement;
 
       emit('beforeload', slot);
+
+      // Loading a save moves the game to the save's playthrough, after the
+      // `beforeload` handlers (whose saves belong to the game being left).
+      // Restoring the session passes none: the game stays in its playthrough.
+      const ifid = get().storyData?.ifid;
+      if (playthroughId && ifid) {
+        switchToLoadedPlaythrough(ifid, playthroughId);
+      }
 
       // Restore the state on entering the saved passage, not the payload's
       // live variables: the passage remounts and runs its {set}/{do} again,
@@ -1091,12 +1450,16 @@ export const useStoryStore = create<StoryState>()(
       // The payload is already live (deserialized at the storage boundary by
       // loadSave/loadSession); deserializing again would corrupt built-ins.
       // Convert full snapshots to patch entries
-      const base = deepClone(payload.history[0]?.variables ?? {});
+      const base = createNamespace(
+        deepClone(payload.history[0]?.variables ?? {}),
+      );
       const newPatchEntries: PatchEntry[] = [];
 
       let prevVars: Record<string, unknown> = base;
       for (let i = 1; i < payload.history.length; i++) {
-        const currVars = deepClone(payload.history[i]!.variables);
+        const currVars = createNamespace(
+          deepClone(payload.history[i]!.variables),
+        );
         newPatchEntries.push(computeVarPatches(prevVars, currVars));
         prevVars = currVars;
       }
@@ -1115,7 +1478,9 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.currentPassage = payload.passage;
         state.navigationId++;
-        state.variables = deepClone(entry?.variables ?? payload.variables);
+        state.variables = createNamespace(
+          deepClone(entry?.variables ?? payload.variables),
+        );
         state.history = payload.history.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
@@ -1125,10 +1490,12 @@ export const useStoryStore = create<StoryState>()(
           0,
           Math.min(payload.historyIndex, state.history.length - 1),
         );
+        // A save made under a higher limit keeps no more than the limit
+        trimHistory(state);
         state.visitCounts = payload.visitCounts ?? {};
         state.renderCounts = payload.renderCounts ?? {};
-        state.temporary = {};
-        state.transient = deepClone(get().transientDefaults);
+        state.temporary = createNamespace();
+        state.transient = createNamespace(deepClone(get().transientDefaults));
       });
 
       // Loaded state is not a change watchers react to

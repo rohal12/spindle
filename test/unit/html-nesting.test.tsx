@@ -84,8 +84,8 @@ describe('issue #109: <button> elements should not be HTML-escaped', () => {
 
     const buttons = container.querySelectorAll('button');
     expect(buttons).toHaveLength(2);
-    expect(buttons[0].textContent).toBe('Test');
-    expect(buttons[1].textContent).toBe('Other');
+    expect(buttons[0]!.textContent).toBe('Test');
+    expect(buttons[1]!.textContent).toBe('Other');
     // Ensure no escaped HTML
     expect(container.innerHTML).not.toContain('&lt;button');
   });
@@ -436,6 +436,32 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   it('still wraps markdown inside <div> in a paragraph', () => {
     const el = renderMarkup('<div id="block">**bold** text</div>');
     expect(el.querySelector('#block > p > strong')?.textContent).toBe('bold');
+  });
+
+  // Found by property testing: tables and fenced code still rendered as
+  // <table>/<pre> blocks inside inline elements.
+  it('does not render a GFM table inside <span>', () => {
+    const el = renderMarkup(
+      '<span id="t">| h1 | h2 |\n| --- | --- |\n| a | a |\n</span>',
+    );
+    expect(el.querySelector('#t table')).toBeNull();
+    expect(el.querySelector('#t p')).toBeNull();
+    expect(el.querySelector('#t')!.textContent).toContain('| a | a |');
+  });
+
+  it('does not render a fenced code block inside <span>', () => {
+    useStoryStore.getState().setVariable('x', 'X');
+    const el = renderMarkup('<span id="c">```\ncode {$x}\n```</span>');
+    expect(el.querySelector('#c pre')).toBeNull();
+    // The fence reads as a code span instead, keeping the variable live.
+    expect(el.querySelector('#c code')!.textContent).toBe('code X');
+  });
+
+  it('does not render a table from a macro body inside <span>', () => {
+    const el = renderMarkup(
+      '<span id="m">{if true}\n| h1 | h2 |\n| --- | --- |\n| * | *a* |\n{/if}</span>',
+    );
+    expect(el.querySelector('#m table')).toBeNull();
   });
 
   it('restores paragraphs for a <div> nested inside a <span>', () => {

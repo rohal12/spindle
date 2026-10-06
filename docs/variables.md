@@ -89,7 +89,21 @@ These defaults are applied before `StoryInit` runs and are restored on restart.
 
 When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early.
 
-Only real references are checked: `{$var}` displays, macro arguments, `{do}` bodies, and `{$var}` interpolations inside strings and HTML attributes. A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
+Only real references are checked: `{$var}` displays, expressions, macro arguments, `{do}` bodies, and the same markup inside strings and HTML attributes (`<b class="{if $lit}on{/if}">`). A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
+
+## Variable Names
+
+A variable name is any word after its sigil: letters, digits and `_` (for `%` transients, a JavaScript identifier). Every such name is a variable of its own, including names that JavaScript objects also use for built-in methods: `$constructor`, `_toString`, `%valueOf` and `@hasOwnProperty` are ordinary variables, and while one is not set it reads as `undefined` like any other.
+
+```
+{set $constructor = "Ada"}
+{$constructor}            → Ada
+{if $toString}set{else}not set{/if}   → not set
+```
+
+The one exception is `__proto__`, which no namespace can hold (`$__proto__`, `___proto__`, `%__proto__`, `@__proto__`). Using it is an error wherever a name appears: in code (`{set}`, `{do}`, `{print}`, conditions), displays (`{$__proto__}`), markup in HTML attribute values, alt text and labels, `StoryVariables`/`StoryTransients` declarations, `{for}` locals, widget parameters (a widget declaring `@__proto__`, in `{widget}` or a `widget` passage, is not registered), `{computed}`, `{unset}`, input macros and `Story.get()`/`Story.set()`. Story state never holds a property named `__proto__` at any depth, since saves could not restore it.
+
+The variable records themselves (`ctx.merged` in custom macros, for example) have no prototype, so use `Object.hasOwn(vars, "name")` or `"name" in vars` rather than `vars.hasOwnProperty("name")`. Save payloads hold plain objects.
 
 ## Dot Notation
 
@@ -180,7 +194,14 @@ Variable sigils inside string literals are preserved as-is. This means `$`, `_`,
 {if $label === "$special"}
 ```
 
-In the second example, the literal `$` before `${$cost}` is kept, while `$cost` inside the template interpolation is resolved to the variable.
+In the second example, the literal `$` before `${$cost}` is kept, while `$cost` inside the template interpolation is resolved to the variable. The same goes for comments and regular expression literals.
+
+A sigil only starts a variable where a JavaScript identifier starts. Names that merely contain `$` or `_` (`a$b`, `max_hp`), property names after a dot (`$player._id`, `$obj.$key`), object literal keys (`{ _id: 1 }`, `{ _heal() {} }`) and class member names (`_hp = 0`, `get _dead()`) are left as they are:
+
+```
+{set $item = { _id: 7, name: "Lamp" }}
+{print $item._id}
+```
 
 ### Passage tracking functions
 

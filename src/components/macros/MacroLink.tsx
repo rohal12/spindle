@@ -1,17 +1,9 @@
-import { h, render } from 'preact';
-import { useContext } from 'preact/hooks';
 import { useStoryStore } from '../../store';
-import {
-  renderNodes,
-  LocalsUpdateContext,
-  LocalsValuesContext,
-  NobrContext,
-} from '../../markup/render';
 import { defineMacro } from '../../define-macro';
-import { liveLocalsView } from '../../utils/live-locals';
 import { unescapeQuoted } from './arg-utils';
+import { useDetachedBody } from './detached-body';
 
-function parseArgs(rawArgs: string): {
+export function parseLinkArgs(rawArgs: string): {
   display: string;
   passage: string | null;
 } {
@@ -33,44 +25,24 @@ function parseArgs(rawArgs: string): {
   return { display: rawArgs.trim(), passage: null };
 }
 
-function renderChildrenDetached(
-  children: import('../../markup/ast').ASTNode[],
-  getValues: () => Record<string, unknown>,
-  update: (key: string, value: unknown) => void,
-  nobr: boolean,
-) {
-  const container = document.createElement('div');
-  const vnode = h(
-    NobrContext.Provider,
-    { value: nobr },
-    h(
-      LocalsUpdateContext.Provider,
-      { value: { update, getValues } },
-      h(
-        LocalsValuesContext.Provider,
-        { value: liveLocalsView(getValues) },
-        renderNodes(children),
-      ),
-    ),
-  );
-  render(vnode, container);
-  render(null, container);
-}
-
 defineMacro({
   name: 'link',
   block: true,
   interpolate: true,
   render({ rawArgs, children = [] }, ctx) {
-    const { display, passage } = parseArgs(rawArgs);
-    const nobr = useContext(NobrContext);
+    const { display, passage } = parseLinkArgs(rawArgs);
+    const runBody = useDetachedBody();
 
-    const handleClick = (e: Event) => {
-      e.preventDefault();
-      renderChildrenDetached(children, ctx.getValues, ctx.update, nobr);
+    const perform = () => {
+      runBody(children);
       if (passage) {
         useStoryStore.getState().navigate(passage);
       }
+    };
+
+    const handleClick = (e: Event) => {
+      e.preventDefault();
+      perform();
     };
 
     ctx.useAction({
@@ -79,12 +51,7 @@ defineMacro({
       authorId: ctx.id,
       label: display,
       target: passage ?? undefined,
-      perform: () => {
-        renderChildrenDetached(children, ctx.getValues, ctx.update, nobr);
-        if (passage) {
-          useStoryStore.getState().navigate(passage);
-        }
-      },
+      perform,
     });
 
     return (

@@ -9,8 +9,12 @@ import {
   resetIdCounters,
   getActions,
 } from '../../src/action-registry';
-import { clearWidgets } from '../../src/widgets/widget-registry';
-import { PassageDialog } from '../../src/components/PassageDialog';
+import { clearWidgets, getWidget } from '../../src/widgets/widget-registry';
+import {
+  PassageDialog,
+  DialogCloseContext,
+} from '../../src/components/PassageDialog';
+import { defineMacro } from '../../src/define-macro';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 function makePassage(
@@ -300,6 +304,32 @@ describe('extended macro components', () => {
       // After act(), the re-render from the state update should have completed
       expect(el!.textContent).toContain('gone');
     });
+
+    it('shows an error for a @local outside a locals scope', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage('before {unset @foo} after');
+      });
+      spy.mockRestore();
+      expect(el.textContent).toContain('before');
+      expect(el.textContent).toContain('after');
+      const error = el.querySelector('.error');
+      expect(error).not.toBeNull();
+      expect(error!.textContent).toContain('{unset error');
+      expect(error!.textContent).toMatch(/@foo/);
+    });
+
+    it('shows an error for an argument that is not a variable', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const el = renderPassage('{unset foo}');
+      spy.mockRestore();
+      const error = el.querySelector('.error');
+      expect(error).not.toBeNull();
+      expect(error!.textContent).toContain(
+        'expects a variable ($name, _name, %name, or @name), got "foo"',
+      );
+    });
   });
 
   describe('{link}', () => {
@@ -565,6 +595,23 @@ describe('extended macro components', () => {
       expect(el.textContent).toContain('World');
     });
 
+    it('re-registers a widget when its definition changes', () => {
+      const container = document.createElement('div');
+      const define = (content: string) =>
+        act(() => {
+          render(
+            <Passage passage={makePassage(5, 'WidgetSetup', content)} />,
+            container,
+          );
+        });
+      define('{widget "Badge" @x}one {@x}{/widget}');
+      expect(renderPassage('{Badge 1}').textContent).toContain('one 1');
+
+      define('{widget "Badge" @y}two {@y}{/widget}');
+      expect(getWidget('Badge')!.params).toEqual(['@y']);
+      expect(renderPassage('{Badge 2}').textContent).toContain('two 2');
+    });
+
     function defineWidgets(content: string) {
       const passages = [
         makePassage(1, 'Start', 'Start'),
@@ -675,9 +722,62 @@ describe('extended macro components', () => {
       expect(typeEl).not.toBeNull();
       expect(typeEl!.textContent).toContain('Hello');
     });
+
+    it('types to the end, then stops its interval', () => {
+      vi.useFakeTimers();
+      try {
+        let el!: HTMLElement;
+        act(() => {
+          el = renderPassage('{type 10ms}Hi!{/type}');
+        });
+        const typeEl = el.querySelector('.macro-type')!;
+        expect(typeEl.classList.contains('macro-type-done')).toBe(false);
+
+        for (let i = 0; i < 50; i++)
+          act(() => {
+            vi.advanceTimersByTime(10);
+          });
+        expect(typeEl.classList.contains('macro-type-done')).toBe(true);
+        expect(el.querySelector('.macro-type-cursor')).toBeNull();
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('PassageDialog', () => {
+    it('keeps the DialogCloseContext value stable across re-renders', () => {
+      const seen: unknown[] = [];
+      defineMacro({
+        name: 'probe-dialog-close',
+        render(_props, ctx) {
+          seen.push(ctx.hooks.useContext(DialogCloseContext));
+          return null;
+        },
+      });
+      const onClose = vi.fn();
+      const container = document.createElement('div');
+      // A new inline onClose each render, as callers typically pass
+      for (let i = 0; i < 3; i++) {
+        act(() => {
+          render(
+            h(PassageDialog, {
+              fallbackMarkup: '{probe-dialog-close}',
+              onClose: () => onClose(i),
+            }),
+            container,
+          );
+        });
+      }
+      expect(seen.length).toBeGreaterThan(0);
+      expect(new Set(seen).size).toBe(1);
+
+      // The stable callback calls the latest onClose
+      act(() => (seen[0] as () => void)());
+      expect(onClose).toHaveBeenCalledWith(2);
+    });
+
     it('onClose callback is invoked when close button is clicked', () => {
       let closed = false;
       const container = document.createElement('div');

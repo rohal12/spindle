@@ -21,6 +21,7 @@ import { tokenize } from './markup/tokenizer';
 import { buildAST, registerBlockMacro } from './markup/ast';
 import { registerWidget } from './widgets/widget-registry';
 import { astContainsChildren } from './widgets/ast-scanner';
+import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
 import builtinCSS from './styles.css?inline';
@@ -182,7 +183,15 @@ export function boot() {
             );
           const children = node.children as ASTNode[];
           const isBlock = astContainsChildren(children);
-          registerWidget(widgetName, children, params, isBlock);
+          try {
+            registerWidget(widgetName, children, params, isBlock);
+          } catch (err) {
+            // As the {widget} macro refuses it: the others still register
+            console.error(
+              `spindle: widget "${widgetName}" in passage "${passage.name}" was not registered: ${errorMessage(err)}`,
+            );
+            continue;
+          }
           if (isBlock) {
             registerBlockMacro(widgetName);
           }

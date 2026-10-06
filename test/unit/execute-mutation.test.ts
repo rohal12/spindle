@@ -243,10 +243,44 @@ describe('executeMutation with nested Story.set writes (#215)', () => {
   });
 
   it('keeps Story.set writes made before the code throws', () => {
+    // The code's writes before the Story.set reached the store with it (in
+    // program order, watchers saw them); those after it are dropped
     expect(() =>
-      run('$obj.a = 1; Story.set("obj.b", 2); throw new Error("x")'),
+      run(
+        '$obj.a = 1; Story.set("obj.b", 2); $obj.c = 3; throw new Error("x")',
+      ),
     ).toThrow('x');
-    expect(vars().obj).toEqual({ a: 0, b: 2 });
+    expect(vars().obj).toEqual({ a: 1, b: 2 });
+  });
+
+  // Counterexamples of test/property/mutation-merge.test.ts: a Story.set
+  // path follows the code's pending writes, not the store's state
+  it('resolves a Story.set path through a root the code replaced', () => {
+    run('$obj = { inner: { a: 1 } }; Story.set("obj.inner.b", 2)');
+    expect(vars().obj).toEqual({ inner: { a: 1, b: 2 } });
+    run('$list = [{ a: 1 }]; Story.set("list.0.a", 2)');
+    expect(vars().list).toEqual([{ a: 2 }]);
+  });
+
+  it('throws when the code removed an object on the Story.set path', () => {
+    // The store's state could take the path; the code's writes made before
+    // the Story.set reach the store first, those after it do not
+    useStoryStore.getState().setVariable('obj', { a: {} });
+    expect(() =>
+      run('$obj = { a: 5 }; Story.set("obj.a.x", 1); $obj.b = 1'),
+    ).toThrow(TypeError);
+    expect(vars().obj).toEqual({ a: 5 });
+    useStoryStore.getState().setVariable('obj', { a: {} });
+    expect(() => run('delete $obj; Story.set("obj.a", 1)')).toThrow(TypeError);
+    expect(vars().obj).toBeUndefined();
+  });
+
+  it('writes nothing for a Story.set batch with a failing path', () => {
+    useStoryStore.getState().setVariable('obj', { a: {} });
+    expect(() =>
+      run('$obj = { a: 5 }; Story.set({ "obj.b": 1, "obj.a.x": 1 })'),
+    ).toThrow(TypeError);
+    expect(vars().obj).toEqual({ a: 5 });
   });
 
   it('does not route Story.set calls made after the run into its copy', () => {

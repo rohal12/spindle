@@ -345,7 +345,7 @@ describe('class-registry', () => {
       ],
       [
         'a malformed value nested in class data',
-        tagged('Player', { born: tagged('__Date__', { iso: null }) }),
+        tagged('Player', { born: tagged('__Date__', { iso: 'yesterday' }) }),
       ],
     ])('rejects %s', (_, value) => {
       expect(isDeserializable({ v: value })).toBe(false);
@@ -596,6 +596,118 @@ describe('class-registry', () => {
       const b: Record<string, unknown> = { x: 1 };
       b.self = b;
       expect(deepEqual(a, b)).toBe(true);
+    });
+
+    it('handles cycles of different lengths that unfold alike', () => {
+      // Remembering one partner per object looped forever here
+      const a: Record<string, unknown> = {};
+      a.next = a;
+      const b1: Record<string, unknown> = {};
+      const b2: Record<string, unknown> = { next: b1 };
+      b1.next = b2;
+      expect(deepEqual(a, b1)).toBe(true);
+      expect(deepEqual(b1, a)).toBe(true);
+    });
+
+    it('compares own keys only', () => {
+      // `in` found the inherited constructor of the other object
+      expect(deepEqual({ constructor: Object }, { y: 1 })).toBe(false);
+    });
+
+    it('treats an array hole like an undefined element', () => {
+      // deepClone() and save/load turn holes into undefined elements
+      expect(deepEqual([, 1], [undefined, 1])).toBe(true);
+      expect(deepEqual([undefined], [])).toBe(false);
+    });
+  });
+
+  describe('values JSON cannot hold (property-test counterexamples)', () => {
+    const roundTrip = (value: unknown) =>
+      deserialize(JSON.parse(JSON.stringify(serialize(value))));
+
+    it('round-trips NaN, ±Infinity and -0', () => {
+      const restored = roundTrip({ list: [NaN, Infinity, -Infinity, -0] }) as {
+        list: number[];
+      };
+      expect(restored.list.map((n) => Object.is(n, -0) || n)).toEqual([
+        NaN,
+        Infinity,
+        -Infinity,
+        true,
+      ]);
+    });
+
+    it('round-trips undefined values and array holes', () => {
+      const restored = roundTrip({ a: undefined, list: [[, undefined]] });
+      expect(restored).toEqual({
+        a: undefined,
+        list: [[undefined, undefined]],
+      });
+      expect('a' in (restored as object)).toBe(true);
+    });
+
+    it('round-trips bigint', () => {
+      expect(roundTrip({ n: -12345678901234567890n })).toEqual({
+        n: -12345678901234567890n,
+      });
+    });
+
+    it('round-trips an invalid Date instead of throwing', () => {
+      const restored = roundTrip({ d: new Date(NaN) }) as { d: Date };
+      expect(restored.d).toBeInstanceOf(Date);
+      expect(restored.d.getTime()).toBeNaN();
+    });
+
+    it('round-trips a plain object with keys named like the tags', () => {
+      const value = { __spindle_class__: [], __spindle_data__: {} };
+      expect(roundTrip(value)).toEqual(value);
+      expect(
+        isDeserializable(JSON.parse(JSON.stringify(serialize(value)))),
+      ).toBe(true);
+    });
+
+    it('keeps the class of an instance with an own "constructor" key', () => {
+      registerClass('Player', Player);
+      const player = new Player();
+      // @ts-expect-error -- an own, non-function `constructor` key is the case under test
+      player.constructor = null;
+      const restored = roundTrip({ p: player }) as { p: Player };
+      expect(restored.p).toBeInstanceOf(Player);
+      expect(deepClone(player)).toBeInstanceOf(Player);
+    });
+
+    it('refuses a property named __proto__', () => {
+      expect(() => serialize(JSON.parse('{"x": {"__proto__": 1}}'))).toThrow(
+        /__proto__/,
+      );
+      expect(isDeserializable(JSON.parse('{"x": {"__proto__": {}}}'))).toBe(
+        false,
+      );
+    });
+
+    it('never sets a prototype from a "__proto__" key', () => {
+      const data = JSON.parse('{"__proto__": {"admin": true}}');
+      const restored = deserialize(data) as Record<string, unknown>;
+      expect(Object.getPrototypeOf(restored)).toBe(Object.prototype);
+      const copy = deepClone(data) as Record<string, unknown>;
+      expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+      expect(Object.keys(copy)).toEqual(['__proto__']);
+    });
+
+    it('rejects Map entries with a hole', () => {
+      const entries: unknown[] = [['a', 1]];
+      entries.length = 2;
+      expect(
+        isDeserializable({
+          m: { __spindle_class__: '__Map__', __spindle_data__: { entries } },
+        }),
+      ).toBe(false);
+    });
+
+    it('deepClone keeps a null prototype', () => {
+      const value = Object.assign(Object.create(null) as object, { a: 1 });
+      expect(Object.getPrototypeOf(deepClone(value))).toBeNull();
+      expect(deepEqual(deepClone(value), value)).toBe(true);
     });
   });
 });

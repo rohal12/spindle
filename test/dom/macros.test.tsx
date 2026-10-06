@@ -294,6 +294,30 @@ describe('macro components', () => {
       document.body.removeChild(container);
     });
 
+    it('inner for-loop sees later changes to an outer @local', () => {
+      const container = document.createElement('div');
+      act(() => {
+        render(
+          <Passage
+            passage={makePassage(
+              1,
+              'Test',
+              '{for @o of [1]}{set @n = 0}{button "Inc"}{set @n = @n + 1}{/button}{for @i of [1, 2]}<span class="r">{@n}</span>{/for}{/for}',
+            )}
+          />,
+          container,
+        );
+      });
+      const shown = () =>
+        Array.from(container.querySelectorAll('.r')).map((e) => e.textContent);
+      expect(shown()).toEqual(['0', '0']);
+
+      const button = container.querySelector('button') as HTMLElement;
+      act(() => button.click());
+      act(() => button.click());
+      expect(shown()).toEqual(['2', '2']);
+    });
+
     it('computed can derive from @local in single-iteration for-loop', () => {
       useStoryStore
         .getState()
@@ -311,7 +335,7 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(1);
-      expect(results[0].textContent).toBe('a-ok');
+      expect(results[0]!.textContent).toBe('a-ok');
     });
 
     it('computed reading @local inside for-loop does not infinite-loop (#140)', () => {
@@ -334,8 +358,8 @@ describe('macro components', () => {
       // variable, so last-write-wins. Use @-target for per-iteration values.
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
-      expect(results[0].textContent).toMatch(/^a-(ok|err)$/);
-      expect(results[1].textContent).toMatch(/^b-(ok|err)$/);
+      expect(results[0]!.textContent).toMatch(/^a-(ok|err)$/);
+      expect(results[1]!.textContent).toMatch(/^b-(ok|err)$/);
     });
 
     it('computed with @-target writes to local scope per-iteration', () => {
@@ -355,7 +379,7 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(1);
-      expect(results[0].textContent).toBe('a-green');
+      expect(results[0]!.textContent).toBe('a-green');
     });
 
     it('computed @-target produces per-iteration values in multi-item for-loop (#140)', () => {
@@ -376,8 +400,48 @@ describe('macro components', () => {
 
       const results = container.querySelectorAll('.result');
       expect(results).toHaveLength(2);
-      expect(results[0].textContent).toBe('a-green');
-      expect(results[1].textContent).toBe('b-red');
+      expect(results[0]!.textContent).toBe('a-green');
+      expect(results[1]!.textContent).toBe('b-red');
+    });
+
+    it('computed sees a local set just before it, without a stale first write', () => {
+      const writes: unknown[] = [];
+      const off = useStoryStore.subscribe((s, prev) => {
+        if (s.variables.x !== prev.variables.x) writes.push(s.variables.x);
+      });
+      act(() => {
+        renderPassage(
+          '{for @i of [1]}{set @a = 5}{computed $x = @a + 1}{/for}',
+        );
+      });
+      off();
+      expect(useStoryStore.getState().variables.x).toBe(6);
+      expect(writes).toEqual([6]);
+    });
+
+    it('computed @-target sees a local set just before it', () => {
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage(
+          '{for @i of [1]}{set @a = 5}{computed @b = @a + 1}{set $seen = @b}<span class="result">{@b}</span>{/for}',
+        );
+      });
+      expect(el.querySelector('.result')!.textContent).toBe('6');
+      // {set} runs once, right after {computed}: it must see the value
+      expect(useStoryStore.getState().variables.seen).toBe(6);
+    });
+
+    it('computed sees a story variable set later in the same render', () => {
+      const writes: unknown[] = [];
+      const off = useStoryStore.subscribe((s, prev) => {
+        if (s.variables.x !== prev.variables.x) writes.push(s.variables.x);
+      });
+      act(() => {
+        renderPassage('{set $a = 1}{computed $x = $a * 10}{set $a = 2}');
+      });
+      off();
+      expect(useStoryStore.getState().variables.x).toBe(20);
+      expect(writes).toEqual([10, 20]);
     });
 
     it('computed @-target outside local scope logs error', () => {
@@ -480,6 +544,77 @@ describe('macro components', () => {
       useStoryStore.getState().setVariable('x', 'a');
       const el = renderPassage(`<span title='{$x + "}"}'>t</span>`);
       expect(el.querySelector('span')!.getAttribute('title')).toBe('a}');
+    });
+  });
+
+  describe('JavaScript in macro arguments and expressions', () => {
+    // Braces, quotes and backticks in regex literals and comments do not
+    // end a macro or expression early, and `/` after an operand divides.
+    it('{if} with a regex literal holding }', () => {
+      useStoryStore.getState().setVariable('s', 'a}b');
+      const el = renderPassage('{if /}/.test($s)}yes{/if}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('yes');
+    });
+
+    it('{set} with a comment holding }', () => {
+      const el = renderPassage('{set $x = 1 /* } */}{$x}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('1');
+    });
+
+    it('{set} with a line comment holding }', () => {
+      const el = renderPassage('{set $x = 2 // }\n}{$x}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('2');
+    });
+
+    it('{set} with an escaped } in a regex literal', () => {
+      const el = renderPassage('{set $r = /\\}/}{print $r.test("}")}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('true');
+    });
+
+    it('{print} with quotes in a regex literal', () => {
+      useStoryStore.getState().setVariable('s', `a"b'c`);
+      const el = renderPassage(
+        `{print $s.replace(/"/g, "}").replace(/'/g, '{')}`,
+      );
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('a}b{c');
+    });
+
+    it('expression display with a regex literal holding }', () => {
+      useStoryStore.getState().setVariable('s', 'a}b');
+      const el = renderPassage('[{$s.replace(/}/g, "")}]');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('[ab]');
+    });
+
+    it('expression display divides', () => {
+      useStoryStore.getState().setVariable('a', 6);
+      useStoryStore.getState().setVariable('b', 3);
+      const el = renderPassage('{$a /2/ $b}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.textContent).toBe('1');
+    });
+
+    it('HTML attribute interpolation with a quote in a regex literal', () => {
+      useStoryStore.getState().setVariable('s', "a'b");
+      const el = renderPassage(
+        `<span title='{$s?.replace(/'/g, "}")}'>t</span>`,
+      );
+      expect(el.querySelector('span')!.getAttribute('title')).toBe('a}b');
+    });
+
+    it('{do} keeps a {/do} inside a string', () => {
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage('{do}$y = "{/do}";{/do}[{$y}]');
+      });
+      expect(el.querySelector('.error')).toBeNull();
+      expect(useStoryStore.getState().variables.y).toBe('{/do}');
+      expect(el.textContent).toBe('[{/do}]');
     });
   });
 

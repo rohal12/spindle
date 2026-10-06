@@ -5,8 +5,11 @@ import { act } from 'preact/test-utils';
 import { tokenize } from '../../src/markup/tokenizer';
 import { buildAST } from '../../src/markup/ast';
 import { renderNodes } from '../../src/markup/render';
+import { markdownOptions } from '../../src/markup/markdown';
+import { micromark } from 'micromark';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -56,6 +59,45 @@ describe('renderNodes', () => {
     expect(el.querySelector('code')).toBeNull();
     // Text content should still be present
     expect(el.textContent).toContain('indented line');
+  });
+
+  describe('preformatted elements', () => {
+    it('keeps <pre> content literal: indentation and markdown-like text', () => {
+      const text = 'def f(a, b):\n    return a * b\n# not a heading\n  - item';
+      const el = renderMarkup(`<pre>${text}</pre>`);
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe(text);
+      expect(pre.querySelector('p, h1, ul')).toBeNull();
+    });
+
+    it('keeps nested element and variable content literal in <pre>', () => {
+      useStoryStore.getState().setVariable('n', 3);
+      const el = renderMarkup('<pre><b>x:</b>\n    {$n} * 2\n# end</pre>');
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe('x:\n    3 * 2\n# end');
+      expect(pre.querySelector('p, h1, em')).toBeNull();
+    });
+
+    it('keeps macro body content literal in <pre>', () => {
+      const el = renderMarkup(
+        '<pre>{if true}  * not a list\n    kept{/if}\n{for @x of [1, 2]}  - {@x}\n{/for}</pre>',
+      );
+      const pre = el.querySelector('pre')!;
+      expect(pre.textContent).toBe('  * not a list\n    kept\n  - 1\n  - 2\n');
+      expect(pre.querySelector('p, ul, li')).toBeNull();
+    });
+
+    it('keeps <textarea> content literal', () => {
+      const el = renderMarkup('<textarea># title\n    *indented*</textarea>');
+      const textarea = el.querySelector('textarea')!;
+      expect(textarea.value).toBe('# title\n    *indented*');
+    });
+
+    it('still renders markdown in a block element next to <pre>', () => {
+      const el = renderMarkup('<div>**bold**</div><pre>**raw**</pre>');
+      expect(el.querySelector('div strong')!.textContent).toBe('bold');
+      expect(el.querySelector('pre')!.textContent).toBe('**raw**');
+    });
   });
 
   it('renders single newline as soft break, double newline as paragraph boundary', () => {
@@ -330,7 +372,7 @@ describe('renderNodes', () => {
       expect(ul).not.toBeNull();
       const items = ul!.querySelectorAll('li');
       expect(items).toHaveLength(3);
-      expect(items[0].textContent).toBe('Item 1');
+      expect(items[0]!.textContent).toBe('Item 1');
     });
 
     it('renders ordered lists', () => {
@@ -367,10 +409,10 @@ describe('renderNodes', () => {
       expect(table).not.toBeNull();
       const th = table!.querySelectorAll('th');
       expect(th).toHaveLength(2);
-      expect(th[0].textContent).toBe('Name');
+      expect(th[0]!.textContent).toBe('Name');
       const td = table!.querySelectorAll('td');
       expect(td).toHaveLength(2);
-      expect(td[1].textContent).toBe('100');
+      expect(td[1]!.textContent).toBe('100');
     });
 
     it('renders GFM tables with Twine variables in cells', () => {
@@ -383,10 +425,10 @@ describe('renderNodes', () => {
       expect(table).not.toBeNull();
       const td = table!.querySelectorAll('td');
       expect(td).toHaveLength(4);
-      expect(td[0].textContent).toBe('HP');
-      expect(td[1].textContent?.trim()).toBe('100');
-      expect(td[2].textContent).toBe('MP');
-      expect(td[3].textContent?.trim()).toBe('50');
+      expect(td[0]!.textContent).toBe('HP');
+      expect(td[1]!.textContent?.trim()).toBe('100');
+      expect(td[2]!.textContent).toBe('MP');
+      expect(td[3]!.textContent?.trim()).toBe('50');
     });
   });
 
@@ -602,10 +644,10 @@ describe('renderNodes', () => {
 
       const cards = container.querySelectorAll('.card');
       expect(cards).toHaveLength(3);
-      expect(cards[0].querySelector('.name')!.textContent).toBe('Alpha');
-      expect(cards[0].querySelector('.badge')!.textContent).toBe('Active');
-      expect(cards[1].querySelector('.badge')).toBeNull();
-      expect(cards[2].querySelector('.badge')!.textContent).toBe('Active');
+      expect(cards[0]!.querySelector('.name')!.textContent).toBe('Alpha');
+      expect(cards[0]!.querySelector('.badge')!.textContent).toBe('Active');
+      expect(cards[1]!.querySelector('.badge')).toBeNull();
+      expect(cards[2]!.querySelector('.badge')!.textContent).toBe('Active');
     });
 
     it('preserves markdown processing when text nodes have content', () => {
@@ -627,8 +669,8 @@ describe('renderNodes', () => {
 
       const strongs = container.querySelectorAll('strong');
       expect(strongs).toHaveLength(2);
-      expect(strongs[0].textContent).toBe('Alpha');
-      expect(strongs[1].textContent).toBe('Beta');
+      expect(strongs[0]!.textContent).toBe('Alpha');
+      expect(strongs[1]!.textContent).toBe('Beta');
     });
 
     it('uses markdown pipeline when any text node has non-whitespace content', () => {
@@ -645,6 +687,70 @@ describe('renderNodes', () => {
       const strong = box!.querySelector('strong');
       expect(strong).not.toBeNull();
       expect(strong!.textContent).toBe('bold');
+    });
+  });
+
+  // Found by property testing: text with no other markdown syntax skipped
+  // micromark, so a raw HTML block (a comment, processing instruction or
+  // declaration opening a line) showed as text, and CR line endings kept
+  // the spaces before them and made no hard breaks or paragraphs, unlike
+  // the same text with any markdown in it.
+  describe('text that only looks plain', () => {
+    it.each([
+      '<!A b',
+      'x\n<?y',
+      '<!-- b',
+      'a <?php x ?> b',
+      'a \r\nb',
+      'a  \r\nb',
+      'a\r\rb',
+    ])('%j renders as micromark renders it', (markup) => {
+      // micromark's HTML, but for comment nodes, which aren't rendered
+      const expected = document.createElement('div');
+      expected.innerHTML = micromark(markup, markdownOptions());
+      const walker = document.createTreeWalker(
+        expected,
+        NodeFilter.SHOW_COMMENT,
+      );
+      const comments: Node[] = [];
+      while (walker.nextNode()) comments.push(walker.currentNode);
+      for (const comment of comments) comment.parentNode!.removeChild(comment);
+      expect(renderMarkup(markup).innerHTML).toBe(expected.innerHTML);
+    });
+
+    it('makes a hard break and paragraphs at CR line endings', () => {
+      expect(renderMarkup('a  \r\nb').querySelector('br')).not.toBeNull();
+      expect(renderMarkup('a\r\rb').querySelectorAll('p')).toHaveLength(2);
+    });
+  });
+
+  // Found by fuzzing: the whitespace trimmed at the edges of a paragraph and
+  // around its line endings was found with regexes (`/[ \t]*$/`) that try
+  // every position of a whitespace run, quadratic in its length.
+  describe('long whitespace runs', { timeout: LINEAR_TIMEOUT }, () => {
+    it.each([
+      ['plain text', (ws: string) => `a${ws}b`],
+      ['markdown', (ws: string) => `*a*${ws}b`],
+      ['a variable', (ws: string) => `{$x}${ws}b`],
+      ['an inline element', (ws: string) => `<span>a${ws}b</span>`],
+    ])('render in about linear time in %s', (_, markup) => {
+      useStoryStore.getState().setVariable('x', 'X');
+      for (const unit of [' ', '\t', ' \t']) {
+        const small = markup(unit.repeat(2000));
+        const large = markup(unit.repeat(16000));
+        // 8× the input may take about 8× the time, not a quadratic scan's 64×
+        expectAboutLinear(
+          () => renderMarkup(small),
+          () => renderMarkup(large),
+          { floorMs: 1 },
+        );
+      }
+    });
+
+    it('keep their spaces, but not around line endings', () => {
+      useStoryStore.getState().setVariable('x', 'X');
+      const el = renderMarkup(`a${' '.repeat(5)}b \t\n\t c {$x}  \t`);
+      expect(el.innerHTML).toBe(`<p>a${' '.repeat(5)}b\nc X</p>`);
     });
   });
 });

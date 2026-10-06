@@ -10,12 +10,18 @@ import {
   LocalsUpdateContext,
   NobrContext,
   InlineContext,
+  RawTextContext,
   renderNodes,
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
 import type { ASTNode } from '../../markup/ast';
+import {
+  checkVariableName,
+  createNamespace,
+  withEntry,
+} from '../../utils/namespace';
 
 /**
  * Parse for-loop args: "@item, @i of $list" or "@item of $list"
@@ -45,6 +51,9 @@ function parseForArgs(rawArgs: string): {
       `{for} index variable must use @ prefix: got "${indexVar}"`,
     );
   }
+
+  checkVariableName(itemVar.slice(1), itemVar);
+  if (indexVar) checkVariableName(indexVar.slice(1), indexVar);
 
   return {
     itemVar: itemVar.slice(1),
@@ -81,7 +90,7 @@ function ForIteration({
   );
 
   const localState = useMemo(
-    () => ({ ...parentValues, ...ownKeys, ...localMutations }),
+    () => createNamespace(parentValues, ownKeys, localMutations),
     [parentValues, ownKeys, localMutations],
   );
 
@@ -93,18 +102,20 @@ function ForIteration({
     // Apply synchronously so later macros in the same render pass (e.g. a
     // second {set}) read the new value via getValues(); the state update
     // then re-renders consumers of LocalsValuesContext.
-    valuesRef.current = { ...valuesRef.current, [key]: value };
+    checkVariableName(key, `@${key}`);
+    valuesRef.current = withEntry(valuesRef.current, key, value);
     setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
 
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
 
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children, { nobr, inline, locals: localState })}
+        {renderNodes(children, { nobr, inline, raw, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -165,5 +176,20 @@ defineMacro({
     ));
 
     return ctx.wrap(content);
+  },
+  text({ rawArgs, children = [] }, ctx) {
+    const { itemVar, indexVar, listExpr } = parseForArgs(rawArgs);
+    const list = ctx.evaluate(listExpr);
+    if (!Array.isArray(list)) {
+      throw new Error('expression did not evaluate to an array');
+    }
+    return list
+      .map((item, i) =>
+        ctx.renderText(children, {
+          [itemVar]: item,
+          ...(indexVar ? { [indexVar]: i } : undefined),
+        }),
+      )
+      .join('');
   },
 });

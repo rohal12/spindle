@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext } from 'preact/hooks';
+import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
@@ -8,7 +8,21 @@ import { getMacro, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
-import { useInterpolate } from '../hooks/use-interpolate';
+import { useTextScope } from '../hooks/use-interpolate';
+import {
+  hasInterpolation,
+  interpolateCode,
+  mapTextNodes,
+  parseText,
+  renderText,
+  type ParsedText,
+  type TextError,
+  type TextScope,
+} from '../interpolation';
+import { MacroError } from '../components/macros/MacroError';
+import { isCodeAttribute } from './code-attributes';
+import { errorMessage } from '../utils/error-message';
+import { EMPTY_NAMESPACE } from '../utils/namespace';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -21,10 +35,11 @@ const defaultUpdater: LocalsUpdater = {
       `Cannot set @${key} — local variables require a {for}, widget, {link}, or {button} scope`,
     );
   },
-  getValues: () => ({}),
+  getValues: () => EMPTY_NAMESPACE,
 };
 
-export const LocalsValuesContext = createContext<Record<string, unknown>>({});
+export const LocalsValuesContext =
+  createContext<Record<string, unknown>>(EMPTY_NAMESPACE);
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
 /**
@@ -33,23 +48,44 @@ export const NobrContext = createContext(false);
  * Macro and widget bodies read it so their content stays inline too.
  */
 export const InlineContext = createContext(false);
-export const SvgContext = createContext(false);
+/**
+ * True while rendering inside an element whose content is not markdown: SVG
+ * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
+ * and `<textarea>`, whose text (indentation, `#`, `*`, ...) is literal.
+ * Macro and widget bodies read it so their content stays literal too.
+ */
+export const RawTextContext = createContext(false);
+
+/**
+ * True inside an `<svg>` element. SVG attributes are case-sensitive and have
+ * no live form properties, so they are set as written (see splitAttributes).
+ */
+const SvgContext = createContext(false);
+
+/** Elements whose content is literal text, not markdown. */
+const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea']);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
  * Components rendered for the non-text nodes of one renderNodes() call. Each
- * stands in the markdown source as `<span data-tw="NONCE:INDEX"></span>`.
+ * stands in the markdown source as `<span data-tw=NONCE:INDEX></span>`.
  * The per-call random nonce means author text that merely looks like a
  * placeholder (e.g. decoded from `&lt;span data-tw=...&gt;`) is never
- * swapped for a component.
+ * swapped for a component. The attribute value is unquoted so a placeholder
+ * can sit inside a quoted markdown link title or image alt text.
  */
 interface Placeholders {
   nonce: string;
   components: preact.ComponentChildren[];
+  /**
+   * Per placeholder, its node, for use in an attribute (image alt text, a
+   * link title), where it stands for its text (see interpolation.ts).
+   */
+  nodes: ASTNode[];
 }
 
 function placeholderHtml(nonce: string, index: number): string {
-  return `<span data-tw="${nonce}:${index}"></span>`;
+  return `<span data-tw=${nonce}:${index}></span>`;
 }
 
 /**
@@ -61,7 +97,7 @@ function placeholderHtml(nonce: string, index: number): string {
  * ESCAPE_GUARD in front of the placeholder.
  */
 const PLACEHOLDER_TEXT_RE =
-  /(?:(?<=\\)\uE000)?<span data-tw="([0-9a-z]+):(\d+)"><\/span>/g;
+  /(?:(?<=\\)\uE000)?<span data-tw=([0-9a-z]+):(\d+)><\/span>/g;
 
 /**
  * Emitted between author text ending in a backslash and a placeholder, so
@@ -71,22 +107,88 @@ const PLACEHOLDER_TEXT_RE =
  */
 const ESCAPE_GUARD = '\uE000';
 
+/**
+ * Split text into literal strings and the indexes of this call's
+ * placeholders in it.
+ */
+function splitPlaceholderText(
+  text: string,
+  ph: Placeholders,
+): (string | number)[] {
+  if (!text.includes('<span data-tw=')) return [text];
+  const parts: (string | number)[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
+    if (m[1] !== ph.nonce) continue;
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(parseInt(m[2]!, 10));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 /** Split text into literal parts and the components its placeholders name. */
 function expandPlaceholderText(
   text: string,
   ph: Placeholders,
 ): preact.ComponentChildren[] {
-  if (!text.includes('<span data-tw="')) return [text];
-  const parts: preact.ComponentChildren[] = [];
-  let last = 0;
-  for (const m of text.matchAll(PLACEHOLDER_TEXT_RE)) {
-    if (m[1] !== ph.nonce) continue;
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(ph.components[parseInt(m[2]!, 10)]);
-    last = m.index + m[0].length;
+  return splitPlaceholderText(text, ph).map((part) =>
+    typeof part === 'number' ? ph.components[part] : part,
+  );
+}
+
+/**
+ * An element whose attributes contain placeholders (a variable in image alt
+ * text or a link title). Each such attribute is evaluated as text against
+ * the store and locals, so it follows its variables as the component would.
+ */
+function PlaceholderAttributes({
+  tag,
+  props,
+  attributes,
+  children,
+}: {
+  tag: string;
+  props: Record<string, string>;
+  attributes: Record<string, ASTNode[]>;
+  children: preact.ComponentChildren[];
+}) {
+  const scope = useTextScope();
+  const resolved: Record<string, string> = { ...props };
+  const errors: AttributeError[] = [];
+  for (const [name, nodes] of Object.entries(attributes)) {
+    const result = renderText(nodes, scope);
+    resolved[name] = result.text;
+    for (const error of result.errors) errors.push([name, error]);
   }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+  return withAttributeErrors(errors, h(tag, resolved, ...children));
+}
+
+/** An error met while evaluating the named attribute. */
+type AttributeError = [attribute: string, error: TextError];
+
+/**
+ * Show the errors met in an element's attributes in front of it, the way a
+ * failing macro shows its error in passage text.
+ */
+function withAttributeErrors(
+  errors: AttributeError[],
+  element: preact.ComponentChildren,
+): preact.ComponentChildren {
+  if (errors.length === 0) return element;
+  return (
+    <>
+      {errors.map(([name, { macro, error }], i) => (
+        <MacroError
+          key={i}
+          macro={macro}
+          error={new Error(`in attribute "${name}": ${errorMessage(error)}`)}
+        />
+      ))}
+      {element}
+    </>
+  );
 }
 
 /** The component index of a placeholder element of this call, or -1. */
@@ -150,9 +252,21 @@ function convertDomNode(
     }
 
     // Convert attributes
-    const props: Record<string, string | number> = { key };
+    const props: Record<string, string> = {};
+    let withPlaceholders: Record<string, ASTNode[]> | undefined;
     for (const attr of Array.from(el.attributes)) {
-      props[attr.name] = attr.value;
+      const parts = splitPlaceholderText(attr.value, ph);
+      if (parts.every((part) => typeof part === 'string')) {
+        props[attr.name] = attr.value;
+        continue;
+      }
+      withPlaceholders ??= {};
+      withPlaceholders[attr.name] = parts.map(
+        (part): ASTNode =>
+          typeof part === 'string'
+            ? { type: 'text', value: part }
+            : ph.nodes[part]!,
+      );
     }
 
     // Convert children recursively
@@ -160,7 +274,18 @@ function convertDomNode(
       convertDomNode(child, i, ph),
     );
 
-    return h(tag, props, ...children);
+    if (withPlaceholders) {
+      return (
+        <PlaceholderAttributes
+          key={key}
+          tag={tag}
+          props={props}
+          attributes={withPlaceholders}
+          children={children}
+        />
+      );
+    }
+    return h(tag, { ...props, key }, ...children);
   }
   return null;
 }
@@ -203,9 +328,19 @@ const INLINE_ELEMENTS = new Set([
 ]);
 
 /**
- * HTML boolean attributes. Their presence means "on", but a parsed bare or
- * `=""` attribute has the value '', which Preact would assign to the DOM
- * property as a falsy value — so present ones are passed as `true` (#177).
+ * Attributes that Preact keeps as DOM properties on author HTML elements:
+ * the live state of form controls and media, which then follows its
+ * variable even after the reader changed it. Boolean ones written bare or
+ * as `=""` are passed as `true`, since '' is falsy (#177); one that only
+ * resolves to '' through an interpolation stays ''.
+ */
+const LIVE_PROPERTIES = new Set(['value', 'checked', 'selected', 'muted']);
+
+/**
+ * HTML boolean attributes: present means on. Written bare or with a value
+ * they are present, as in HTML; one whose interpolation resolves to ''
+ * (`disabled="{$locked ? 'disabled' : ''}"`) is left out, so a variable can
+ * switch it off.
  */
 const BOOLEAN_ATTRIBUTES = new Set([
   'allowfullscreen',
@@ -235,31 +370,198 @@ const BOOLEAN_ATTRIBUTES = new Set([
   'selected',
 ]);
 
-function isPresentBooleanAttribute(name: string, value: string): boolean {
-  return value === '' && BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
+/** Names Preact consumes instead of setting (case-sensitive). */
+const PREACT_RESERVED = new Set([
+  'key',
+  'ref',
+  'children',
+  'dangerouslySetInnerHTML',
+]);
+
+/** Names set directly on SVG elements (see splitAttributes). */
+const SVG_DIRECT = new Set([...PREACT_RESERVED, 'class', 'className']);
+
+/** Attribute names setAttribute accepts (`@click` is parsed, not settable). */
+const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
+
+/**
+ * Set an attribute exactly as written, also one whose name setAttribute
+ * rejects but the HTML parser accepts: such an attribute is parsed and its
+ * node copied over.
+ */
+function setRawAttribute(el: Element, name: string, value: string) {
+  if (SETTABLE_NAME.test(name)) {
+    el.setAttribute(name, value);
+    return;
+  }
+  const template = document.createElement('template');
+  template.innerHTML = `<i ${name}=""></i>`;
+  const parsed = (template.content.firstChild as Element).attributes[0];
+  if (!parsed) return;
+  const attr = parsed.cloneNode() as Attr;
+  attr.value = value;
+  el.setAttributeNode(attr);
+}
+
+/**
+ * Split author attributes into Preact props and attributes to set directly.
+ *
+ * Author HTML means attributes, but as props Preact assigns names of DOM
+ * properties to the property (so `draggable="false"` and
+ * `spellcheck="false"` meant true), registers `on…` as event listeners (an
+ * `onclick="…"` string threw) and consumes `key`, `ref` (a string threw),
+ * `children` and `dangerouslySetInnerHTML`; preact/compat, which spindle
+ * loads, also drops an empty `class` and `translate="no"`.
+ *
+ * On HTML elements an upper-case prop name avoids all of these, and
+ * setAttribute lower-cases it back. Names compat matches in any case
+ * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
+ * whose names are case-sensitive, Preact's reserved names and the `class`
+ * and `className` compat rewrites (dropping an empty `class`, turning
+ * `className` into `class`) are set directly instead.
+ */
+function splitAttributes(
+  attributes: [name: string, value: string, written: string][],
+  svg: boolean,
+): { props: Record<string, unknown>; direct: [string, string][] } {
+  const props: Record<string, unknown> = {};
+  const direct: [string, string][] = [];
+  for (const [name, value, written] of attributes) {
+    const lower = name.toLowerCase();
+    if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
+      continue;
+    } else if (!svg && LIVE_PROPERTIES.has(lower)) {
+      props[lower] = lower !== 'value' && written === '' ? true : value;
+    } else if (
+      !SETTABLE_NAME.test(name) ||
+      lower.startsWith('on') ||
+      lower === 'translate' ||
+      (svg && (SVG_DIRECT.has(name) || name === '__proto__'))
+    ) {
+      direct.push([name, value]);
+    } else {
+      props[svg ? name : name.toUpperCase()] = value;
+    }
+  }
+  return { props, direct };
+}
+
+const decodedAttributeText = new Map<string, string>();
+
+/**
+ * Decode character references (`&amp;`, `&#123;`) in attribute text the way
+ * the HTML parser decodes an attribute value, by letting it parse one.
+ */
+function decodeAttributeText(text: string): string {
+  if (!text.includes('&')) return text;
+  let decoded = decodedAttributeText.get(text);
+  if (decoded === undefined) {
+    const template = document.createElement('template');
+    template.innerHTML = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
+    decoded =
+      (template.content.firstChild as Element).getAttribute('title') ?? text;
+    decodedAttributeText.set(text, decoded);
+  }
+  return decoded;
+}
+
+/** A `{` and a sigil starting a reference, in a code attribute. */
+const SIGIL_REFERENCE = /\{[$_@%]\w/;
+
+const attributeNodes = new Map<string, ParsedText>();
+const ATTRIBUTE_CACHE_LIMIT = 2000;
+
+/**
+ * Parse an author-written attribute value as text-only markup, with the
+ * character references in its literal text decoded (macro bodies included).
+ * Decoding follows parsing, so a reference that decodes to a brace
+ * (`&#123;$x}`) stays literal, and a variable's value is never decoded.
+ */
+function parseAttributeValue(value: string): ParsedText {
+  let parsed = attributeNodes.get(value);
+  if (parsed === undefined) {
+    parsed = parseText(value);
+    if ('nodes' in parsed && value.includes('&')) {
+      parsed = { nodes: mapTextNodes(parsed.nodes, decodeAttributeText) };
+    }
+    if (attributeNodes.size >= ATTRIBUTE_CACHE_LIMIT) attributeNodes.clear();
+    attributeNodes.set(value, parsed);
+  }
+  return parsed;
+}
+
+/**
+ * An author-written attribute value with its markup evaluated (see
+ * interpolation.ts) and its character references decoded. Errors are added
+ * to `errors`; a value whose markup doesn't parse is kept as written. The
+ * value of a code attribute (`onclick`, see isCodeAttribute) only has its
+ * sigil references resolved.
+ */
+function resolveAttributeValue(
+  name: string,
+  value: string,
+  scope: TextScope,
+  errors: AttributeError[],
+): string {
+  if (isCodeAttribute(name)) {
+    // As before #225: without a character reference, a value with no sigil
+    // reference is taken as written.
+    if (!value.includes('&') && !SIGIL_REFERENCE.test(value)) return value;
+    const result = interpolateCode(value, scope, decodeAttributeText);
+    for (const error of result.errors) errors.push([name, error]);
+    return result.text;
+  }
+  if (!hasInterpolation(value)) return decodeAttributeText(value);
+  const parsed = parseAttributeValue(value);
+  if ('error' in parsed) {
+    errors.push([name, { macro: 'markup', error: parsed.error }]);
+    return decodeAttributeText(value);
+  }
+  const result = renderText(parsed.nodes, scope);
+  for (const error of result.errors) errors.push([name, error]);
+  return result.text;
 }
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
-  const resolve = useInterpolate();
+  const scope = useTextScope();
   const nobr = useContext(NobrContext);
   const locals = useContext(LocalsValuesContext);
+  const inRaw = useContext(RawTextContext);
   const inSvg = useContext(SvgContext);
   const parentInline = useContext(InlineContext);
-  const attrs: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(node.attributes)) {
-    attrs[k] = isPresentBooleanAttribute(k, v) ? true : (resolve(v) ?? v);
-  }
-  const isSvgRoot = node.tag.toLowerCase() === 'svg';
-  const isInline = INLINE_ELEMENTS.has(node.tag.toLowerCase());
-  // Inside SVG, skip markdown processing entirely — markdown wraps content
-  // in <p> tags which break the SVG namespace.
+  const tag = node.tag.toLowerCase();
+  const isSvgRoot = tag === 'svg';
+  const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
+  const errors: AttributeError[] = [];
+  const resolved = Object.entries(node.attributes).map(
+    ([k, v]): [string, string, string] => [
+      k,
+      resolveAttributeValue(k, v, scope, errors),
+      v,
+    ],
+  );
+  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
+  const elementRef = useRef<Element>(null);
+  const directKey = JSON.stringify(direct);
+  useLayoutEffect(() => {
+    const el = elementRef.current;
+    if (!el || direct.length === 0) return;
+    for (const [name, value] of direct) setRawAttribute(el, name, value);
+    return () => {
+      for (const [name] of direct) el.removeAttribute(name);
+    };
+  }, [directKey]);
+  if (direct.length > 0) props.ref = elementRef;
+  const isInline = INLINE_ELEMENTS.has(tag);
+  // Inside SVG and preformatted elements, skip markdown processing entirely
+  // (see RawTextContext).
   // Inside inline elements, disable block-level markdown (lists, headings,
   // blockquotes) and <p> wrappers since those produce invalid HTML inside
   // inline containers. The inline flag reaches nested macro/widget bodies via
   // InlineContext; a block element nested inside resets it.
   let children: preact.ComponentChildren = undefined;
   if (node.children.length > 0) {
-    if (inSvg || isSvgRoot) {
+    if (inRaw || isRawRoot) {
       children = renderInlineNodes(node.children);
     } else {
       children = renderNodes(node.children, { nobr, locals, inline: isInline });
@@ -272,11 +574,17 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       }
     }
   }
-  const element = h(node.tag, attrs, children);
-  return isSvgRoot ? (
-    <SvgContext.Provider value={true}>{element}</SvgContext.Provider>
-  ) : (
-    element
+  let element = h(node.tag, props, children);
+  if (isSvgRoot && !inSvg) {
+    element = <SvgContext.Provider value={true}>{element}</SvgContext.Provider>;
+  }
+  return withAttributeErrors(
+    errors,
+    isRawRoot ? (
+      <RawTextContext.Provider value={true}>{element}</RawTextContext.Provider>
+    ) : (
+      element
+    ),
   );
 }
 
@@ -284,9 +592,10 @@ function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const locals = useContext(LocalsValuesContext);
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals, inline })}</>;
+  return <>{renderNodes(childrenAST, { nobr, locals, inline, raw })}</>;
 }
 
 /**
@@ -412,23 +721,68 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
  * Any match → fall through to the full micromark pipeline.
  * False positives (e.g. `-` used as text, not list) just use the slower path.
  * Includes character references (`&amp;`, `&#123;`) and two-space hard line
- * breaks, which micromark decodes / turns into <br> (#171).
+ * breaks, which micromark decodes / turns into <br> (#171), and the openers
+ * of raw HTML comments, processing instructions, CDATA sections and
+ * declarations (`<!`, `<?`), which micromark passes through as HTML. A CR
+ * line ending (`\r\n` or `\r`) also takes the full pipeline, which reads
+ * it as micromark does.
  */
 const MARKDOWN_SYNTAX_RE =
-  /[*_`#|~\[>\\\-+=]|!\[|\d+\.|&#?[a-zA-Z0-9]+;| {2}\n/;
-const BLANK_LINE_RE = /\n\s*\n/;
-const PLACEHOLDER_STRIP_RE = /<span data-tw="[0-9a-z]+:\d+"><\/span>/g;
+  /[*_`#|~\[>\\\-+=\r]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n|<[!?]/;
+/** Two line endings (LF, CRLF or CR) with only whitespace between them. */
+const BLANK_LINE_RE = /(?:\r\n|\r(?!\n)|\n)\s*[\r\n]/;
+const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
+
+/** Whitespace that markdown strips at the start and end of a paragraph. */
+const EDGE_WS = ' \t\r\n';
+
+/**
+ * Index of the first character from `from` on (`step` 1) or before `from`
+ * (`step` -1) that is not in `chars`, or where the run of them ends. A loop,
+ * not a regex: `/[ \t]*$/` and the like try each position of a whitespace
+ * run, taking quadratic time on a long run in the middle of a passage.
+ */
+function skipChars(s: string, from: number, step: 1 | -1, chars: string) {
+  let i = from;
+  if (step === 1) {
+    while (i < s.length && chars.includes(s[i]!)) i++;
+  } else {
+    while (i > 0 && chars.includes(s[i - 1]!)) i--;
+  }
+  return i;
+}
+
+/**
+ * Drop the spaces and tabs around line endings, as markdown does within a
+ * paragraph.
+ */
+function trimLineEdges(text: string): string {
+  if (!text.includes('\n')) return text;
+  return text
+    .split('\n')
+    .map((line, k, lines) => {
+      const start = k === 0 ? 0 : skipChars(line, 0, 1, ' \t');
+      const end =
+        k === lines.length - 1
+          ? line.length
+          : skipChars(line, line.length, -1, ' \t');
+      return line.slice(start, Math.max(start, end));
+    })
+    .join('\n');
+}
 
 /**
  * Build Preact vnodes from a combined string that contains only plain text
- * and placeholders. No micromark, no innerHTML.
+ * and placeholders. No micromark, no innerHTML. The text is the content of
+ * one paragraph, so like micromark it drops spaces and tabs around line
+ * endings; its edges are already split off by the caller.
  */
 function buildPlainTextVnodes(
-  combined: string,
+  core: string,
   ph: Placeholders,
   unwrapParagraphs?: boolean,
 ): preact.ComponentChildren {
-  const children = expandPlaceholderText(combined, ph).filter(
+  const children = expandPlaceholderText(trimLineEdges(core), ph).filter(
     (part) => part !== '',
   );
   return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
@@ -455,9 +809,12 @@ export function renderNodes(
     /** Unused: components read locals from LocalsValuesContext. Kept for API compatibility. */
     locals?: Record<string, unknown>;
     inline?: boolean;
+    /** Literal content (see RawTextContext): no markdown processing. */
+    raw?: boolean;
   },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
+  if (options?.raw) return renderInlineNodes(nodes);
 
   // Skip the markdown pipeline when text nodes contain only whitespace.
   // This eliminates ~97 redundant micromark + innerHTML calls per render
@@ -466,7 +823,8 @@ export function renderNodes(
   // have markdown semantics (paragraph separation).
   const needsMarkdown = nodes.some(
     (n) =>
-      n.type === 'text' && (n.value.trim() !== '' || /\n\s*\n/.test(n.value)),
+      n.type === 'text' &&
+      (n.value.trim() !== '' || BLANK_LINE_RE.test(n.value)),
   );
   if (!needsMarkdown) {
     return nodes.map((node) => renderSingleNode(node));
@@ -477,6 +835,7 @@ export function renderNodes(
   const ph: Placeholders = {
     nonce: Math.random().toString(36).slice(2, 10) || '0',
     components,
+    nodes: [],
   };
   let combined = '';
 
@@ -488,6 +847,7 @@ export function renderNodes(
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
+    ph.nodes.push(node);
     if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
     combined += placeholderHtml(ph.nonce, phIdx);
   }
@@ -498,14 +858,35 @@ export function renderNodes(
   // produce the same text they started with (issue #145).
   // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
   const unwrapParagraphs = !!(options?.nobr || options?.inline);
+
+  // Markdown strips whitespace at paragraph edges. Without <p> wrappers that
+  // whitespace separates this content from its neighbours (as in
+  // `<span>*HP*: </span>{$hp}`), so it is kept around the output there.
+  const lead = combined.slice(0, skipChars(combined, 0, 1, EDGE_WS));
+  const trail =
+    lead.length === combined.length
+      ? ''
+      : combined.slice(skipChars(combined, combined.length, -1, EDGE_WS));
+  const core = combined.slice(lead.length, combined.length - trail.length);
+  const edges = (content: preact.ComponentChildren) =>
+    unwrapParagraphs && (lead || trail) ? (
+      <>
+        {lead}
+        {content}
+        {trail}
+      </>
+    ) : (
+      content
+    );
+
   const textOnly = combined.replace(PLACEHOLDER_STRIP_RE, '');
   if (!MARKDOWN_SYNTAX_RE.test(textOnly) && !BLANK_LINE_RE.test(textOnly)) {
-    return buildPlainTextVnodes(combined, ph, unwrapParagraphs);
+    return edges(buildPlainTextVnodes(core, ph, unwrapParagraphs));
   }
 
   // Run combined text through markdown
   const html = markdownToHtml(combined, { inline: options?.inline });
 
   // Convert HTML to Preact VNodes, replacing placeholders with components
-  return htmlToPreact(html, ph, unwrapParagraphs);
+  return edges(htmlToPreact(html, ph, unwrapParagraphs));
 }

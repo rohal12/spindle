@@ -18,20 +18,12 @@ import type {
 import {
   setTitleGenerator,
   getStorageInfo as _getStorageInfo,
-  clearGameData as _clearGameData,
-  clearAllData as _clearAllData,
-  deletePlaythroughData,
-  populateKnownSaves,
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
-import {
-  frozenCopy,
-  getActiveMutationScope,
-  mirrorWriteToActiveScopes,
-  runWithCommittedMutations,
-} from './execute-mutation';
+import { frozenCopy, getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
+import { checkVariableName } from './utils/namespace';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -85,8 +77,9 @@ let variableChangedSubActive = false;
 function ensureVariableChangedSubscription(): void {
   if (variableChangedSubActive) return;
   variableChangedSubActive = true;
-  let prevVars = { ...useStoryStore.getState().variables };
-  let prevTrans = { ...useStoryStore.getState().transient };
+  // Store namespaces are immutable snapshots: keep the references
+  let prevVars = useStoryStore.getState().variables;
+  let prevTrans = useStoryStore.getState().transient;
   useStoryStore.subscribe((state) => {
     const changed: Record<string, { from: unknown; to: unknown }> = {};
     let hasChanges = false;
@@ -115,8 +108,8 @@ function ensureVariableChangedSubscription(): void {
       }
     }
 
-    prevVars = { ...state.variables };
-    prevTrans = { ...state.transient };
+    prevVars = state.variables;
+    prevTrans = state.transient;
     if (hasChanges) {
       emit('variableChanged', changed);
     }
@@ -237,15 +230,17 @@ export function _resetDeclaredVariables(): void {
 /**
  * Split an API variable name into namespace and key. Accepts the bare name
  * (`hp`), the `$` sigil authors use in passages (`$hp`), and `%` for
- * transients (`%npcs`). Dot-paths are kept in the key.
+ * transients (`%npcs`). Dot-paths are kept in the key. A variable named
+ * `__proto__` throws a TypeError (see utils/namespace.ts).
  */
 function parseName(name: string): {
   isTransient: boolean;
   key: string;
 } {
-  if (name.startsWith('%')) return { isTransient: true, key: name.slice(1) };
-  if (name.startsWith('$')) return { isTransient: false, key: name.slice(1) };
-  return { isTransient: false, key: name };
+  const isTransient = name.startsWith('%');
+  const key = isTransient || name.startsWith('$') ? name.slice(1) : name;
+  checkVariableName(key.split('.')[0]!, name);
+  return { isTransient, key };
 }
 
 function warnIfUndeclared(isTransient: boolean, key: string): void {
@@ -301,51 +296,36 @@ function createStoryAPI(): StoryAPI {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
       }
-      // One store update for all keys, so watchers see them together
+      // One store update for all keys, so watchers see them together. Made
+      // while mutation code runs ({do}, ctx.mutate, watcher run actions), it
+      // follows the code's own pending writes (program order, #215): see
+      // routeStoreUpdate.
       useStoryStore.getState().updateVariables((draft) => {
         for (const [k, v] of entries) setOne(draft, k, v);
-        // Mutation code running now ({do}, ctx.mutate, watcher run actions)
-        // works on copies of the namespaces and commits the paths it changed
-        // when it finishes. Apply the write to those copies too, so the code
-        // sees it and its commit keeps it in program order (#215). This runs
-        // inside the update, before watchers it triggers write.
-        for (const [k, v] of entries) {
-          const { isTransient, key } = parseName(k);
-          mirrorWriteToActiveScopes(
-            draft,
-            isTransient ? 'transient' : 'variables',
-            key.split('.'),
-            v,
-          );
-        }
       });
     },
 
-    // Called from running mutation code, these commit the code's writes so
-    // far before they record, replace or save state, and the code goes on
-    // from the state they leave (see runWithCommittedMutations).
+    // Called from running mutation code, these store actions commit the
+    // code's writes so far before they record, replace or save state, and
+    // the code goes on from the state they leave (see storyStateGuard).
     goto(passageName: string): void {
-      runWithCommittedMutations(() =>
-        useStoryStore.getState().navigate(passageName),
-      );
+      useStoryStore.getState().navigate(passageName);
     },
 
     back(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().goBack());
+      useStoryStore.getState().goBack();
     },
 
     forward(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().goForward());
+      useStoryStore.getState().goForward();
     },
 
     restart(): void {
-      runWithCommittedMutations(() => useStoryStore.getState().restart());
+      useStoryStore.getState().restart();
     },
 
     save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return runWithCommittedMutations(() =>
-        useStoryStore.getState().save(slot, custom),
-      );
+      return useStoryStore.getState().save(slot, custom);
     },
 
     load(slot?: string): Promise<void> {
@@ -483,32 +463,16 @@ function createStoryAPI(): StoryAPI {
         return { usage: 0, quota: 0, estimateSupported: false };
       },
 
-      async clearGameData(): Promise<void> {
-        const ifid = useStoryStore.getState().storyData?.ifid;
-        if (!ifid) return;
-        await _clearGameData(ifid);
-        useStoryStore.setState((state) => {
-          state.knownSaves = {};
-        });
-        useStoryStore.getState().restart();
+      clearGameData(): Promise<void> {
+        return useStoryStore.getState().clearGameData();
       },
 
-      async clearAllData(): Promise<void> {
-        await _clearAllData();
-        useStoryStore.setState((state) => {
-          state.knownSaves = {};
-        });
-        useStoryStore.getState().restart();
+      clearAllData(): Promise<void> {
+        return useStoryStore.getState().clearAllData();
       },
 
-      async deletePlaythrough(playthroughId: string): Promise<void> {
-        const { storyData } = useStoryStore.getState();
-        if (!storyData) return;
-        await deletePlaythroughData(storyData.ifid, playthroughId);
-        const known = await populateKnownSaves(storyData.ifid);
-        useStoryStore.setState((state) => {
-          state.knownSaves = known;
-        });
+      deletePlaythrough(playthroughId: string): Promise<void> {
+        return useStoryStore.getState().deletePlaythrough(playthroughId);
       },
 
       get backend() {

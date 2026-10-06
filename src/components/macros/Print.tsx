@@ -19,4 +19,8 @@ defineMacro({
       );
     }
   },
+  text({ rawArgs }, ctx) {
+    const result = ctx.evaluate(rawArgs);
+    return result == null ? '' : String(result);
+  },
 });

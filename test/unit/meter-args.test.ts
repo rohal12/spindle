@@ -146,6 +146,25 @@ describe('parseMeterArgs', () => {
     });
   });
 
+  it('does not take a string after an operator as the label', () => {
+    // Counterexamples from the property tests.
+    expect(parseMeterArgs('$hp $max ?? "5"')).toEqual({
+      currentExpr: '$hp',
+      maxExpr: '$max ?? "5"',
+      labelMode: '',
+    });
+    expect(parseMeterArgs('!{} $a ? 1 : typeof ""')).toEqual({
+      currentExpr: '!{}',
+      maxExpr: '$a ? 1 : typeof ""',
+      labelMode: '',
+    });
+    expect(parseMeterArgs('$hp $a + /* note */ "5" "HP"')).toEqual({
+      currentExpr: '$hp',
+      maxExpr: '$a + /* note */ "5"',
+      labelMode: 'HP',
+    });
+  });
+
   it('does not take a trailing string inside the max expression as label', () => {
     // The trailing string is part of an expression token, not standalone.
     expect(parseMeterArgs('$hp $m["max"]')).toEqual({

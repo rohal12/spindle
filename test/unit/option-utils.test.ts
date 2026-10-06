@@ -3,7 +3,10 @@ import {
   extractOptions,
   parseVarArgs,
 } from '../../src/components/macros/option-utils';
+import { parseCheckboxLabel } from '../../src/components/macros/Checkbox';
+import { parseRadioArgs } from '../../src/components/macros/Radiobutton';
 import type { ASTNode } from '../../src/markup/ast';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 describe('extractOptions', () => {
   it('extracts rawArgs from option macro nodes', () => {
@@ -111,5 +114,64 @@ describe('parseVarArgs', () => {
       'Say "hi"',
     );
     expect(parseVarArgs(String.raw`$path "C:\\"`).placeholder).toBe('C:\\');
+  });
+
+  it('reads a placeholder that spans lines', () => {
+    // Property-test counterexample: the placeholder pattern stopped at a
+    // line break, so the whole argument became the variable name.
+    expect(parseVarArgs('$name "\n"')).toEqual({
+      varName: '$name',
+      placeholder: '\n',
+    });
+    expect(parseVarArgs('$name "First\r\nLast"').placeholder).toBe(
+      'First\r\nLast',
+    );
+  });
+});
+
+describe('quoted labels that span lines', () => {
+  it('reads a multi-line option value, even loosely quoted', () => {
+    const option = (rawArgs: string): ASTNode => ({
+      type: 'macro',
+      name: 'option',
+      rawArgs,
+      children: [],
+    });
+    expect(extractOptions([option('"Long\nSword"')])).toEqual(['Long\nSword']);
+    expect(extractOptions([option('"Long\nSword\\"')])).toEqual([
+      'Long\nSword\\',
+    ]);
+  });
+
+  it('reads a multi-line checkbox label', () => {
+    expect(parseCheckboxLabel('$agree "I\nagree"')).toBe('I\nagree');
+    expect(parseCheckboxLabel('$agree "\r\n"')).toBe('\r\n');
+    expect(parseCheckboxLabel('$agree I\nagree')).toBe('I\nagree');
+  });
+
+  it(
+    'reads a checkbox label with a long run of spaces in linear time',
+    () => {
+      const parse = (n: number) => {
+        const args = `$agree "a${' '.repeat(n)}b"  `;
+        return () =>
+          expect(parseCheckboxLabel(args)).toBe(`a${' '.repeat(n)}b`);
+      };
+      // 8× the input may take about 8× the time, not a quadratic scan's 64×
+      expectAboutLinear(parse(4000), parse(32000));
+      expect(parseCheckboxLabel('$agree Yes \t\n')).toBe('Yes');
+    },
+    LINEAR_TIMEOUT,
+  );
+
+  it('reads a multi-line radiobutton value and label', () => {
+    expect(parseRadioArgs('$c "a\nb" "Line\nbreak"')).toEqual({
+      value: 'a\nb',
+      label: 'Line\nbreak',
+    });
+    expect(parseRadioArgs('$c "a\nb" Line\nbreak')).toEqual({
+      value: 'a\nb',
+      label: 'Line\nbreak',
+    });
   });
 });

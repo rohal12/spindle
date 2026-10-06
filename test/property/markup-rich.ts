@@ -1,0 +1,302 @@
+/**
+ * Arbitraries for rendered passages that mix markdown constructs with spindle
+ * markup. Variable occurrences are emitted as sentinel characters so a test
+ * can substitute the variables it wants (unique ones, or one shared `$x`).
+ */
+import { fc } from '@fast-check/vitest';
+
+/** Stands for one variable occurrence in generated source. */
+export const VAR_SENTINEL = '\u0001';
+
+/** Inline HTML elements whose content must stay inline (render.tsx). */
+export const INLINE_TAGS = [
+  'span',
+  'a',
+  'strong',
+  'em',
+  'label',
+  'b',
+  'i',
+  'code',
+];
+
+const join = (parts: string[]) => parts.join('');
+const word = fc.stringMatching(/^[a-z]{1,5}$/);
+
+/** Markdown punctuation that may or may not pair up into constructs. */
+const noise = fc.constantFrom(
+  '*',
+  '**',
+  '_',
+  '`',
+  '``',
+  '~',
+  '~~',
+  '!',
+  '#',
+  '|',
+  '-',
+  '+',
+  '1.',
+  '&amp;',
+  '&#123;',
+  '(',
+  ')',
+  ']',
+  '=',
+  '"',
+  "'",
+  '}',
+);
+
+/**
+ * Backslash escapes. Backslashes only come in pairs or before markdown
+ * punctuation, so a backslash run before a variable is always even and the
+ * variable stays live (odd runs are covered by the escape-rule property).
+ */
+const escape = fc.constantFrom(
+  '\\*',
+  '\\_',
+  '\\`',
+  '\\#',
+  '\\\\',
+  '\\|',
+  '\\{',
+  '\\}',
+);
+
+const variable = fc.constant(VAR_SENTINEL);
+
+/** The Twine link generated passages hold, to the passage `Start`. */
+export const TWINE_LINK = '[[Start]]';
+
+/** Code span content: no backtick run of the delimiter's length. */
+function codeSpan(inner: fc.Arbitrary<string>) {
+  return fc
+    .tuple(fc.integer({ min: 1, max: 3 }), inner, fc.boolean())
+    .filter(([n, body]) => {
+      const runs = body.match(/`+/g) ?? [];
+      return !runs.some((r) => r.length === n);
+    })
+    .map(([n, body, pad]) => {
+      const fence = '`'.repeat(n);
+      const sp = pad ? ' ' : '';
+      return fence + sp + body + sp + fence;
+    });
+}
+
+const codeContent = fc
+  .array(
+    fc.oneof(
+      { weight: 3, arbitrary: word },
+      { weight: 2, arbitrary: variable },
+      fc.constantFrom(' ', '*', '_', '\\\\', '`', '[x]', '#', '&lt;'),
+    ),
+    { minLength: 1, maxLength: 6 },
+  )
+  .map(join);
+
+/**
+ * Text that may open a fenced code block when it starts a line. The info
+ * string (`~~~a {$x}`) is not displayed, by CommonMark, so variables there
+ * legitimately render nothing; such lines are not generated. Whether
+ * ```` ```x` ```` opens a fence depends on backticks hidden inside spindle
+ * elements, so any line starting with three backticks or tildes is skipped.
+ */
+function opensFence(s: string): boolean {
+  return /^\s*(`{3}|~{3})/.test(s);
+}
+
+const HREF = 'http://e.x/';
+
+/**
+ * A link or image destination, with or without a title. A title is attribute
+ * text like alt text; one holding a `"` would end early, so none is made.
+ */
+const destination = (inline: fc.Arbitrary<string>) =>
+  fc.oneof(
+    { weight: 2, arbitrary: fc.constant(HREF) },
+    {
+      weight: 1,
+      arbitrary: inline
+        .filter((title) => !title.includes('"'))
+        .map((title) => `${HREF} "${title}"`),
+    },
+  );
+
+/**
+ * Text for a link label or image description. Alt text is the plain text of
+ * the description, by CommonMark, so the title of a link or image inside an
+ * image is not displayed and variables there legitimately render nothing.
+ * Any label may end up in an image (`!` + `[label](url)`), so labels hold no
+ * titled links.
+ */
+const label = (inline: fc.Arbitrary<string>) =>
+  inline.filter((text) => !text.includes(`${HREF} "`));
+
+const tableCell = (inline: fc.Arbitrary<string>) =>
+  inline.filter((s) => !s.includes('\n') && !s.includes('|'));
+
+export interface RichOptions {
+  /** Attribute added to generated inline HTML elements. */
+  inlineAttr?: string;
+  /** Attribute added to generated block HTML elements. */
+  blockAttr?: string;
+}
+
+/**
+ * Passages of markdown blocks (paragraphs, headings, blockquotes, lists,
+ * fenced code, tables) and spindle markup (variables, macros, links, HTML),
+ * nested to a bounded depth.
+ */
+export function richPassage(opts: RichOptions = {}) {
+  const inlineAttr = opts.inlineAttr ? ` ${opts.inlineAttr}` : '';
+  const blockAttr = opts.blockAttr ? ` ${opts.blockAttr}` : '';
+  return fc
+    .letrec<{
+      inline: string;
+      piece: string;
+      blocks: string;
+      block: string;
+    }>((tie) => ({
+      inline: fc
+        .array(tie('piece'), {
+          minLength: 1,
+          maxLength: 6,
+          depthIdentifier: 'inline',
+        })
+        .map(join)
+        .filter((s) => !opensFence(s)),
+      piece: fc.oneof(
+        { depthSize: 'small', depthIdentifier: 'inline' },
+        { weight: 4, arbitrary: word },
+        { weight: 3, arbitrary: fc.constant(' ') },
+        { weight: 4, arbitrary: variable },
+        { weight: 2, arbitrary: noise },
+        { weight: 2, arbitrary: escape },
+        { weight: 2, arbitrary: codeSpan(codeContent) },
+        { weight: 1, arbitrary: fc.constant(TWINE_LINK) },
+        { weight: 1, arbitrary: fc.constant('{print "pr"}') },
+        { weight: 1, arbitrary: fc.constant('<br>') },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(fc.constantFrom('*', '**', '_', '~~'), tie('inline'))
+            .map(([d, body]) => d + body + d),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(label(tie('inline')), destination(tie('inline')))
+            .map(([label, dest]) => `[${label}](${dest})`),
+        },
+        {
+          // Image alt text holds the text of its description: variables and
+          // text macros resolve there, a Twine link has no text form and
+          // shows an error instead (docs/markup.md "Links and images").
+          weight: 1,
+          arbitrary: fc
+            .tuple(label(tie('inline')), destination(tie('inline')))
+            .map(([alt, dest]) => `![${alt}](${dest})`),
+        },
+        {
+          weight: 2,
+          arbitrary: fc
+            .tuple(fc.constantFrom(...INLINE_TAGS), tie('inline'))
+            .map(([tag, body]) => `<${tag}${inlineAttr}>${body}</${tag}>`),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(fc.constantFrom('if true', 'span', 'nobr'), tie('inline'))
+            .map(([open, body]) => `{${open}}${body}{/${open.split(' ')[0]}}`),
+        },
+      ),
+      blocks: fc
+        .array(
+          fc.tuple(tie('block'), fc.constantFrom('\n', '\n\n', '\n\n\n')),
+          { minLength: 1, maxLength: 4, depthIdentifier: 'blocks' },
+        )
+        .map((bs) => bs.map(([b, sep]) => b + sep).join('')),
+      block: fc.oneof(
+        { depthSize: 'small', depthIdentifier: 'blocks' },
+        { weight: 4, arbitrary: tie('inline') },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(fc.integer({ min: 1, max: 3 }), tie('inline'))
+            .map(([n, body]) => `${'#'.repeat(n)} ${body}`),
+        },
+        {
+          weight: 1,
+          arbitrary: tie('inline').map((body) => `> ${body}`),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(
+              fc.constantFrom('- ', '* ', '1. '),
+              fc.array(tie('inline'), { minLength: 1, maxLength: 3 }),
+            )
+            .map(([marker, items]) =>
+              items.map((it) => marker + it).join('\n'),
+            ),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(
+              fc.constantFrom('```', '~~~', '````'),
+              fc.array(
+                codeContent.filter((c) => !c.includes('`')),
+                { minLength: 1, maxLength: 3 },
+              ),
+            )
+            .map(([fence, lines]) => `${fence}\n${lines.join('\n')}\n${fence}`),
+        },
+        {
+          weight: 1,
+          // A `|` in a cell starts another cell, and GFM drops cells beyond
+          // the header's count (with their content), so cells have no pipes.
+          arbitrary: fc
+            .tuple(tableCell(tie('inline')), tableCell(tie('inline')))
+            .map(([a, b]) => `| h1 | h2 |\n| --- | --- |\n| ${a} | ${b} |`),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(
+              fc.constantFrom('div', 'section', 'blockquote'),
+              tie('blocks'),
+            )
+            .map(([tag, body]) => `<${tag}${blockAttr}>\n${body}\n</${tag}>`),
+        },
+        {
+          weight: 1,
+          arbitrary: fc
+            .tuple(fc.constantFrom('if true', 'nobr'), tie('blocks'))
+            .map(
+              ([open, body]) => `{${open}}\n${body}{/${open.split(' ')[0]}}`,
+            ),
+        },
+      ),
+    }))
+    .blocks.filter(
+      // Adjacent brackets (`[` + `[label](url)`, `[` + `[[Start]]`) can form
+      // a Twine link whose text is literal by design (docs/markup.md
+      // "Links"), so a variable inside it shows as `{$v}`. Only the explicit
+      // links are kept.
+      (src) =>
+        !src.includes('[[[') && !src.split(TWINE_LINK).join('L').includes('[['),
+    );
+}
+
+/** Replace each sentinel with `name(k)` for its occurrence index k. */
+export function substituteVars(
+  src: string,
+  name: (k: number) => string,
+): { src: string; count: number } {
+  let k = 0;
+  const out = src.replace(new RegExp(VAR_SENTINEL, 'g'), () => name(k++));
+  return { src: out, count: k };
+}

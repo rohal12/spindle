@@ -1,6 +1,4 @@
-import { getClassName } from '../class-registry';
-
-type Constructor = new (...args: any[]) => any;
+import { registeredClassName } from '../class-registry';
 
 /**
  * Content-derived string key for a value, used to remount components when
@@ -10,9 +8,10 @@ type Constructor = new (...args: any[]) => any;
  * plain objects of those) produce exactly their `JSON.stringify` output. Other
  * values get distinct, unambiguous markers so their contents are reflected
  * too: Map and Set entries (nested at any depth), Date, RegExp, BigInt,
- * undefined, NaN/±Infinity, symbols, functions and registered class
- * instances. Cyclic references become a back-reference marker instead of
- * throwing, and the function never throws.
+ * undefined, NaN/±Infinity, symbols (by description), functions (by name)
+ * and registered class instances. A hole in an array reads as undefined.
+ * Cyclic references become a back-reference marker instead of throwing,
+ * and the function never throws.
  */
 export function stableKey(value: unknown): string {
   try {
@@ -35,7 +34,11 @@ function keyOf(val: unknown, ancestors: object[]): string {
     case 'undefined':
       return 'undefined';
     case 'symbol':
-      return val.toString();
+      // Quote the description: `Symbol('a),Symbol(b')` must not read like
+      // two symbols.
+      return val.description === undefined
+        ? 'Symbol()'
+        : `Symbol(${JSON.stringify(val.description)})`;
     case 'function':
       return `<function ${JSON.stringify(val.name)}>`;
   }
@@ -51,7 +54,9 @@ function keyOf(val: unknown, ancestors: object[]): string {
   ancestors.push(obj);
   try {
     if (Array.isArray(val)) {
-      return `[${val.map((v) => keyOf(v, ancestors)).join(',')}]`;
+      // Array.from reads a hole as undefined (map would skip it, giving
+      // `[,]` the key of `[]`), matching deepClone, which fills holes.
+      return `[${Array.from(val, (v) => keyOf(v, ancestors)).join(',')}]`;
     }
     if (val instanceof Map) {
       const entries = [...val].map(
@@ -67,7 +72,7 @@ function keyOf(val: unknown, ancestors: object[]): string {
     const body = Object.keys(record)
       .map((k) => `${JSON.stringify(k)}:${keyOf(record[k], ancestors)}`)
       .join(',');
-    const className = getClassName(obj.constructor as Constructor);
+    const className = registeredClassName(obj);
     return className === undefined
       ? `{${body}}`
       : `Class(${JSON.stringify(className)}){${body}}`;

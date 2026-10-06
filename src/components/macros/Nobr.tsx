@@ -13,4 +13,5 @@ defineMacro({
       ),
     );
   },
+  text: ({ children = [] }, ctx) => ctx.renderText(children),
 });

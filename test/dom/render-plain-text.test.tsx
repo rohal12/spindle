@@ -213,6 +213,9 @@ describe('plain text fast path matches micromark (issue #171)', () => {
     'AT&T and R&D',
     'a &unknown thing',
     'first\nsecond',
+    // Found by property testing: `)` ordered list markers were missed.
+    '2) ',
+    '1) first item',
   ];
 
   for (const text of cases) {
@@ -258,5 +261,39 @@ describe('plain text fast path matches micromark (issue #171)', () => {
     const p = el.querySelector('p')!;
     expect(p.querySelector('br')).not.toBeNull();
     expect(p.textContent).toBe('Line one\n2');
+  });
+});
+
+// Found by property testing: whitespace at the edges of text depended on
+// whether the text took the fast path or went through micromark.
+describe('whitespace at paragraph edges', () => {
+  beforeEach(() => {
+    const store = useStoryStore.getState();
+    store.init(makeStoryData([makePassage(1, 'Start', 'Start')]));
+    store.setVariable('hp', 7);
+  });
+
+  it.each([' a', 'a ', '\ta', 'a \n b', ' a\t\nb '])(
+    'strips paragraph whitespace like micromark: %j',
+    (text) => {
+      const ref = document.createElement('div');
+      ref.innerHTML = markdownToHtml(text).trim();
+      expect(renderMarkup(text).innerHTML).toBe(ref.innerHTML);
+    },
+  );
+
+  it('keeps edge whitespace inside an inline element with markdown', () => {
+    const el = renderMarkup('<span>*HP*: </span>{$hp}');
+    expect(el.textContent).toBe('HP: 7');
+    expect(el.querySelector('span')!.innerHTML).toBe('<em>HP</em>: ');
+  });
+
+  it('keeps edge whitespace inside an inline element without markdown', () => {
+    expect(renderMarkup('<span>HP: </span>{$hp}').textContent).toBe('HP: 7');
+  });
+
+  it('keeps edge whitespace in a nobr body with markdown', () => {
+    expect(renderMarkup('a {nobr}*b* {/nobr}c').textContent).toBe('a b c');
+    expect(renderMarkup('a {nobr}b {/nobr}c').textContent).toBe('a b c');
   });
 });

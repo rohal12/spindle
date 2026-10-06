@@ -3,6 +3,7 @@ import {
   hasInterpolation,
   interpolate,
   interpolateExpression,
+  interpolateText,
 } from '../../src/interpolation';
 
 describe('hasInterpolation', () => {
@@ -30,12 +31,9 @@ describe('hasInterpolation', () => {
     expect(hasInterpolation('{$a.b}')).toBe(true);
   });
 
-  it('returns false for bare braces', () => {
-    expect(hasInterpolation('{notavar}')).toBe(false);
-  });
-
-  it('returns false for {macro name}', () => {
-    expect(hasInterpolation('{print $x}')).toBe(false);
+  it('returns true for macros, which are markup too (#225)', () => {
+    expect(hasInterpolation('{print $x}')).toBe(true);
+    expect(hasInterpolation('{if $x}a{/if}')).toBe(true);
   });
 });
 
@@ -147,10 +145,6 @@ describe('hasInterpolation — complex expressions', () => {
   it('still returns false for plain text', () => {
     expect(hasInterpolation('no sigils here')).toBe(false);
   });
-
-  it('still returns false for {notavar}', () => {
-    expect(hasInterpolation('{notavar}')).toBe(false);
-  });
 });
 
 describe('interpolateExpression', () => {
@@ -182,6 +176,87 @@ describe('interpolate — braces inside strings (#169)', () => {
   it('handles braces inside template literals', () => {
     expect(interpolate('[{$x + `}${$x}{`}]', { x: 'a' }, {}, {})).toBe(
       '[a}a{]',
+    );
+  });
+});
+
+describe('interpolate — regex literals and comments', () => {
+  it('handles } and quotes inside regex literals', () => {
+    const vars = { s: `a}b"c'd` };
+    expect(interpolate('[{$s.replace(/}/g, "")}]', vars, {}, {})).toBe(
+      `[ab"c'd]`,
+    );
+    expect(interpolate(`[{$s.replace(/"/g, '}')}]`, vars, {}, {})).toBe(
+      `[a}b}c'd]`,
+    );
+  });
+
+  it('handles } inside comments', () => {
+    expect(interpolate('[{$x /* } */}]', { x: 'a' }, {}, {})).toBe('[a]');
+  });
+
+  it('reads `/` after an operand as division', () => {
+    expect(interpolate('[{$a /2/ $b}]', { a: 6, b: 3 }, {}, {})).toBe('[1]');
+  });
+});
+
+describe('interpolate — unclosed template literals', () => {
+  // Same exponential scan as the tokenizer (see tokenizer.test.ts).
+  it('leaves nested unclosed template literals as text quickly', () => {
+    const template = '{$a`${'.repeat(60);
+    expect(interpolate(template, { a: 1 }, {}, {})).toBe(template);
+  });
+});
+
+describe('interpolate — passage markup (#225)', () => {
+  const scope = {
+    variables: { n: 1, list: ['a', 'b'] },
+    temporary: {},
+    locals: {},
+    transient: {},
+  };
+  const text = (template: string) => interpolateText(template, scope);
+
+  it('evaluates if / elseif / else, switch, for and print', () => {
+    expect(text('{if $n > 1}a{elseif $n > 0}b{else}c{/if}').text).toBe('b');
+    expect(text('{switch $n}{case 0}z{case 1}o{default}d{/switch}').text).toBe(
+      'o',
+    );
+    expect(text('{for @x, @i of $list}{@i}{@x}{/for}').text).toBe('0a1b');
+    expect(text('{print $n + 1}').text).toBe('2');
+  });
+
+  it('evaluates expressions opened by ( or !', () => {
+    expect(text("{!$n ? 'zero' : 'nonzero'}").text).toBe('nonzero');
+    expect(text('{(Math.max($n, 5))}').text).toBe('5');
+  });
+
+  it('keeps braces that open no markup, and escaped ones, as text', () => {
+    expect(text('{"a": 1} {3} { $n }').text).toBe('{"a": 1} {3} { $n }');
+    expect(text('\\\\{$n} \\\\\\{$n}').text).toBe('\\1 \\{$n}');
+  });
+
+  it('reports a macro without a text form, an unknown one, and a failing expression', () => {
+    const result = text('a{set $n = 2}b{nope}c{$n.x.y}d{$n + nope}e');
+    expect(result.text).toBe('abcde');
+    expect(result.errors.map((e) => e.macro)).toEqual([
+      'set',
+      'nope',
+      'expression',
+    ]);
+    expect(String(result.errors[0]!.error)).toContain('no text form');
+  });
+
+  it('reports markup that does not parse and keeps it as written', () => {
+    const result = text('{if $n}open');
+    expect(result.text).toBe('{if $n}open');
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.macro).toBe('markup');
+  });
+
+  it('throws the first error from interpolate()', () => {
+    expect(() => interpolate('{set $n = 2}', {}, {}, {})).toThrow(
+      /no text form/,
     );
   });
 });

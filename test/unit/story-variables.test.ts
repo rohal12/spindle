@@ -307,6 +307,9 @@ describe('validatePassages: only real references (#178)', () => {
     ['prose in HTML', '<span title="$cost">Price: $cost</span>'],
     ['link markup', '[[Pay $cost->Shop]]'],
     ['escaped braces', '\\{$cost\\}'],
+    ['escaped brace in an attribute', '<b title="\\{$cost}">x</b>'],
+    ['code in an event handler', '<b onclick="if (a) {return $cost}">x</b>'],
+    ['code in a pattern', '<input pattern="{if $cost}">'],
     [
       'line comment in do body',
       '{do}\n// uses $cost later\n$health = 1\n{/do}',
@@ -314,6 +317,12 @@ describe('validatePassages: only real references (#178)', () => {
     ['block comment in do body', '{do}/* $cost */ $health = 1{/do}'],
     ['block comment in expression', '{print $health /* $cost */}'],
     ['string inside do body', '{do}$health = "$cost".length{/do}'],
+    // The code is lexed as the expression engine lexes it
+    ['string after a regex with a quote', '{print /"/.test("$cost")}'],
+    ['string after a regex with a backtick', '{print /`/.test("$cost")}'],
+    ['string after a regex class with a slash', "{print /[/']/.test('$cost')}"],
+    ['property named like a variable', '{print $health.$cost}'],
+    ['object key named like a variable', '{print { $cost: 1 }.x}'],
   ])('ignores $cost in %s', (_label, content) => {
     expect(errorsFor(content)).toEqual([]);
   });
@@ -330,12 +339,21 @@ describe('validatePassages: only real references (#178)', () => {
     ['nested template interpolation', '{print `a ${`b ${$cost}`}`}'],
     ['string interpolation block', '{link "Pay {$cost}" "Shop"}{/link}'],
     ['HTML attribute interpolation', '<img src="{$cost}.png">'],
+    ['event handler reference', '<b onclick="go({$cost})">x</b>'],
+    ['HTML attribute macro', '<b class="{if $cost > 1}a{/if}">x</b>'],
+    ['HTML attribute macro body', '<b class="{if true}{$cost}{/if}">x</b>'],
+    ['HTML attribute expression opened by !', '<b title="{!$cost}">x</b>'],
+    ['expression opened by (', '{($cost + 1)}'],
+    ['macro in a label string', '{button "{if $cost}a{/if}"}{/button}'],
     ['do body', '{do}$cost = 1{/do}'],
     ['do body after a comment', '{do}// note\n$cost = 1{/do}'],
     ['do body with braces', '{do}if ($health) { $cost = {a: 1} }{/do}'],
     ['quoted input macro variable', '{textbox "$cost" "Enter"}'],
     ['unquoted input macro variable', '{numberbox $cost}'],
     ['widget invocation argument', '{Card $cost}'],
+    ['argument after a regex with a quote', '{print /"/.test($cost)}'],
+    ['argument after a regex with a backtick', '{print /`/.test($cost)}'],
+    ['template after a regex', '{print /\\//.test(`${$cost}`)}'],
   ])('reports undeclared $cost in %s', (_label, content) => {
     const errors = errorsFor(content);
     expect(errors).toHaveLength(1);

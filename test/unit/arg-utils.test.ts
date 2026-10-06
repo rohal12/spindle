@@ -6,6 +6,7 @@ import {
   unescapeQuoted,
   splitTopLevel,
   isWhitespace,
+  endsWithOperator,
 } from '../../src/components/macros/arg-utils';
 
 const isComma = (ch: string) => ch === ',';
@@ -283,5 +284,39 @@ describe('splitTopLevel', () => {
         ' b',
       ]);
     });
+  });
+});
+
+describe('endsWithOperator', () => {
+  it('detects a trailing operator character or keyword', () => {
+    for (const src of [
+      '$a +',
+      '$a+',
+      '$x ==',
+      '$a !',
+      'typeof',
+      '$a in ',
+      '%t %',
+      '$a + /* c */',
+    ]) {
+      expect(endsWithOperator(src)).toBe(true);
+    }
+  });
+
+  it('ignores literals, transient references and postfix operators', () => {
+    for (const src of [
+      '$a+/x/',
+      '/x/g',
+      '"+"',
+      '`a${1}-`',
+      '$a %t',
+      '_i++',
+      '$a--',
+      '@in',
+      '$x.in',
+      '',
+    ]) {
+      expect(endsWithOperator(src)).toBe(false);
+    }
   });
 });

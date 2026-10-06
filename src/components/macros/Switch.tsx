@@ -47,4 +47,17 @@ defineMacro({
 
     return null;
   },
+  text({ rawArgs, branches = [] }, ctx) {
+    const switchValue = ctx.evaluate(rawArgs);
+    let defaultBranch: (typeof branches)[number] | null = null;
+    for (let i = 1; i < branches.length; i++) {
+      const branch = branches[i]!;
+      if (branch.rawArgs === '') {
+        defaultBranch = branch;
+      } else if (switchValue === ctx.evaluate(branch.rawArgs)) {
+        return ctx.renderText(branch.children);
+      }
+    }
+    return defaultBranch ? ctx.renderText(defaultBranch.children) : '';
+  },
 });

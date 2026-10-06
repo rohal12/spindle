@@ -83,6 +83,34 @@ describe('save-manager', () => {
       const id2 = await startNewPlaythrough(IFID);
       expect(id2).not.toBe(playthroughId);
     });
+
+    // Found by the save model property test (test/property/saves-model)
+    it('never reuses the number of a deleted playthrough', async () => {
+      const ifid = 'pt-numbers-' + Date.now();
+      const labels = async () =>
+        (await getSavesGrouped(ifid)).map((g) => g.playthrough.label).sort();
+
+      const pt1 = await startNewPlaythrough(ifid);
+      await startNewPlaythrough(ifid);
+      await deletePlaythroughData(ifid, pt1);
+      await startNewPlaythrough(ifid);
+
+      expect(await labels()).toEqual(['Playthrough 2', 'Playthrough 3']);
+    });
+
+    it('gives imported playthroughs no number', async () => {
+      const ifid = 'pt-imported-' + Date.now();
+      await startNewPlaythrough(ifid);
+      const foreign = await createSave(ifid, 'foreign-pt', makePayload());
+      const data = await exportSave(foreign.meta.id);
+      await deletePlaythroughData(ifid, 'foreign-pt');
+      await importSave(data!, ifid);
+      await startNewPlaythrough(ifid);
+
+      expect(
+        (await getSavesGrouped(ifid)).map((g) => g.playthrough.label).sort(),
+      ).toEqual(['Imported', 'Playthrough 1', 'Playthrough 2']);
+    });
   });
 
   describe('createSave / loadSave', () => {
@@ -383,6 +411,18 @@ describe('save-manager', () => {
       expect(typeof imported.meta.id).toBe('string');
       expect(imported.meta.id.length).toBeGreaterThan(0);
       expect(imported.meta.ifid).toBe(IFID);
+    });
+
+    it('files an imported save under the story it is imported into', async () => {
+      // The validator accepts any meta.ifid; the save was indexed under it
+      // and so missing from the story's saves (found by property tests)
+      const record = await createSave(IFID, playthroughId, makePayload());
+      const exported = await exportSave(record.meta.id);
+      exported!.save.meta.ifid = 'another-story';
+      const imported = await importSave(exported!, IFID);
+      expect(imported.meta.ifid).toBe(IFID);
+      const saves = await (await getBackend()).getSavesByIfid(IFID);
+      expect(saves.map((s) => s.meta.id)).toContain(imported.meta.id);
     });
 
     it('imported save updates updatedAt timestamp', async () => {

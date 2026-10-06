@@ -401,6 +401,8 @@ export interface MacroContext {
       nobr?: boolean;
       locals?: Record<string, unknown>;
       inline?: boolean;
+      /** Literal content, as inside `<pre>`: no markdown processing. */
+      raw?: boolean;
     },
   ) => ComponentChildren;
   /** Render AST nodes as inline content (no markdown block processing). */
@@ -418,6 +420,20 @@ export interface MacroContext {
 }
 
 /**
+ * Context object passed to a macro's text form (`MacroDefinition.text`).
+ * @see {@link ../../src/registry.ts} for the implementation.
+ */
+export interface MacroTextContext {
+  /** Evaluate an expression in the current scope. */
+  evaluate: (expr: string) => unknown;
+  /**
+   * The text of AST nodes (a body or branch) in the current scope, with
+   * `locals` (keys without `@`) added on top of the current locals.
+   */
+  renderText: (nodes: ASTNode[], locals?: Record<string, unknown>) => string;
+}
+
+/**
  * Configuration object for `Story.defineMacro()`.
  * @see {@link ../../src/define-macro.ts} for the implementation.
  */
@@ -427,7 +443,7 @@ export interface MacroDefinition {
   subMacros?: string[];
   /** Accept a `{name}...{/name}` body. Inferred from `subMacros` when omitted. */
   block?: boolean;
-  /** Resolve `{$var}` interpolation in the macro's class/id (`ctx.resolve`). */
+  /** Resolve markup (`{$var}`, expressions, macros) in the macro's class/id, and provide `ctx.resolve`. */
   interpolate?: boolean;
   /** Provide `ctx.merged` and `ctx.evaluate` (variables, temporaries, locals, transients). */
   merged?: boolean;
@@ -438,6 +454,12 @@ export interface MacroDefinition {
   /** Tooling hint: positional parameters. */
   parameters?: ParameterDef[];
   render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  /**
+   * The macro's text form, used where markup becomes a string: HTML
+   * attribute values, image alt text and link titles, macro labels. Without
+   * one, the macro can't be used there and is reported as an error.
+   */
+  text?: (props: MacroProps, ctx: MacroTextContext) => string;
 }
 
 /**
@@ -549,8 +571,11 @@ export interface StoryAPI {
   save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
 
   /**
-   * Load a saved state (quick load). Resolves once the loaded state is applied
-   * (immediately if the slot is empty); rejects if loading fails.
+   * Load a saved state (quick load). The game moves to the loaded save's
+   * playthrough, in call order: a save issued after the load belongs to it.
+   * Resolves once the loaded state is applied (immediately if the slot is
+   * empty, without loading if a restart was issued after the load); rejects
+   * if loading fails.
    */
   load(slot?: string): Promise<void>;
 
@@ -671,11 +696,19 @@ export interface StoryAPI {
     getInfo(): Promise<StorageInfo>;
     /** Get browser storage quota estimate. */
     getQuota(): Promise<StorageQuota>;
-    /** Delete all saves for the current game. */
+    /**
+     * Delete all saves and playthroughs of the current game and restart it.
+     * The restart happens at once; the promise settles once the data is
+     * deleted.
+     */
     clearGameData(): Promise<void>;
-    /** Delete all Spindle data across all games. */
+    /** Delete all Spindle data across all games and restart, as clearGameData. */
     clearAllData(): Promise<void>;
-    /** Delete a specific playthrough and its saves. */
+    /**
+     * Delete a specific playthrough and its saves. Deleting the current
+     * playthrough (the one the game started, restarted or last loaded a save
+     * in) moves the running game to a new one.
+     */
     deletePlaythrough(playthroughId: string): Promise<void>;
     /** The active storage backend. */
     readonly backend: 'indexeddb' | 'localstorage' | 'memory';
@@ -731,7 +764,10 @@ export interface StoryAPI {
 
   /** Story configuration. */
   readonly config: {
-    /** Maximum number of history moments to retain. */
+    /**
+     * Maximum number of history moments to retain. Lowering it trims history
+     * at once, keeping the newest moments that include the current one.
+     */
     maxHistory: number;
     /**
      * Key that triggers a quick save (`KeyboardEvent.key`, default `'F6'`).

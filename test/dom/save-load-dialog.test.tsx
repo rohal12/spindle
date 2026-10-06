@@ -4,7 +4,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { SaveManagerContent } from '../../src/components/macros/SaveManager';
 import { DialogCloseContext } from '../../src/components/PassageDialog';
-import { useStoryStore } from '../../src/store';
+import { useStoryStore, resolvePlaythroughId } from '../../src/store';
 import {
   initSaveSystem,
   startNewPlaythrough,
@@ -12,6 +12,7 @@ import {
   exportSave,
   getSavesGrouped,
   populateKnownSaves,
+  renameSave,
 } from '../../src/saves/save-manager';
 import { getBackend } from '../../src/saves/storage';
 import { on as emitterOn } from '../../src/event-emitter';
@@ -1045,6 +1046,150 @@ describe('SaveManagerContent', () => {
       expect(clearSpy.mock.calls.length).toBeGreaterThan(callsBefore);
 
       clearSpy.mockRestore();
+    });
+
+    it('starts no status timer when a save finishes after unmount', async () => {
+      renderSaveManager(container, onClose);
+      await flush();
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(async () => saveModeBtn.click());
+      await flush();
+
+      const setSpy = vi.spyOn(globalThis, 'setTimeout');
+      // Close the manager while the save is still being written
+      act(() => {
+        (container.querySelector('.save-slot-new') as HTMLElement).click();
+        render(null, container);
+      });
+      await flush();
+
+      const statusTimers = setSpy.mock.calls.filter(([, ms]) => ms === 3000);
+      setSpy.mockRestore();
+      expect(statusTimers).toEqual([]);
+    });
+
+    it('cancels the pending dialog close on unmount', async () => {
+      await createSave(
+        IFID,
+        useStoryStore.getState().playthroughId,
+        makePayload(),
+      );
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        renderSaveManager(container, onClose);
+        await vi.waitFor(() =>
+          expect(container.querySelector('.save-slot')).not.toBeNull(),
+        );
+        const loadBtn = [
+          ...container.querySelectorAll('.save-slot-action.primary'),
+        ].find((b) => b.textContent === 'Load') as HTMLElement;
+        act(() => loadBtn.click());
+        act(() => render(null, container));
+        expect(vi.getTimerCount()).toBe(0);
+        vi.advanceTimersByTime(1000);
+        expect(onClose).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('loading a save switches to its playthrough', () => {
+    /** A save in the current playthrough, titled `title`; then a restart. */
+    async function saveThenRestart(title: string): Promise<[string, string]> {
+      const first = useStoryStore.getState().playthroughId;
+      const record = await createSave(IFID, first, makePayload());
+      await renameSave(record.meta.id, title);
+      useStoryStore.getState().restart();
+      await resolvePlaythroughId();
+      return [first, useStoryStore.getState().playthroughId];
+    }
+
+    /** The playthrough group (element) holding the save titled `title`. */
+    function groupOf(title: string): HTMLElement {
+      const slot = [...container.querySelectorAll('.save-slot')].find(
+        (el) => el.querySelector('.save-slot-title')?.textContent === title,
+      )!;
+      return slot.closest('.playthrough-group') as HTMLElement;
+    }
+
+    function clickLoad(title: string): void {
+      const slot = [...container.querySelectorAll('.save-slot')].find(
+        (el) => el.querySelector('.save-slot-title')?.textContent === title,
+      )!;
+      const btn = [...slot.querySelectorAll('.save-slot-action')].find(
+        (b) => b.textContent === 'Load',
+      ) as HTMLElement;
+      btn.click();
+    }
+
+    it('makes the loaded save’s playthrough the current one', async () => {
+      const [first, second] = await saveThenRestart('switch-target');
+      expect(second).not.toBe(first);
+
+      // No close handler: the dialog stays open after the load
+      renderSaveManager(container);
+      await flush();
+      expect(
+        groupOf('switch-target').querySelector('.playthrough-label')!
+          .textContent,
+      ).not.toContain('(current)');
+
+      await act(async () => clickLoad('switch-target'));
+      await flush();
+
+      expect(useStoryStore.getState().playthroughId).toBe(first);
+      expect(
+        groupOf('switch-target').querySelector('.playthrough-label')!
+          .textContent,
+      ).toContain('(current)');
+
+      // Save mode offers the loaded playthrough, and saves into it
+      const saveModeBtn = container.querySelector(
+        '.saves-mode-toggle button:first-child',
+      ) as HTMLElement;
+      await act(() => saveModeBtn.click());
+      await flush();
+      const labels = [...container.querySelectorAll('.playthrough-label')];
+      expect(labels).toHaveLength(1);
+      expect(labels[0]!.textContent).toContain('(current)');
+      expect(groupOf('switch-target')).not.toBeUndefined();
+
+      const newSaveBtn = container.querySelector(
+        '.save-slot-new',
+      ) as HTMLElement;
+      await act(async () => newSaveBtn.click());
+      await flush();
+      const groups = await getSavesGrouped(IFID);
+      expect(
+        groups.find((g) => g.playthrough.id === first)!.saves,
+      ).toHaveLength(2);
+      expect(groups.find((g) => g.playthrough.id === second)!.saves).toEqual(
+        [],
+      );
+    });
+
+    it('records a playthrough deleted while the dialog showed its save again, as imported', async () => {
+      const [first] = await saveThenRestart('stale-target');
+      renderSaveManager(container);
+      await flush();
+
+      await useStoryStore.getState().deletePlaythrough(first);
+      await act(async () => clickLoad('stale-target'));
+      await flush();
+
+      expect(useStoryStore.getState().playthroughId).toBe(first);
+      const group = (await getSavesGrouped(IFID)).find(
+        (g) => g.playthrough.id === first,
+      );
+      expect(group?.playthrough.label).toBe('Imported');
+      // The dialog lists it as the current playthrough
+      const labels = [...container.querySelectorAll('.playthrough-label')].map(
+        (l) => l.textContent,
+      );
+      expect(labels).toContain('Imported (current)');
     });
   });
 });

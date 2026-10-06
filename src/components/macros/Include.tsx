@@ -3,7 +3,7 @@ import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
-import { isWhitespace, topLevelIndices } from './arg-utils';
+import { endsWithOperator, isWhitespace, topLevelIndices } from './arg-utils';
 
 const FLAG = 'inline';
 
@@ -13,7 +13,7 @@ const FLAG = 'inline';
  * braces, separated by whitespace from the target expression, so passage
  * names and expressions containing the word stay intact (#201).
  */
-function parseIncludeArgs(rawArgs: string): {
+export function parseIncludeArgs(rawArgs: string): {
   nameExpr: string;
   inline: boolean;
 } {
@@ -32,19 +32,20 @@ function parseIncludeArgs(rawArgs: string): {
     last = [spaces[e]!, spaces[spaces.length - 1]! + 1];
   }
 
-  // Next to a binary operator the word is an operand (`"a" + inline`).
+  // Next to a binary operator the word is an operand (`"a" + inline`);
+  // the closing `/` of a regex literal is not one.
   if (
     last &&
     last[1] === trimmed.length - FLAG.length &&
     trimmed.endsWith(FLAG)
   ) {
     const rest = trimmed.slice(0, last[0]);
-    if (!/[-+*/%&|^!=<>?:,.]$/.test(rest))
-      return { nameExpr: rest, inline: true };
+    if (!endsWithOperator(rest)) return { nameExpr: rest, inline: true };
   }
   if (first && first[0] === FLAG.length && trimmed.startsWith(FLAG)) {
     const rest = trimmed.slice(first[1]);
-    if (!/^[-+*/%&|^=<>?:,.]/.test(rest))
+    // `inline %name` reads a transient variable; `inline % 2` is modulo.
+    if (!/^(?:[-+*/&|^=<>?:,.]|%(?![A-Za-z_]))/.test(rest))
       return { nameExpr: rest, inline: true };
   }
   return { nameExpr: trimmed, inline: false };

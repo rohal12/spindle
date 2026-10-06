@@ -1,5 +1,5 @@
 import { evaluate } from './expression';
-import { executeMutation, runWithCommittedMutations } from './execute-mutation';
+import { executeMutation, readState } from './execute-mutation';
 import { useStoryStore } from './store';
 
 export interface WatchOptions {
@@ -46,8 +46,9 @@ interface DialogHostCallbacks {
 }
 let dialogHostCallbacks: DialogHostCallbacks | null = null;
 
+/** A condition's value in program order (see readState). */
 function evalCondition(condition: string): boolean {
-  const state = useStoryStore.getState();
+  const state = readState();
   try {
     return !!evaluate(
       condition,
@@ -150,9 +151,9 @@ function fireTrigger(trigger: Trigger): void {
 
   if (options.goto) {
     // A watcher fired by a Story.set in running code navigates after that
-    // code's writes so far, so they are part of the moment it leaves.
-    const passage = options.goto;
-    runWithCommittedMutations(() => useStoryStore.getState().navigate(passage));
+    // code's writes so far, so they are part of the moment it leaves (the
+    // store commits them first).
+    useStoryStore.getState().navigate(options.goto);
   }
 }
 

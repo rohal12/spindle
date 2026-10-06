@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   registerAction,
+  updateAction,
   generateActionId,
   type ActionType,
   type StoryAction,
@@ -31,7 +32,7 @@ export function useAction(opts: UseActionOptions): string {
 
   const id = idRef.current;
 
-  useLayoutEffect(() => {
+  const buildAction = (): StoryAction => {
     const action: StoryAction = {
       id,
       type: opts.type,
@@ -43,10 +44,24 @@ export function useAction(opts: UseActionOptions): string {
     if (opts.options !== undefined) action.options = opts.options;
     if (opts.value !== undefined) action.value = opts.value;
     if (opts.disabled !== undefined) action.disabled = opts.disabled;
+    return action;
+  };
 
-    return registerAction(action);
+  // Registered for the component's lifetime.
+  useLayoutEffect(() => registerAction(buildAction()), [id]);
+
+  // When what the action exposes changes (e.g. an input's value), replace it
+  // in place: one `actionsChanged` notification, and it keeps its position in
+  // getActions(). Unregistering and registering again would notify twice and
+  // move it to the end.
+  const registered = useRef(false);
+  useLayoutEffect(() => {
+    if (!registered.current) {
+      registered.current = true; // the registration above is current
+      return;
+    }
+    updateAction(buildAction());
   }, [
-    id,
     opts.type,
     opts.label,
     opts.target,

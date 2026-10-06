@@ -22,6 +22,7 @@ import {
 } from '../../saves/save-manager';
 import { DialogCloseContext } from '../PassageDialog';
 import { defineMacro } from '../../define-macro';
+import { errorMessage } from '../../utils/error-message';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -84,15 +85,25 @@ export function SaveManagerContent() {
     }
   }, [renamingId]);
 
+  // Actions are async and may finish after the manager closed: once
+  // unmounted, no status is shown and no timer is left behind.
+  const mounted = useRef(true);
   const statusTimer = useRef<number>();
+  const closeTimer = useRef<number>();
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
+    if (!mounted.current) return;
     clearTimeout(statusTimer.current);
     setStatus({ text, type });
     statusTimer.current = window.setTimeout(() => setStatus(null), 3000);
   };
 
   useEffect(() => {
-    return () => clearTimeout(statusTimer.current);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(statusTimer.current);
+      clearTimeout(closeTimer.current);
+    };
   }, []);
 
   const toggleCollapse = (id: string) => {
@@ -142,10 +153,19 @@ export function SaveManagerContent() {
 
   const handleLoad = async (save: SaveRecord) => {
     try {
-      // Stored records hold serialized variables; the store expects live ones
-      loadFromPayload(deserializePayload(save.payload));
+      // Stored records hold serialized variables; the store expects live
+      // ones. The game moves to the save's playthrough.
+      loadFromPayload(
+        deserializePayload(save.payload),
+        undefined,
+        save.meta.playthroughId,
+      );
       showStatus('Game loaded');
-      if (closeDialog) setTimeout(closeDialog, 500);
+      if (closeDialog) {
+        closeTimer.current = window.setTimeout(closeDialog, 500);
+      }
+      // A playthrough deleted since the list was read is recorded again
+      await refresh();
     } catch {
       showStatus('Failed to load save', 'error');
     }
@@ -229,10 +249,7 @@ export function SaveManagerContent() {
       showStatus('Save imported');
       await refresh();
     } catch (err) {
-      showStatus(
-        err instanceof Error ? err.message : 'Failed to import save',
-        'error',
-      );
+      showStatus(errorMessage(err, 'Failed to import save'), 'error');
     }
   };
 

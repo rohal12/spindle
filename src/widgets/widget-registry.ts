@@ -1,4 +1,5 @@
 import type { ASTNode } from '../markup/ast';
+import { checkVariableName } from '../utils/namespace';
 
 interface WidgetEntry {
   body: ASTNode[];
@@ -8,6 +9,11 @@ interface WidgetEntry {
 
 const widgets = new Map<string, WidgetEntry>();
 
+/**
+ * Register a widget. Its `@` parameters become locals of its body, so one
+ * that no namespace can hold (`@__proto__`) throws a TypeError and the
+ * widget is not registered.
+ */
 export function registerWidget(
   name: string,
   bodyAST: ASTNode[],
@@ -15,6 +21,9 @@ export function registerWidget(
   isBlock = false,
 ): void {
   const filteredParams = params.filter((p) => p !== '@children');
+  for (const param of filteredParams) {
+    if (param.startsWith('@')) checkVariableName(param.slice(1), param);
+  }
   widgets.set(name.toLowerCase(), {
     body: bodyAST,
     params: filteredParams,

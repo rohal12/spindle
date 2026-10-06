@@ -1,5 +1,9 @@
 import type { Passage } from './parser';
-import { tokenize } from './markup/tokenizer';
+import { tokenize, type Token } from './markup/tokenizer';
+import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
+import { errorMessage } from './utils/error-message';
+import { lexJs, scanStringLiteral, type JsGoal } from './js-lexer';
+import { createNamespace, RESERVED_NAME } from './utils/namespace';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -17,9 +21,8 @@ function declarationRegex(sigil: string): RegExp {
   const escaped = sigil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
 }
-const VAR_REF_RE = /\$(\w+(?:\.\w+)*)/g;
-/** `{` followed by a sigil starts an interpolation block inside literal text. */
-const INTERP_START_RE = /^[$_@%]\w/;
+/** A `$name` reference with its dot path, at a `$` the lexer found. */
+const VAR_PATH_RE = /\$(\w+(?:\.\w+)*)/y;
 /** Quoted first argument of an input macro naming a story variable. */
 const QUOTED_VAR_ARG_RE = /^["']\$(\w+(?:\.\w+)*)["']?$/;
 const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
@@ -77,12 +80,17 @@ export function parseStoryVariables(
     }
 
     const [, name, expr] = match as [string, string, string];
+    if (name === RESERVED_NAME) {
+      throw new Error(
+        `${passageName}: "${sigil}${name}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`,
+      );
+    }
     let value: unknown;
     try {
       value = new Function('return (' + expr + ')')();
     } catch (err) {
       throw new Error(
-        `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${err instanceof Error ? err.message : err}`,
+        `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${errorMessage(err)}`,
       );
     }
 
@@ -90,9 +98,7 @@ export function parseStoryVariables(
     try {
       fieldSchema = inferSchema(value);
     } catch (err) {
-      throw new Error(
-        `${passageName}: ${err instanceof Error ? err.message : err}`,
-      );
+      throw new Error(`${passageName}: ${errorMessage(err)}`);
     }
     schema.set(name, { ...fieldSchema, name, default: value });
   }
@@ -127,6 +133,10 @@ function validateRef(
 ): string | null {
   const parts = ref.split('.');
   const rootName = parts[0]!;
+
+  if (rootName === RESERVED_NAME) {
+    return `"$${rootName}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`;
+  }
 
   // Skip for-loop locals
   if (forLocals.has(rootName)) return null;
@@ -187,107 +197,81 @@ const BUILTIN_STORE_VAR_MACROS: readonly string[] = [
 
 type RefCallback = (ref: string) => void;
 
-/** Report every `$var.path` in a code segment free of strings/comments. */
-function scanRefs(segment: string, onRef: RefCallback): void {
-  for (const match of segment.matchAll(VAR_REF_RE)) onRef(match[1]!);
-}
-
-/** Index of the quote closing the string opened at `start` (or the end). */
-function findClosingQuote(code: string, start: number): number {
-  const quote = code[start];
-  let i = start + 1;
-  while (i < code.length && code[i] !== quote) {
-    i += code[i] === '\\' ? 2 : 1;
-  }
-  return Math.min(i, code.length);
-}
+const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
 /**
- * Scan literal text (string contents, HTML attribute values) for `{$…}`
- * interpolation blocks, which interpolating macros and HTML attributes
- * resolve at runtime. A bare `$word` in literal text is not a reference.
+ * Scan the value of a code attribute (`onclick`, see isCodeAttribute) for
+ * the `{$…}` references resolved in it; its other braces are code.
  */
-function scanInterpolations(text: string, onRef: RefCallback): void {
-  let i = text.indexOf('{');
-  while (i !== -1) {
-    const next = INTERP_START_RE.test(text.slice(i + 1, i + 3))
-      ? scanCode(text, i + 1, onRef, true)
-      : i + 1;
-    i = text.indexOf('{', next);
+function scanSigilReferences(value: string, onRef: RefCallback): void {
+  for (const part of splitSigilTemplate(value)) {
+    if ('expr' in part) scanCode(part.expr, onRef);
   }
 }
 
 /**
- * Scan a template literal starting just after its opening backtick: literal
- * parts are text, `${…}` parts are code. Returns the index just past the
- * closing backtick.
+ * Scan literal text (string contents, HTML attribute values) for the markup
+ * that labels and HTML attributes evaluate at runtime: `{$…}` displays,
+ * expressions and macros, read as in passage text. A bare `$word` in
+ * literal text is not a reference.
  */
-function scanTemplate(code: string, start: number, onRef: RefCallback): number {
-  let i = start;
-  let textStart = start;
-  while (i < code.length) {
-    const ch = code[i];
-    if (ch === '\\') {
-      i += 2;
-    } else if (ch === '`') {
-      scanInterpolations(code.slice(textStart, i), onRef);
-      return i + 1;
-    } else if (ch === '$' && code[i + 1] === '{') {
-      scanInterpolations(code.slice(textStart, i), onRef);
-      i = textStart = scanCode(code, i + 2, onRef, true);
-    } else {
-      i++;
-    }
-  }
-  scanInterpolations(code.slice(textStart), onRef);
-  return code.length;
+function scanInterpolations(
+  text: string,
+  onRef: RefCallback,
+  storeVarMacros: ReadonlySet<string> = NO_STORE_VAR_MACROS,
+): void {
+  if (!text.includes('{')) return;
+  collectTokenRefs(text, tokenize(text, { text: true }), storeVarMacros, onRef);
 }
 
 /**
- * Report `$var` references in JavaScript code. Like the string-aware
- * expression transformer, sigils inside string literals are left alone while
- * template-literal `${…}` parts are code; comments are skipped too. When
- * `nested`, stops at the `}` closing the enclosing block and returns the index
- * just past it.
+ * Report `$var` references in JavaScript code, lexed as the expression
+ * engine lexes it (`lexJs`): references in code, but none inside string or
+ * regex literals or comments, nor property names (`a.$b`, `{ $b: 1 }`).
+ * The text of string and template literals is scanned for the markup that
+ * labels evaluate (`{$…}`); the `${…}` parts of template literals are code.
  */
 function scanCode(
   code: string,
-  start: number,
   onRef: RefCallback,
-  nested = false,
-): number {
-  let i = start;
-  let segStart = start;
-  let depth = 0;
-  while (i < code.length) {
-    const ch = code[i];
-    const next = code[i + 1];
-    const isComment = ch === '/' && (next === '/' || next === '*');
-    if (ch === '"' || ch === "'" || ch === '`' || isComment) {
-      scanRefs(code.slice(segStart, i), onRef);
-      if (ch === '`') {
-        i = scanTemplate(code, i + 1, onRef);
-      } else if (isComment) {
-        const close = code.indexOf(next === '/' ? '\n' : '*/', i + 2);
-        i = close === -1 ? code.length : next === '/' ? close : close + 2;
-      } else {
-        const close = findClosingQuote(code, i);
-        scanInterpolations(code.slice(i + 1, close), onRef);
-        i = Math.min(close + 1, code.length);
-      }
-      segStart = i;
-      continue;
-    }
-    if (nested && ch === '{') {
-      depth++;
-    } else if (nested && ch === '}' && depth-- === 0) {
-      scanRefs(code.slice(segStart, i), onRef);
-      return i + 1;
-    }
-    i++;
-  }
-  scanRefs(code.slice(segStart), onRef);
-  return code.length;
+  goal: JsGoal = 'expression',
+): void {
+  /** Open template literals: their text so far, null in an interpolation. */
+  const templates: { nesting: number; text: string | null }[] = [];
+  lexJs(
+    code,
+    {
+      variable(sigil, _name, index) {
+        if (sigil !== '$') return;
+        VAR_PATH_RE.lastIndex = index;
+        onRef(VAR_PATH_RE.exec(code)![1]!);
+      },
+      literal(text, _index, nesting) {
+        const template = templates[templates.length - 1];
+        if (template?.nesting === nesting) {
+          if (template.text === null) {
+            // The `}` ending an interpolation: back to the template's text
+            template.text = '';
+          } else if (text === '`' || text === '${') {
+            scanInterpolations(template.text, onRef);
+            if (text === '`') templates.pop();
+            else template.text = null;
+          } else {
+            template.text += text;
+          }
+        } else if (text === '`') {
+          templates.push({ nesting, text: '' });
+        } else if (text[0] === '"' || text[0] === "'") {
+          const { closed } = scanStringLiteral(text, 0);
+          scanInterpolations(text.slice(1, closed ? -1 : undefined), onRef);
+        }
+        // Regex literals and comments hold no references
+      },
+    },
+    goal,
+  );
+  // An unterminated template literal's text
+  for (const t of templates) if (t.text) scanInterpolations(t.text, onRef);
 }
 
 /**
@@ -301,19 +285,29 @@ function collectPassageRefs(
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
 ): void {
-  const tokens = tokenize(content);
+  collectTokenRefs(content, tokenize(content), storeVarMacros, onRef);
+}
+
+/** Report the `$var` references in the tokens of `content`. */
+function collectTokenRefs(
+  content: string,
+  tokens: Token[],
+  storeVarMacros: ReadonlySet<string>,
+  onRef: RefCallback,
+): void {
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
     if (token.type === 'variable') {
       if (token.scope === 'variable' && token.name) onRef(token.name);
     } else if (token.type === 'expression') {
-      scanCode(token.expression, 0, onRef);
+      scanCode(token.expression, onRef);
     } else if (token.type === 'html') {
-      for (const value of Object.values(token.attributes)) {
-        scanInterpolations(value, onRef);
+      for (const [name, value] of Object.entries(token.attributes)) {
+        if (isCodeAttribute(name)) scanSigilReferences(value, onRef);
+        else scanInterpolations(value, onRef, storeVarMacros);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanCode(token.rawArgs, 0, onRef);
+      scanCode(token.rawArgs, onRef);
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
@@ -331,7 +325,8 @@ function collectPassageRefs(
           close++;
         }
         if (close < tokens.length) {
-          scanCode(content.slice(token.end, tokens[close]!.start), 0, onRef);
+          const body = content.slice(token.end, tokens[close]!.start);
+          scanCode(body, onRef, 'statements');
           t = close;
         }
       }
@@ -374,12 +369,13 @@ export function validatePassages(
 }
 
 /**
- * Extract default values from the schema as a plain object.
+ * Extract default values from the schema as a record without a prototype,
+ * like the namespaces it initializes (see utils/namespace.ts).
  */
 export function extractDefaults(
   schema: Map<string, VariableSchema>,
 ): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
+  const defaults = createNamespace();
   for (const [name, varSchema] of schema) {
     defaults[name] = varSchema.default;
   }

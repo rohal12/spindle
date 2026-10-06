@@ -289,7 +289,7 @@ describe('compiled story e2e', () => {
         const match = (await page.textContent('.passage'))!.match(
           /Count: (\d+)/,
         );
-        return match ? parseInt(match[1]) : -1;
+        return match ? parseInt(match[1]!) : -1;
       };
 
       expect(await getCount()).toBe(0);

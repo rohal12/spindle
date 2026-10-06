@@ -47,7 +47,7 @@ export function executeStoryInit() {
     document.body.appendChild(container);
     storyInitContainer = container;
     render(
-      h(() => renderNodes(ast) as any, null),
+      h(() => renderNodes(ast), null),
       container,
     );
 

@@ -27,6 +27,8 @@ Set one or more story variables. As with `Story.get()`, a leading `$` is optiona
 {/do}
 ```
 
+A dot path such as `Story.set("player.stats.str", 5)` goes through objects, class instances and array indices (`"inventory.0"`). A path through a missing object throws a `TypeError`. So does a write into a Map, Set, Date or RegExp, to a non-index key of an array, or through `__proto__`, since such a property would be lost on the next save. A variable named `__proto__` throws a `TypeError` in `Story.get()` and `Story.set()` alike (see [Variable Names](variables.md#variable-names)); names such as `constructor` or `toString` are ordinary variables.
+
 Writing a variable that is not declared in `StoryVariables` (or a `%` transient not declared in `StoryTransients`) still works, but logs a console warning once per name: passages cannot reference such a variable, so it is usually a typo. For dot-paths only the root name is checked.
 
 #### Transient variables
@@ -60,6 +62,10 @@ Navigate to a passage.
 ```
 
 Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
+
+The same holds for everything else running code sets off: a `{link}`, `{button}`, input or menubar action it performs with `Story.performAction()` (or a click or input event it dispatches), and the `{set}`, `{unset}`, `{computed}` and `{goto}` in a link or button body that runs. Their writes take effect at that point, as if the code had made them: the code reads them next, and a later write of the code's own wins over them, while one made before them does not.
+
+Watchers, `variableChanged` handlers and anything else reading story state while the code runs see the state at that point in the code: before such a write reaches the story, the code's own assignments so far do (and stay, even if the code throws afterwards). In `{do}$a = 1; Story.set("b", 2){/do}`, `variableChanged` reports the change of `$a` and then that of `$b`, and a handler of the latter reads `$a` as 1. A `Story.watch()` called by the code starts from the code's state.
 
 ### `Story.back()`
 
@@ -250,6 +256,8 @@ await Story.save('slot-2');
 renderSlots(await Story.listSaves()); // includes slot-2
 ```
 
+Save operations (`save`, `load`, `deleteSave`, `getSaveInfo`, `listSaves`, `exportSave`, `importSave` and `Story.storage`'s) take effect in the order they are called, whether or not their promises are awaited: `Story.save('a'); Story.deleteSave('a');` leaves slot `a` empty, and a `load()` called after a `save()` loads that save.
+
 ### `Story.load(slot?)`
 
 Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage, plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
@@ -259,7 +267,11 @@ Story.load(); // load from default slot
 Story.load('my-slot'); // load from named slot
 ```
 
-Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails.
+Loading moves the game to the playthrough of the loaded save, so saves made afterwards are grouped with it (no change if the save belongs to the current playthrough). The switch takes effect in call order: `Story.load('a'); Story.save('b');` puts `b` in the playthrough of the save in `a`. See [Playthroughs](saves.md#playthroughs).
+
+Returns a `Promise<void>` that resolves once the loaded state is applied (immediately, with nothing changed, if the slot is empty) and rejects if loading fails. A restart called after `load()` (before the save has been read) wins over it: the promise then resolves without loading, and no `beforeload`/`afterload` events fire.
+
+Inside running code, `Story.load()` takes its place among the save operations at the call, like `Story.save()` (the code's writes so far are applied first), but the loaded state replaces the game once the save has been read, after the code has finished.
 
 ### `Story.hasSave(slot?)`
 
@@ -612,7 +624,9 @@ Story.on('variableChanged', function (changed) {
 
 // Loading a game: `slot` is the named slot passed to Story.load(slot),
 // or undefined for the default slot, the saves dialog, and session
-// restore after a page refresh
+// restore after a page refresh. A save made in `beforeload` belongs to
+// the playthrough being left; when `afterload` fires, the game is in the
+// loaded save's playthrough
 Story.on('beforeload', function (slot) {
   console.log('Loading ' + (slot || 'game'));
 });
@@ -789,6 +803,8 @@ Configuration options for the story engine.
 #### `Story.config.maxHistory`
 
 Get or set the maximum number of history moments to keep. Oldest entries are discarded when the limit is exceeded. Default: `40`.
+
+Lowering the limit takes effect at once: history keeps the newest moments that include the current one, so `Story.back()` can't go further back than the new limit allows (if the player had gone back further than that, the moments after the newest kept one are dropped too). The session autosave is updated with the trimmed history, and a save made under a higher limit is trimmed when loaded. Raising the limit doesn't change history.
 
 ```
 {do}

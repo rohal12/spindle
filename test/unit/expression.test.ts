@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { evaluate, execute, clearExpressionCache } from '../../src/expression';
+import {
+  evaluate,
+  execute,
+  clearExpressionCache,
+  transform,
+} from '../../src/expression';
 import { executeMutation } from '../../src/execute-mutation';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
@@ -626,6 +631,16 @@ describe('regex literals (#217)', () => {
     expect(evaluate('%a /%b/ 2', {}, {}, {}, { a: 12, b: 3 })).toBe(2);
     expect(evaluate('_i++ /_b/ 1', {}, { i: 12, b: 3 })).toBe(4);
   });
+
+  it('treats a slash after an object literal as division', () => {
+    // Shrunk from a property-test counterexample: the `/` after `-{}` opened
+    // a regex that swallowed `$obj`, which was then left untransformed.
+    expect(evaluate('[-{}/-[], "k" in $obj]', { obj: { k: 1 } }, {})).toEqual([
+      NaN,
+      true,
+    ]);
+    expect(evaluate('`${ {} / 2 }` + _t', {}, { t: '!' })).toBe('NaN!');
+  });
 });
 
 describe('modulo across newlines and postfix operators (#218)', () => {
@@ -676,5 +691,146 @@ describe('modulo across newlines and postfix operators (#218)', () => {
     execute('$x = 5\n%a = 1\n$y = 2\n%b += 3', vars, {}, {}, trans);
     expect(vars).toEqual({ x: 5, y: 2 });
     expect(trans).toEqual({ a: 1, b: 3 });
+  });
+});
+
+describe('sigils only where an identifier starts (property tests)', () => {
+  it('leaves `$` and `_` inside identifiers alone', () => {
+    expect(evaluate('((a$b, ñ_x) => a$b + ñ_x)(1, 2)', {}, {})).toBe(3);
+    expect(evaluate('((x_1, café_y) => x_1 + café_y)(1, 2)', {}, {})).toBe(3);
+  });
+
+  it('reads names that start with an underscore', () => {
+    expect(evaluate('$_x', { _x: 5 }, {})).toBe(5);
+    expect(evaluate('@_x', {}, {}, { _x: 6 })).toBe(6);
+    expect(evaluate('__a', {}, { _a: 2 })).toBe(2);
+  });
+
+  it('transforms a spread temporary', () => {
+    expect(evaluate('[..._a, ...$b]', { b: [3] }, { a: [1, 2] })).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it('leaves property names alone, wherever the dot is', () => {
+    const o = { _s: 1, $s: 2 };
+    expect(evaluate('$o. _s + $o./* c */_s + $o.\n_s', { o }, {})).toBe(3);
+    expect(evaluate('$o.$s + $o?._s', { o, s: 'no' }, {})).toBe(3);
+  });
+
+  it('separates a keyword from the reference after it', () => {
+    expect(evaluate('typeof%a', {}, {}, {}, { a: 1 })).toBe('number');
+    expect(evaluate('typeof@a', {}, {}, { a: 'x' })).toBe('string');
+    expect(evaluate('"k" in@o', {}, {}, { o: { k: 1 } })).toBe(true);
+  });
+});
+
+describe('object literal keys and class members (property tests)', () => {
+  it('leaves sigil-like object keys alone', () => {
+    expect(evaluate('{ _id: 1, $k: 2 }', {}, {})).toEqual({ _id: 1, $k: 2 });
+    expect(evaluate('({ _m() { return 3 } })._m()', {}, {})).toBe(3);
+    expect(evaluate('({ get _x() { return _y } })._x', {}, { y: 4 })).toBe(4);
+    expect(evaluate('{ *_g() {}, async _h() {} }._g.name', {}, {})).toBe('_g');
+  });
+
+  it('still transforms references in keys and values', () => {
+    expect(
+      evaluate('{ [_k]: $v, _x: _x }', { v: 1 }, { k: 'a', x: 2 }),
+    ).toEqual({ a: 1, _x: 2 });
+  });
+
+  it('reads destructuring pattern keys as keys', () => {
+    const vars: Record<string, unknown> = { o: { _a: 3 } };
+    execute('const { _a: x } = $o; $r = x', vars, {});
+    expect(vars.r).toBe(3);
+  });
+
+  it('leaves class member names alone', () => {
+    const vars: Record<string, unknown> = {};
+    execute(
+      'class P {\n' +
+        '  _hp = 1\n' +
+        '  static _n = 2;\n' +
+        '  #_p = 3\n' +
+        '  _heal(n) { this._hp += n + this.#_p; return this }\n' +
+        '  get _dead() { return this._hp <= 0 }\n' +
+        '}\n' +
+        '$hp = new P()._heal(_n)._hp; $dead = new P()._dead; $n = P._n',
+      vars,
+      { n: 10 },
+    );
+    expect(vars).toEqual({ hp: 14, dead: false, n: 2 });
+  });
+
+  it('continues a class field initializer over a line break', () => {
+    const vars: Record<string, unknown> = {};
+    execute('class C { _x = $a\ninstanceof Array }\n$r = new C()._x', vars, {});
+    expect(vars.r).toBe(false);
+  });
+});
+
+describe('division and modulo after closing braces (property tests)', () => {
+  it('divides after an object literal', () => {
+    expect(evaluate('[{} / $x / 1]', { x: 2 }, {})).toEqual([NaN]);
+  });
+
+  it('divides after a function or class expression', () => {
+    expect(evaluate('String(function () {} / $x / 1)', { x: 2 }, {})).toBe(
+      'NaN',
+    );
+    expect(evaluate('[class {} / $x / 1]', { x: 2 }, {})).toEqual([NaN]);
+  });
+
+  it('starts a statement after a function declaration', () => {
+    const trans: Record<string, unknown> = {};
+    execute('$x = ""\nfunction f() {} %a = 1', {}, {}, {}, trans);
+    expect(trans.a).toBe(1);
+  });
+
+  it('ends a return statement at a line break', () => {
+    expect(transform('return\nfunction f() {}\n++%a', 'statements')).toBe(
+      'return\nfunction f() {}\n++transient["a"]',
+    );
+  });
+
+  it('reads `of` as an identifier outside a for-of header', () => {
+    expect(evaluate('((of) => of / $x / 1)(8)', { x: 2 }, {})).toBe(4);
+    const vars: Record<string, unknown> = {};
+    execute('$r = []; for (const of of /a/.exec("a")) $r.push(of)', vars, {});
+    expect(vars.r).toEqual(['a']);
+  });
+
+  it('divides after a unicode identifier', () => {
+    expect(evaluate('((é) => é / $x / 1)(6)', { x: 2 }, {})).toBe(3);
+  });
+});
+
+describe('line terminators (property tests)', () => {
+  it('ends a line comment at \\r, U+2028 and U+2029', () => {
+    expect(evaluate('1 // c\r+ $x', { x: 2 }, {})).toBe(3);
+    expect(evaluate('1 // c\u2028+ $x', { x: 2 }, {})).toBe(3);
+    expect(evaluate('1 // c\u2029+ $x', { x: 2 }, {})).toBe(3);
+  });
+
+  it('treats \\r as a line break before a %transient assignment', () => {
+    const trans: Record<string, unknown> = {};
+    execute('$x = 5\r%a = 1', {}, {}, {}, trans);
+    expect(trans.a).toBe(1);
+  });
+});
+
+describe('%transient assignments starting a line (property tests)', () => {
+  it('assigns through an index', () => {
+    const vars: Record<string, unknown> = {};
+    const trans: Record<string, unknown> = { a: [0, 0] };
+    execute('$x = 5\n%a[$x - 4] = 1', vars, {}, {}, trans);
+    expect(vars.x).toBe(5);
+    expect(trans.a).toEqual([0, 1]);
+  });
+
+  it('assigns through a property behind a comment', () => {
+    const trans: Record<string, unknown> = { a: {} };
+    execute('$x = 5\n%a /* c */ .b = 1', {}, {}, {}, trans);
+    expect(trans.a).toEqual({ b: 1 });
   });
 });

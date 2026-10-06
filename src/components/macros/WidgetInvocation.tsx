@@ -11,87 +11,26 @@ import {
   NobrContext,
   InlineContext,
   WidgetChildrenContext,
+  RawTextContext,
   renderNodes,
 } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
-import { isWhitespace, splitTopLevel } from './arg-utils';
+import { splitArgs } from './arg-utils';
+import {
+  checkVariableName,
+  createNamespace,
+  withEntry,
+} from '../../utils/namespace';
+
+export { splitArgs };
 
 interface WidgetInvocationProps {
   body: ASTNode[];
   params: string[];
   rawArgs?: string;
   invocationChildren?: ASTNode[];
-}
-
-/**
- * Check whether a whitespace-delimited token looks like a standalone value
- * (not an operator or partial expression).
- */
-function isStandaloneValue(token: string): boolean {
-  const first = token[0]!;
-  // Quoted string
-  if (first === '"' || first === "'" || first === '`') return true;
-  // Variable ($var, _var, @var)
-  if (first === '$' || first === '_' || first === '@' || first === '%')
-    return true;
-  // Number literal
-  if (/\d/.test(first)) return true;
-  // Signed number (-1, +2)
-  if (
-    (first === '-' || first === '+') &&
-    token.length > 1 &&
-    /\d/.test(token[1]!)
-  )
-    return true;
-  // Grouped expression or collection literal
-  if (first === '(' || first === '[' || first === '{') return true;
-  // Boolean / null / undefined
-  if (/^(true|false|null|undefined)$/.test(token)) return true;
-  // Negation (!$flag, !true)
-  if (first === '!' && token.length > 1) return true;
-  return false;
-}
-
-/**
- * Try to split a raw string on whitespace at depth 0 (respecting strings,
- * template literals, parentheses, brackets, and braces). Each resulting token
- * must pass `isStandaloneValue()` or the split is rejected and `null` is
- * returned.
- */
-function trySplitOnWhitespace(raw: string): string[] | null {
-  const args = splitTopLevel(raw, isWhitespace).filter(Boolean);
-
-  // Need 2+ tokens
-  if (args.length < 2) return null;
-
-  // Every token must be a standalone value (not an operator)
-  for (const arg of args) {
-    if (!isStandaloneValue(arg)) return null;
-  }
-
-  return args;
-}
-
-/**
- * Split rawArgs by commas, respecting parentheses, brackets, braces, and
- * strings. When no top-level commas are present, also supports adjacent quoted
- * string literals separated by whitespace (e.g. `"Label" "target"`).
- */
-export function splitArgs(raw: string): string[] {
-  const args = splitTopLevel(raw, (ch) => ch === ',').map((a) => a.trim());
-  const hasComma = args.length > 1;
-  if (args[args.length - 1] === '') args.pop();
-
-  // If no commas were found and we got a single expression, try splitting
-  // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
-  if (!hasComma && args.length === 1) {
-    const split = trySplitOnWhitespace(args[0]!);
-    if (split) return split;
-  }
-
-  return args;
 }
 
 function WidgetBody({
@@ -105,12 +44,13 @@ function WidgetBody({
 }) {
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
     {},
   );
 
   const localState = useMemo(
-    () => ({ ...parentValues, ...ownKeys, ...localMutations }),
+    () => createNamespace(parentValues, ownKeys, localMutations),
     [parentValues, ownKeys, localMutations],
   );
 
@@ -122,7 +62,8 @@ function WidgetBody({
     // Apply synchronously so later macros in the same render pass (e.g. a
     // second {set}) read the new value via getValues(); the state update
     // then re-renders consumers of LocalsValuesContext.
-    valuesRef.current = { ...valuesRef.current, [key]: value };
+    checkVariableName(key, `@${key}`);
+    valuesRef.current = withEntry(valuesRef.current, key, value);
     setLocalMutations((prev) => ({ ...prev, [key]: value }));
   }, []);
   const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
@@ -130,7 +71,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, { nobr, inline, locals: localState })}
+        {renderNodes(body, { nobr, inline, raw, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -145,6 +86,7 @@ export function WidgetInvocation({
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
   const inline = useContext(InlineContext);
+  const raw = useContext(RawTextContext);
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -155,7 +97,7 @@ export function WidgetInvocation({
   if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
-        {renderNodes(body, { nobr, inline, locals: parentValues })}
+        {renderNodes(body, { nobr, inline, raw, locals: parentValues })}
       </WidgetChildrenContext.Provider>
     );
   }
@@ -183,7 +125,7 @@ export function WidgetInvocation({
   }
 
   const ownKeys = useMemo(() => {
-    const keys: Record<string, unknown> = {};
+    const keys = createNamespace();
     for (let i = 0; i < params.length; i++) {
       keys[params[i]!.startsWith('@') ? params[i]!.slice(1) : params[i]!] =
         values[i];
