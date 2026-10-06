@@ -8,7 +8,7 @@ import {
 import { tokenize } from '../markup/tokenizer';
 import { buildAST, type ASTNode } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
-import { useStoryStore } from '../store';
+import { useStoryFields } from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
@@ -40,6 +40,21 @@ export function renderPassageContent(passage: PassageData) {
   return renderNodes(ast, nobr ? { nobr: true } : undefined);
 }
 
+/**
+ * The content of a special passage shown with every passage (PassageHeader,
+ * PassageFooter, PassageDone), or null. One that fails to render is logged
+ * and left out, so it can't take the passage down with it.
+ */
+function renderSpecialPassage(passage: PassageData | undefined) {
+  if (!passage) return null;
+  try {
+    return renderPassageContent(passage);
+  } catch (err) {
+    console.error(`spindle: Error in ${passage.name}:`, err);
+    return null;
+  }
+}
+
 interface PassageProps {
   passage: PassageData;
   dataTransition?: string;
@@ -59,7 +74,7 @@ export function Passage({
   dataTransition,
   navigationId,
 }: PassageProps) {
-  const storyData = useStoryStore((s) => s.storyData);
+  const { storyData } = useStoryFields('storyData');
   const isCodePassage = CODE_PASSAGES.has(passage.name);
   const [doneReady, setDoneReady] = useState(false);
 
@@ -76,35 +91,21 @@ export function Passage({
     }
   }, [passage.content, passage.name]);
 
-  const headerPassage = isCodePassage
-    ? undefined
-    : storyData?.passages.get('PassageHeader');
-  const footerPassage = isCodePassage
-    ? undefined
-    : storyData?.passages.get('PassageFooter');
-  const donePassage = isCodePassage
-    ? undefined
-    : storyData?.passages.get('PassageDone');
+  // Code passages are shown without the special passages
+  const special = (name: string) =>
+    isCodePassage ? undefined : storyData?.passages.get(name);
+  const headerPassage = special('PassageHeader');
+  const footerPassage = special('PassageFooter');
+  const donePassage = special('PassageDone');
 
-  const headerContent = useMemo(() => {
-    if (!headerPassage) return null;
-    try {
-      return renderPassageContent(headerPassage);
-    } catch (err) {
-      console.error('spindle: Error in PassageHeader:', err);
-      return null;
-    }
-  }, [headerPassage?.content]);
-
-  const footerContent = useMemo(() => {
-    if (!footerPassage) return null;
-    try {
-      return renderPassageContent(footerPassage);
-    } catch (err) {
-      console.error('spindle: Error in PassageFooter:', err);
-      return null;
-    }
-  }, [footerPassage?.content]);
+  const headerContent = useMemo(
+    () => renderSpecialPassage(headerPassage),
+    [headerPassage?.content],
+  );
+  const footerContent = useMemo(
+    () => renderSpecialPassage(footerPassage),
+    [footerPassage?.content],
+  );
 
   // Defer PassageDone to after DOM commit
   useEffect(() => {
@@ -112,15 +113,10 @@ export function Passage({
     return () => setDoneReady(false);
   }, [passage.name]);
 
-  const doneContent = useMemo(() => {
-    if (!doneReady || !donePassage) return null;
-    try {
-      return renderPassageContent(donePassage);
-    } catch (err) {
-      console.error('spindle: Error in PassageDone:', err);
-      return null;
-    }
-  }, [doneReady, donePassage?.content]);
+  const doneContent = useMemo(
+    () => (doneReady ? renderSpecialPassage(donePassage) : null),
+    [doneReady, donePassage?.content],
+  );
 
   // Signal that this passage's DOM is committed (after descendants' layout
   // effects, before paint). Runs once per mount: PassageDisplay keys the

@@ -12,7 +12,7 @@
   ],
   "duplicates": {
     "mode": "semantic",
-    "minTokens": 50,
+    "minTokens": 40,
     "minLines": 5
   }
 }

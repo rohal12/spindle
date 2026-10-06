@@ -1,10 +1,11 @@
 import { defineMacro } from '../../define-macro';
+import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
 defineMacro({
   name: 'cycle',
   block: true,
   storeVar: true,
-  parameters: [{ name: 'variable', type: 'variable', required: true }],
+  parameters: [VARIABLE_PARAMETER],
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 
@@ -16,14 +17,10 @@ defineMacro({
       ctx.setValue!(options[nextIndex]);
     };
 
-    ctx.useAction({
+    useVariableAction(ctx, {
       type: 'cycle',
-      key: `$${ctx.varName}`,
-      authorId: ctx.id,
       label: ctx.value == null ? options[0] || '' : String(ctx.value),
-      variable: ctx.varName,
       options,
-      value: ctx.value,
       perform: (v) => {
         if (v !== undefined) {
           ctx.setValue!(v);

@@ -29,6 +29,15 @@ export interface StoryAction {
   perform: (value?: unknown) => void;
 }
 
+/** The fields of a StoryAction that are left out when unset. */
+export const OPTIONAL_ACTION_FIELDS = [
+  'target',
+  'variable',
+  'options',
+  'value',
+  'disabled',
+] as const;
+
 /** A mounted control's hold on its action ID. */
 export interface ActionRegistration {
   /**

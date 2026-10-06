@@ -1,10 +1,6 @@
 // Class registry for preserving class instances across clone/save/load cycles.
 
-import { setOwn } from './structural';
-import { hasOwn } from './utils/namespace';
-
-// Copying and comparing story values live with the structural diff
-export { deepClone, deepEqual, type DeepCloneOptions } from './structural';
+import { hasOwn, setOwn } from './utils/namespace';
 
 type Constructor = new (...args: any[]) => any;
 

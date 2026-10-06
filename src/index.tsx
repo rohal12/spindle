@@ -19,9 +19,7 @@ import {
 import { getMacroRegistry } from './registry';
 import { tokenize } from './markup/tokenizer';
 import { buildAST, registerBlockMacro } from './markup/ast';
-import { registerWidget } from './widgets/widget-registry';
-import { astContainsChildren } from './widgets/ast-scanner';
-import { parseWidgetDef } from './components/macros/Widget';
+import { parseWidgetDef, registerWidgetDef } from './components/macros/Widget';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
@@ -174,23 +172,15 @@ export function boot() {
       const widgetAST = buildAST(widgetTokens);
       for (const node of widgetAST) {
         if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
-          const { name: widgetName, params } = parseWidgetDef(
-            node.rawArgs,
-            '$_@',
-          );
-          const children = node.children as ASTNode[];
-          const isBlock = astContainsChildren(children);
+          // Read and registered as the {widget} macro does
+          const def = parseWidgetDef(node.rawArgs);
           try {
-            registerWidget(widgetName, children, params, isBlock);
+            registerWidgetDef(def, node.children as ASTNode[]);
           } catch (err) {
             // As the {widget} macro refuses it: the others still register
             console.error(
-              `spindle: widget "${widgetName}" in passage "${passage.name}" was not registered: ${errorMessage(err)}`,
+              `spindle: widget "${def.name}" in passage "${passage.name}" was not registered: ${errorMessage(err)}`,
             );
-            continue;
-          }
-          if (isBlock) {
-            registerBlockMacro(widgetName);
           }
         }
       }

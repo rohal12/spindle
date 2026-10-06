@@ -4,25 +4,8 @@
 // what a change is.
 
 import { registeredClassName } from './class-registry';
-import { hasOwn } from './utils/namespace';
+import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-
-/**
- * Set an own enumerable property. A "__proto__" key is defined as an own
- * property (as JSON.parse does) instead of replacing the prototype.
- */
-export function setOwn(target: object, key: string, value: unknown): void {
-  if (key === '__proto__') {
-    Object.defineProperty(target, key, {
-      value,
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
-  } else {
-    (target as Record<string, unknown>)[key] = value;
-  }
-}
 
 // --- Deep Clone ---
 

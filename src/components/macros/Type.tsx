@@ -1,10 +1,11 @@
 import { defineMacro } from '../../define-macro';
+import { DELAY_PARAMETER } from './macro-args';
 
 defineMacro({
   name: 'type',
   block: true,
   interpolate: true,
-  parameters: [{ name: 'delay', type: 'delay', required: true }],
+  parameters: [DELAY_PARAMETER],
   render({ children = [] }, ctx) {
     const { useState, useEffect, useRef } = ctx.hooks;
     const speed = ctx.args.delay ?? 0;

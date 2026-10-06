@@ -49,6 +49,23 @@ export const ownValue = (
 ): unknown => (ns && hasOwn(ns, key) ? (ns as Namespace)[key] : undefined);
 
 /**
+ * Set an own enumerable property. A "__proto__" key is defined as an own
+ * property (as JSON.parse does) instead of replacing the prototype.
+ */
+export function setOwn(target: object, key: string, value: unknown): void {
+  if (key === '__proto__') {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  } else {
+    (target as Record<string, unknown>)[key] = value;
+  }
+}
+
+/**
  * A record with no prototype holding the own entries of `sources`, or only
  * those whose value passes `keep`.
  */

@@ -6,6 +6,7 @@ import {
   type Token,
   type VariableScope,
 } from './tokenizer';
+import { NameSet } from '../utils/macro-names';
 
 export interface TextNode {
   type: 'text';
@@ -51,7 +52,7 @@ export type ASTNode =
   | HtmlNode;
 
 /** Macros that require a closing tag and can contain children */
-const BLOCK_MACROS = new Set([
+const BLOCK_MACROS = new NameSet([
   'if',
   'for',
   'do',
@@ -70,12 +71,12 @@ const BLOCK_MACROS = new Set([
 
 /** Register a custom macro as a block macro so the AST builder nests children. */
 export function registerBlockMacro(name: string): void {
-  BLOCK_MACROS.add(name.toLowerCase());
+  BLOCK_MACROS.add(name);
 }
 
 /** Unregister a custom block macro (for test cleanup). */
 export function unregisterBlockMacro(name: string): void {
-  BLOCK_MACROS.delete(name.toLowerCase());
+  BLOCK_MACROS.delete(name);
 }
 
 /** Map from branch macro name → required parent macro name */

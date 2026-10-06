@@ -1,5 +1,5 @@
 import { useStoryStore, trackRuntimeUnsub } from './store';
-import type { VariableNamespaces } from './store';
+import type { StoryState, VariableNamespaces } from './store';
 import {
   on as emitterOn,
   emit,
@@ -24,7 +24,7 @@ import { registerClass } from './class-registry';
 import { frozenCopy, getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { changedNames, checkVariableName, ownValue } from './utils/namespace';
-import { countQueries, currentPassage, previousPassage } from './expression';
+import { historyQueries } from './expression';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -259,9 +259,15 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   }
 }
 
+/** A method calling the store action `name`, as the store holds it then. */
+function storeAction<K extends keyof StoryState>(name: K): StoryState[K] {
+  return ((...args: unknown[]) =>
+    (useStoryStore.getState()[name] as (...args: unknown[]) => unknown)(
+      ...args,
+    )) as StoryState[K];
+}
+
 function createStoryAPI(): StoryAPI {
-  const visits = countQueries(() => useStoryStore.getState().visitCounts);
-  const renders = countQueries(() => useStoryStore.getState().renderCounts);
   return {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
@@ -300,64 +306,23 @@ function createStoryAPI(): StoryAPI {
     // Called from running mutation code, these store actions commit the
     // code's writes so far before they record, replace or save state, and
     // the code goes on from the state they leave (see storyStateGuard).
-    goto(passageName: string): void {
-      useStoryStore.getState().navigate(passageName);
-    },
+    goto: storeAction('navigate'),
+    back: storeAction('goBack'),
+    forward: storeAction('goForward'),
+    restart: storeAction('restart'),
+    save: storeAction('save'),
+    load: storeAction('load'),
+    hasSave: storeAction('hasSave'),
+    getSaveInfo: storeAction('getSaveInfo'),
+    listSaves: storeAction('listSaves'),
+    deleteSave: storeAction('deleteSave'),
+    exportSave: storeAction('exportSave'),
+    importSave: storeAction('importSave'),
 
-    back(): void {
-      useStoryStore.getState().goBack();
-    },
-
-    forward(): void {
-      useStoryStore.getState().goForward();
-    },
-
-    restart(): void {
-      useStoryStore.getState().restart();
-    },
-
-    save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return useStoryStore.getState().save(slot, custom);
-    },
-
-    load(slot?: string): Promise<void> {
-      return useStoryStore.getState().load(slot);
-    },
-
-    hasSave(slot?: string): boolean {
-      return useStoryStore.getState().hasSave(slot);
-    },
-
-    getSaveInfo(slot?: string): Promise<SaveInfo | null> {
-      return useStoryStore.getState().getSaveInfo(slot);
-    },
-
-    listSaves(): Promise<SaveInfo[]> {
-      return useStoryStore.getState().listSaves();
-    },
-
-    deleteSave(slot?: string): Promise<void> {
-      return useStoryStore.getState().deleteSave(slot);
-    },
-
-    exportSave(slot?: string): Promise<SaveExport | null> {
-      return useStoryStore.getState().exportSave(slot);
-    },
-
-    importSave(data: unknown, slot?: string): Promise<SaveInfo> {
-      return useStoryStore.getState().importSave(data, slot);
-    },
-
-    visited: visits.count,
-    hasVisited: visits.has,
-    hasVisitedAny: visits.any,
-    hasVisitedAll: visits.all,
-    rendered: renders.count,
-    hasRendered: renders.has,
-    hasRenderedAny: renders.any,
-    hasRenderedAll: renders.all,
-    currentPassage,
-    previousPassage,
+    ...historyQueries(
+      () => useStoryStore.getState().visitCounts,
+      () => useStoryStore.getState().renderCounts,
+    ),
 
     get title(): string {
       return useStoryStore.getState().storyData?.name || '';
@@ -416,17 +381,9 @@ function createStoryAPI(): StoryAPI {
         return { usage: 0, quota: 0, estimateSupported: false };
       },
 
-      clearGameData(): Promise<void> {
-        return useStoryStore.getState().clearGameData();
-      },
-
-      clearAllData(): Promise<void> {
-        return useStoryStore.getState().clearAllData();
-      },
-
-      deletePlaythrough(playthroughId: string): Promise<void> {
-        return useStoryStore.getState().deletePlaythrough(playthroughId);
-      },
+      clearGameData: storeAction('clearGameData'),
+      clearAllData: storeAction('clearAllData'),
+      deletePlaythrough: storeAction('deletePlaythrough'),
 
       get backend() {
         return getBackendType();

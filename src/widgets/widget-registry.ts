@@ -1,5 +1,6 @@
 import type { ASTNode } from '../markup/ast';
 import { checkVariableName } from '../utils/namespace';
+import { NameMap } from '../utils/macro-names';
 
 interface WidgetEntry {
   body: ASTNode[];
@@ -7,7 +8,7 @@ interface WidgetEntry {
   isBlock: boolean;
 }
 
-const widgets = new Map<string, WidgetEntry>();
+const widgets = new NameMap<WidgetEntry>();
 
 /**
  * Register a widget. Its `@` parameters become locals of its body, so one
@@ -24,7 +25,7 @@ export function registerWidget(
   for (const param of filteredParams) {
     if (param.startsWith('@')) checkVariableName(param.slice(1), param);
   }
-  widgets.set(name.toLowerCase(), {
+  widgets.set(name, {
     body: bodyAST,
     params: filteredParams,
     isBlock,
@@ -32,11 +33,11 @@ export function registerWidget(
 }
 
 export function getWidget(name: string): WidgetEntry | undefined {
-  return widgets.get(name.toLowerCase());
+  return widgets.get(name);
 }
 
 export function isBlockWidget(name: string): boolean {
-  return widgets.get(name.toLowerCase())?.isBlock ?? false;
+  return widgets.get(name)?.isBlock ?? false;
 }
 
 export function clearWidgets(): void {

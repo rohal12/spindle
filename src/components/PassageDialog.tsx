@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
-import { useStoryStore } from '../store';
+import { useStoryFields } from '../hooks/use-story-fields';
 import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
 import { errorMessage } from '../utils/error-message';
@@ -38,7 +38,7 @@ export function PassageDialog({
   onCloseRef.current = onClose;
   const stableOnClose = useCallback(() => onCloseRef.current(), []);
 
-  const storyData = useStoryStore((s) => s.storyData);
+  const { storyData } = useStoryFields('storyData');
 
   const passage = passageName
     ? storyData?.passages.get(passageName)

@@ -588,12 +588,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 
 function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
-  const locals = useContext(LocalsValuesContext);
+  const renderOptions = useRenderOptions();
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals, inline, raw })}</>;
+  return <>{renderNodes(childrenAST, renderOptions)}</>;
 }
 
 /**
@@ -669,10 +666,7 @@ function renderSingleNode(node: ASTNode): preact.ComponentChildren {
       return (
         <VarDisplay
           key={key}
-          name={node.name}
-          scope={node.scope}
-          className={node.className}
-          id={node.id}
+          node={node}
         />
       );
 
@@ -680,9 +674,7 @@ function renderSingleNode(node: ASTNode): preact.ComponentChildren {
       return (
         <ExprDisplay
           key={key}
-          expression={node.expression}
-          className={node.className}
-          id={node.id}
+          node={node}
         />
       );
 

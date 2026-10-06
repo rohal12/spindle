@@ -1,21 +1,16 @@
 import { defineMacro } from '../../define-macro';
+import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
 defineMacro({
   name: 'checkbox',
   storeVar: true,
-  parameters: [
-    { name: 'variable', type: 'variable', required: true },
-    { name: 'label', type: 'text' },
-  ],
+  parameters: [VARIABLE_PARAMETER, { name: 'label', type: 'text' }],
   render(_props, ctx) {
     const label = ctx.args.label ?? '';
 
-    ctx.useAction({
+    useVariableAction(ctx, {
       type: 'checkbox',
-      key: `$${ctx.varName}`,
-      authorId: ctx.id,
       label: label || ctx.varName || '',
-      variable: ctx.varName,
       value: !!ctx.value,
       perform: (v) => ctx.setValue!(v !== undefined ? !!v : !ctx.value),
     });

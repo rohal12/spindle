@@ -1,5 +1,34 @@
 import { h } from 'preact';
-import { defineMacro } from '../../define-macro';
+import { defineMacro, type MacroContext } from '../../define-macro';
+import type { UseActionOptions } from '../../hooks/use-action';
+import { display } from './display';
+
+/** The story variable a `storeVar` macro binds: its first parameter. */
+export const VARIABLE_PARAMETER = {
+  name: 'variable',
+  type: 'variable',
+  required: true,
+} as const;
+
+/**
+ * Register the automation action of a macro bound to a story variable: keyed
+ * by the variable (or `key`), with the variable's value unless `action`
+ * gives another.
+ */
+export function useVariableAction(
+  ctx: Pick<MacroContext, 'useAction' | 'id' | 'varName' | 'value'>,
+  action: Omit<UseActionOptions, 'key' | 'authorId' | 'variable'> & {
+    key?: string;
+  },
+): string {
+  return ctx.useAction({
+    key: `$${ctx.varName}`,
+    authorId: ctx.id,
+    variable: ctx.varName,
+    value: ctx.value,
+    ...action,
+  });
+}
 
 /**
  * Define a text input macro, `{name $var "placeholder"}`: an `<input>` of
@@ -17,20 +46,13 @@ export function defineInputMacro(
   defineMacro({
     name,
     storeVar: true,
-    parameters: [
-      { name: 'variable', type: 'variable', required: true },
-      { name: 'placeholder', type: 'string' },
-    ],
+    parameters: [VARIABLE_PARAMETER, { name: 'placeholder', type: 'string' }],
     render(_props, ctx) {
       const placeholder = ctx.args.placeholder ?? '';
 
-      ctx.useAction({
+      useVariableAction(ctx, {
         type: name,
-        key: `$${ctx.varName}`,
-        authorId: ctx.id,
         label: placeholder || ctx.varName!,
-        variable: ctx.varName,
-        value: ctx.value,
         perform: (v) => ctx.setValue!(toValue(v)),
       });
 
@@ -38,7 +60,7 @@ export function defineInputMacro(
         type,
         id: ctx.id,
         class: ctx.cls,
-        value: ctx.value == null ? '' : String(ctx.value),
+        value: display(ctx.value),
         placeholder,
         onInput: (e: Event) =>
           ctx.setValue!(toValue((e.target as HTMLInputElement).value)),

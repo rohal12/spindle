@@ -67,7 +67,33 @@ bun run build           # build format
 bun run preview         # build + compile dev story
 bun run docs:dev        # local docs dev server
 bun run docs:build      # build docs for deployment
+bun run duplication     # code duplication checks (CPD needs PMD_BIN)
 ```
+
+### Code duplication
+
+CI measures duplication in `src/` with three tools, each a separate check:
+jscpd and PMD CPD (exact copies) and fallow (copies with renamed
+identifiers). A pull request fails when it adds duplication compared with
+`main` or exceeds `duplication-budget.json`. The settings are in
+`.jscpd.json` and `.fallowrc.json`; `scripts/duplication.ts` runs the
+checks and compares against a base (`--base main`). Locally, CPD needs
+[PMD](https://pmd.github.io/) 7 with `PMD_BIN` set to its `bin/pmd`.
+
+Before adding a helper, parser or hook, look for the one that already does
+the job and extend it; most fixes then land in one place. The shared modules:
+
+| Job                                                      | Module                                                             |
+| -------------------------------------------------------- | ------------------------------------------------------------------ |
+| Name-keyed storage, own-key reads (`hasOwn`, `ownValue`) | `src/utils/namespace.ts`                                           |
+| Case-insensitive macro/widget names                      | `src/utils/macro-names.ts`                                         |
+| Clone, equality, structural diff and merge               | `src/structural.ts`                                                |
+| Macro arguments: declared `parameters`, `ctx.args`       | `src/components/macros/macro-args.ts`                              |
+| Quoting, splitting, string scanning                      | `src/components/macros/arg-utils.ts`                               |
+| JavaScript scanning (`findCodeEnd`, `lexJs`)             | `src/js-lexer.ts`                                                  |
+| Sigils and scopes (`SIGIL_SCOPES`, `SCOPE_SIGILS`)       | `src/markup/tokenizer.ts`                                          |
+| Reading story state / render contexts in components      | `src/hooks/use-story-fields.ts`, `src/hooks/use-render-options.ts` |
+| Save storage operations                                  | `src/saves/storage.ts` (`createBackend`)                           |
 
 ## License
 

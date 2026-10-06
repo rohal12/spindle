@@ -1,5 +1,6 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
+import { display } from './display';
 
 defineMacro({
   name: 'print',
@@ -8,9 +9,7 @@ defineMacro({
   merged: true,
   render({ rawArgs }, ctx) {
     try {
-      const result = ctx.evaluate!(rawArgs);
-      const display = result == null ? '' : String(result);
-      return ctx.wrap(display);
+      return ctx.wrap(display(ctx.evaluate!(rawArgs)));
     } catch (err) {
       return (
         <MacroError
@@ -21,7 +20,6 @@ defineMacro({
     }
   },
   text({ rawArgs }, ctx) {
-    const result = ctx.evaluate(rawArgs);
-    return result == null ? '' : String(result);
+    return display(ctx.evaluate(rawArgs));
   },
 });

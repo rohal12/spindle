@@ -1,5 +1,4 @@
 import type { ASTNode } from '../../markup/ast';
-import { readWholeQuoted } from './arg-utils';
 import { parseMacroArgs } from './macro-args';
 
 /** `$var "placeholder"`, the arguments of the input macros. */
@@ -14,18 +13,22 @@ export function parseVarArgs(rawArgs: string): {
   return { varName: variable.replace(/["']/g, ''), placeholder };
 }
 
+/** The parameters of an `{option}` sub-macro: its value. */
+const OPTION_PARAMETERS = [{ name: 'value', type: 'string' }] as const;
+
 /**
- * Walk AST children to find {option} macro nodes, returning their rawArgs as values.
+ * Walk AST children to find {option} macro nodes, returning their values.
  */
 export function extractOptions(children: ASTNode[]): string[] {
   const options: string[] = [];
   for (const node of children) {
     if (node.type === 'macro' && node.name === 'option') {
-      const raw = node.rawArgs.trim();
-      // Strip surrounding quotes so {option "Long Sword"} gives "Long Sword"
-      const stripped =
-        readWholeQuoted(raw) ?? raw.replace(/^(["'])(.+)\1$/s, '$2');
-      options.push(stripped);
+      // {option "Long Sword"} gives `Long Sword`. A value that isn't one
+      // quoted string loses a matching pair of quotes around it, if any.
+      const { value } = parseMacroArgs(node.rawArgs, OPTION_PARAMETERS);
+      options.push(
+        value ?? node.rawArgs.trim().replace(/^(["'])(.+)\1$/s, '$2'),
+      );
     }
   }
   return options;

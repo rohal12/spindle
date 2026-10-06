@@ -2,11 +2,10 @@ import { beforeAll, afterAll, describe, expect } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import {
   clearRegistry,
-  deepClone,
-  deepEqual,
   deserialize,
   serialize,
 } from '../../src/class-registry';
+import { deepClone, deepEqual } from '../../src/structural';
 import { fcOptions } from './config';
 import {
   Point,

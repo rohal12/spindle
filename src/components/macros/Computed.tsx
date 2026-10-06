@@ -1,7 +1,7 @@
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { readState } from '../../execute-mutation';
-import { deepEqual } from '../../class-registry';
+import { deepEqual } from '../../structural';
 import { defineMacro } from '../../define-macro';
 import { MacroError, logMacroError } from './MacroError';
 import { checkVariableName } from '../../utils/namespace';

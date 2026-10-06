@@ -1,4 +1,4 @@
-import { h, Fragment } from 'preact';
+import { h } from 'preact';
 import type { VNode, ComponentChildren } from 'preact';
 import {
   useContext,
@@ -28,6 +28,7 @@ import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
 import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
+import { wrapContent } from './components/macros/display';
 import {
   parseMacroArgs,
   readBoundVariable,
@@ -177,11 +178,8 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       mutate: (code: string) => executeMutation(code, getValues(), update),
       update,
       getValues,
-      wrap: (content: ComponentChildren): VNode<any> => {
-        if (className || id)
-          return h('span', { id, class: className }, content);
-        return h(Fragment, null, content);
-      },
+      wrap: (content: ComponentChildren): VNode<any> =>
+        wrapContent(className, id, content),
     };
 
     if (config.merged) {

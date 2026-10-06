@@ -9,7 +9,8 @@ import type {
 } from './types';
 import { estimatePayloadBytes, isSaveExport, isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
-import { deepClone, serialize, deserialize } from '../class-registry';
+import { serialize, deserialize } from '../class-registry';
+import { deepClone } from '../structural';
 import { emit } from '../event-emitter';
 import { withoutDraws } from '../prng';
 
@@ -100,6 +101,18 @@ function queued<A extends unknown[], R>(
 ): (...args: A) => Promise<R> {
   return (...args) => inOrder(() => op(...args));
 }
+
+/** An operation passing the save `saveId`, if it is stored, to `read`. */
+const readingSave = <R>(read: (record: SaveRecord | undefined) => R) =>
+  queued(async (saveId: string) =>
+    read(await (await getBackend()).getSave(saveId)),
+  );
+
+/** An operation passing the save a slot holds, if any, to `read`. */
+const readingSlot = <R>(read: (record: SaveRecord | undefined) => R) =>
+  queued(async (ifid: string, slot?: string) =>
+    read(await slotRecord(ifid, slot)),
+  );
 
 // --- Playthroughs ---
 
@@ -371,9 +384,7 @@ export function deserializePayload(payload: SavePayload): SavePayload {
 const livePayload = (record: SaveRecord | undefined) =>
   record && deserializePayload(record.payload);
 
-export const loadSave = queued(async (saveId: string) =>
-  livePayload(await (await getBackend()).getSave(saveId)),
-);
+export const loadSave = readingSave(livePayload);
 
 /**
  * Delete a save record. If the default slot or a named slot holds it, that
@@ -623,9 +634,7 @@ async function hasQuickSaveNow(ifid: string, slot?: string): Promise<boolean> {
   return (await slotRecord(ifid, slot)) !== undefined;
 }
 
-export const loadQuickSave = queued(async (ifid: string, slot?: string) =>
-  livePayload(await slotRecord(ifid, slot)),
-);
+export const loadQuickSave = readingSlot(livePayload);
 
 /**
  * Read the save held in a slot (the default slot when `slot` is omitted) for
@@ -753,9 +762,7 @@ function toExport(record: SaveRecord | undefined): SaveExport | undefined {
   };
 }
 
-export const exportSave = queued(async (saveId: string) =>
-  toExport(await (await getBackend()).getSave(saveId)),
-);
+export const exportSave = readingSave(toExport);
 
 /**
  * Validate an export against the running story and build the record to store:
@@ -812,9 +819,7 @@ export function importSave(
  * Export the save held in a slot (default autosave slot when `slot` is omitted).
  * Returns undefined if the slot is empty.
  */
-export const exportSlotSave = queued(async (ifid: string, slot?: string) =>
-  toExport(await slotRecord(ifid, slot)),
-);
+export const exportSlotSave = readingSlot(toExport);
 
 /**
  * Import an exported save into a slot (default autosave slot when `slot` is
