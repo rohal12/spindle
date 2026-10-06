@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useStoryStore } from '../../store';
+import { useStoryFields } from '../../hooks/use-story-fields';
 import { settings } from '../../settings';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
@@ -108,13 +109,10 @@ defineMenubarAction({
   name: 'quicksave',
   label: 'QuickSave',
   actionType: 'save',
-  setup: () => ({
-    perform: useStoryStore((s) => s.save),
-    title: hotkeyTitle(
-      'Quick Save',
-      useStoryStore((s) => s.quickSaveKey),
-    ),
-  }),
+  setup: () => {
+    const { save, quickSaveKey } = useStoryFields('save', 'quickSaveKey');
+    return { perform: save, title: hotkeyTitle('Quick Save', quickSaveKey) };
+  },
 });
 
 defineMenubarAction({
@@ -123,14 +121,17 @@ defineMenubarAction({
   actionType: 'load',
   confirm: 'Load saved game? Current progress will be lost.',
   setup: () => {
-    const load = useStoryStore((s) => s.load);
-    const hasSave = useStoryStore((s) => s.hasSave);
-    const key = useStoryStore((s) => s.quickLoadKey);
-    useStoryStore((s) => s.knownSaves);
+    // knownSaves: re-render when the saves change, as hasSave() reads them
+    const { load, hasSave, quickLoadKey } = useStoryFields(
+      'load',
+      'hasSave',
+      'quickLoadKey',
+      'knownSaves',
+    );
     return {
       perform: () => load(),
       disabled: !hasSave(),
-      title: hotkeyTitle('Quick Load', key),
+      title: hotkeyTitle('Quick Load', quickLoadKey),
     };
   },
 });

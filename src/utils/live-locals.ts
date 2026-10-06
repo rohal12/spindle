@@ -1,4 +1,4 @@
-import { createNamespace, ownValue } from './namespace';
+import { createNamespace, hasOwn, ownValue } from './namespace';
 
 /**
  * Read-only view of a locals scope that always reflects its current values.
@@ -16,9 +16,7 @@ export function liveLocalsView(
   return new Proxy(createNamespace(), {
     get: (_, key) =>
       typeof key === 'string' ? ownValue(getValues(), key) : undefined,
-    has: (_, key) =>
-      typeof key === 'string' &&
-      Object.prototype.hasOwnProperty.call(getValues(), key),
+    has: (_, key) => typeof key === 'string' && hasOwn(getValues(), key),
     ownKeys: () => Reflect.ownKeys(getValues()),
     getOwnPropertyDescriptor: (_, key) => {
       const desc = Object.getOwnPropertyDescriptor(getValues(), key);
