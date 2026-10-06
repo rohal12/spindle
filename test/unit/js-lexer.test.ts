@@ -266,6 +266,11 @@ describe('findCodeEnd', () => {
     expect(findCodeEnd('/* }', 0)).toBe(-1);
   });
 
+  it('reads a word starting with a digit as one, as delays are written', () => {
+    expect(findCodeEnd('2s // }\n} x', 0)).toBe(8);
+    expect(findCodeEnd('0_$ /* } */ } x', 0)).toBe(12);
+  });
+
   it('skips characters no JavaScript has', () => {
     expect(findCodeEnd('a \u2192 b } x', 0)).toBe(6);
     // `@` alone, then a regex holding the `{/do}` that does not end the body
@@ -471,6 +476,16 @@ describe('parseCode', () => {
   it('rejects code that is not valid JavaScript, though V8 would run it', () => {
     expect(error('++f()').reason).toBe('Assigning to rvalue');
     expect(error('f() = 1', 'statements').reason).toBe('Assigning to rvalue');
+  });
+
+  it('reads a %name the parser needs as an operand as a transient', () => {
+    // The tokens before guess an operator: `of` reads as a variable here
+    const { refs } = parseCode('for (const of of %list) {}', 'statements');
+    expect(refs.map((r) => r.sigil + r.name)).toEqual(['%list']);
+  });
+
+  it('reads a keyword after ?. as a property name', () => {
+    expect(pieces('a?.typeof %n')).toEqual([['code', 'a?.typeof %n', 0]]);
   });
 
   it('parses valid code that guessing regex or division gets wrong', () => {
