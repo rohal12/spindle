@@ -1,12 +1,15 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { current } from 'immer';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetBackend } from '../../src/saves/storage';
-import { loadSession } from '../../src/saves/save-manager';
+import { loadSession, saveWithHooks } from '../../src/saves/save-manager';
+import type { SavePayload } from '../../src/saves/types';
 import { resetEmitter } from '../../src/event-emitter';
 import { initPRNG, random } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
+import { deepClone } from '../../src/class-registry';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -357,6 +360,280 @@ describe('load pipeline', () => {
       useStoryStore.getState().loadFromPayload(payload);
 
       expect(Story.prng.pull).toBe(1);
+    });
+
+    it('saves and goes on with the PRNG state before save hook draws', async () => {
+      initPRNG('seed', false);
+      Story.goto('B');
+      random();
+      Story.on('beforesave', () => random());
+      Story.on('aftersave', () => random());
+      await saveTo('hooked');
+
+      expect(Story.prng.pull).toBe(1);
+      const payload = (await Story.exportSave('hooked'))!.save.payload;
+      // The fallback for saves whose moments have no PRNG state
+      expect(payload.prng).toEqual({ seed: 'seed', pull: 1 });
+    });
+
+    it('takes back save hook draws on the save dialog path', async () => {
+      initPRNG('seed', false);
+      Story.on('beforesave', () => random());
+      Story.on('aftersave', () => random());
+      let saved: SavePayload | undefined;
+      await saveWithHooks(
+        undefined,
+        undefined,
+        useStoryStore.getState().beginSave,
+        async (payload) => {
+          saved = payload;
+        },
+      );
+      expect(saved!.prng).toEqual({ seed: 'seed', pull: 0 });
+      expect(Story.prng.pull).toBe(0);
+    });
+
+    it('replays the passage rolls after afterload draws', async () => {
+      initPRNG('seed', false);
+      Story.goto('B');
+      await saveTo('s');
+      Story.on('afterload', () => random());
+
+      await loadFrom('s');
+
+      // The passage's first roll comes next, as on entering it
+      expect(Story.prng.pull).toBe(0);
+    });
+  });
+
+  describe('beforesave writes inside a value the passage changed (#232)', () => {
+    type Vars = Record<string, any>;
+    const update = (recipe: (vars: Vars) => void) =>
+      useStoryStore
+        .getState()
+        .updateVariables((draft) => recipe(draft.variables as Vars));
+
+    /** Enter B from `entry`, run `passage` there, save with `hook`, load. */
+    async function saveAndLoad(
+      entry: Vars,
+      passage: (vars: Vars) => void,
+      hook: (vars: Vars) => void,
+    ) {
+      Story.set(entry);
+      Story.goto('B');
+      update(passage);
+      Story.on('beforesave', () => update(hook));
+      await saveTo('hooked');
+      Story.goto('C');
+      await loadFrom('hooked');
+    }
+
+    it('keeps the entry value of fields only the passage changed', async () => {
+      await saveAndLoad(
+        { state: { count: 0, engine: 0 } },
+        (v) => {
+          v.state.count = 1;
+        },
+        (v) => {
+          v.state.engine = 42;
+        },
+      );
+      expect(Story.get('state')).toEqual({ count: 0, engine: 42 });
+    });
+
+    it('merges at any depth', async () => {
+      await saveAndLoad(
+        { a: { b: { c: 0, d: 0 }, e: 0 } },
+        (v) => {
+          v.a.b.c = 1;
+          v.a.e = 1;
+        },
+        (v) => {
+          v.a.b.d = 2;
+        },
+      );
+      expect(Story.get('a')).toEqual({ b: { c: 0, d: 2 }, e: 0 });
+    });
+
+    it('merges into array elements by index', async () => {
+      await saveAndLoad(
+        { party: [{ hp: 10 }, { hp: 10 }] },
+        (v) => {
+          v.party[1].hp = 5;
+        },
+        (v) => {
+          v.party[0].xp = 3;
+        },
+      );
+      expect(Story.get('party')).toEqual([{ hp: 10, xp: 3 }, { hp: 10 }]);
+    });
+
+    it('applies elements a hook adds to or removes from an array', async () => {
+      await saveAndLoad(
+        { s: { log: ['a'], stack: [1, 2, 3], n: 0 } },
+        (v) => {
+          v.s.n = 1;
+        },
+        (v) => {
+          v.s.log.push('saved');
+          v.s.stack.splice(1, 1);
+        },
+      );
+      expect(Story.get('s')).toEqual({
+        log: ['a', 'saved'],
+        stack: [1, 3],
+        n: 0,
+      });
+    });
+
+    it('appends hook additions to an array the passage resized', async () => {
+      // The passage's own push runs again on load: copying the saved array
+      // would record 'entered' twice
+      await saveAndLoad(
+        { log: [] },
+        (v) => {
+          v.log.push('entered');
+        },
+        (v) => {
+          v.log.push('saved');
+        },
+      );
+      expect(Story.get('log')).toEqual(['saved']);
+    });
+
+    it('deletes the nested keys a hook deleted', async () => {
+      await saveAndLoad(
+        { state: { count: 0, cache: { x: 1 } } },
+        (v) => {
+          v.state.count = 1;
+        },
+        (v) => {
+          delete v.state.cache;
+        },
+      );
+      expect(Story.get('state')).toEqual({ count: 0 });
+    });
+
+    it('adds the variables and keys a hook added', async () => {
+      await saveAndLoad(
+        { state: { count: 0 } },
+        (v) => {
+          v.state.count = 1;
+        },
+        (v) => {
+          v.state.meta = { at: 5 };
+          v.saveInfo = { slot: 'hooked', tags: ['x'] };
+        },
+      );
+      expect(Story.get('state')).toEqual({ count: 0, meta: { at: 5 } });
+      expect(Story.get('saveInfo')).toEqual({ slot: 'hooked', tags: ['x'] });
+    });
+
+    it('writes values whose type the hook changed', async () => {
+      await saveAndLoad(
+        { s: { count: 0, a: { x: 1 }, b: 1, c: [1], d: { y: 1 } } },
+        (v) => {
+          v.s.count = 1;
+        },
+        (v) => {
+          v.s.a = 7;
+          v.s.b = { z: 2 };
+          v.s.c = { 0: 1 };
+          v.s.d = ['y'];
+        },
+      );
+      expect(Story.get('s')).toEqual({
+        count: 0,
+        a: 7,
+        b: { z: 2 },
+        c: { 0: 1 },
+        d: ['y'],
+      });
+      expect(Array.isArray((Story.get('s') as Vars).d)).toBe(true);
+      expect(Array.isArray((Story.get('s') as Vars).c)).toBe(false);
+    });
+
+    it('copies the whole value where the entry snapshot lacks its parent', async () => {
+      await saveAndLoad(
+        { other: 0 },
+        (v) => {
+          v.fresh = { a: 1 };
+          v.prim = 1;
+        },
+        (v) => {
+          v.fresh.b = 2;
+          v.prim = { c: 3 };
+        },
+      );
+      expect(Story.get('fresh')).toEqual({ a: 1, b: 2 });
+      expect(Story.get('prim')).toEqual({ c: 3 });
+    });
+
+    it('ignores values a hook replaced with an equal copy', async () => {
+      await saveAndLoad(
+        { state: { count: 0, engine: 0, when: new Date(0), seen: new Set() } },
+        (v) => {
+          v.state.count = 1;
+          v.state.when = new Date(1);
+          v.state.seen.add('B');
+        },
+        // A hook that rebuilds the object (as mutation code commits may)
+        (v) => {
+          v.state = { ...deepClone(current(v.state)), engine: 42 };
+        },
+      );
+      const state = Story.get('state') as Vars;
+      expect(state.count).toBe(0);
+      expect(state.engine).toBe(42);
+      expect(state.when).toEqual(new Date(0));
+      expect([...state.seen]).toEqual([]);
+    });
+
+    it('replaces built-in values the hook changed as a whole', async () => {
+      await saveAndLoad(
+        { s: { count: 0, seen: new Set(['A']), when: new Date(0) } },
+        (v) => {
+          v.s.count = 1;
+        },
+        (v) => {
+          v.s.seen.add('save');
+          v.s.when = new Date(5);
+        },
+      );
+      const s = Story.get('s') as Vars;
+      expect(s.count).toBe(0);
+      expect([...s.seen]).toEqual(['A', 'save']);
+      expect(s.when).toEqual(new Date(5));
+    });
+
+    it('keeps the live history as recorded', async () => {
+      Story.set('state', { count: 0, engine: 0, list: [{ n: 0 }] });
+      Story.goto('B');
+      update((v) => {
+        v.state.count = 1;
+      });
+      Story.on('beforesave', () =>
+        update((v) => {
+          v.state.engine = 42;
+          v.state.list[0].n = 1;
+          v.state.list.push({ n: 2 });
+        }),
+      );
+      await saveTo('hooked');
+
+      const state = useStoryStore.getState();
+      expect(state.getHistoryVariables(1).state).toEqual({
+        count: 0,
+        engine: 0,
+        list: [{ n: 0 }],
+      });
+      state.goBack();
+      state.goForward();
+      expect(Story.get('state')).toEqual({
+        count: 0,
+        engine: 0,
+        list: [{ n: 0 }],
+      });
     });
   });
 

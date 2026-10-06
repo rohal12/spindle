@@ -9,6 +9,7 @@ import {
   isPRNGEnabled,
   getPRNGSeed,
   getPRNGPull,
+  withoutDraws,
 } from '../../src/prng';
 
 beforeEach(() => {
@@ -166,6 +167,62 @@ describe('prng', () => {
       random();
       const snap = snapshotPRNG();
       expect(snap).toEqual({ seed: 'snap-test', pull: 2 });
+    });
+  });
+
+  describe('withoutDraws()', () => {
+    it('takes back the draws made inside, so they come again', () => {
+      initPRNG('draws', false);
+      random();
+      const drawn = withoutDraws(() => [random(), random()]);
+      expect(getPRNGPull()).toBe(1);
+      expect([random(), random()]).toEqual(drawn);
+    });
+
+    it('takes back the draws when the callback throws', () => {
+      initPRNG('draws', false);
+      expect(() =>
+        withoutDraws(() => {
+          random();
+          throw new Error('boom');
+        }),
+      ).toThrow('boom');
+      expect(getPRNGPull()).toBe(0);
+    });
+
+    it('keeps a generator the callback replaced', () => {
+      initPRNG('old', false);
+      random();
+      withoutDraws(() => {
+        initPRNG('new', false);
+        random();
+      });
+      expect(snapshotPRNG()).toEqual({ seed: 'new', pull: 1 });
+
+      withoutDraws(() => {
+        restorePRNG('restored', 5);
+        random();
+      });
+      expect(snapshotPRNG()).toEqual({ seed: 'restored', pull: 6 });
+
+      withoutDraws(() => resetPRNG());
+      expect(isPRNGEnabled()).toBe(false);
+    });
+
+    it('nests', () => {
+      initPRNG('draws', false);
+      withoutDraws(() => {
+        random();
+        withoutDraws(() => random());
+        expect(getPRNGPull()).toBe(1);
+        random();
+      });
+      expect(getPRNGPull()).toBe(0);
+    });
+
+    it('runs the callback when the PRNG is disabled', () => {
+      expect(withoutDraws(() => 7)).toBe(7);
+      expect(isPRNGEnabled()).toBe(false);
     });
   });
 

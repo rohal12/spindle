@@ -11,6 +11,7 @@ import { isSaveExport, isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
 import { deepClone, serialize, deserialize } from '../class-registry';
 import { emit } from '../event-emitter';
+import { withoutDraws } from '../prng';
 
 type TitleGenerator = (payload: SavePayload) => string;
 
@@ -220,6 +221,10 @@ export function establishPlaythrough(
  * that captures the payload after them, so the capture can tell which
  * variables the hooks changed (the store's `beginSave`).
  *
+ * Random numbers the hooks draw do not advance the story's PRNG (see
+ * withoutDraws()): the game goes on with the sequence a load of the save
+ * continues with, which replays the saved passage without the hooks.
+ *
  * The hook and capture run synchronously, but an error they throw (a failing
  * hook, an unserializable payload) rejects the returned promise like a failed
  * write rather than escaping to the caller.
@@ -232,10 +237,10 @@ export function saveWithHooks<T>(
 ): Promise<T> {
   try {
     const capture = beginCapture();
-    emit('beforesave', slot, custom);
+    withoutDraws(() => emit('beforesave', slot, custom));
     const payload = capture();
     return write(payload).then((result) => {
-      emit('aftersave', slot);
+      withoutDraws(() => emit('aftersave', slot));
       return result;
     });
   } catch (err) {

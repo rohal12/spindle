@@ -739,6 +739,8 @@ Returns a random integer between `min` and `max` (inclusive).
 
 PRNG state is automatically saved and restored. After loading a save, the random sequence continues from exactly where it was when the save was made. History navigation (back/forward) also restores the PRNG state from that point in the story.
 
+Random numbers drawn in `beforesave`, `aftersave` and `afterload` handlers do not advance the sequence: the story draws the same values again afterwards. Saving therefore never changes the rolls that follow, and the game goes on after a load exactly as it would have after the save. Use `Math.random()` in these handlers for values that must not repeat the story's next rolls.
+
 ## Events
 
 ### `:storystartup`

@@ -129,6 +129,8 @@ Story.on('afterload', () => engine.restore(Story.get('engine')));
 
 The handler's changes are stored with the saved passage's start state. The live history is not changed, so moving back and forward does not bring them back.
 
+Random numbers the save and load handlers (`beforesave`, `aftersave`, `afterload`) draw with `random()` or `Story.random()` do not advance the seeded PRNG: the story draws the same values again afterwards. Saving never changes the rolls that follow, and the passage replays its rolls after a load. Use `Math.random()` there for values that must not repeat the story's next rolls.
+
 History is stored efficiently using Immer patches (only changed variables per navigation), but saves contain full snapshots for portability.
 
 ### Class Instances
