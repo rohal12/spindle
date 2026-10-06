@@ -292,6 +292,7 @@ defineMacro({
               passage={effectivePassage}
               key={renderDeferred ? 'loading' : `nav-${displayed.id}`}
               dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
+              navigationId={renderDeferred ? undefined : displayed.id}
             />
           )}
         </div>

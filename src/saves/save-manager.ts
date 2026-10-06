@@ -106,9 +106,13 @@ export async function getCurrentPlaythroughId(
 
 /**
  * Run a save through the `beforesave` / `aftersave` hooks. `beforesave` fires
- * before `getPayload()` captures the state, so data a hook sets is part of the
- * save; `aftersave` fires once `write` has stored it. Every user-facing save
- * path goes through here.
+ * before the payload is captured, so data a hook sets is part of the save;
+ * `aftersave` fires once `write` has stored it. Every user-facing save path
+ * goes through here.
+ *
+ * `beginCapture` is called just before the hooks and returns the function
+ * that captures the payload after them, so the capture can tell which
+ * variables the hooks changed (the store's `beginSave`).
  *
  * The hook and capture run synchronously, but an error they throw (a failing
  * hook, an unserializable payload) rejects the returned promise like a failed
@@ -117,12 +121,13 @@ export async function getCurrentPlaythroughId(
 export function saveWithHooks<T>(
   slot: string | undefined,
   custom: Record<string, unknown> | undefined,
-  getPayload: () => SavePayload,
+  beginCapture: () => () => SavePayload,
   write: (payload: SavePayload) => Promise<T>,
 ): Promise<T> {
   try {
+    const capture = beginCapture();
     emit('beforesave', slot, custom);
-    const payload = getPayload();
+    const payload = capture();
     return write(payload).then((result) => {
       emit('aftersave', slot);
       return result;

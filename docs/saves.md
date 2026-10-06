@@ -103,6 +103,15 @@ Loading a save (or restoring the session after a refresh) restores the state at 
 
 Changes made on the passage after entering it — typing into a `{textbox}`, clicking a `{button}` that sets a variable — are **not** restored. This matches how moving back and forward through history works, and how SugarCube treats saves. If a choice must survive a save, make it lead to another passage (for example with a link or `{goto}`), which records it in the history.
 
+Variables a [`beforesave`](story-api.md#storyonevent-callback) handler changes are the exception: they are restored by a load. Engines that keep their state outside Spindle can write it to a story variable in `beforesave` and read it back in `afterload`:
+
+```js
+Story.on('beforesave', () => Story.set('engine', engine.snapshot()));
+Story.on('afterload', () => engine.restore(Story.get('engine')));
+```
+
+The handler's changes are stored with the saved passage's start state. The live history is not changed, so moving back and forward does not bring them back.
+
 History is stored efficiently using Immer patches (only changed variables per navigation), but saves contain full snapshots for portability.
 
 ### Class Instances
