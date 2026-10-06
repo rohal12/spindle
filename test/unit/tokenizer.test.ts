@@ -1545,6 +1545,22 @@ describe('tokenize — JavaScript in macro arguments and expressions', () => {
     expect(tokens[2]).toMatchObject({ expression: '$b /1' });
   });
 
+  // The scan of the unclosed `{$a …` (its `'` is unterminated) lexes the
+  // `{a: …}` first, and the scan of `{$b …` skips it. The function started
+  // in it replaced `f`'s body to come, so the `{}` after `f(…)` is a block
+  // and `/}/` a regex there too, not division.
+  it('reads code the same after an earlier scan lexed part of it', () => {
+    const block = '{$b = function f({a: function(){}}) {} /}/ }';
+    expect(tokenize(block)).toMatchObject([{ type: 'expression' }]);
+    const tokens = tokenize(`{$a = /}/ ${block} '`);
+    expect(tokens).toMatchObject([
+      { type: 'expression', expression: '$a = /' },
+      { type: 'text', value: '/ ' },
+      { type: 'expression', expression: block.slice(1, -1) },
+      { type: 'text', value: " '" },
+    ]);
+  });
+
   // Text that is not well-formed JavaScript keeps the tokenizer's lenient
   // reading: apostrophes are text and a quote not closed on its line is a
   // plain character.
