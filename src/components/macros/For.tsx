@@ -24,24 +24,22 @@ import {
 } from '../../utils/namespace';
 
 /**
- * Parse for-loop args: "@item, @i of $list" or "@item of $list"
+ * Check the arguments of "@item, @i of $list" or "@item of $list".
  */
-function parseForArgs(rawArgs: string): {
+function loopArgs(
+  rawArgs: string,
+  args: { variables?: string[]; of: boolean; list?: string },
+): {
   itemVar: string;
   indexVar: string | null;
   listExpr: string;
 } {
-  const ofIdx = rawArgs.indexOf(' of ');
-  if (ofIdx === -1) {
+  if (!args.of) {
     throw new Error(`{for} requires "of" keyword: {for ${rawArgs}}`);
   }
 
-  const varsPart = rawArgs.slice(0, ofIdx).trim();
-  const listExpr = rawArgs.slice(ofIdx + 4).trim();
-
-  const vars = varsPart.split(',').map((v) => v.trim());
-  const itemVar = vars[0]!;
-  const indexVar = vars.length > 1 ? vars[1]! : null;
+  const [itemVar = '', indexVar = null] = args.variables ?? [];
+  const listExpr = args.list ?? '';
 
   if (!itemVar.startsWith('@')) {
     throw new Error(`{for} loop variable must use @ prefix: got "${itemVar}"`);
@@ -126,26 +124,19 @@ defineMacro({
   block: true,
   interpolate: true,
   merged: true,
+  parameters: [
+    { name: 'variables', type: 'names', required: true },
+    { name: 'of', type: 'separator' },
+    { name: 'list', type: 'expression', required: true },
+  ],
   render({ rawArgs, children = [] }, ctx) {
     const parentValues = useContext(LocalsValuesContext);
 
-    let parsed: ReturnType<typeof parseForArgs>;
-    try {
-      parsed = parseForArgs(rawArgs);
-    } catch (err) {
-      return (
-        <MacroError
-          macro="for"
-          error={err}
-        />
-      );
-    }
-
-    const { itemVar, indexVar, listExpr } = parsed;
-
+    let loop: ReturnType<typeof loopArgs>;
     let list: unknown[];
     try {
-      const result = ctx.evaluate!(listExpr);
+      loop = loopArgs(rawArgs, ctx.args);
+      const result = ctx.evaluate!(loop.listExpr);
       if (!Array.isArray(result)) {
         return (
           <span class="error">
@@ -163,6 +154,7 @@ defineMacro({
       );
     }
 
+    const { itemVar, indexVar } = loop;
     const content = list.map((item, i) => (
       <ForIteration
         key={`${i}-${stableKey(item)}`}
@@ -178,7 +170,7 @@ defineMacro({
     return ctx.wrap(content);
   },
   text({ rawArgs, children = [] }, ctx) {
-    const { itemVar, indexVar, listExpr } = parseForArgs(rawArgs);
+    const { itemVar, indexVar, listExpr } = loopArgs(rawArgs, ctx.args);
     const list = ctx.evaluate(listExpr);
     if (!Array.isArray(list)) {
       throw new Error('expression did not evaluate to an array');

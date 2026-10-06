@@ -3,6 +3,7 @@ import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'print',
+  parameters: [{ name: 'expression', type: 'expression', required: true }],
   interpolate: true,
   merged: true,
   render({ rawArgs }, ctx) {

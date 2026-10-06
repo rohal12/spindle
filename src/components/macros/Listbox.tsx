@@ -4,6 +4,7 @@ defineMacro({
   name: 'listbox',
   subMacros: ['option'],
   storeVar: true,
+  parameters: [{ name: 'variable', type: 'variable', required: true }],
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 

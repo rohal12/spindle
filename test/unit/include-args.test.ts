@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIncludeArgs } from '../../src/components/macros/Include';
+import { parseIncludeArgs } from '../support/macro-args';
 
 describe('parseIncludeArgs', () => {
   it('splits a trailing or leading inline flag off the expression', () => {

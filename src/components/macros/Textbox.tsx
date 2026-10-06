@@ -3,8 +3,12 @@ import { defineMacro } from '../../define-macro';
 defineMacro({
   name: 'textbox',
   storeVar: true,
-  render({ rawArgs }, ctx) {
-    const { placeholder } = ctx.parseVarArgs(rawArgs);
+  parameters: [
+    { name: 'variable', type: 'variable', required: true },
+    { name: 'placeholder', type: 'string' },
+  ],
+  render(_props, ctx) {
+    const placeholder = ctx.args.placeholder ?? '';
 
     ctx.useAction({
       type: 'textbox',

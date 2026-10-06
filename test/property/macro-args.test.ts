@@ -14,19 +14,19 @@ import {
 } from './js-arbitraries';
 import type { Expr } from './js-arbitraries';
 import { splitArgs } from '../../src/components/macros/WidgetInvocation';
-import { parseMeterArgs } from '../../src/components/macros/Meter';
-import { parseIncludeArgs } from '../../src/components/macros/Include';
 import {
+  parseMeterArgs,
+  parseIncludeArgs,
   parseWatchArgs,
   parseUnwatchName,
-} from '../../src/components/macros/Watch';
+  parseCheckboxLabel,
+  parseRadioArgs,
+  parseLinkArgs,
+} from '../support/macro-args';
 import {
   parseVarArgs,
   extractOptions,
 } from '../../src/components/macros/option-utils';
-import { parseCheckboxLabel } from '../../src/components/macros/Checkbox';
-import { parseRadioArgs } from '../../src/components/macros/Radiobutton';
-import { parseLinkArgs } from '../../src/components/macros/MacroLink';
 import { readWholeQuoted } from '../../src/components/macros/arg-utils';
 import type { ASTNode } from '../../src/markup/ast';
 import { evaluate } from '../../src/expression';

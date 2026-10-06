@@ -4,6 +4,7 @@ import { MacroError } from './MacroError';
 defineMacro({
   name: 'switch',
   subMacros: ['case', 'default'],
+  parameters: [{ name: 'expression', type: 'expression', required: true }],
   merged: true,
   render({ rawArgs, branches = [] }, ctx) {
     let switchValue: unknown;

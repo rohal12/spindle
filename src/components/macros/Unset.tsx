@@ -4,6 +4,7 @@ import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'unset',
+  parameters: [{ name: 'variable', type: 'variable', required: true }],
   render({ rawArgs }, ctx) {
     const ran = ctx.hooks.useRef(false);
     // Boxed: anything can be thrown, including null and other falsy values
@@ -12,7 +13,7 @@ defineMacro({
     if (!ran.current) {
       ran.current = true;
       const state = useStoryStore.getState();
-      const name = rawArgs.trim();
+      const name = ctx.args.variable ?? '';
 
       try {
         if (name.startsWith('$')) {

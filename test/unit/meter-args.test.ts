@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMeterArgs } from '../../src/components/macros/Meter';
+import { parseMeterArgs } from '../support/macro-args';
 
 describe('parseMeterArgs', () => {
   // ── Existing behaviour ────────────────────────────────────────────

@@ -14,38 +14,26 @@ import { checkVariableName } from '../../utils/namespace';
  */
 const UNSET: unique symbol = Symbol('unset');
 
-function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
-  const trimmed = rawArgs.trim();
-
-  let depth = 0;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === '(' || ch === '[' || ch === '{') depth++;
-    else if (ch === ')' || ch === ']' || ch === '}') depth--;
-    else if (ch === '=' && depth === 0) {
-      if (trimmed[i + 1] === '=') {
-        i++;
-        continue;
-      }
-      if (i > 0 && trimmed[i - 1] === '!') continue;
-
-      const target = trimmed.slice(0, i).trim();
-      const expr = trimmed.slice(i + 1).trim();
-
-      if (!target.match(/^[$_@]\w+$/)) {
-        throw new Error(
-          `{computed}: target must be $name, _name, or @name, got "${target}"`,
-        );
-      }
-
-      checkVariableName(target.slice(1), target);
-      return { target, expr };
-    }
+/** Check the arguments of "target = expression". */
+function assignmentArgs(
+  rawArgs: string,
+  args: { target?: string; '=': boolean; expression?: string },
+): { target: string; expr: string } {
+  if (!args['=']) {
+    throw new Error(
+      `{computed}: expected "target = expression", got "${rawArgs}"`,
+    );
   }
 
-  throw new Error(
-    `{computed}: expected "target = expression", got "${rawArgs}"`,
-  );
+  const { target = '', expression: expr = '' } = args;
+  if (!target.match(/^[$_@]\w+$/)) {
+    throw new Error(
+      `{computed}: target must be $name, _name, or @name, got "${target}"`,
+    );
+  }
+
+  checkVariableName(target.slice(1), target);
+  return { target, expr };
 }
 
 /**
@@ -102,13 +90,18 @@ function computeAndApply(
 defineMacro({
   name: 'computed',
   merged: true,
+  parameters: [
+    { name: 'target', type: 'variable', required: true },
+    { name: '=', type: 'separator' },
+    { name: 'expression', type: 'expression', required: true },
+  ],
   render({ rawArgs }, ctx) {
     const [mergedVars, mergedTemps, mergedLocals, mergedTrans] = ctx.merged!;
 
     let target: string;
     let expr: string;
     try {
-      ({ target, expr } = parseComputedArgs(rawArgs));
+      ({ target, expr } = assignmentArgs(rawArgs, ctx.args));
     } catch (err) {
       return (
         <MacroError

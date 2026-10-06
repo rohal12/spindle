@@ -3,6 +3,7 @@ import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'set',
+  parameters: [{ name: 'code', type: 'expression', required: true }],
   render({ rawArgs }, ctx) {
     const ran = ctx.hooks.useRef(false);
     // Boxed: anything can be thrown, including null and other falsy values
