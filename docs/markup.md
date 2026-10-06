@@ -151,7 +151,7 @@ Macro arguments, `{…}` expressions and the expressions in attribute values are
 
 The last line divides: `/` after a value is division, not the start of a regex. A `//` comment runs to the end of the line, so the `}` closing its macro goes on the next line.
 
-Arguments that are not valid JavaScript, such as the text in `{link Don't go}`, are read as before: an apostrophe after a letter is text, and a quote that is not closed on the same line is a plain character.
+Arguments that are not valid JavaScript, such as the text in `{button Don't panic}`, are read as before: an apostrophe after a letter is text, and a quote that is not closed on the same line is a plain character.
 
 ## HTML Tags
 

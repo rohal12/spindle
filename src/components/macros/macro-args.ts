@@ -50,10 +50,24 @@ export function readText(src: string): string {
   return readWholeQuoted(src) ?? stripLooseQuotes(src);
 }
 
+/**
+ * An argument that doesn't have its parameter's form: a `string` parameter
+ * given anything but one quoted string.
+ */
+export class MacroArgumentError extends Error {
+  constructor(param: ParameterDef, src: string) {
+    super(`The ${param.name} must be a quoted string ("…" or '…'), not ${src}`);
+    this.name = 'MacroArgumentError';
+  }
+}
+
 function readValue(param: ParameterDef, src: string): unknown {
   switch (param.type) {
-    case 'string':
-      return readWholeQuoted(src) ?? undefined;
+    case 'string': {
+      const value = readWholeQuoted(src);
+      if (value === null) throw new MacroArgumentError(param, src);
+      return value;
+    }
     case 'text':
       return readText(src);
     case 'names':
@@ -220,10 +234,20 @@ function readGroup(
     args[param.name] =
       from < to ? read(param, slice(text, spans[from++]!)) : unset(param);
   }
+  // Optional ones at the end: a term that doesn't have their form (a
+  // `string` that isn't quoted) belongs to the rest, as in {meter $hp 100}
+  const readTrailing = (param: ParameterDef, value: string) => {
+    try {
+      return read(param, value);
+    } catch (error) {
+      if (error instanceof MacroArgumentError) return undefined;
+      throw error;
+    }
+  };
   for (const param of positional.slice(restIndex + 1).reverse()) {
     const value =
       from < to && !endsWithOperator(text.slice(0, spans[to - 1]![0]))
-        ? read(param, slice(text, spans[to - 1]!))
+        ? readTrailing(param, slice(text, spans[to - 1]!))
         : undefined;
     args[param.name] = value ?? unset(param);
     if (value !== undefined) to--;

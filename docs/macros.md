@@ -212,13 +212,19 @@ With macros in the body:
 
 Body macros execute when clicked, before navigation.
 
+The target is a passage name, as in [`{goto}`](#goto): a quoted string or an expression, so a story variable can choose it:
+
+```
+{link "Go on" $nextRoom}{/link}
+```
+
 With only one quoted string, the link has no target: it shows the text and runs its body when clicked, without navigating:
 
 ```
 {link "Ring the bell"}{set $rang = true}{/link}
 ```
 
-The target passage must exist: a `{link}` to a passage that does not exist stops the story when it starts (see [Markup errors](markup.md#markup-errors)).
+The target passage must exist: a `{link}` to a quoted passage name that does not exist stops the story when it starts (see [Markup errors](markup.md#markup-errors)), and one whose expression names a passage that does not exist shows an error in its place. The text must be a quoted string: `{link Go north}` is an error.
 
 Inside a quoted string, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash:
 
@@ -254,6 +260,8 @@ A clickable button that runs its body macros on click. The label goes in the ope
 Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.
 
 As with `{link}`, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash inside the quoted label. The same escapes work in `{dialog}` labels, input placeholders and labels, `{radiobutton}` values and `{option}` values.
+
+Arguments that take a quoted string — the text of `{link}`, the condition of `{watch}`, `{option}` values, input placeholders, the label of `{meter}` — must be one quoted string. Anything else, such as `{option Red}` or `{link Go north}`, is an error: it stops the story when it starts, and shows in place if it is only found while rendering. An optional quoted string at the end, such as the label of `{meter}`, may simply be left out.
 
 ### `{dialog}`
 

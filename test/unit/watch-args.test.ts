@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseWatchArgs, parseUnwatchName } from '../support/macro-args';
+import { MacroArgumentError } from '../../src/components/macros/macro-args';
 
 describe('parseWatchArgs', () => {
   // ── Existing behaviour ────────────────────────────────────────────
@@ -36,13 +37,13 @@ describe('parseWatchArgs', () => {
     });
   });
 
-  it('returns null without a quoted condition', () => {
-    expect(parseWatchArgs('$x > 0 once')).toBeNull();
+  it('returns null without a condition', () => {
     expect(parseWatchArgs('')).toBeNull();
   });
 
-  it('returns null for an unterminated condition', () => {
-    expect(parseWatchArgs(`'$x > 0 once`)).toBeNull();
+  it('rejects a condition that is not one quoted string', () => {
+    expect(() => parseWatchArgs('$x > 0 once')).toThrow(MacroArgumentError);
+    expect(() => parseWatchArgs(`'$x > 0 once`)).toThrow(MacroArgumentError);
   });
 
   // ── Escapes ──────────────────────────────────────────────────────

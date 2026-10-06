@@ -113,7 +113,7 @@ describe('renderNodes', () => {
   });
 
   it('double newline between links creates separate paragraphs', () => {
-    const el = renderMarkup('[[Go|Start]]\n\n[[Look|Room]]\n\n[[Test|Start]]');
+    const el = renderMarkup('[[Go|Start]]\n\n[[Look|Start]]\n\n[[Test|Start]]');
     // Each link should be in its own <p> due to blank lines
     const paragraphs = el.querySelectorAll('p');
     expect(paragraphs.length).toBeGreaterThanOrEqual(3);

@@ -30,9 +30,11 @@ import { currentSourceLocation } from './utils/source-location';
 import { parseVarArgs, extractOptions } from './components/macros/option-utils';
 import { wrapContent } from './components/macros/display';
 import {
+  MacroArgumentError,
   parseMacroArgs,
   readBoundVariable,
 } from './components/macros/macro-args';
+import { MacroError } from './components/macros/MacroError';
 import {
   checkParameterTypes,
   registerMacro,
@@ -162,8 +164,18 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
         raw?: boolean;
       },
     ) => _renderNodes(nodes, { ...renderOptions, ...options });
+    let args: MacroArgs<P>;
+    try {
+      args = parseMacroArgs(props.rawArgs, parameters) as MacroArgs<P>;
+    } catch (error) {
+      // Shown in place, as other macro errors are
+      if (error instanceof MacroArgumentError) {
+        return h(MacroError, { macro: config.name, error });
+      }
+      throw error;
+    }
     const ctx: MacroContext<MacroArgs<P>> = {
-      args: parseMacroArgs(props.rawArgs, parameters) as MacroArgs<P>,
+      args,
       collectText,
       sourceLocation: currentSourceLocation,
       parseVarArgs,
@@ -224,7 +236,15 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       };
     }
 
-    return config.render(props, ctx);
+    try {
+      return config.render(props, ctx);
+    } catch (error) {
+      // An argument read while rendering, e.g. a sub-macro's ({option})
+      if (error instanceof MacroArgumentError) {
+        return h(MacroError, { macro: config.name, error });
+      }
+      throw error;
+    }
   }
 
   registerMacro(config.name, Wrapper);

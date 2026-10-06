@@ -11,6 +11,7 @@ import { parseWidgetDef } from '../widgets/widget-def';
 import { codeAndText, parseOrError, withParseCache } from '../code-check';
 import { CodeSyntaxError } from '../js-lexer';
 import type { ParameterDef } from '../registry';
+import { SUB_MACRO_PARAMETERS } from '../components/macros/option-utils';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -220,7 +221,8 @@ export function validateMarkup(
     }
   };
 
-  const parametersOf = options.parametersOf ?? (() => undefined);
+  const parametersOf = (name: string) =>
+    options.parametersOf?.(name) ?? SUB_MACRO_PARAMETERS[name.toLowerCase()];
 
   /**
    * Check `tokens`, the tokens of `src`, which starts at `base` in the
@@ -236,6 +238,10 @@ export function validateMarkup(
     checkMacros(passage, tokens, base, where);
     for (const piece of codeAndText(src, tokens, parametersOf)) {
       const at = base + piece.offset;
+      if (piece.kind === 'argument-error') {
+        report(passage, at, `${where}${piece.message} in ${piece.label}`);
+        continue;
+      }
       if (piece.kind === 'passage') {
         if (
           options.checkPassageNames !== false &&

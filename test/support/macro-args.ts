@@ -10,6 +10,7 @@ import '../../src/components/macros/Radiobutton';
 import '../../src/components/macros/Watch';
 import { meterArgs } from '../../src/components/macros/Meter';
 import { parseMacroArgs } from '../../src/components/macros/macro-args';
+import { readWholeQuoted } from '../../src/components/macros/arg-utils';
 import { getMacroRegistry } from '../../src/registry';
 
 /** The arguments the registered macro `name` reads from `rawArgs`. */
@@ -49,7 +50,12 @@ export function parseRadioArgs(rawArgs: string) {
 
 export function parseLinkArgs(rawArgs: string) {
   const { text, passage } = macroArgs('link', rawArgs);
-  return text === undefined
-    ? { display: rawArgs.trim(), passage: null }
-    : { display: text, passage: passage ?? null };
+  // The passage is an expression: a quoted name decodes to that name
+  return {
+    display: text,
+    passage:
+      passage === undefined
+        ? null
+        : (readWholeQuoted(passage.trim()) ?? passage),
+  };
 }

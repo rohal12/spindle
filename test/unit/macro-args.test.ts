@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  MacroArgumentError,
   evaluatePassageName,
   parseMacroArgs,
   readBoundVariable,
@@ -53,7 +54,7 @@ describe('parseMacroArgs', () => {
     );
     expect(parseMacroArgs('"Red', text).label).toBe('Red');
     expect(parseMacroArgs('Go now', text).label).toBe('Go now');
-    expect(parseMacroArgs('Go now', string).label).toBeUndefined();
+    expect(() => parseMacroArgs('Go now', string)).toThrow(MacroArgumentError);
   });
 
   it('takes flags off either end', () => {
