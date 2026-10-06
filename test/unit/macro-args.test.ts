@@ -8,7 +8,10 @@ import {
 describe('parseMacroArgs', () => {
   it('gives the last parameter the rest of the arguments', () => {
     expect(
-      parseMacroArgs('$hp $str * 2', [{ name: 'target' }, { name: 'amount' }]),
+      parseMacroArgs('$hp $str * 2', [
+        { name: 'target', type: 'variable' },
+        { name: 'amount', type: 'expression' },
+      ]),
     ).toEqual({ target: '$hp', amount: '$str * 2' });
   });
 
@@ -35,7 +38,7 @@ describe('parseMacroArgs', () => {
     expect(
       parseMacroArgs(`"a b" [1, 2] 'c "d"'`, [
         { name: 'first', type: 'string' },
-        { name: 'second' },
+        { name: 'second', type: 'expression' },
         { name: 'third', type: 'text' },
       ]),
     ).toEqual({ first: 'a b', second: '[1, 2]', third: 'c "d"' });
@@ -130,7 +133,7 @@ describe('parseMacroArgs', () => {
   it('leaves missing arguments unset', () => {
     expect(
       parseMacroArgs('', [
-        { name: 'a' },
+        { name: 'a', type: 'expression' },
         { name: 'b', type: 'flag' },
         { name: 'c', type: 'options' },
       ]),

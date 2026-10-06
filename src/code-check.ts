@@ -7,8 +7,8 @@
  * Code is found where passages run it:
  * - `{$…}` expressions, and `{do}` bodies (statements);
  * - the conditions of `{if}`, `{elseif}` and `{case}`;
- * - macro arguments whose declared parameter type is `expression` (the
- *   default) or `statements`, built-in and custom macros alike; the
+ * - macro arguments whose declared parameter type is `expression` or
+ *   `statements`, built-in and custom macros alike; the
  *   condition and `run` action of `{watch}`, code in quoted strings;
  * - the `{$…}` references in attributes holding code (`onclick`).
  *
@@ -91,9 +91,7 @@ const CODE_IN_STRINGS: Record<string, Record<string, JsGoal>> = {
 
 /** The goal of the code an argument of this type holds, if it is code. */
 function codeGoal(param: ParameterDef): JsGoal | undefined {
-  if (param.type === undefined || param.type === 'expression') {
-    return 'expression';
-  }
+  if (param.type === 'expression') return 'expression';
   if (param.type === 'statements') return 'statements';
   return undefined;
 }

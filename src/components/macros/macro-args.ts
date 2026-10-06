@@ -177,7 +177,6 @@ function findSeparator(src: string, word: string): Span | null {
 }
 
 const takesRest = (param: ParameterDef) =>
-  param.type === undefined ||
   param.type === 'expression' ||
   param.type === 'statements' ||
   param.type === 'passage' ||

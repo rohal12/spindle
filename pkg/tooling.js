@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { validateStoryMarkup } from './story-variables.js';
+import { checkParameterTypes, validateStoryMarkup } from './story-variables.js';
 
 export { parseStoryVariables, formatDiagnostic } from './story-variables.js';
 
@@ -24,8 +24,10 @@ for (const m of builtins) metadata.set(m.name.toLowerCase(), m);
  * Metadata-only defineMacro for tooling.
  * Captures macro metadata without creating Preact components.
  * LSP servers call this to register user-defined macros discovered in story scripts.
+ * Like Story.defineMacro(), it throws if a declared parameter has no type.
  */
 export function defineMacro(config) {
+  checkParameterTypes(config.name, config.parameters ?? []);
   const name = config.name.toLowerCase();
   metadata.set(name, {
     name: config.name,

@@ -151,7 +151,10 @@ describe('the story-start code check', () => {
         block: false,
         subMacros: [],
         source: 'user',
-        parameters: [{ name: 'target', type: 'variable' }, { name: 'amount' }],
+        parameters: [
+          { name: 'target', type: 'variable' },
+          { name: 'amount', type: 'expression' },
+        ],
       },
       {
         name: 'later',

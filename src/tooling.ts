@@ -14,6 +14,7 @@ import { blockWidgetNames } from './widgets/widget-def';
 import type { ParameterDef } from './registry';
 
 export { parseStoryVariables } from './story-variables';
+export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
 export type { MarkupDiagnostic, MarkupPassage } from './markup/validate';
 
