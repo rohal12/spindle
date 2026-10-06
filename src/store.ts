@@ -62,11 +62,12 @@ import {
 } from './execute-mutation';
 import {
   checkVariableName,
+  createCounts,
   createNamespace,
   isNamespace,
+  type Counts,
   type Namespace,
 } from './utils/namespace';
-import { createCounts, type Counts } from './utils/counts';
 
 enablePatches();
 // Story state holds Map and Set values: Immer must be able to draft them

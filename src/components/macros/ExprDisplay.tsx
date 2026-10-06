@@ -1,8 +1,6 @@
-import { useContext } from 'preact/hooks';
-import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
-import { LocalsValuesContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
+import { useMergedLocals } from '../../hooks/use-merged-locals';
 
 interface ExprDisplayProps {
   expression: string;
@@ -14,10 +12,7 @@ export function ExprDisplay({ expression, className, id }: ExprDisplayProps) {
   const resolve = useInterpolate();
   className = resolve(className);
   id = resolve(id);
-  const localsValues = useContext(LocalsValuesContext);
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
-  const transient = useStoryStore((s) => s.transient);
+  const [variables, temporary, localsValues, transient] = useMergedLocals();
 
   let display: string;
   try {

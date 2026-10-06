@@ -3,7 +3,7 @@ import { tokenize, type Token } from './markup/tokenizer';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 import { lexJs, scanStringLiteral, type JsGoal } from './js-lexer';
-import { createNamespace, RESERVED_NAME } from './utils/namespace';
+import { createNamespace, variableNameError } from './utils/namespace';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -80,11 +80,8 @@ export function parseStoryVariables(
     }
 
     const [, name, expr] = match as [string, string, string];
-    if (name === RESERVED_NAME) {
-      throw new Error(
-        `${passageName}: "${sigil}${name}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`,
-      );
-    }
+    const nameError = variableNameError(name, sigil + name);
+    if (nameError) throw new Error(`${passageName}: ${nameError}`);
     let value: unknown;
     try {
       value = new Function('return (' + expr + ')')();
@@ -134,9 +131,8 @@ function validateRef(
   const parts = ref.split('.');
   const rootName = parts[0]!;
 
-  if (rootName === RESERVED_NAME) {
-    return `"$${rootName}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`;
-  }
+  const nameError = variableNameError(rootName, '$' + rootName);
+  if (nameError) return nameError;
 
   // Skip for-loop locals
   if (forLocals.has(rootName)) return null;

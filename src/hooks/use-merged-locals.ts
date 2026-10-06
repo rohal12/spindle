@@ -1,5 +1,5 @@
 import { useContext, useMemo } from 'preact/hooks';
-import { useStoryStore } from '../store';
+import { useStoryFields } from './use-story-fields';
 import { LocalsValuesContext } from '../markup/render';
 
 /**
@@ -12,9 +12,11 @@ export function useMergedLocals(): readonly [
   Record<string, unknown>,
   Record<string, unknown>,
 ] {
-  const variables = useStoryStore((s) => s.variables);
-  const temporary = useStoryStore((s) => s.temporary);
-  const transient = useStoryStore((s) => s.transient);
+  const { variables, temporary, transient } = useStoryFields(
+    'variables',
+    'temporary',
+    'transient',
+  );
   const localsValues = useContext(LocalsValuesContext);
 
   return useMemo(() => {

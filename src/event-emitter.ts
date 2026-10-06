@@ -57,16 +57,22 @@ export function on<E extends StoryEvent>(
   };
 }
 
-export function emit<E extends StoryEvent>(
-  event: E,
-  ...args: Parameters<EventMap[E]>
+/** Call `call` with each listener of `event`. */
+function forEachListener(
+  event: StoryEvent,
+  call: (cb: Function) => void,
 ): void {
   const set = listeners.get(event);
   if (!set) return;
   // Snapshot to tolerate unsubscription during iteration
-  for (const cb of [...set]) {
-    (cb as Function)(...args);
-  }
+  for (const cb of [...set]) call(cb);
+}
+
+export function emit<E extends StoryEvent>(
+  event: E,
+  ...args: Parameters<EventMap[E]>
+): void {
+  forEachListener(event, (cb) => cb(...args));
 }
 
 /**
@@ -78,15 +84,13 @@ export function emitFromRender<E extends StoryEvent>(
   event: E,
   ...args: Parameters<EventMap[E]>
 ): void {
-  const set = listeners.get(event);
-  if (!set) return;
-  for (const cb of [...set]) {
+  forEachListener(event, (cb) => {
     try {
-      (cb as Function)(...args);
+      cb(...args);
     } catch (err) {
       console.error(`spindle: Error in ${event} handler:`, err);
     }
-  }
+  });
 }
 
 /** Test-only: clear all listeners. */
