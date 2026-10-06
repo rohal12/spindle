@@ -266,6 +266,17 @@ describe('findCodeEnd', () => {
     expect(findCodeEnd('/* }', 0)).toBe(-1);
   });
 
+  it('reads keywords that are names as names', () => {
+    // A field named `function`, then a regex: no function body opens
+    const src = 'class D { function; }\n/}/.test(s) } x';
+    expect(findCodeEnd(src, 0, { goal: 'statements' })).toBe(
+      src.indexOf('} x'),
+    );
+    expect(
+      pieces('p.in\nfunction f() {}\n/a"/.test(s)', 'statements'),
+    ).toContainEqual(['literal', '/a"/', 0]);
+  });
+
   it('reads a word starting with a digit as one, as delays are written', () => {
     expect(findCodeEnd('2s // }\n} x', 0)).toBe(8);
     expect(findCodeEnd('0_$ /* } */ } x', 0)).toBe(12);

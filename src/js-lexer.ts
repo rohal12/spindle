@@ -96,6 +96,15 @@ interface ParserState {
 
 type Base = new (options: Options, input: string, start?: number) => Parser;
 
+/** What follows a member name, but never `function` or `class` keywords. */
+const NOT_A_BODY_RE = /\s*(?:[;},:)]|=(?![=>]))/y;
+
+/** Does what follows `pos` show the keyword before it is a name? */
+function notABody(src: string, pos: number): boolean {
+  NOT_A_BODY_RE.lastIndex = pos;
+  return NOT_A_BODY_RE.test(src);
+}
+
 /** Tokens that may end an operand, and so a statement before a line break. */
 const OPERAND_ENDS: ReadonlySet<TokenType> = new Set([
   tt.name,
@@ -190,10 +199,15 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // A keyword after `.` or `?.` is a property name (`a?.typeof`,
     // `p.in⏎function f() {}`): read it as a name, so what follows it reads
     // as after an operand, a function after it as a declaration
-    const prevType = (this as unknown as ParserState).type;
+    // and so is a `function` or `class` that no body follows: a class field
+    // or an object key (`class D { function; }`, `{ class: 1 }`)
+    const self = this as unknown as ParserState;
+    const prevType = self.type;
     const property =
-      type.keyword !== undefined &&
-      (prevType === tt.dot || prevType === tt.questionDot);
+      (type.keyword !== undefined &&
+        (prevType === tt.dot || prevType === tt.questionDot)) ||
+      ((type === tt._function || type === tt._class) &&
+        notABody(self.input, self.pos));
     // @ts-expect-error acorn internals
     super.finishToken(property ? tt.name : type, value);
   }
