@@ -1,4 +1,5 @@
 import { useStoryStore } from './store';
+import { createNamespace, ownValue } from './utils/namespace';
 
 export interface ToggleConfig {
   label: string;
@@ -25,7 +26,9 @@ export type SettingDef =
   | { type: 'range'; config: RangeConfig };
 
 const definitions = new Map<string, SettingDef>();
-let values: Record<string, unknown> = {};
+// No prototype, so a setting may be named `constructor` or `__proto__`:
+// every name is plain storage (see utils/namespace.ts)
+let values: Record<string, unknown> = createNamespace();
 let storageLoaded = false;
 let unsubscribeStoryData: (() => void) | null = null;
 
@@ -65,7 +68,7 @@ function loadFromStorage(): void {
         parsed !== null &&
         !Array.isArray(parsed)
       ) {
-        values = { ...values, ...parsed };
+        values = createNamespace(values, parsed);
       }
     }
   } catch {
@@ -76,7 +79,7 @@ function loadFromStorage(): void {
 export const settings = {
   addToggle(name: string, config: ToggleConfig): void {
     definitions.set(name, { type: 'toggle', config });
-    if (!(name in values)) {
+    if (!Object.prototype.hasOwnProperty.call(values, name)) {
       values[name] = config.default;
     }
     loadFromStorage();
@@ -84,7 +87,7 @@ export const settings = {
 
   addList(name: string, config: ListConfig): void {
     definitions.set(name, { type: 'list', config });
-    if (!(name in values)) {
+    if (!Object.prototype.hasOwnProperty.call(values, name)) {
       values[name] = config.default;
     }
     loadFromStorage();
@@ -92,28 +95,28 @@ export const settings = {
 
   addRange(name: string, config: RangeConfig): void {
     definitions.set(name, { type: 'range', config });
-    if (!(name in values)) {
+    if (!Object.prototype.hasOwnProperty.call(values, name)) {
       values[name] = config.default;
     }
     loadFromStorage();
   },
 
   get(name: string): unknown {
-    return values[name];
+    return ownValue(values, name);
   },
 
   getToggle(name: string): boolean {
-    const v = values[name];
+    const v = ownValue(values, name);
     return typeof v === 'boolean' ? v : false;
   },
 
   getList(name: string): string {
-    const v = values[name];
+    const v = ownValue(values, name);
     return typeof v === 'string' ? v : '';
   },
 
   getRange(name: string): number {
-    const v = values[name];
+    const v = ownValue(values, name);
     return typeof v === 'number' ? v : 0;
   },
 

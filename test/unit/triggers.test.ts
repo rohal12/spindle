@@ -448,5 +448,19 @@ describe('triggers dialog queue', () => {
       expect(closeAllFn).toHaveBeenCalledTimes(1);
       cleanup();
     });
+
+    // Like #233's action IDs: trigger ids restart after a reset, so an
+    // unsubscribe from before it must not remove a watcher added since
+    it('a stale unsubscribe leaves watchers added after the reset', () => {
+      useStoryStore.getState().setVariable('flag', false);
+      const stale = addTrigger('$flag', () => {});
+      resetTriggers();
+      const cb = vi.fn();
+      addTrigger('$flag', cb);
+      stale();
+      useStoryStore.getState().setVariable('flag', true);
+      checkTriggers();
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -201,4 +201,61 @@ describe('settings registered before the story IFID is known', () => {
     expect(s.getList('theme')).toBe('light');
     expect(s.getRange('volume')).toBe(5);
   });
+
+  describe('named like Object.prototype members (#235)', () => {
+    function registerInherited(s: Settings): void {
+      s.addToggle('constructor', { label: 'C', default: true });
+      s.addList('toString', {
+        label: 'T',
+        options: ['a', 'b'],
+        default: 'b',
+      });
+      s.addRange('__proto__', {
+        label: 'P',
+        min: 0,
+        max: 10,
+        step: 1,
+        default: 5,
+      });
+    }
+
+    it('read as unset before they are registered', async () => {
+      const s = await boot(() => {});
+      for (const name of ['constructor', 'toString', '__proto__']) {
+        expect(s.get(name)).toBeUndefined();
+      }
+      expect(s.getAll()).toEqual({});
+    });
+
+    it('take their defaults and keep set values across a refresh', async () => {
+      const first = await boot(registerInherited);
+      expect(first.get('constructor')).toBe(true);
+      expect(first.getList('toString')).toBe('b');
+      expect(first.getRange('__proto__')).toBe(5);
+      expect(Object.keys(first.getAll())).toEqual([
+        'constructor',
+        'toString',
+        '__proto__',
+      ]);
+      first.set('constructor', false);
+      first.set('__proto__', 7);
+
+      const second = await boot(registerInherited);
+      expect(second.getToggle('constructor')).toBe(false);
+      expect(second.getList('toString')).toBe('b');
+      expect(second.getRange('__proto__')).toBe(7);
+    });
+
+    it('apply persisted values registered after init', async () => {
+      localStorage.setItem(
+        'spindle.test-ifid.settings',
+        '{"__proto__": 3, "constructor": false}',
+      );
+      const s = await boot(() => {});
+      registerInherited(s);
+      expect(s.getRange('__proto__')).toBe(3);
+      expect(s.getToggle('constructor')).toBe(false);
+      expect(s.getList('toString')).toBe('b');
+    });
+  });
 });

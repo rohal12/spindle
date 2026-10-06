@@ -277,7 +277,10 @@ describe('findCodeEnd', () => {
       ]);
       expect(shared).toEqual(fresh);
     },
-    Math.max(5000, NUM_RUNS * 100),
+    // Each run scans from every start, so its time grows with the square of
+    // the text's length and varies widely between seeds; coverage
+    // instrumentation in CI makes it several times slower again
+    Math.max(LINEAR_TIMEOUT, NUM_RUNS * 300),
   );
 });
 

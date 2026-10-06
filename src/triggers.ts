@@ -19,7 +19,6 @@ export interface QueuedDialog {
 }
 
 interface Trigger {
-  id: number;
   name?: string;
   condition: string;
   callback?: () => void;
@@ -30,7 +29,6 @@ interface Trigger {
   macroKey?: string;
 }
 
-let nextId = 0;
 let triggers: Trigger[] = [];
 let checking = false;
 
@@ -67,13 +65,11 @@ function registerTrigger(
   callbackOrOptions: (() => void) | WatchOptions,
   macroKey?: string,
 ): () => void {
-  const id = nextId++;
   const isCallback = typeof callbackOrOptions === 'function';
   const options = isCallback ? undefined : callbackOrOptions;
   const callback = isCallback ? callbackOrOptions : undefined;
 
   const trigger: Trigger = {
-    id,
     name: options?.name,
     condition,
     callback,
@@ -86,8 +82,10 @@ function registerTrigger(
   triggers.push(trigger);
   triggers.sort((a, b) => b.priority - a.priority);
 
+  // By identity: an unsubscribe kept across a restart (resetTriggers) must
+  // not remove a watcher added since
   return () => {
-    triggers = triggers.filter((t) => t.id !== id);
+    triggers = triggers.filter((t) => t !== trigger);
   };
 }
 
@@ -177,7 +175,7 @@ function runCheckLoop(): void {
         anyFired = true;
 
         if (trigger.options?.once) {
-          triggers = triggers.filter((t) => t.id !== trigger.id);
+          triggers = triggers.filter((t) => t !== trigger);
         }
 
         fireTrigger(trigger);
@@ -267,7 +265,6 @@ export function reinitTriggerState(): void {
 export function resetTriggers(): void {
   triggers = [];
   dialogQueue = [];
-  nextId = 0;
   dialogHostCallbacks?.closeAll();
 }
 

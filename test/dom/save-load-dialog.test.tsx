@@ -54,11 +54,52 @@ function makePayload(): SavePayload {
   };
 }
 
+/** Storage operations in flight (see trackStorage). */
+let storageInFlight = 0;
+const trackedBackends = new WeakSet<object>();
+
+/**
+ * Count the backend's operations in flight, so flush() can wait for the
+ * dialog's storage work to finish instead of guessing how long it takes.
+ */
+async function trackStorage(): Promise<void> {
+  const backend = await getBackend();
+  if (trackedBackends.has(backend)) return;
+  trackedBackends.add(backend);
+  const methods = backend as unknown as Record<string, unknown>;
+  for (const key of Object.keys(methods)) {
+    const method = methods[key];
+    if (typeof method !== 'function') continue;
+    methods[key] = (...args: unknown[]) => {
+      storageInFlight++;
+      return Promise.resolve(method.apply(backend, args)).finally(() => {
+        storageInFlight--;
+      });
+    };
+  }
+}
+
 async function flush() {
-  // Wait for async effects to settle
+  // Wait for async effects to settle. Storage work takes macrotasks, and on a
+  // slow runner (e.g. CI with coverage) longer than any fixed delay: after the
+  // minimum wait, keep waiting until no storage operation is in flight and
+  // the DOM has stopped changing.
   await act(async () => {
     await new Promise((r) => setTimeout(r, 50));
   });
+  const deadline = Date.now() + 5000;
+  let previous = '';
+  let stableTicks = 0;
+  while (Date.now() < deadline) {
+    const html = document.body.innerHTML;
+    stableTicks =
+      storageInFlight === 0 && html === previous ? stableTicks + 1 : 0;
+    if (stableTicks >= 2) return;
+    previous = html;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  }
 }
 
 function renderSaveManager(container: HTMLElement, onClose?: () => void) {
@@ -84,6 +125,7 @@ describe('SaveManagerContent', () => {
     useStoryStore.getState().init(storyData);
 
     await initSaveSystem();
+    await trackStorage();
     const ptId = await startNewPlaythrough(IFID);
     useStoryStore.setState({ playthroughId: ptId });
   });

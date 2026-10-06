@@ -201,7 +201,8 @@ export function boot() {
   }
 
   // Reset action ID counters on every navigation (the passage remounts even
-  // when its name is unchanged)
+  // when its name is unchanged). Controls that stay mounted, e.g. in
+  // StoryInterface, keep their IDs: allocation skips IDs still registered.
   let prevNavigationId = useStoryStore.getState().navigationId;
   useStoryStore.subscribe((state) => {
     if (state.navigationId !== prevNavigationId) {
