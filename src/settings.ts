@@ -1,5 +1,5 @@
 import { useStoryStore } from './store';
-import { createNamespace, ownValue } from './utils/namespace';
+import { createNamespace, hasOwn, ownValue } from './utils/namespace';
 
 export interface ToggleConfig {
   label: string;
@@ -76,29 +76,30 @@ function loadFromStorage(): void {
   }
 }
 
+/** Register a setting, starting from its default unless it has a value. */
+function define(name: string, def: SettingDef): void {
+  definitions.set(name, def);
+  if (!hasOwn(values, name)) values[name] = def.config.default;
+  loadFromStorage();
+}
+
+/** The value of setting `name` if it has the type of `fallback`, else that. */
+function valueOf<T>(name: string, fallback: T): T {
+  const v = ownValue(values, name);
+  return typeof v === typeof fallback ? (v as T) : fallback;
+}
+
 export const settings = {
   addToggle(name: string, config: ToggleConfig): void {
-    definitions.set(name, { type: 'toggle', config });
-    if (!Object.prototype.hasOwnProperty.call(values, name)) {
-      values[name] = config.default;
-    }
-    loadFromStorage();
+    define(name, { type: 'toggle', config });
   },
 
   addList(name: string, config: ListConfig): void {
-    definitions.set(name, { type: 'list', config });
-    if (!Object.prototype.hasOwnProperty.call(values, name)) {
-      values[name] = config.default;
-    }
-    loadFromStorage();
+    define(name, { type: 'list', config });
   },
 
   addRange(name: string, config: RangeConfig): void {
-    definitions.set(name, { type: 'range', config });
-    if (!Object.prototype.hasOwnProperty.call(values, name)) {
-      values[name] = config.default;
-    }
-    loadFromStorage();
+    define(name, { type: 'range', config });
   },
 
   get(name: string): unknown {
@@ -106,18 +107,15 @@ export const settings = {
   },
 
   getToggle(name: string): boolean {
-    const v = ownValue(values, name);
-    return typeof v === 'boolean' ? v : false;
+    return valueOf(name, false);
   },
 
   getList(name: string): string {
-    const v = ownValue(values, name);
-    return typeof v === 'string' ? v : '';
+    return valueOf(name, '');
   },
 
   getRange(name: string): number {
-    const v = ownValue(values, name);
-    return typeof v === 'number' ? v : 0;
+    return valueOf(name, 0);
   },
 
   set(name: string, value: unknown): void {

@@ -2,13 +2,19 @@ import { useStoryStore } from '../../store';
 import { useContext } from 'preact/hooks';
 import { LocalsValuesContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
-import { RESERVED_NAME, ownValue } from '../../utils/namespace';
+import { ownValue, variableNameError } from '../../utils/namespace';
 
 const SIGILS = {
   variable: '$',
   temporary: '_',
   local: '@',
   transient: '%',
+} as const;
+
+const STORE_NAMESPACES = {
+  variable: 'variables',
+  temporary: 'temporary',
+  transient: 'transient',
 } as const;
 
 interface VarDisplayProps {
@@ -27,20 +33,13 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
   const root = parts[0]!;
   // Own entries only, as the expression engine reads them
   const storeValue = useStoryStore((s) =>
-    scope === 'variable'
-      ? ownValue(s.variables, root)
-      : scope === 'temporary'
-        ? ownValue(s.temporary, root)
-        : scope === 'transient'
-          ? ownValue(s.transient, root)
-          : undefined,
+    scope === 'local' ? undefined : ownValue(s[STORE_NAMESPACES[scope]], root),
   );
 
-  if (root === RESERVED_NAME) {
+  const nameError = variableNameError(root, SIGILS[scope] + root);
+  if (nameError) {
     return (
-      <span class="error">
-        {`{${SIGILS[scope]}${name} error: "${SIGILS[scope]}${root}" cannot be used as a variable name (${RESERVED_NAME} is reserved)}`}
-      </span>
+      <span class="error">{`{${SIGILS[scope]}${name} error: ${nameError}}`}</span>
     );
   }
 

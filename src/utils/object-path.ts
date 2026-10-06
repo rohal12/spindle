@@ -1,7 +1,5 @@
 import { isDraft } from 'immer';
-
-const hasOwn = (obj: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(obj, key);
+import { hasOwn } from './namespace';
 
 /**
  * Traverse dot-path segments on an object and return the nested value.

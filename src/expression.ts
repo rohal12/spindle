@@ -5,12 +5,13 @@ import { random, randomInt } from './prng';
 import { lexJs, type JsGoal, type Sigil } from './js-lexer';
 import {
   EMPTY_NAMESPACE,
-  RESERVED_NAME,
   asNamespace,
+  countOf,
   isNamespace,
+  variableNameError,
+  type Counts,
   type Namespace,
 } from './utils/namespace';
-import { countOf, type Counts } from './utils/counts';
 
 interface ExpressionFns {
   currentPassage: () => Passage | undefined;
@@ -73,11 +74,8 @@ export function transform(expr: string, goal: JsGoal = 'expression'): string {
         result += text;
       },
       variable(sigil, name) {
-        if (name === RESERVED_NAME) {
-          throw new SyntaxError(
-            `spindle: "${sigil}${name}" cannot be used as a variable name (${RESERVED_NAME} is reserved)`,
-          );
-        }
+        const error = variableNameError(name, sigil + name);
+        if (error) throw new SyntaxError(`spindle: ${error}`);
         // `typeof%x` needs a space once `%x` turns into an identifier.
         if (IDENT_END_RE.test(result.slice(-2))) result += ' ';
         result += `${NAMESPACES[sigil]}["${name}"]`;
@@ -116,6 +114,35 @@ function getOrCompile(key: string, body: string): CompiledExpression {
   return fn;
 }
 
+/** The passage being shown. */
+export function currentPassage(): Passage | undefined {
+  const s = useStoryStore.getState();
+  return s.storyData?.passages.get(s.currentPassage);
+}
+
+/** The passage shown before the current one in history. */
+export function previousPassage(): Passage | undefined {
+  const s = useStoryStore.getState();
+  if (s.historyIndex <= 0) return undefined;
+  const prevName = s.history[s.historyIndex - 1]?.passage;
+  return prevName ? s.storyData?.passages.get(prevName) : undefined;
+}
+
+/**
+ * visited()/rendered() and their has-forms, counting in the counters
+ * `counts()` returns. A missing name means the current passage.
+ */
+export function countQueries(counts: () => Counts) {
+  const count = (name?: string): number =>
+    countOf(counts(), name ?? useStoryStore.getState().currentPassage);
+  return {
+    count,
+    has: (name?: string): boolean => count(name) > 0,
+    any: (...names: string[]): boolean => names.some((n) => count(n) > 0),
+    all: (...names: string[]): boolean => names.every((n) => count(n) > 0),
+  };
+}
+
 let cachedFns: ExpressionFns | null = null;
 let cachedVisitCounts: Counts | null = null;
 let cachedRenderCounts: Counts | null = null;
@@ -132,44 +159,19 @@ export function buildExpressionFns() {
     return cachedFns;
   }
 
-  const visited = (name?: string): number =>
-    countOf(visitCounts, name ?? useStoryStore.getState().currentPassage);
-  const hasVisited = (name?: string): boolean => visited(name) > 0;
-  const hasVisitedAny = (...names: string[]): boolean =>
-    names.some((n) => visited(n) > 0);
-  const hasVisitedAll = (...names: string[]): boolean =>
-    names.every((n) => visited(n) > 0);
-
-  const rendered = (name?: string): number =>
-    countOf(renderCounts, name ?? useStoryStore.getState().currentPassage);
-  const hasRendered = (name?: string): boolean => rendered(name) > 0;
-  const hasRenderedAny = (...names: string[]): boolean =>
-    names.some((n) => rendered(n) > 0);
-  const hasRenderedAll = (...names: string[]): boolean =>
-    names.every((n) => rendered(n) > 0);
-
-  const currentPassage = (): Passage | undefined => {
-    const s = useStoryStore.getState();
-    return s.storyData?.passages.get(s.currentPassage);
-  };
-  const previousPassage = (): Passage | undefined => {
-    const s = useStoryStore.getState();
-    if (s.historyIndex <= 0) return undefined;
-    const prevName = s.history[s.historyIndex - 1]?.passage;
-    return prevName ? s.storyData?.passages.get(prevName) : undefined;
-  };
-
+  const visits = countQueries(() => visitCounts);
+  const renders = countQueries(() => renderCounts);
   cachedFns = {
     currentPassage,
     previousPassage,
-    visited,
-    hasVisited,
-    hasVisitedAny,
-    hasVisitedAll,
-    rendered,
-    hasRendered,
-    hasRenderedAny,
-    hasRenderedAll,
+    visited: visits.count,
+    hasVisited: visits.has,
+    hasVisitedAny: visits.any,
+    hasVisitedAll: visits.all,
+    rendered: renders.count,
+    hasRendered: renders.has,
+    hasRenderedAny: renders.any,
+    hasRenderedAll: renders.all,
     random,
     randomInt,
   };
