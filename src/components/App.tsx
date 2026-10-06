@@ -1,13 +1,16 @@
 import { useEffect } from 'preact/hooks';
 import { useStoryStore } from '../store';
+import { useStoryFields } from '../hooks/use-story-fields';
 import { NobrContext } from '../markup/render';
 import { StoryInterface } from './StoryInterface';
 import { TriggerDialogHost } from './TriggerDialogHost';
 
 export function App() {
-  const storyData = useStoryStore((s) => s.storyData);
-  const currentPassage = useStoryStore((s) => s.currentPassage);
-  const nobr = useStoryStore((s) => s.nobr);
+  const { storyData, currentPassage, nobr } = useStoryFields(
+    'storyData',
+    'currentPassage',
+    'nobr',
+  );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
