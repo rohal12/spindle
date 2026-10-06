@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'preact/hooks';
 import { useStoryStore } from '../../store';
+import { useStoryFields } from '../../hooks/use-story-fields';
 import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
@@ -69,10 +70,13 @@ defineMacro({
   name: 'passage',
   interpolate: true,
   render(_props, ctx) {
-    const currentPassage = useStoryStore((s) => s.currentPassage);
-    const navigationId = useStoryStore((s) => s.navigationId);
-    const storyData = useStoryStore((s) => s.storyData);
-    const renderDeferred = useStoryStore((s) => s.renderDeferred);
+    const { currentPassage, navigationId, storyData, renderDeferred } =
+      useStoryFields(
+        'currentPassage',
+        'navigationId',
+        'storyData',
+        'renderDeferred',
+      );
 
     // Render-gating: displayed controls which passage is visually shown.
     // The store updates immediately, but the visual swap is deferred by the

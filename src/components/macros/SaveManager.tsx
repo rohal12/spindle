@@ -6,6 +6,7 @@ import {
   useContext,
 } from 'preact/hooks';
 import { useStoryStore, resolvePlaythroughId } from '../../store';
+import { useStoryFields } from '../../hooks/use-story-fields';
 import { isSaveExport, type SaveRecord } from '../../saves/types';
 import {
   getSavesGrouped,
@@ -61,10 +62,13 @@ export function SaveManagerContent() {
 
   const closeDialog = useContext(DialogCloseContext);
 
-  const storyData = useStoryStore((s) => s.storyData);
-  const playthroughId = useStoryStore((s) => s.playthroughId);
-  const beginSave = useStoryStore((s) => s.beginSave);
-  const loadFromPayload = useStoryStore((s) => s.loadFromPayload);
+  const { storyData, playthroughId, beginSave, loadFromPayload } =
+    useStoryFields(
+      'storyData',
+      'playthroughId',
+      'beginSave',
+      'loadFromPayload',
+    );
   const ifid = storyData?.ifid ?? '';
 
   const refresh = useCallback(async () => {
