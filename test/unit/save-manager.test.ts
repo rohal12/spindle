@@ -1,3 +1,8 @@
+import { editStored } from '../support/encoded-payload';
+import {
+  IncompatibleSaveError,
+  SAVE_FORMAT_VERSION,
+} from '../../src/saves/format';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initSaveSystem,
@@ -25,6 +30,7 @@ import {
   getStorageInfo,
   clearGameData,
   deletePlaythroughData,
+  decodeSavePayload,
 } from '../../src/saves/save-manager';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
 import { getBackend } from '../../src/saves/storage';
@@ -35,20 +41,20 @@ import { getBackend } from '../../src/saves/storage';
 
 const IFID = 'test-ifid-save';
 
+/**
+ * A payload whose one history moment is at `passage` with `variables` (a
+ * load checks that the current moment is the payload's passage).
+ */
 function makePayload(overrides: Partial<SavePayload> = {}): SavePayload {
+  const passage = overrides.passage ?? 'Start';
+  const variables = overrides.variables ?? { hp: 100 };
   return {
-    passage: 'Start',
-    variables: { hp: 100 },
-    history: [
-      {
-        passage: 'Start',
-        variables: { hp: 100 },
-        timestamp: Date.now(),
-      },
-    ],
+    passage,
+    variables,
+    history: [{ passage, variables, timestamp: Date.now() }],
     historyIndex: 0,
-    visitCounts: { Start: 1 },
-    renderCounts: { Start: 1 },
+    visitCounts: { [passage]: 1 },
+    renderCounts: { [passage]: 1 },
     ...overrides,
   };
 }
@@ -353,7 +359,7 @@ describe('save-manager', () => {
       const record = await createSave(IFID, playthroughId, makePayload());
       const exported = await exportSave(record.meta.id);
       expect(exported).toBeDefined();
-      expect(exported!.version).toBe(1);
+      expect(exported!.formatVersion).toBe(SAVE_FORMAT_VERSION);
       expect(exported!.ifid).toBe(IFID);
       expect(exported!.save.meta.id).toBe(record.meta.id);
     });
@@ -376,9 +382,12 @@ describe('save-manager', () => {
       const record = await createSave(IFID, playthroughId, payload);
       const exported = await exportSave(record.meta.id);
       expect(exported!.save.meta.passage).toBe('Room');
-      expect(exported!.save.payload.passage).toBe('Room');
-      expect(exported!.save.payload.historyIndex).toBe(0);
-      expect(exported!.save.payload.history).toHaveLength(1);
+      expect(exported!.save.payload.formatVersion).toBe(SAVE_FORMAT_VERSION);
+      const stored = decodeSavePayload(exported!.save.payload);
+      expect(stored.passage).toBe('Room');
+      expect(stored.historyIndex).toBe(0);
+      expect(stored.history).toHaveLength(1);
+      expect(stored.variables).toEqual({ hp: 42, name: 'Hero' });
     });
 
     it('exportSave returns undefined for nonexistent id', async () => {
@@ -396,10 +405,10 @@ describe('save-manager', () => {
 
       const json = JSON.stringify(exported, null, 2);
       const parsed = JSON.parse(json);
-      expect(parsed.version).toBe(1);
+      expect(parsed.formatVersion).toBe(SAVE_FORMAT_VERSION);
       expect(parsed.ifid).toBe(IFID);
       expect(parsed.save.meta.id).toBe(record.meta.id);
-      expect(parsed.save.payload.passage).toBe('Room');
+      expect(decodeSavePayload(parsed.save.payload)).toEqual(payload);
     });
 
     it('imports a save and assigns a new unique ID', async () => {
@@ -526,16 +535,19 @@ describe('save-manager', () => {
       expect(loaded!.historyIndex).toBe(1);
     });
 
-    it('import throws on wrong version', async () => {
-      const data = {
-        version: 99 as any,
-        ifid: IFID,
-        exportedAt: new Date().toISOString(),
-        save: { meta: {}, payload: {} },
-      };
-      await expect(importSave(data as any, IFID)).rejects.toThrow(
-        'Unsupported save version',
+    it('import throws on another format version', async () => {
+      const record = await createSave(IFID, playthroughId, makePayload());
+      const exported = (await exportSave(record.meta.id))!;
+      await expect(
+        importSave({ ...exported, formatVersion: 99 }, IFID),
+      ).rejects.toThrow(IncompatibleSaveError);
+      const old = { ...exported, formatVersion: undefined, version: 1 };
+      await expect(importSave(old, IFID)).rejects.toThrow(
+        IncompatibleSaveError,
       );
+      await expect(
+        importSave({ ifid: IFID, save: { meta: {}, payload: {} } }, IFID),
+      ).rejects.toThrow('Invalid save file format');
     });
 
     it('import throws on wrong IFID', async () => {
@@ -665,7 +677,10 @@ describe('save-manager', () => {
       const before = await getSlotSaveInfo(IFID, 'keep-history');
       const exported = (await exportSlotSave(IFID, 'keep-history'))!;
       const malformed = structuredClone(exported);
-      (malformed.save.payload as { history: unknown[] }).history = [null];
+      malformed.save.payload = editStored(
+        malformed.save.payload,
+        (p) => (p.history = [null]),
+      );
 
       await expect(
         importSlotSave(malformed, IFID, 'keep-history'),

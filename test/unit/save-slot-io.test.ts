@@ -1,5 +1,8 @@
 // @vitest-environment happy-dom
+import { editStored, editStoredRaw } from '../support/encoded-payload';
+import { SAVE_FORMAT_VERSION } from '../../src/saves/format';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { getBackend, resetBackend } from '../../src/saves/storage';
@@ -78,10 +81,10 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
     const data = await Story.exportSave('slot-1');
     expect(data).not.toBeNull();
-    expect(data!.version).toBe(1);
+    expect(data!.formatVersion).toBe(SAVE_FORMAT_VERSION);
     expect(data!.ifid).toBe(ifid);
     expect(data!.save.meta.custom).toMatchObject({ day: 3, slot: 'slot-1' });
-    expect(data!.save.payload.variables).toEqual({ hp: 42 });
+    expect(decodeSavePayload(data!.save.payload).variables).toEqual({ hp: 42 });
 
     // Plain JSON: survives a file round-trip unchanged
     expect(JSON.parse(JSON.stringify(data))).toEqual(data);
@@ -130,7 +133,10 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
 
     const after = await (await getBackend()).getSavesByIfid(ifid);
     expect(after).toHaveLength(before.length);
-    expect((await Story.exportSave('slot-2'))!.save.payload.variables).toEqual({
+    expect(
+      decodeSavePayload((await Story.exportSave('slot-2'))!.save.payload)
+        .variables,
+    ).toEqual({
       hp: 10,
     });
   });
@@ -185,7 +191,10 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     const before = await Story.getSaveInfo('slot-1');
     const data = (await Story.exportSave('slot-1'))!;
     const malformed = structuredClone(data);
-    (malformed.save.payload as { history: unknown[] }).history = [null];
+    malformed.save.payload = editStored(
+      malformed.save.payload,
+      (p) => (p.history = [null]),
+    );
 
     await expect(Story.importSave(malformed, 'slot-1')).rejects.toThrow(
       'Invalid save file format',
@@ -209,13 +218,16 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
       const before = await Story.getSaveInfo('slot-1');
       const data = (await Story.exportSave('slot-1'))!;
       const malformed = structuredClone(data);
-      const bad = {
-        __spindle_class__: '__Map__',
-        __spindle_data__: { entries: 42 },
-      };
-      const payload = malformed.save.payload;
-      if (where === 'variables') payload.variables.inventory = bad;
-      else payload.history[0]!.variables.inventory = bad;
+      // A Map whose entries point past the end of the data. The moments
+      // may share their variables with the live ones: replace, not edit
+      malformed.save.payload = editStoredRaw(
+        malformed.save.payload,
+        (p) => {
+          const holder = where === 'variables' ? p : p.history[0];
+          holder.variables = { ...holder.variables, inventory: '__BAD__' };
+        },
+        '["Map",999,999]',
+      );
 
       await expect(Story.importSave(malformed, 'slot-1')).rejects.toThrow(
         'Invalid save file format',
@@ -232,7 +244,10 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     await saveTo('slot-1');
     const data = (await Story.exportSave('slot-1'))!;
     const malformed = structuredClone(data);
-    malformed.save.payload.historyIndex = 5;
+    malformed.save.payload = editStored(
+      malformed.save.payload,
+      (p) => (p.historyIndex = 5),
+    );
 
     await expect(Story.importSave(malformed, 'slot-2')).rejects.toThrow(
       'Invalid save file format',
@@ -358,7 +373,9 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     Story.set('hp', 7);
     Story.save(info.slot);
     await vi.waitFor(async () =>
-      expect((await Story.exportSave())!.save.payload.variables).toMatchObject({
+      expect(
+        decodeSavePayload((await Story.exportSave())!.save.payload).variables,
+      ).toMatchObject({
         hp: 7,
       }),
     );
@@ -369,7 +386,9 @@ describe.each(BACKENDS)('Story.exportSave / importSave ($name)', (backend) => {
     expect(imported.slot).toBe('');
     expect(imported.custom).toMatchObject({ isAutosave: true });
     expect(imported.custom).not.toHaveProperty('slot');
-    expect((await Story.exportSave())!.save.payload.variables).toEqual({
+    expect(
+      decodeSavePayload((await Story.exportSave())!.save.payload).variables,
+    ).toEqual({
       hp: 42,
     });
     expect((await Story.listSaves()).map((s) => s.slot)).toEqual(['']);

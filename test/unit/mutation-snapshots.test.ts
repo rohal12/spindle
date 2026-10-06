@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { executeMutation } from '../../src/execute-mutation';
@@ -75,7 +76,7 @@ describe('state snapshots taken by running mutation code', () => {
   const state = () => useStoryStore.getState();
 
   const savedVariables = async (slot: string) =>
-    (await Story.exportSave(slot))!.save.payload.variables;
+    decodeSavePayload((await Story.exportSave(slot))!.save.payload).variables;
 
   it('saves the writes the code made before Story.save', async () => {
     run('$hp = 5; globalThis.saved = Story.save("s"); $hp = 6');

@@ -9,10 +9,12 @@ defineMacro({
     const code = ctx.collectText(children);
 
     ctx.hooks.useLayoutEffect(() => {
+      // Before the code runs: it may navigate away from this passage
+      const location = ctx.sourceLocation();
       try {
         ctx.mutate(code);
       } catch (err) {
-        logMacroError('do', err);
+        logMacroError('do', err, location);
       }
     }, []);
 

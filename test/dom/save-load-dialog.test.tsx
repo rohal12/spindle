@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { SaveManagerContent } from '../../src/components/macros/SaveManager';
@@ -838,7 +839,7 @@ describe('SaveManagerContent', () => {
         (g) => g.playthrough.id === ptId,
       );
       expect(group?.saves).toHaveLength(1);
-      return group!.saves[0]!.payload.variables;
+      return decodeSavePayload(group!.saves[0]!.payload).variables;
     }
 
     it('"+ New Save" fires beforesave and aftersave once and persists beforesave data', async () => {

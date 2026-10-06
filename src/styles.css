@@ -118,6 +118,51 @@ tw-storydata {
   background: rgba(239, 83, 80, 0.1);
 }
 
+/* Runtime errors shown on the page (see src/components/RuntimeErrors.tsx) */
+.spindle-error-banners {
+  position: fixed;
+  top: 0.75em;
+  left: 50%;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  width: min(42em, calc(100% - 1.5em));
+  transform: translateX(-50%);
+}
+
+.spindle-error-banner {
+  position: relative;
+  padding: 0.75em 2.75em 0.75em 1em;
+  border: 1px solid #ef5350;
+  border-radius: 4px;
+  background: #2b1a1e;
+  color: #ffcdd2;
+  font-size: 0.9em;
+  line-height: 1.5;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.spindle-error-banner-message {
+  font-family: monospace;
+  color: #ef9a9a;
+}
+
+.spindle-error-banner-dismiss {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1em;
+  cursor: pointer;
+}
+
+.spindle-error-banner-dismiss:hover {
+  color: #fff;
+}
+
 .loading {
   text-align: center;
   padding: 2em;

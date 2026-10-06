@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   registerClass,
   getClassName,
@@ -164,74 +164,57 @@ describe('class-registry', () => {
   });
 
   describe('serialize', () => {
-    it('passes through primitives', () => {
-      expect(serialize(42)).toBe(42);
-      expect(serialize('hello')).toBe('hello');
-      expect(serialize(true)).toBe(true);
-      expect(serialize(null)).toBe(null);
+    it('round-trips primitives', () => {
+      for (const v of [42, 'hello', true, null, undefined, NaN, -0, 1n]) {
+        expect(Object.is(deserialize(serialize(v)), v)).toBe(true);
+      }
     });
 
-    it('serializes plain objects', () => {
+    it('writes JSON-compatible data', () => {
       const obj = { a: 1, b: 'two' };
-      expect(serialize(obj)).toEqual({ a: 1, b: 'two' });
+      expect(JSON.parse(JSON.stringify(serialize(obj)))).toEqual(
+        serialize(obj),
+      );
     });
 
-    it('serializes class instances with tags', () => {
+    it('tags class instances with their registered name', () => {
       registerClass('Player', Player);
       const player = new Player({ name: 'Hero', hp: 80, maxHp: 100 });
-      const result = serialize(player) as any;
-
-      expect(result.__spindle_class__).toBe('Player');
-      expect(result.__spindle_data__).toEqual({
-        name: 'Hero',
-        hp: 80,
-        maxHp: 100,
-      });
+      expect(serialize(player)).toContain('"c:Player"');
     });
 
-    it('serializes nested class instances', () => {
+    it('round-trips nested class instances', () => {
       registerClass('Player', Player);
       registerClass('Inventory', Inventory);
       const state = {
         player: new Player({ name: 'Hero' }),
         inv: new Inventory({ items: ['sword'] }),
+        arr: [new Player({ name: 'A' }), new Player({ name: 'B' })],
       };
-      const result = serialize(state) as any;
-
-      expect(result.player.__spindle_class__).toBe('Player');
-      expect(result.inv.__spindle_class__).toBe('Inventory');
-      expect(result.inv.__spindle_data__.items).toEqual(['sword']);
+      const result = deserialize<typeof state>(serialize(state));
+      expect(result.player).toBeInstanceOf(Player);
+      expect(result.inv).toBeInstanceOf(Inventory);
+      expect(result.inv.items).toEqual(['sword']);
+      expect(result.arr[1]).toBeInstanceOf(Player);
+      expect(result.arr[1]!.name).toBe('B');
     });
 
-    it('serializes arrays of instances', () => {
+    it('round-trips circular and shared references', () => {
       registerClass('Player', Player);
-      const arr = [new Player({ name: 'A' }), new Player({ name: 'B' })];
-      const result = serialize(arr) as any[];
-
-      expect(result).toHaveLength(2);
-      expect(result[0].__spindle_class__).toBe('Player');
-      expect(result[1].__spindle_data__.name).toBe('B');
-    });
-
-    it('throws on circular references', () => {
-      const obj: any = { a: 1 };
+      const obj: any = { a: 1, p: new Player() };
       obj.self = obj;
-
-      expect(() => serialize(obj)).toThrow(/circular/i);
+      obj.p.owner = obj;
+      obj.twice = [obj.p, obj.p];
+      const r = deserialize<any>(JSON.parse(JSON.stringify(serialize(obj))));
+      expect(r.self).toBe(r);
+      expect(r.p).toBeInstanceOf(Player);
+      expect(r.p.owner).toBe(r);
+      expect(r.twice[0]).toBe(r.p);
+      expect(r.twice[1]).toBe(r.p);
     });
   });
 
   describe('deserialize', () => {
-    it('passes through primitives', () => {
-      expect(deserialize(42)).toBe(42);
-      expect(deserialize('hello')).toBe('hello');
-      expect(deserialize(null)).toBe(null);
-    });
-
-    it('deserializes plain objects', () => {
-      expect(deserialize({ a: 1 })).toEqual({ a: 1 });
-    });
-
     it('round-trips with serialize', () => {
       registerClass('Player', Player);
       const player = new Player({ name: 'Hero', hp: 75, maxHp: 100 });
@@ -265,29 +248,14 @@ describe('class-registry', () => {
       expect(restored.hp).toBe(40);
     });
 
-    it('warns and returns plain object for unregistered class', () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-      const tagged = {
-        __spindle_class__: 'Unknown',
-        __spindle_data__: { x: 1 },
-      };
-      const result = deserialize(tagged) as any;
-
-      expect(result.x).toBe(1);
-      expect(result instanceof Player).toBe(false);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown'));
-
-      warnSpy.mockRestore();
+    it('throws for an instance of a class that is not registered', () => {
+      expect(() =>
+        deserialize(JSON.stringify([['c:Unknown', 1], { x: 2 }, 1])),
+      ).toThrow(/class "Unknown", which is not registered/);
     });
   });
 
   describe('isDeserializable', () => {
-    const tagged = (name: unknown, data: unknown) => ({
-      __spindle_class__: name,
-      __spindle_data__: data,
-    });
-
     it('accepts everything serialize() produces', () => {
       registerClass('Player', Player);
       const value = {
@@ -308,57 +276,37 @@ describe('class-registry', () => {
       expect(isDeserializable(serialize(value))).toBe(true);
     });
 
-    it('accepts tags of unregistered classes, which load as plain objects', () => {
-      expect(isDeserializable(tagged('Unknown', { hp: 1 }))).toBe(true);
+    it('rejects tags of unregistered classes, which cannot load', () => {
+      expect(
+        isDeserializable(JSON.stringify([['c:Unknown', 1], { hp: 2 }, 1])),
+      ).toBe(false);
+    });
+
+    it('rejects data that is not serialized text', () => {
+      expect(isDeserializable([{ a: 1 }, 2])).toBe(false);
+      expect(isDeserializable(undefined)).toBe(false);
     });
 
     it.each([
-      ['Map entries that are not an array', tagged('__Map__', { entries: 42 })],
-      ['a Map entry that is not a pair', tagged('__Map__', { entries: [[1]] })],
-      ['a Map entry that is a string', tagged('__Map__', { entries: ['ab'] })],
-      ['Map data that is null', tagged('__Map__', null)],
-      ['Set entries that are not an array', tagged('__Set__', { entries: {} })],
-      ['a Date without an ISO string', tagged('__Date__', { iso: 42 })],
-      ['an invalid Date', tagged('__Date__', { iso: 'not a date' })],
-      ['a RegExp without a source', tagged('__RegExp__', { flags: 'g' })],
-      [
-        'a RegExp with bad flags',
-        tagged('__RegExp__', { source: 'a', flags: 'zz' }),
-      ],
-      [
-        'a RegExp with a bad pattern',
-        tagged('__RegExp__', { source: '(', flags: '' }),
-      ],
-      ['class data that is not an object', tagged('Player', 'hp')],
-      ['class data that is an array', tagged('Player', [1])],
-      ['a class name that is not a string', tagged(42, {})],
-      [
-        'a malformed value nested in an array',
-        [1, { inner: tagged('__Set__', { entries: 1 }) }],
-      ],
-      [
-        'a malformed value nested in a Map',
-        tagged('__Map__', {
-          entries: [['k', tagged('__Map__', { entries: 42 })]],
-        }),
-      ],
-      [
-        'a malformed value nested in class data',
-        tagged('Player', { born: tagged('__Date__', { iso: 'yesterday' }) }),
-      ],
+      ['an empty array', []],
+      ['a plain object (not flattened data)', { a: 1 }],
+      ['an index past the end', [{ a: 5 }]],
+      ['an index that is not an integer', [{ a: 1.5 }]],
+      ['Map entries past the end', [['Map', 5, 6]]],
+      ['an unknown built-in tag', [['Nope', 0]]],
+      ['a RegExp with bad flags', [['RegExp', 'a', 'zz']]],
+      ['a RegExp with a bad pattern', [['RegExp', '(', '']]],
+      ['a BigInt that is not an integer', [['BigInt', '1.5']]],
+      ['class data that is not an object', [['c:Player', 1], 'hp']],
+      ['class data that is an array', [['c:Player', 1], [2], 3]],
+      ['a "__proto__" key', [{ __proto__: 1 }, { admin: 2 }, true]],
     ])('rejects %s', (_, value) => {
-      expect(isDeserializable({ v: value })).toBe(false);
-    });
-
-    it('rejects circular data', () => {
-      const a: Record<string, unknown> = {};
-      a.self = a;
-      expect(isDeserializable(a)).toBe(false);
-    });
-
-    it('accepts the same object reached twice without a cycle', () => {
-      const shared = { a: 1 };
-      expect(isDeserializable({ x: shared, y: [shared] })).toBe(true);
+      registerClass('Player', Player);
+      const text =
+        _ === 'a "__proto__" key'
+          ? '[{"__proto__":1},{"admin":2},true]'
+          : JSON.stringify(value);
+      expect(isDeserializable(text)).toBe(false);
     });
   });
 
@@ -613,9 +561,11 @@ describe('class-registry', () => {
       expect(deepEqual({ constructor: Object }, { y: 1 })).toBe(false);
     });
 
-    it('treats an array hole like an undefined element', () => {
-      // deepClone() and save/load turn holes into undefined elements
-      expect(deepEqual([, 1], [undefined, 1])).toBe(true);
+    it('tells an array hole from an undefined element', () => {
+      // deepClone() and save/load keep holes
+      expect(deepEqual([, 1], [undefined, 1])).toBe(false);
+      expect(deepEqual([undefined, 1], [, 1])).toBe(false);
+      expect(deepEqual([, 1], [, 1])).toBe(true);
       expect(deepEqual([undefined], [])).toBe(false);
     });
   });
@@ -679,28 +629,22 @@ describe('class-registry', () => {
       expect(() => serialize(JSON.parse('{"x": {"__proto__": 1}}'))).toThrow(
         /__proto__/,
       );
-      expect(isDeserializable(JSON.parse('{"x": {"__proto__": {}}}'))).toBe(
-        false,
-      );
+      expect(isDeserializable('[{"x":1},{"__proto__":2},{}]')).toBe(false);
     });
 
     it('never sets a prototype from a "__proto__" key', () => {
+      expect(() => deserialize('[{"__proto__":1},{"admin":2},true]')).toThrow(
+        /__proto__/,
+      );
       const data = JSON.parse('{"__proto__": {"admin": true}}');
-      const restored = deserialize(data) as Record<string, unknown>;
-      expect(Object.getPrototypeOf(restored)).toBe(Object.prototype);
       const copy = deepClone(data) as Record<string, unknown>;
       expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
       expect(Object.keys(copy)).toEqual(['__proto__']);
     });
 
-    it('rejects Map entries with a hole', () => {
-      const entries: unknown[] = [['a', 1]];
-      entries.length = 2;
-      expect(
-        isDeserializable({
-          m: { __spindle_class__: '__Map__', __spindle_data__: { entries } },
-        }),
-      ).toBe(false);
+    it('rejects a Map entry without a value', () => {
+      expect(isDeserializable('[{"m":1},["Map",2],"a"]')).toBe(false);
+      expect(isDeserializable('[{"m":1},["Map",2,3],"a",4]')).toBe(true);
     });
 
     it('deepClone keeps a null prototype', () => {

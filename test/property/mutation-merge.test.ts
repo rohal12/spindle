@@ -11,11 +11,12 @@
  * here: one plain state that every write is applied to in program order.
  */
 import { afterAll, beforeAll, describe, expect, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { test, fc } from '@fast-check/vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { executeMutation } from '../../src/execute-mutation';
-import { clearRegistry, deserialize } from '../../src/class-registry';
+import { clearRegistry } from '../../src/class-registry';
 import { deepClone } from '../../src/structural';
 import { getBackend, resetBackend } from '../../src/saves/storage';
 import { deleteByPath, setByPath } from '../../src/utils/object-path';
@@ -836,7 +837,7 @@ async function check(ops: Op[], withSaves: boolean): Promise<void> {
   for (const save of p.saves) {
     await save.promise;
     const exported = await Story.exportSave(save.slot);
-    const saved = deserialize(exported!.save.payload.variables);
+    const saved = decodeSavePayload(exported!.save.payload).variables;
     same(saved, save.expected, `save ${save.slot}`);
   }
 }

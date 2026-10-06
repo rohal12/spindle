@@ -1,5 +1,6 @@
-import { isDraft } from 'immer';
+import { current as draftState, isDraft } from 'immer';
 import { hasOwn } from './namespace';
+import { atomicName } from './value-kinds';
 
 /**
  * Traverse dot-path segments on an object and return the nested value.
@@ -29,22 +30,13 @@ const isArrayKey = (key: string): boolean =>
  * Built-ins whose content is not their properties: a property written into
  * one would be dropped by clones and saves (and by Immer, for Map and Set).
  */
-const builtinName = (value: object): string | undefined =>
-  value instanceof Map
-    ? 'a Map'
-    : value instanceof Set
-      ? 'a Set'
-      : value instanceof Date
-        ? 'a Date'
-        : value instanceof RegExp
-          ? 'a RegExp'
-          : undefined;
+const builtinName = atomicName;
 
 /**
  * Shallow copy that keeps the prototype, so a registered class instance
  * stays an instance of its class (with the same own keys deepClone copies).
  */
-function shallowCopy(value: object): Record<string, unknown> {
+export function shallowCopy(value: object): Record<string, unknown> {
   const copy = Array.isArray(value)
     ? []
     : (Object.create(Object.getPrototypeOf(value) as object | null) as object);
@@ -120,6 +112,15 @@ export function deleteByPath(
     return;
   }
   const parent = walkToParent(root, segments, false);
+  if (Array.isArray(parent) && isDraft(parent) && segments.length > 1) {
+    // Immer turns `delete` of an array element into writing undefined: to
+    // leave a hole, as `delete` does, put in a copy of the array with one
+    const copy = (draftState(parent) as unknown[]).slice();
+    delete copy[Number(last)];
+    const holder = walkToParent(root, segments.slice(0, -1), false);
+    holder[segments[segments.length - 2]!] = copy;
+    return;
+  }
   delete parent[last];
 }
 

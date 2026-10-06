@@ -34,7 +34,7 @@ import { executeStoryInit } from '../../src/story-init';
 import { resetEmitter } from '../../src/event-emitter';
 import { resetTriggers } from '../../src/triggers';
 import {
-  deserializePayload,
+  decodeSavePayload,
   getSavesGrouped,
   exportSave,
 } from '../../src/saves/save-manager';
@@ -336,7 +336,7 @@ export async function assertMatches(m: SavesModel): Promise<void> {
     expect(data!.save.meta.playthroughId).toBe(rec.pt);
     expect(data!.save.meta.title).toBe(rec.title);
     expect(data!.save.meta.userTitle === true).toBe(rec.userTitle);
-    expectGame(deserializePayload(data!.save.payload), rec.game);
+    expectGame(decodeSavePayload(data!.save.payload), rec.game);
   }
   expect((await Story_.listSaves()).map((i) => i.slot).sort()).toEqual(
     [...m.slots.keys()].sort(),
@@ -349,7 +349,7 @@ export async function assertMatches(m: SavesModel): Promise<void> {
     expect(data!.save.meta.playthroughId).toBe(rec.pt);
     expect(data!.save.meta.title).toBe(rec.title);
     expect(data!.save.meta.custom).toEqual(rec.custom);
-    expectGame(deserializePayload(data!.save.payload), rec.game);
+    expectGame(decodeSavePayload(data!.save.payload), rec.game);
   }
 
   // Grouping: exactly the model's playthroughs, each with exactly its saves

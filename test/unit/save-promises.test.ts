@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { decodeSavePayload } from '../../src/saves/save-manager';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetEmitter } from '../../src/event-emitter';
@@ -179,7 +180,7 @@ describe('awaitable Story.save / deleteSave / load', () => {
     await Story.save('slot-1');
 
     const data = await Story.exportSave('slot-1');
-    expect(data!.save.payload.variables.hp).toBe(55);
+    expect(decodeSavePayload(data!.save.payload).variables.hp).toBe(55);
   });
 
   it('an ignored failing save does not cause an unhandled rejection', async () => {
@@ -276,7 +277,7 @@ describe('storage operations run in call order', () => {
 
     const data = await Story.exportSave('a');
     expect(data!.save.meta.title).toBe('Mine');
-    expect(data!.save.payload.passage).toBe('Room');
+    expect(decodeSavePayload(data!.save.payload).passage).toBe('Room');
   });
 
   it('clearGameData restarts at once: a save issued after it belongs to the new game', async () => {
