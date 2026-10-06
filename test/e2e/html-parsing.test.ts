@@ -96,4 +96,22 @@ describe('HTML in markdown output is parsed inertly', () => {
     expect(rendered).toBe(1);
     expect(constructed).toBe(rendered);
   });
+
+  it('runs an inline handler only on the rendered element', async () => {
+    await boot({
+      passages: {
+        Start: encode('**Probe** <img src="data:," a.b onerror="seen(this)">'),
+      },
+      script: `
+        window.runs = { live: 0, detached: 0 };
+        window.seen = (el) => el.isConnected ? runs.live++ : runs.detached++;`,
+    });
+    await page.waitForFunction(
+      () => (window as unknown as { runs: { live: number } }).runs.live > 0,
+    );
+    const runs = await page.evaluate(
+      () => (window as unknown as { runs: unknown }).runs,
+    );
+    expect(runs).toEqual({ live: 1, detached: 0 });
+  });
 });
