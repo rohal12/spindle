@@ -46,7 +46,8 @@ import {
   clearAllData as smClearAllData,
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
-import { deepClone, deepEqual, serialize } from './class-registry';
+import { serialize } from './class-registry';
+import { deepClone, mergeKeys, mergesWith } from './structural';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -56,7 +57,6 @@ import {
 } from './prng';
 import { errorMessage } from './utils/error-message';
 import {
-  isMergeable,
   routeStoreUpdate,
   runWithCommittedMutations,
 } from './execute-mutation';
@@ -64,6 +64,7 @@ import {
   checkVariableName,
   createCounts,
   createNamespace,
+  hasOwn,
   isNamespace,
   type Counts,
   type Namespace,
@@ -127,7 +128,7 @@ function computeVarPatches(
     for (const key of Object.keys(d)) {
       // Own keys only: `curr` may be a plain object (a loaded snapshot),
       // whose inherited `constructor` is no variable
-      if (!Object.prototype.hasOwnProperty.call(curr, key)) delete d[key];
+      if (!hasOwn(curr, key)) delete d[key];
     }
     for (const [key, val] of Object.entries(curr)) {
       d[key] = val;
@@ -147,6 +148,31 @@ function rerecordNewestMoment(vars: Record<string, unknown>): void {
   } else {
     patchEntries[last] = computeVarPatches(reconstructVarsAt(last), vars);
   }
+}
+
+/**
+ * Call `fn` with the variables recorded for each of the first `count`
+ * history moments, replaying the patches once.
+ */
+function forEachRecorded(
+  count: number,
+  fn: (vars: Record<string, unknown>, index: number) => void,
+): void {
+  let vars: Record<string, unknown> = variableBase;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) vars = applyPatches(vars, patchEntries[i - 1]!.forward);
+    fn(vars, i);
+  }
+}
+
+/** A history moment as saves and the session hold it, with its variables. */
+function savedMoment<V>(moment: HistoryMoment, variables: V) {
+  return {
+    passage: moment.passage,
+    variables,
+    timestamp: moment.timestamp,
+    prng: moment.prng,
+  };
 }
 
 /** Reconstruct variables at a given history moment by replaying patches. */
@@ -188,26 +214,14 @@ function persistSession(get: () => StoryState): void {
     if (gap === 1) {
       // Common path: one new moment at the end — use current variables directly
       const i = history.length - 1;
-      serializedHistory[i] = {
-        passage: history[i]!.passage,
-        variables: serialize(variables),
-        timestamp: history[i]!.timestamp,
-        prng: history[i]!.prng,
-      };
+      serializedHistory[i] = savedMoment(history[i]!, serialize(variables));
     } else {
       // Bulk fill (after loadFromPayload) — reconstruct incrementally
-      let vars = variableBase;
-      for (let i = 0; i < history.length; i++) {
-        if (i > 0) vars = applyPatches(vars, patchEntries[i - 1]!.forward);
+      forEachRecorded(history.length, (vars, i) => {
         if (i >= serializedHistory.length) {
-          serializedHistory[i] = {
-            passage: history[i]!.passage,
-            variables: serialize(vars),
-            timestamp: history[i]!.timestamp,
-            prng: history[i]!.prng,
-          };
+          serializedHistory[i] = savedMoment(history[i]!, serialize(vars));
         }
-      }
+      });
     }
   }
 
@@ -250,6 +264,9 @@ function trimHistory(state: {
   return true;
 }
 
+type StoreGet = () => StoryState;
+type StoreSet = (recipe: (state: StoryState) => void) => void;
+
 /** True while navigate() lets watchers react to the moment it entered. */
 let navigationTriggerPhase = false;
 
@@ -272,10 +289,7 @@ let enteredMoment: {
  * leave the moment: a watcher that moves through history must not have the
  * moment it leaves recorded with the state of the one it arrives at.
  */
-function finishEnteredMoment(
-  get: () => StoryState,
-  set: (recipe: (state: StoryState) => void) => void,
-): void {
+function finishEnteredMoment(get: StoreGet, set: StoreSet): void {
   const moment = enteredMoment;
   enteredMoment = null;
   if (!moment || get().navigationId !== moment.navigationId) return;
@@ -311,6 +325,69 @@ function resetModuleState(base: Namespace): void {
 }
 
 /**
+ * Fresh variables from `defaults` for a game that starts over (init,
+ * restart), recorded as the history base.
+ */
+function startVariables(defaults: Record<string, unknown>): Namespace {
+  const initialVars = createNamespace(deepClone(defaults));
+  resetModuleState(deepClone(initialVars));
+  return initialVars;
+}
+
+/**
+ * Enter the start passage with `variables`, as the only history moment
+ * (init, restart). Call it inside a store update.
+ */
+function enterStart(
+  state: StoryState,
+  passage: string,
+  variables: Namespace,
+  transientDefaults: Record<string, unknown>,
+): void {
+  state.currentPassage = passage;
+  state.navigationId++;
+  state.variables = variables;
+  state.transient = createNamespace(deepClone(transientDefaults));
+  state.temporary = createNamespace();
+  state.history = [{ passage, timestamp: Date.now() }];
+  state.historyIndex = 0;
+}
+
+/**
+ * Move through history by `step` moments (back or forward), restoring the
+ * snapshot recorded for the moment moved to: live variables may hold edits
+ * made since the current moment was recorded.
+ */
+function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
+  const { historyIndex, history } = get();
+  const target = historyIndex + step;
+  if (target < 0 || target >= history.length) return;
+  finishEnteredMoment(get, set);
+
+  const previousPassage = get().currentPassage;
+  const targetPassage = history[target]!.passage;
+  emit('beforenavigate', targetPassage);
+
+  const restoredVars = deepClone(reconstructVarsAt(target));
+
+  set((state) => {
+    state.historyIndex += step;
+    state.currentPassage = state.history[state.historyIndex]!.passage;
+    state.navigationId++;
+    state.variables = restoredVars;
+    state.temporary = createNamespace();
+  });
+
+  // Restored state is not a change watchers react to
+  reinitTriggerState();
+  lastNavigationVars = get().variables;
+  restorePRNGFromMoment(get().history[get().historyIndex]);
+  persistSession(get);
+
+  emit('afternavigate', targetPassage, previousPassage);
+}
+
+/**
  * Record the state StoryInit left behind as the start moment: its variable
  * snapshot (the history base) and PRNG state. Called by executeStoryInit()
  * after the StoryInit passage has rendered, and again after the `storyinit`
@@ -322,10 +399,7 @@ export function recordStoryInitState(): void {
   const { history, historyIndex, variables } = useStoryStore.getState();
   if (history.length !== 1 || historyIndex !== 0) return;
 
-  variableBase = variables;
-  patchEntries = [];
-  lastNavigationVars = variables;
-  serializedHistory = [];
+  resetModuleState(variables);
 
   const prng = snapshotPRNG();
   useStoryStore.setState((state) => {
@@ -554,65 +628,13 @@ function keepHookWrites(
   mergeHookWrites(moment.variables, before, after, new Set());
 }
 
-const hasOwn = (obj: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(obj, key);
-
 /**
- * Whether changes between `a` and `b` merge key by key: both are arrays,
- * or both are objects of one class (see isMergeable).
- */
-function mergeable(a: unknown, b: unknown): boolean {
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b);
-  }
-  return (
-    isMergeable(a) &&
-    isMergeable(b) &&
-    Object.getPrototypeOf(a) === Object.getPrototypeOf(b)
-  );
-}
-
-/**
- * Apply the hooks' change of a value, from `before` to `after`, to the
- * snapshot's copy of it, `target[key]`. Store updates are immutable, so a
- * value no hook touched keeps its identity; one rebuilt with equal content
- * (mutation code commits whole values) is no change either. Where `target`
- * lacks the key or holds another kind of value (the passage created or
- * replaced it), the hooks' whole value is written.
- */
-function mergeHookWrite(
-  target: Record<string, unknown>,
-  key: string,
-  before: unknown,
-  after: unknown,
-  ancestors: Set<object>,
-): void {
-  if (Object.is(before, after)) return;
-  if (
-    mergeable(before, after) &&
-    hasOwn(target, key) &&
-    mergeable(after, target[key]) &&
-    // Stop at cycles: deepEqual() and deepClone() handle them
-    !ancestors.has(after as object)
-  ) {
-    mergeHookWrites(
-      target[key] as Record<string, unknown>,
-      before as Record<string, unknown>,
-      after as Record<string, unknown>,
-      ancestors,
-    );
-  } else if (!deepEqual(before, after)) {
-    target[key] = deepClone(after);
-  }
-}
-
-/**
- * Apply the changes between `before` and `after`, two objects or two arrays
- * (see mergeable()), to the snapshot's `target`. Array elements merge by
- * index. Elements the hooks removed from an array's end are removed from
- * the snapshot's array at the same indices, and elements they added are
- * appended to it: where the passage resized the array, its indices do not
- * line up with the snapshot's, and the passage resizes it again on load.
+ * Apply the hooks' changes between `before` and `after`, two objects or two
+ * arrays, to the snapshot's copy of them, `target` (see mergeKeys: array
+ * elements merge by index). A changed value is merged key by key where the
+ * snapshot holds the same kind of value. Where it lacks the key or holds
+ * another kind (the passage created or replaced it), the hooks' whole value
+ * is written.
  */
 function mergeHookWrites(
   target: Record<string, unknown>,
@@ -621,39 +643,33 @@ function mergeHookWrites(
   ancestors: Set<object>,
 ): void {
   ancestors.add(after);
-  if (Array.isArray(target)) {
-    const b = before as unknown as unknown[];
-    const a = after as unknown as unknown[];
-    const shared = Math.min(b.length, a.length, target.length);
-    for (let i = 0; i < shared; i++) {
-      mergeHookWrite(target, String(i), b[i], a[i], ancestors);
+  mergeKeys(target, before, after, (key, b, a) => {
+    if (
+      !hasOwn(target, key) ||
+      !mergesWith(a, target[key], true) ||
+      // Stop at cycles: deepEqual() and deepClone() handle them
+      ancestors.has(a)
+    ) {
+      return false;
     }
-    if (a.length < b.length) {
-      target.length = Math.min(target.length, a.length);
-    }
-    for (let i = b.length; i < a.length; i++) target.push(deepClone(a[i]));
-  } else {
-    for (const key of Object.keys(before)) {
-      if (!hasOwn(after, key)) delete target[key];
-    }
-    for (const key of Object.keys(after)) {
-      if (hasOwn(before, key)) {
-        mergeHookWrite(target, key, before[key], after[key], ancestors);
-      } else {
-        target[key] = deepClone(after[key]);
-      }
-    }
-  }
+    mergeHookWrites(target[key] as Record<string, unknown>, b, a, ancestors);
+    return true;
+  });
   ancestors.delete(after);
+}
+
+/** Restore the PRNG from a snapshot, or reset it without one. */
+function restorePRNGFrom(prng: PRNGSnapshot | null | undefined): void {
+  if (prng) {
+    restorePRNG(prng.seed, prng.pull);
+  } else {
+    resetPRNG();
+  }
 }
 
 /** Restore or reset PRNG from a history moment's snapshot. */
 function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
-  if (moment?.prng) {
-    restorePRNG(moment.prng.seed, moment.prng.pull);
-  } else if (moment) {
-    resetPRNG();
-  }
+  if (moment) restorePRNGFrom(moment.prng);
 }
 
 export interface HistoryMoment {
@@ -879,6 +895,62 @@ function handled<T>(p: Promise<T>): Promise<T> {
   return p;
 }
 
+/**
+ * `p` with its failure logged under `message` and passed to `onError`, and
+ * still rejecting; marked as handled (see handled()).
+ */
+function reported<T>(
+  p: Promise<T>,
+  message: string,
+  onError?: (err: unknown) => void,
+): Promise<T> {
+  return handled(
+    p.catch((err: unknown) => {
+      console.error(message, err);
+      onError?.(err);
+      throw err;
+    }),
+  );
+}
+
+/** Record in the slot cache whether `slot` holds a save. */
+function recordKnownSave(
+  set: StoreSet,
+  slot: string | undefined,
+  known: boolean,
+): void {
+  set((state) => {
+    const key = slot ?? '';
+    if (known) {
+      state.knownSaves = { ...state.knownSaves, [key]: true };
+    } else {
+      const { [key]: _, ...rest } = state.knownSaves;
+      state.knownSaves = rest as Record<string, true>;
+    }
+  });
+}
+
+/**
+ * Queue the clearing of saved data, then restart now: the new playthrough
+ * is stored after it, and operations issued from here on belong to the new
+ * game. The slot cache empties once the clearing is done, after operations
+ * issued before it have updated it.
+ */
+function clearAndRestart(
+  get: StoreGet,
+  set: StoreSet,
+  clearing: Promise<void>,
+  message: string,
+): Promise<void> {
+  const cleared = clearing.then(() => {
+    set((state) => {
+      state.knownSaves = {};
+    });
+  });
+  get().restart();
+  return reported(cleared, message);
+}
+
 export const useStoryStore = create<StoryState>()(
   storyStore((set, get) => ({
     storyData: null,
@@ -939,27 +1011,15 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
-      const initialVars = createNamespace(deepClone(variableDefaults));
-      resetModuleState(deepClone(initialVars));
+      const initialVars = startVariables(variableDefaults);
 
       set((state) => {
         state.storyData = storyData as StoryData;
         // Unknown until the save system has looked it up (below)
         state.playthroughId = '';
-        state.currentPassage = startPassage.name;
-        state.navigationId++;
-        state.variables = initialVars;
         state.variableDefaults = variableDefaults;
-        state.transient = createNamespace(deepClone(transientDefaults));
         state.transientDefaults = transientDefaults;
-        state.temporary = createNamespace();
-        state.history = [
-          {
-            passage: startPassage.name,
-            timestamp: Date.now(),
-          },
-        ];
-        state.historyIndex = 0;
+        enterStart(state, startPassage.name, initialVars, transientDefaults);
         state.visitCounts = createCounts(null, startPassage.name);
         state.renderCounts = createCounts(null, startPassage.name);
       });
@@ -1072,65 +1132,9 @@ export const useStoryStore = create<StoryState>()(
       for (const next of deferred) get().navigate(next);
     },
 
-    goBack: () => {
-      const { historyIndex } = get();
-      if (historyIndex <= 0) return;
-      finishEnteredMoment(get, set);
+    goBack: () => moveInHistory(get, set, -1),
 
-      const previousPassage = get().currentPassage;
-      const targetPassage = get().history[historyIndex - 1]!.passage;
-      emit('beforenavigate', targetPassage);
-
-      // Restore the recorded snapshot; live variables may hold edits made
-      // since the current moment was recorded.
-      const restoredVars = deepClone(reconstructVarsAt(historyIndex - 1));
-
-      set((state) => {
-        state.historyIndex--;
-        state.currentPassage = state.history[state.historyIndex]!.passage;
-        state.navigationId++;
-        state.variables = restoredVars;
-        state.temporary = createNamespace();
-      });
-
-      // Restored state is not a change watchers react to
-      reinitTriggerState();
-      lastNavigationVars = get().variables;
-      restorePRNGFromMoment(get().history[get().historyIndex]);
-      persistSession(get);
-
-      emit('afternavigate', targetPassage, previousPassage);
-    },
-
-    goForward: () => {
-      const { historyIndex, history: hist } = get();
-      if (historyIndex >= hist.length - 1) return;
-      finishEnteredMoment(get, set);
-
-      const previousPassage = get().currentPassage;
-      const targetPassage = hist[historyIndex + 1]!.passage;
-      emit('beforenavigate', targetPassage);
-
-      // Restore the recorded snapshot; live variables may hold edits made
-      // since the current moment was recorded.
-      const restoredVars = deepClone(reconstructVarsAt(historyIndex + 1));
-
-      set((state) => {
-        state.historyIndex++;
-        state.currentPassage = state.history[state.historyIndex]!.passage;
-        state.navigationId++;
-        state.variables = restoredVars;
-        state.temporary = createNamespace();
-      });
-
-      // Restored state is not a change watchers react to
-      reinitTriggerState();
-      lastNavigationVars = get().variables;
-      restorePRNGFromMoment(get().history[get().historyIndex]);
-      persistSession(get);
-
-      emit('afternavigate', targetPassage, previousPassage);
-    },
+    goForward: () => moveInHistory(get, set, 1),
 
     setVariable: (name: string, value: unknown) => {
       set((state) => {
@@ -1215,22 +1219,10 @@ export const useStoryStore = create<StoryState>()(
 
       resetPRNG();
       resetTriggers();
-      const initialVars = createNamespace(deepClone(variableDefaults));
-      resetModuleState(deepClone(initialVars));
+      const initialVars = startVariables(variableDefaults);
 
       set((state) => {
-        state.currentPassage = startPassage.name;
-        state.navigationId++;
-        state.variables = initialVars;
-        state.transient = createNamespace(deepClone(transientDefaults));
-        state.temporary = createNamespace();
-        state.history = [
-          {
-            passage: startPassage.name,
-            timestamp: Date.now(),
-          },
-        ];
-        state.historyIndex = 0;
+        enterStart(state, startPassage.name, initialVars, transientDefaults);
         state.visitCounts = createCounts(null, startPassage.name);
         state.renderCounts = createCounts(null, startPassage.name);
         if (!keepDeferred) {
@@ -1256,26 +1248,20 @@ export const useStoryStore = create<StoryState>()(
       // The playthrough current now, not when the write runs
       const playthrough = resolvePlaythroughId();
 
-      return handled(
+      return reported(
         saveWithHooks(slot, custom, get().beginSave, async (payload) => {
           set((state) => {
             state.saveError = null;
           });
           // Queued now, in call order with other storage operations
           await quickSave(storyData.ifid, playthrough, payload, slot, custom);
-          set((state) => {
-            state.knownSaves = {
-              ...state.knownSaves,
-              [slot ?? '']: true,
-            };
-          });
-        }).catch((err) => {
-          console.error('spindle: failed to save', err);
+          recordKnownSave(set, slot, true);
+        }),
+        'spindle: failed to save',
+        (err) =>
           set((state) => {
             state.saveError = errorMessage(err, 'Failed to save');
-          });
-          throw err;
-        }),
+          }),
       );
     },
 
@@ -1299,24 +1285,21 @@ export const useStoryStore = create<StoryState>()(
         ),
       );
       const replacement = ++stateReplacementsIssued;
-      return handled(
-        read
-          .then(async (loaded) => {
-            // The store names the loaded playthrough before the loaded
-            // state is applied (and `afterload` fires)
-            await switched;
-            if (!loaded) return;
-            // A restart, boot or direct load issued after this one won
-            if (latestStateApplied > replacement) return;
-            slotLoadApplying = replacement;
-            get().loadFromPayload(loaded.payload, slot);
-          })
-          .catch((err) => {
-            console.error('spindle: failed to load save', err);
-            set((state) => {
-              state.loadError = errorMessage(err, 'Failed to load');
-            });
-            throw err;
+      return reported(
+        read.then(async (loaded) => {
+          // The store names the loaded playthrough before the loaded state
+          // is applied (and `afterload` fires)
+          await switched;
+          if (!loaded) return;
+          // A restart, boot or direct load issued after this one won
+          if (latestStateApplied > replacement) return;
+          slotLoadApplying = replacement;
+          get().loadFromPayload(loaded.payload, slot);
+        }),
+        'spindle: failed to load save',
+        (err) =>
+          set((state) => {
+            state.loadError = errorMessage(err, 'Failed to load');
           }),
       );
     },
@@ -1325,7 +1308,7 @@ export const useStoryStore = create<StoryState>()(
       const { storyData, knownSaves } = get();
       if (!storyData) return false;
       // Own entries only: slot names like 'constructor' are not inherited saves
-      return Object.prototype.hasOwnProperty.call(knownSaves, slot ?? '');
+      return hasOwn(knownSaves, slot ?? '');
     },
 
     getSaveInfo: async (slot?: string): Promise<SaveInfo | null> => {
@@ -1344,19 +1327,11 @@ export const useStoryStore = create<StoryState>()(
       const { storyData } = get();
       if (!storyData) return Promise.resolve();
 
-      return handled(
-        deleteSlotSave(storyData.ifid, slot)
-          .then(() => {
-            set((state) => {
-              const key = slot ?? '';
-              const { [key]: _, ...rest } = state.knownSaves;
-              state.knownSaves = rest as Record<string, true>;
-            });
-          })
-          .catch((err) => {
-            console.error('spindle: failed to delete save', err);
-            throw err;
-          }),
+      return reported(
+        deleteSlotSave(storyData.ifid, slot).then(() =>
+          recordKnownSave(set, slot, false),
+        ),
+        'spindle: failed to delete save',
       );
     },
 
@@ -1372,9 +1347,7 @@ export const useStoryStore = create<StoryState>()(
       if (!isSaveExport(data)) throw new Error('Invalid save file format');
 
       const info = await importSlotSave(data, storyData.ifid, slot);
-      set((state) => {
-        state.knownSaves = { ...state.knownSaves, [slot ?? '']: true };
-      });
+      recordKnownSave(set, slot, true);
       return info;
     },
 
@@ -1382,39 +1355,21 @@ export const useStoryStore = create<StoryState>()(
       const { storyData } = get();
       if (!storyData) return Promise.resolve();
 
-      // Queue the clearing, then restart now: the new playthrough is stored
-      // after it, and operations issued from here on belong to the new game.
-      // The slot cache empties once the clearing is done, after operations
-      // issued before it have updated it.
-      const cleared = smClearGameData(storyData.ifid).then(() => {
-        set((state) => {
-          state.knownSaves = {};
-        });
-      });
-      get().restart();
-      return handled(
-        cleared.catch((err) => {
-          console.error('spindle: failed to clear game data', err);
-          throw err;
-        }),
+      return clearAndRestart(
+        get,
+        set,
+        smClearGameData(storyData.ifid),
+        'spindle: failed to clear game data',
       );
     },
 
-    clearAllData: () => {
-      // As clearGameData: queue the clearing, then restart now
-      const cleared = smClearAllData().then(() => {
-        set((state) => {
-          state.knownSaves = {};
-        });
-      });
-      get().restart();
-      return handled(
-        cleared.catch((err) => {
-          console.error('spindle: failed to clear all data', err);
-          throw err;
-        }),
-      );
-    },
+    clearAllData: () =>
+      clearAndRestart(
+        get,
+        set,
+        smClearAllData(),
+        'spindle: failed to clear all data',
+      ),
 
     deletePlaythrough: (playthroughId: string) => {
       const { storyData } = get();
@@ -1444,18 +1399,14 @@ export const useStoryStore = create<StoryState>()(
         );
       }
 
-      return handled(
-        deletion
-          .then(async () => {
-            const known = await populateKnownSaves(storyData.ifid);
-            set((state) => {
-              state.knownSaves = known;
-            });
-          })
-          .catch((err) => {
-            console.error('spindle: failed to delete playthrough', err);
-            throw err;
-          }),
+      return reported(
+        deletion.then(async () => {
+          const known = await populateKnownSaves(storyData.ifid);
+          set((state) => {
+            state.knownSaves = known;
+          });
+        }),
+        'spindle: failed to delete playthrough',
       );
     },
 
@@ -1471,18 +1422,9 @@ export const useStoryStore = create<StoryState>()(
 
       // Reconstruct full variable snapshots from base + patches
       const saveHistory: SaveHistoryMoment[] = [];
-      let vars = variableBase;
-      for (let i = 0; i < history.length; i++) {
-        if (i > 0) {
-          vars = applyPatches(vars, patchEntries[i - 1]!.forward);
-        }
-        saveHistory.push({
-          passage: history[i]!.passage,
-          variables: plainCopy(vars),
-          timestamp: history[i]!.timestamp,
-          prng: history[i]!.prng,
-        });
-      }
+      forEachRecorded(history.length, (vars, i) => {
+        saveHistory.push(savedMoment(history[i]!, plainCopy(vars)));
+      });
 
       return {
         passage: currentPassage,
@@ -1555,12 +1497,9 @@ export const useStoryStore = create<StoryState>()(
       patchEntries = newPatchEntries;
       // Seed the session cache from the payload's own snapshots, so
       // persistSession does not rebuild them from the live variables.
-      serializedHistory = payload.history.map((m) => ({
-        passage: m.passage,
-        variables: serialize(m.variables),
-        timestamp: m.timestamp,
-        prng: m.prng,
-      }));
+      serializedHistory = payload.history.map((m) =>
+        savedMoment(m, serialize(m.variables)),
+      );
 
       set((state) => {
         state.currentPassage = payload.passage;
@@ -1594,12 +1533,7 @@ export const useStoryStore = create<StoryState>()(
 
       // Replay the passage's random rolls from its entry PRNG state; saves
       // whose moments predate PRNG snapshots use the payload's.
-      const prng = entry?.prng !== undefined ? entry.prng : payload.prng;
-      if (prng) {
-        restorePRNG(prng.seed, prng.pull);
-      } else {
-        resetPRNG();
-      }
+      restorePRNGFrom(entry?.prng !== undefined ? entry.prng : payload.prng);
 
       // Write the loaded game to the session so a refresh restores it
       persistSession(get);
