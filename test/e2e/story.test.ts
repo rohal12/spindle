@@ -1852,7 +1852,7 @@ describe('compiled story e2e', () => {
       });
     });
 
-    it('a link click navigates, then reports an unsaveable value as an uncaught error', async () => {
+    it('a link click navigates, then shows an unsaveable value in a banner and the console', async () => {
       await navigateFresh();
       const errors: string[] = [];
       const onError = (e: Error) => errors.push(e.message);
@@ -1862,6 +1862,22 @@ describe('compiled story e2e', () => {
       await page.waitForSelector('[data-passage="Hallway"]');
       page.off('pageerror', onError);
       expect(errors).toEqual(['spindle: Cannot save a function (at $cb)']);
+
+      const banner = page.locator('.spindle-error-banner');
+      await expect.poll(() => banner.count()).toBe(1);
+      expect(await banner.isVisible()).toBe(true);
+      expect(await banner.getAttribute('role')).toBe('alert');
+      expect(
+        await banner.locator('.spindle-error-banner-message').textContent(),
+      ).toBe('Cannot save a function (at $cb)');
+      // Above the story, inside the viewport
+      const box = (await banner.boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThan(page.viewportSize()!.height);
+
+      await banner.getByRole('button', { name: 'Dismiss' }).click();
+      await expect.poll(() => banner.count()).toBe(0);
+      expect(await page.textContent('.passage')).toContain('hallway');
     });
   });
 });

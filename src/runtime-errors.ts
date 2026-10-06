@@ -1,0 +1,65 @@
+// Runtime errors shown to the player on the page (see RuntimeErrors), for
+// errors that would otherwise only reach the browser console.
+
+import { errorMessage } from './utils/error-message';
+
+/** A runtime error shown on the page until the player dismisses it. */
+export interface RuntimeError {
+  /** Identifies the entry, for dismissing it. */
+  id: number;
+  /** What failed, for the player (e.g. "Could not save the game…"). */
+  context: string;
+  /** The error message, without the "spindle: " prefix. */
+  message: string;
+  /** How often the same error happened since it was shown. */
+  count: number;
+}
+
+let errors: readonly RuntimeError[] = [];
+let nextId = 1;
+const listeners = new Set<() => void>();
+
+function update(next: readonly RuntimeError[]): void {
+  errors = next;
+  for (const listener of listeners) listener();
+}
+
+/**
+ * Show `error` on the page, after `context` (what failed). The same error
+ * again, while it is shown, counts up instead of adding an entry. Logging
+ * it to the console is up to the caller.
+ */
+export function showRuntimeError(context: string, error: unknown): void {
+  const message = errorMessage(error).replace(/^spindle: /, '');
+  const same = errors.find(
+    (e) => e.context === context && e.message === message,
+  );
+  update(
+    same
+      ? errors.map((e) => (e === same ? { ...e, count: e.count + 1 } : e))
+      : [...errors, { id: nextId++, context, message, count: 1 }],
+  );
+}
+
+/** Remove the shown error `id`. */
+export function dismissRuntimeError(id: number): void {
+  update(errors.filter((e) => e.id !== id));
+}
+
+/** Remove every shown error. */
+export function clearRuntimeErrors(): void {
+  if (errors.length) update([]);
+}
+
+/** The errors shown now, oldest first. */
+export function getRuntimeErrors(): readonly RuntimeError[] {
+  return errors;
+}
+
+/** Call `listener` whenever the shown errors change; returns unsubscribe. */
+export function subscribeRuntimeErrors(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}

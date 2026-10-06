@@ -45,6 +45,7 @@ import {
 
 import { deepClone, mergeKeys, mergesWith, shareEqual } from './structural';
 import { shallowCopy } from './utils/object-path';
+import { showRuntimeError } from './runtime-errors';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -273,13 +274,18 @@ function persistSession(get: () => StoryState): void {
   });
 }
 
+/** What the page shows before a session write error (see RuntimeErrors). */
+const SESSION_ERROR_CONTEXT =
+  'The game could not be saved for a page reload; a reload goes back to the last passage it could save:';
+
 /**
  * Write the session, then run `after` (the rest of the operation: its
  * events and queued navigations), then throw the session's error if writing
  * it failed: a value a save cannot hold (a function, an instance of an
  * unregistered class, a unique symbol) fails the operation that put it in
  * the state's history, as it fails a save, but only after the operation is
- * complete, so the story is not left half-way through it.
+ * complete, so the story is not left half-way through it. The error is also
+ * shown on the page, and the session keeps its last good copy.
  */
 function persistSessionThen(get: () => StoryState, after?: () => void): void {
   let failure: { error: unknown } | undefined;
@@ -287,6 +293,9 @@ function persistSessionThen(get: () => StoryState, after?: () => void): void {
     persistSession(get);
   } catch (error) {
     failure = { error };
+    // The player sees it too: a reload would go back to the last moment
+    // the session could hold
+    showRuntimeError(SESSION_ERROR_CONTEXT, error);
   }
   try {
     after?.();

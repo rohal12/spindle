@@ -13,7 +13,13 @@ Spindle automatically saves the current game state to the browser's session stor
 
 This is separate from the save system — no manual save/load is needed for refresh recovery.
 
-The session holds the same data as a save, so it is subject to the same [restrictions](#what-cannot-be-saved). When the state holds a value a save cannot hold, such as a function, the navigation still completes (the passage changes and `afternavigate` handlers run), and then throws an error that names the variable, for example `spindle: Cannot save a function (at $onHit)`. The session keeps its previous copy, so a refresh goes back to the last moment that could be written. Where the error appears depends on what started the navigation:
+The session holds the same data as a save, so it is subject to the same [restrictions](#what-cannot-be-saved). When the state holds a value a save cannot hold, such as a function, the navigation still completes (the passage changes and `afternavigate` handlers run), and then:
+
+- the page shows an error banner that names the variable, for example "The game could not be saved for a page reload; a reload goes back to the last passage it could save: Cannot save a function (at $onHit)". The banner is announced to screen readers and stays until the player dismisses it; the same error on later navigations counts up on the same banner. See [Error banners](story-interface.md#error-banners) to style it;
+- the session keeps its last good copy: a refresh goes back to the last moment that could be written, not to the current passage;
+- the navigation throws the error (`spindle: Cannot save a function (at $onHit)`).
+
+Where the thrown error appears depends on what started the navigation:
 
 - A link or button the player clicks: the browser reports it as an uncaught error in the console, with its stack.
 - `{goto}`, or `Story.goto()` in `{do}`: it is logged to the console like any other error in that macro (`spindle: Error in {goto}…`).
