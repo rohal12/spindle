@@ -300,6 +300,39 @@ describe('load pipeline', () => {
       expect(Story.get('data')).toEqual({ n: 1 });
     });
 
+    it('restores the variables a beforesave hook changed (#227)', async () => {
+      Story.set({ data: { n: 1 }, engine: { v: 1 }, stale: true });
+      Story.goto('B');
+      Story.set('data', { n: 2 });
+      Story.on('beforesave', () => {
+        Story.set('engine', { v: 2 });
+        Story.set('added', 'x');
+        useStoryStore.getState().deleteVariable('stale');
+      });
+      await saveTo('hooked');
+      Story.set({ engine: { v: 9 }, added: 'y', stale: false });
+
+      await loadFrom('hooked');
+      expect(Story.get('engine')).toEqual({ v: 2 });
+      expect(Story.get('added')).toBe('x');
+      expect(Story.get('stale')).toBeUndefined();
+      // Changes made on the passage outside the hook are still not restored
+      expect(Story.get('data')).toEqual({ n: 1 });
+    });
+
+    it('keeps beforesave writes out of the live history (#227)', async () => {
+      Story.set('engine', { v: 1 });
+      Story.goto('B');
+      Story.on('beforesave', () => Story.set('engine', { v: 2 }));
+      await saveTo('hooked');
+
+      const state = useStoryStore.getState();
+      expect(state.getHistoryVariables(1).engine).toEqual({ v: 1 });
+      state.goBack();
+      state.goForward();
+      expect(Story.get('engine')).toEqual({ v: 1 });
+    });
+
     it('falls back to the payload variables for an out-of-range index', () => {
       Story.set('data', { n: 1 });
       Story.goto('B');

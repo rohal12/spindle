@@ -29,7 +29,7 @@ import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
 import { getActions, getAction, type StoryAction } from './action-registry';
-import { getRenderedPassage } from './passage-render-state';
+import { getRenderedNavigationId } from './passage-render-state';
 import {
   initPRNG,
   isPRNGEnabled,
@@ -513,13 +513,19 @@ function createStoryAPI(): StoryAPI {
       });
       // A navigation can still be rendering: the passage display mounts the
       // new passage from an effect, after a fade-through's outgoing phase.
-      // Its actions exist only once it is mounted, so wait for that.
-      const { currentPassage, renderDeferred } = useStoryStore.getState();
-      const rendered = getRenderedPassage();
-      if (rendered !== null && rendered !== currentPassage && !renderDeferred) {
+      // Its actions exist only once it is mounted, so wait for that. Compare
+      // navigations, not passage names: revisiting the passage shown mounts
+      // it anew (#228).
+      const isRendered = () =>
+        getRenderedNavigationId() === useStoryStore.getState().navigationId;
+      if (
+        getRenderedNavigationId() !== null &&
+        !isRendered() &&
+        !useStoryStore.getState().renderDeferred
+      ) {
         await new Promise<void>((resolve) => {
-          const off = emitterOn('passagerender', (name) => {
-            if (name === useStoryStore.getState().currentPassage) {
+          const off = emitterOn('passagerender', () => {
+            if (isRendered()) {
               off();
               resolve();
             }

@@ -530,6 +530,33 @@ function loadedEntryMoment(
   return moment;
 }
 
+/**
+ * Copy the variables that changed between `before` and `after` (the live
+ * variables around the `beforesave` hooks) into the payload's snapshot of the
+ * saved moment. A load restores that snapshot, the state on entering the
+ * passage, and runs the passage again, so data a hook adds to a save would
+ * otherwise be lost on load (#227). Only the payload's copy changes: the live
+ * history keeps the recorded snapshot (#159). Store updates are immutable, so
+ * a value a hook did not touch keeps its identity.
+ */
+function keepHookWrites(
+  payload: SavePayload,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): void {
+  const moment = payload.history[payload.historyIndex];
+  if (!moment) return;
+  const has = (vars: Record<string, unknown>, key: string) =>
+    Object.prototype.hasOwnProperty.call(vars, key);
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (!has(after, key)) {
+      delete moment.variables[key];
+    } else if (!has(before, key) || after[key] !== before[key]) {
+      moment.variables[key] = deepClone(after[key]);
+    }
+  }
+}
+
 /** Restore or reset PRNG from a history moment's snapshot. */
 function restorePRNGFromMoment(moment: HistoryMoment | undefined): void {
   if (moment?.prng) {
@@ -638,6 +665,12 @@ export interface StoryState {
    */
   deletePlaythrough: (playthroughId: string) => Promise<void>;
   getSavePayload: () => SavePayload;
+  /**
+   * Start capturing a save, before the `beforesave` hooks run. The returned
+   * function builds the payload after them, and keeps the variables the
+   * hooks changed in the saved moment's snapshot, so a load restores them.
+   */
+  beginSave: () => () => SavePayload;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
    * passed to the `beforeload`/`afterload` events. Pass the save's
@@ -1137,24 +1170,19 @@ export const useStoryStore = create<StoryState>()(
       const playthrough = resolvePlaythroughId();
 
       return handled(
-        saveWithHooks(
-          slot,
-          custom,
-          () => get().getSavePayload(),
-          async (payload) => {
-            set((state) => {
-              state.saveError = null;
-            });
-            // Queued now, in call order with other storage operations
-            await quickSave(storyData.ifid, playthrough, payload, slot, custom);
-            set((state) => {
-              state.knownSaves = {
-                ...state.knownSaves,
-                [slot ?? '']: true,
-              };
-            });
-          },
-        ).catch((err) => {
+        saveWithHooks(slot, custom, get().beginSave, async (payload) => {
+          set((state) => {
+            state.saveError = null;
+          });
+          // Queued now, in call order with other storage operations
+          await quickSave(storyData.ifid, playthrough, payload, slot, custom);
+          set((state) => {
+            state.knownSaves = {
+              ...state.knownSaves,
+              [slot ?? '']: true,
+            };
+          });
+        }).catch((err) => {
           console.error('spindle: failed to save', err);
           set((state) => {
             state.saveError = errorMessage(err, 'Failed to save');
@@ -1377,6 +1405,15 @@ export const useStoryStore = create<StoryState>()(
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
         prng: snapshotPRNG(),
+      };
+    },
+
+    beginSave: () => {
+      const before = get().variables;
+      return () => {
+        const payload = get().getSavePayload();
+        keepHookWrites(payload, before, get().variables);
+        return payload;
       };
     },
 

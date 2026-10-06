@@ -260,7 +260,7 @@ Save operations (`save`, `load`, `deleteSave`, `getSaveInfo`, `listSaves`, `expo
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage: variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage, plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot
@@ -660,7 +660,7 @@ Content that re-renders _inside_ a passage or dialog because a variable changed 
 
 ### `Story.waitForActions()`
 
-Returns a `Promise` that resolves with the current actions after the UI has settled: two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. Useful in scripts that navigate and then need to inspect the new passage's actions.
+Returns a `Promise` that resolves with the current actions after the UI has settled: two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. This includes a navigation to the passage already shown, which mounts it anew. Useful in scripts that navigate and then need to inspect the new passage's actions.
 
 ```js
 Story.goto('Forest');

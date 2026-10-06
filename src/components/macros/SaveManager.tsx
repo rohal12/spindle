@@ -63,7 +63,7 @@ export function SaveManagerContent() {
 
   const storyData = useStoryStore((s) => s.storyData);
   const playthroughId = useStoryStore((s) => s.playthroughId);
-  const getSavePayload = useStoryStore((s) => s.getSavePayload);
+  const beginSave = useStoryStore((s) => s.beginSave);
   const loadFromPayload = useStoryStore((s) => s.loadFromPayload);
   const ifid = storyData?.ifid ?? '';
 
@@ -122,16 +122,11 @@ export function SaveManagerContent() {
     // switched since this render
     const playthrough = resolvePlaythroughId();
     try {
-      await saveWithHooks(
-        undefined,
-        undefined,
-        getSavePayload,
-        async (payload) => {
-          const ptId = await playthrough;
-          if (!ptId) throw new Error('No playthrough');
-          return createSave(ifid, ptId, payload);
-        },
-      );
+      await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
+        const ptId = await playthrough;
+        if (!ptId) throw new Error('No playthrough');
+        return createSave(ifid, ptId, payload);
+      });
       showStatus('Save created');
       await refresh();
     } catch {
@@ -142,18 +137,13 @@ export function SaveManagerContent() {
   const handleOverwrite = async (saveId: string) => {
     const playthrough = resolvePlaythroughId();
     try {
-      await saveWithHooks(
-        undefined,
-        undefined,
-        getSavePayload,
-        async (payload) => {
-          // Only the current playthrough's saves offer "Save Here"
-          const ptId = (await playthrough) || undefined;
-          if (!(await overwriteSave(saveId, payload, undefined, ptId))) {
-            throw new Error('Save not found');
-          }
-        },
-      );
+      await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
+        // Only the current playthrough's saves offer "Save Here"
+        const ptId = (await playthrough) || undefined;
+        if (!(await overwriteSave(saveId, payload, undefined, ptId))) {
+          throw new Error('Save not found');
+        }
+      });
       showStatus('Save overwritten');
       await refresh();
     } catch {
