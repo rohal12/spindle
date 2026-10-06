@@ -126,6 +126,20 @@ function runBackendSuite(
         expect(await backend.getSave('dpt2')).toBeUndefined();
         expect(await backend.getSave('dpt3')).toBeDefined();
       });
+
+      it('putSave moves a save to the playthrough it now names', async () => {
+        const oldPt = `pt-old-${Date.now()}`;
+        const newPt = `pt-new-${Date.now()}`;
+        await backend.putSave(makeSaveRecord('moved', IFID, oldPt));
+        await backend.putSave(makeSaveRecord('moved', IFID, newPt));
+
+        expect(await backend.deleteSavesByPlaythrough(oldPt)).toEqual([]);
+        expect(await backend.getSave('moved')).toBeDefined();
+        expect(await backend.deleteSavesByPlaythrough(newPt)).toEqual([
+          'moved',
+        ]);
+        expect(await backend.getSave('moved')).toBeUndefined();
+      });
     });
 
     describe('playthroughs', () => {

@@ -8,6 +8,7 @@ import { renderNodes } from '../../src/markup/render';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { defineMacro } from '../../src/define-macro';
+import { connectTriggersToStore, resetTriggers } from '../../src/triggers';
 import type { StoryData, Passage } from '../../src/parser';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -44,7 +45,7 @@ describe('Story.set inside mutation macros', () => {
       .getState()
       .init(
         makeStoryData([makePassage(1, 'Start', '')]),
-        { data: { value: 0 }, list: [1] },
+        { data: { value: 0 }, list: [1], obj: { a: 0, b: 0 }, flag: 0 },
         { tdata: { value: 0 } },
       );
     installStoryAPI();
@@ -69,6 +70,36 @@ describe('Story.set inside mutation macros', () => {
     const state = useStoryStore.getState();
     expect(state.variables.list).toEqual([4, 5]);
     expect(state.transient.tdata).toEqual({ value: 3 });
+  });
+
+  it('{do} keeps a nested Story.set write to a root the code changed (#215)', () => {
+    const el = renderMarkup(
+      '{do}$obj.a = 1; Story.set("obj.b", 2);{/do}{print $obj.a}-{print $obj.b}',
+    );
+    expect(el.textContent).toBe('1-2');
+    expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
+  });
+
+  it('{do} sees its own pending writes through Story.get', () => {
+    const el = renderMarkup(
+      '{do}$obj.a = 1; _r = Story.get("obj.a");{/do}{print _r}',
+    );
+    expect(el.textContent).toBe('1');
+  });
+
+  it('{do} keeps a {watch} run write to another property of the same root', () => {
+    resetTriggers();
+    const disconnect = connectTriggersToStore();
+    try {
+      const el = renderMarkup(
+        `{watch '$flag == 1' run "$obj.b = 2"}{do}$obj.a = 1; Story.set("flag", 1);{/do}{print $obj.a}-{print $obj.b}`,
+      );
+      expect(el.textContent).toBe('1-2');
+      expect(useStoryStore.getState().variables.obj).toEqual({ a: 1, b: 2 });
+    } finally {
+      disconnect();
+      resetTriggers();
+    }
   });
 
   it('custom ctx.mutate keeps a Story.set object update', () => {

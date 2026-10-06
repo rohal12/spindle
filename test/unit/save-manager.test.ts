@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initSaveSystem,
   startNewPlaythrough,
@@ -137,6 +137,33 @@ describe('save-manager', () => {
     it('returns undefined for nonexistent save', async () => {
       const result = await overwriteSave('nonexistent', makePayload());
       expect(result).toBeUndefined();
+    });
+
+    it('moves the save to the given playthrough', async () => {
+      const ifid = 'overwrite-pt-' + Date.now();
+      const oldPt = await startNewPlaythrough(ifid);
+      const record = await createSave(ifid, oldPt, makePayload());
+      const newPt = await startNewPlaythrough(ifid);
+
+      const updated = await overwriteSave(
+        record.meta.id,
+        makePayload({ passage: 'Room' }),
+        undefined,
+        newPt,
+      );
+
+      expect(updated!.meta.playthroughId).toBe(newPt);
+      const stored = await (await getBackend()).getSave(record.meta.id);
+      expect(stored!.meta.playthroughId).toBe(newPt);
+    });
+
+    it('keeps the playthrough when none is given', async () => {
+      const record = await createSave(IFID, playthroughId, makePayload());
+      await startNewPlaythrough(IFID);
+
+      const updated = await overwriteSave(record.meta.id, makePayload());
+
+      expect(updated!.meta.playthroughId).toBe(playthroughId);
     });
   });
 
@@ -688,6 +715,51 @@ describe('save-manager', () => {
     });
   });
 
+  describe('slot overwrites follow the current playthrough', () => {
+    it.each([
+      ['the default slot', undefined],
+      ['a named slot', 'my-slot'],
+    ])(
+      'overwriting %s stores the save under the new playthrough',
+      async (_, slot) => {
+        const ifid = `slot-pt-${slot ?? 'default'}-${Date.now()}`;
+        const oldPt = await startNewPlaythrough(ifid);
+        const first = await quickSave(
+          ifid,
+          oldPt,
+          makePayload({ passage: 'Old' }),
+          slot,
+        );
+
+        // A restart starts a new playthrough; the next save to the slot
+        // belongs to it
+        const newPt = await startNewPlaythrough(ifid);
+        const second = await quickSave(
+          ifid,
+          newPt,
+          makePayload({ passage: 'New' }),
+          slot,
+        );
+        expect(second.meta.id).toBe(first.meta.id);
+        expect(second.meta.playthroughId).toBe(newPt);
+
+        const groups = await getSavesGrouped(ifid);
+        const byPt = (id: string) =>
+          groups
+            .find((g) => g.playthrough.id === id)!
+            .saves.map((s) => s.meta.id);
+        expect(byPt(newPt)).toEqual([first.meta.id]);
+        expect(byPt(oldPt)).toEqual([]);
+
+        // Deleting the old playthrough leaves the new game's save alone
+        await deletePlaythroughData(ifid, oldPt);
+        expect(await hasQuickSave(ifid, slot)).toBe(true);
+        expect((await loadQuickSave(ifid, slot))!.passage).toBe('New');
+        expect(await populateKnownSaves(ifid)).toEqual({ [slot ?? '']: true });
+      },
+    );
+  });
+
   describe('concurrent writes to one slot', () => {
     async function storedSaves(ifid: string) {
       return (await getSavesGrouped(ifid)).flatMap((g) => g.saves);
@@ -991,6 +1063,101 @@ describe('save-manager', () => {
       const record = await createSave(IFID, playthroughId, makePayload());
       expect(record.meta.title).toContain('Start');
       setTitleGenerator(null as any); // reset
+    });
+
+    describe('on overwrite', () => {
+      afterEach(() => {
+        setTitleGenerator(null as any);
+        setSaveTitlePassage(null as any);
+      });
+
+      it('overwriteSave regenerates the title from the new state', async () => {
+        setTitleGenerator((payload) => `Save at ${payload.passage}`);
+        const record = await createSave(IFID, playthroughId, makePayload());
+        expect(record.meta.title).toBe('Save at Start');
+
+        const updated = await overwriteSave(
+          record.meta.id,
+          makePayload({ passage: 'Room' }),
+        );
+
+        expect(updated!.meta.title).toBe('Save at Room');
+        const stored = await (await getBackend()).getSave(record.meta.id);
+        expect(stored!.meta.title).toBe('Save at Room');
+        expect(stored!.meta.passage).toBe('Room');
+      });
+
+      it('regenerates the default title, which names the passage', async () => {
+        const record = await createSave(IFID, playthroughId, makePayload());
+        expect(record.meta.title).toMatch(/^Start - /);
+
+        const updated = await overwriteSave(
+          record.meta.id,
+          makePayload({ passage: 'Room' }),
+        );
+
+        expect(updated!.meta.title).toMatch(/^Room - /);
+      });
+
+      it('regenerates a SaveTitle passage title from the new variables', async () => {
+        setSaveTitlePassage('return "Chapter " + variables.chapter');
+        const record = await createSave(
+          IFID,
+          playthroughId,
+          makePayload({ variables: { chapter: 1 } }),
+        );
+        expect(record.meta.title).toBe('Chapter 1');
+
+        const updated = await overwriteSave(
+          record.meta.id,
+          makePayload({ variables: { chapter: 2 } }),
+        );
+
+        expect(updated!.meta.title).toBe('Chapter 2');
+      });
+
+      it('quickSave regenerates the title of the slot it overwrites', async () => {
+        setTitleGenerator((payload) => `Save at ${payload.passage}`);
+        const freshIfid = 'title-overwrite-' + Date.now();
+        const ptId = await startNewPlaythrough(freshIfid);
+        await quickSave(freshIfid, ptId, makePayload(), 'slot-1');
+
+        await quickSave(
+          freshIfid,
+          ptId,
+          makePayload({ passage: 'Room' }),
+          'slot-1',
+        );
+
+        const info = await getSlotSaveInfo(freshIfid, 'slot-1');
+        expect(info!.title).toBe('Save at Room');
+      });
+
+      it('keeps a title the player gave the save', async () => {
+        setTitleGenerator((payload) => `Save at ${payload.passage}`);
+        const record = await createSave(IFID, playthroughId, makePayload());
+        await renameSave(record.meta.id, 'Before the duel');
+
+        const updated = await overwriteSave(
+          record.meta.id,
+          makePayload({ passage: 'Room' }),
+        );
+
+        expect(updated!.meta.title).toBe('Before the duel');
+        expect(updated!.meta.passage).toBe('Room');
+      });
+
+      it('refreshes updatedAt but keeps createdAt', async () => {
+        const record = await createSave(IFID, playthroughId, makePayload());
+        await new Promise((r) => setTimeout(r, 5));
+
+        const updated = await overwriteSave(record.meta.id, makePayload());
+
+        expect(updated!.meta.createdAt).toBe(record.meta.createdAt);
+        expect(Date.parse(updated!.meta.updatedAt)).toBeGreaterThan(
+          Date.parse(record.meta.updatedAt),
+        );
+      });
     });
   });
 

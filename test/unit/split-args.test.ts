@@ -121,4 +121,89 @@ describe('splitArgs', () => {
     // Mixed: commas present → comma splitting wins
     expect(splitArgs('"a", "b" "c"')).toEqual(['"a"', '"b" "c"']);
   });
+
+  // ── Consecutive backslashes before quotes (#224) ──────────────────
+
+  describe('consecutive backslashes before a quote (#224)', () => {
+    // JSON.stringify('C:\\') is the source text "C:\\" — an escaped
+    // backslash followed by the closing quote.
+    const path = JSON.stringify('C:\\');
+    const label = JSON.stringify('label');
+
+    it('closes a string after an even run of backslashes (whitespace form)', () => {
+      expect(splitArgs(`${path} ${label}`)).toEqual([path, label]);
+    });
+
+    it('closes a string after an even run of backslashes (comma form)', () => {
+      expect(splitArgs(`${path}, ${label}`)).toEqual([path, label]);
+    });
+
+    it('closes a string after four backslashes', () => {
+      const four = JSON.stringify('a\\\\');
+      expect(splitArgs(`${four} ${label}`)).toEqual([four, label]);
+      expect(splitArgs(`${four}, ${label}`)).toEqual([four, label]);
+    });
+
+    it('keeps a quote escaped after an odd run of backslashes', () => {
+      // "a\\\"b" — escaped backslash, then an escaped quote
+      const odd = JSON.stringify('a\\"b');
+      expect(splitArgs(`${odd} ${label}`)).toEqual([odd, label]);
+      expect(splitArgs(`${odd}, ${label}`)).toEqual([odd, label]);
+    });
+
+    it('handles single-quoted strings ending in an escaped backslash', () => {
+      expect(splitArgs("'C:\\\\' 'x'")).toEqual(["'C:\\\\'", "'x'"]);
+      expect(splitArgs("'C:\\\\', 'x'")).toEqual(["'C:\\\\'", "'x'"]);
+    });
+
+    it('handles template literals ending in an escaped backslash', () => {
+      expect(splitArgs('`C:\\\\` `x`')).toEqual(['`C:\\\\`', '`x`']);
+      expect(splitArgs('`C:\\\\`, `x`')).toEqual(['`C:\\\\`', '`x`']);
+    });
+
+    it('keeps an escaped backtick inside a template literal', () => {
+      expect(splitArgs('`a\\`b` "x"')).toEqual(['`a\\`b`', '"x"']);
+    });
+
+    it('does not let a string ending in a backslash swallow a comma', () => {
+      expect(splitArgs(`${path}, $x, 3`)).toEqual([path, '$x', '3']);
+    });
+  });
+
+  // ── Regex literals ───────────────────────────────────────────────
+
+  describe('regex literals', () => {
+    it('does not treat a quote inside a regex as a string (comma form)', () => {
+      expect(splitArgs('/"/, "label"')).toEqual(['/"/', '"label"']);
+      expect(splitArgs('$s.match(/[,"]/), 2')).toEqual([
+        '$s.match(/[,"]/)',
+        '2',
+      ]);
+    });
+
+    it('does not treat a quote inside a regex as a string (whitespace form)', () => {
+      expect(splitArgs('$s.match(/"/) "label"')).toEqual([
+        '$s.match(/"/)',
+        '"label"',
+      ]);
+    });
+
+    it('keeps division as division', () => {
+      expect(splitArgs('$a / 2, "/"')).toEqual(['$a / 2', '"/"']);
+      expect(splitArgs('x /2/ y, "a"')).toEqual(['x /2/ y', '"a"']);
+    });
+  });
+
+  // ── Template literal interpolations ──────────────────────────────
+
+  describe('template literal interpolations', () => {
+    it('does not end a template at a backtick inside ${…}', () => {
+      expect(splitArgs('`a${"`"}b` "x"')).toEqual(['`a${"`"}b`', '"x"']);
+      expect(splitArgs('`a${"`"}b`, "x"')).toEqual(['`a${"`"}b`', '"x"']);
+    });
+
+    it('does not split on a comma inside a nested template', () => {
+      expect(splitArgs('`${`a, b`}`, $y')).toEqual(['`${`a, b`}`', '$y']);
+    });
+  });
 });

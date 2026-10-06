@@ -9,12 +9,14 @@ import {
   LocalsValuesContext,
   LocalsUpdateContext,
   NobrContext,
+  InlineContext,
   WidgetChildrenContext,
   renderNodes,
 } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
+import { isWhitespace, splitTopLevel } from './arg-utils';
 
 interface WidgetInvocationProps {
   body: ASTNode[];
@@ -53,55 +55,13 @@ function isStandaloneValue(token: string): boolean {
 }
 
 /**
- * Try to split a raw string on whitespace at depth 0 (respecting quotes,
- * parentheses, brackets, and braces). Each resulting token must pass
- * `isStandaloneValue()` or the split is rejected and `null` is returned.
+ * Try to split a raw string on whitespace at depth 0 (respecting strings,
+ * template literals, parentheses, brackets, and braces). Each resulting token
+ * must pass `isStandaloneValue()` or the split is rejected and `null` is
+ * returned.
  */
 function trySplitOnWhitespace(raw: string): string[] | null {
-  const args: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString: string | null = null;
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i]!;
-
-    if (inString) {
-      current += ch;
-      if (ch === inString && raw[i - 1] !== '\\') inString = null;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === '`') {
-      inString = ch;
-      current += ch;
-      continue;
-    }
-
-    if (ch === '(' || ch === '[' || ch === '{') {
-      depth++;
-      current += ch;
-      continue;
-    }
-
-    if (ch === ')' || ch === ']' || ch === '}') {
-      depth--;
-      current += ch;
-      continue;
-    }
-
-    if (/\s/.test(ch) && depth === 0) {
-      if (current) {
-        args.push(current);
-        current = '';
-      }
-      continue;
-    }
-
-    current += ch;
-  }
-
-  if (current) args.push(current);
+  const args = splitTopLevel(raw, isWhitespace).filter(Boolean);
 
   // Need 2+ tokens
   if (args.length < 2) return null;
@@ -120,51 +80,9 @@ function trySplitOnWhitespace(raw: string): string[] | null {
  * string literals separated by whitespace (e.g. `"Label" "target"`).
  */
 export function splitArgs(raw: string): string[] {
-  const args: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString: string | null = null;
-  let hasComma = false;
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i]!;
-
-    if (inString) {
-      current += ch;
-      if (ch === inString && raw[i - 1] !== '\\') inString = null;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'" || ch === '`') {
-      inString = ch;
-      current += ch;
-      continue;
-    }
-
-    if (ch === '(' || ch === '[' || ch === '{') {
-      depth++;
-      current += ch;
-      continue;
-    }
-
-    if (ch === ')' || ch === ']' || ch === '}') {
-      depth--;
-      current += ch;
-      continue;
-    }
-
-    if (ch === ',' && depth === 0) {
-      hasComma = true;
-      args.push(current.trim());
-      current = '';
-      continue;
-    }
-
-    current += ch;
-  }
-
-  const last = current.trim();
-  if (last) args.push(last);
+  const args = splitTopLevel(raw, (ch) => ch === ',').map((a) => a.trim());
+  const hasComma = args.length > 1;
+  if (args[args.length - 1] === '') args.pop();
 
   // If no commas were found and we got a single expression, try splitting
   // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
@@ -186,6 +104,7 @@ function WidgetBody({
   ownKeys: Record<string, unknown>;
 }) {
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
     {},
   );
@@ -211,7 +130,7 @@ function WidgetBody({
   return (
     <LocalsUpdateContext.Provider value={updater}>
       <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, { nobr, locals: localState })}
+        {renderNodes(body, { nobr, inline, locals: localState })}
       </LocalsValuesContext.Provider>
     </LocalsUpdateContext.Provider>
   );
@@ -225,6 +144,7 @@ export function WidgetInvocation({
 }: WidgetInvocationProps) {
   const parentValues = useContext(LocalsValuesContext);
   const nobr = useContext(NobrContext);
+  const inline = useContext(InlineContext);
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -235,7 +155,7 @@ export function WidgetInvocation({
   if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
-        {renderNodes(body, { nobr, locals: parentValues })}
+        {renderNodes(body, { nobr, inline, locals: parentValues })}
       </WidgetChildrenContext.Provider>
     );
   }

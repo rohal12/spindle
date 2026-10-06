@@ -1,5 +1,5 @@
 import { evaluate } from './expression';
-import { executeMutation } from './execute-mutation';
+import { executeMutation, runWithCommittedMutations } from './execute-mutation';
 import { useStoryStore } from './store';
 
 export interface WatchOptions {
@@ -149,7 +149,10 @@ function fireTrigger(trigger: Trigger): void {
   }
 
   if (options.goto) {
-    useStoryStore.getState().navigate(options.goto);
+    // A watcher fired by a Story.set in running code navigates after that
+    // code's writes so far, so they are part of the moment it leaves.
+    const passage = options.goto;
+    runWithCommittedMutations(() => useStoryStore.getState().navigate(passage));
   }
 }
 

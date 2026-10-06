@@ -15,6 +15,7 @@ import {
   LocalsUpdateContext,
   LocalsValuesContext,
   NobrContext,
+  InlineContext,
   renderNodes as _renderNodes,
   renderInlineNodes,
 } from './markup/render';
@@ -22,6 +23,7 @@ import type { ASTNode } from './markup/ast';
 import { executeMutation } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
+import { getByPath, setByPath } from './utils/object-path';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -101,33 +103,6 @@ const sharedHooks = {
   useContext,
 };
 
-/** Traverse a dot-path on an object, returning the nested value. */
-function getByPath(obj: Record<string, unknown>, segments: string[]): unknown {
-  let current: unknown = obj;
-  for (const seg of segments) {
-    if (current == null || typeof current !== 'object') return undefined;
-    current = (current as Record<string, unknown>)[seg];
-  }
-  return current;
-}
-
-/** Set a nested value by dot-path segments on an (Immer draft) object. */
-function setByPath(
-  obj: Record<string, unknown>,
-  segments: string[],
-  value: unknown,
-): void {
-  let target: Record<string, unknown> = obj;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const seg = segments[i]!;
-    if (target[seg] == null || typeof target[seg] !== 'object') {
-      target[seg] = {};
-    }
-    target = target[seg] as Record<string, unknown>;
-  }
-  target[segments[segments.length - 1]!] = value;
-}
-
 export function defineMacro(
   config: MacroDefinition,
   source: 'builtin' | 'user' = 'builtin',
@@ -146,11 +121,17 @@ export function defineMacro(
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
     const nobr = useContext(NobrContext);
+    const inline = useContext(InlineContext);
     const localsValues = useContext(LocalsValuesContext);
     const renderNodes = (
       nodes: ASTNode[],
-      options?: { nobr?: boolean; locals?: Record<string, unknown> },
-    ) => _renderNodes(nodes, { nobr, locals: localsValues, ...options });
+      options?: {
+        nobr?: boolean;
+        locals?: Record<string, unknown>;
+        inline?: boolean;
+      },
+    ) =>
+      _renderNodes(nodes, { nobr, inline, locals: localsValues, ...options });
     const ctx: MacroContext = {
       collectText,
       sourceLocation: currentSourceLocation,
@@ -202,11 +183,9 @@ export function defineMacro(
         getByPath(useStoryStore.getState().variables, segments);
       ctx.setValue = (value: unknown) => {
         useStoryStore.setState((state) => {
-          setByPath(
-            state.variables as Record<string, unknown>,
-            segments,
-            value,
-          );
+          setByPath(state.variables, segments, value, {
+            createMissing: true,
+          });
         });
       };
     }

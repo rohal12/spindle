@@ -25,6 +25,13 @@ import {
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
+import {
+  frozenCopy,
+  getActiveMutationScope,
+  mirrorWriteToActiveScopes,
+  runWithCommittedMutations,
+} from './execute-mutation';
+import { getByPath, setByPath } from './utils/object-path';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -114,37 +121,6 @@ function ensureVariableChangedSubscription(): void {
       emit('variableChanged', changed);
     }
   });
-}
-
-/** Traverse a dot-delimited path on an object and return the value. */
-function getByPath(obj: Record<string, unknown>, path: string): unknown {
-  const segments = path.split('.');
-  let current: unknown = obj[segments[0]!];
-  for (let i = 1; i < segments.length; i++) {
-    if (current == null) return undefined;
-    current = (current as Record<string, unknown>)[segments[i]!];
-  }
-  return current;
-}
-
-/** Set a value at a dot-delimited path on an object (must be an Immer draft for mutation). */
-function setByPath(
-  obj: Record<string, unknown>,
-  path: string,
-  value: unknown,
-): void {
-  const segments = path.split('.');
-  let current: Record<string, unknown> = obj;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const next = current[segments[i]!];
-    if (next == null || typeof next !== 'object') {
-      throw new TypeError(
-        `spindle: Cannot set property "${segments[i + 1]}" on ${typeof next} (at "${segments.slice(0, i + 1).join('.')}")`,
-      );
-    }
-    current = next as Record<string, unknown>;
-  }
-  current[segments[segments.length - 1]!] = value;
 }
 
 export interface StoryAPI {
@@ -292,7 +268,7 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   const namespace = isTransient ? draft.transient : draft.variables;
 
   if (key.includes('.')) {
-    setByPath(namespace, key, value);
+    setByPath(namespace, key.split('.'), value);
   } else {
     namespace[key] = value;
   }
@@ -302,49 +278,74 @@ function createStoryAPI(): StoryAPI {
   return {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
-      const store = isTransient
-        ? useStoryStore.getState().transient
-        : useStoryStore.getState().variables;
-      return key.includes('.') ? getByPath(store, key) : store[key];
+      // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+      // has pending writes in its working copy: read that, so the code sees
+      // its own changes. The value is a frozen copy, like the frozen store
+      // values returned otherwise, so writing to it cannot change the
+      // pending state outside the code's own assignments.
+      const scope = getActiveMutationScope();
+      const source = scope ?? useStoryStore.getState();
+      const namespace = isTransient ? source.transient : source.variables;
+      const value = key.includes('.')
+        ? getByPath(namespace, key.split('.'))
+        : namespace[key];
+      return scope ? frozenCopy(value) : value;
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {
-      const names =
-        typeof nameOrVars === 'string' ? [nameOrVars] : Object.keys(nameOrVars);
-      for (const name of names) {
+      const entries: [string, unknown][] =
+        typeof nameOrVars === 'string'
+          ? [[nameOrVars, value]]
+          : Object.entries(nameOrVars);
+      for (const [name] of entries) {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
       }
       // One store update for all keys, so watchers see them together
       useStoryStore.getState().updateVariables((draft) => {
-        if (typeof nameOrVars === 'string') {
-          setOne(draft, nameOrVars, value);
-        } else {
-          for (const [k, v] of Object.entries(nameOrVars)) {
-            setOne(draft, k, v);
-          }
+        for (const [k, v] of entries) setOne(draft, k, v);
+        // Mutation code running now ({do}, ctx.mutate, watcher run actions)
+        // works on copies of the namespaces and commits the paths it changed
+        // when it finishes. Apply the write to those copies too, so the code
+        // sees it and its commit keeps it in program order (#215). This runs
+        // inside the update, before watchers it triggers write.
+        for (const [k, v] of entries) {
+          const { isTransient, key } = parseName(k);
+          mirrorWriteToActiveScopes(
+            draft,
+            isTransient ? 'transient' : 'variables',
+            key.split('.'),
+            v,
+          );
         }
       });
     },
 
+    // Called from running mutation code, these commit the code's writes so
+    // far before they record, replace or save state, and the code goes on
+    // from the state they leave (see runWithCommittedMutations).
     goto(passageName: string): void {
-      useStoryStore.getState().navigate(passageName);
+      runWithCommittedMutations(() =>
+        useStoryStore.getState().navigate(passageName),
+      );
     },
 
     back(): void {
-      useStoryStore.getState().goBack();
+      runWithCommittedMutations(() => useStoryStore.getState().goBack());
     },
 
     forward(): void {
-      useStoryStore.getState().goForward();
+      runWithCommittedMutations(() => useStoryStore.getState().goForward());
     },
 
     restart(): void {
-      useStoryStore.getState().restart();
+      runWithCommittedMutations(() => useStoryStore.getState().restart());
     },
 
     save(slot?: string, custom?: Record<string, unknown>): Promise<void> {
-      return useStoryStore.getState().save(slot, custom);
+      return runWithCommittedMutations(() =>
+        useStoryStore.getState().save(slot, custom),
+      );
     },
 
     load(slot?: string): Promise<void> {

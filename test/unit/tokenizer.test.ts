@@ -1247,3 +1247,111 @@ describe('tokenize — raw {do} bodies (#176)', () => {
     expect(tokens.map((t) => t.type)).toEqual(['macro', 'text']);
   });
 });
+
+describe('tokenize — whitespace around attribute equals (#219)', () => {
+  it.each([
+    ['before and after', '<div id = "attrs">x</div>'],
+    ['after only', '<div id= "attrs">x</div>'],
+    ['before only', '<div id ="attrs">x</div>'],
+    ['tabs and newlines', '<div id\t=\n"attrs">x</div>'],
+  ])('parses a paired element with whitespace %s', (_label, markup) => {
+    const tokens = tokenize(markup);
+    expect(tokens).toHaveLength(3);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag: 'div',
+      attributes: { id: 'attrs' },
+      isClose: false,
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 'x' });
+    expect(tokens[2]).toMatchObject({
+      type: 'html',
+      tag: 'div',
+      isClose: true,
+    });
+  });
+
+  it.each([
+    ['<input value= "a">'],
+    ['<input value ="a">'],
+    ['<input value = "a" />'],
+    ["<input value = 'a'>"],
+  ])('parses a void element: %s', (markup) => {
+    const tokens = tokenize(markup);
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag: 'input',
+      attributes: { value: 'a' },
+      isSelfClose: true,
+    });
+  });
+
+  it('parses unquoted values after spaced equals', () => {
+    const tokens = tokenize('<input type = text value = a>');
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { type: 'text', value: 'a' },
+    });
+  });
+
+  it('keeps interpolation in spaced attribute values', () => {
+    const tokens = tokenize('<div class = "c-{$x}" title = {$y}>t</div>');
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      tag: 'div',
+      attributes: { class: 'c-{$x}', title: '{$y}' },
+    });
+    expect(tokens[1]).toMatchObject({ type: 'text', value: 't' });
+  });
+
+  it('keeps following attributes after a spaced equals', () => {
+    const tokens = tokenize('<input id = "a" disabled value= "b">');
+    expect(tokens[0]).toMatchObject({
+      type: 'html',
+      attributes: { id: 'a', disabled: '', value: 'b' },
+    });
+  });
+});
+
+describe('tokenize — backslash runs before braces', () => {
+  it('escapes a brace after a single backslash', () => {
+    expect(tokenize('\\{$x}')).toEqual([
+      { type: 'text', value: '{', start: 0, end: 2 },
+      { type: 'text', value: '$x}', start: 2, end: 5 },
+    ]);
+  });
+
+  it('does not escape a brace after an even backslash run', () => {
+    const tokens = tokenize('C:\\\\{$dir}');
+    expect(tokens).toHaveLength(2);
+    expect(tokens[0]).toEqual({
+      type: 'text',
+      value: 'C:\\\\',
+      start: 0,
+      end: 4,
+    });
+    expect(tokens[1]).toMatchObject({ type: 'variable', name: 'dir' });
+  });
+
+  it('escapes with the last backslash of an odd run and keeps the rest', () => {
+    expect(tokenize('C:\\\\\\{$dir}')).toEqual([
+      { type: 'text', value: 'C:\\\\', start: 0, end: 4 },
+      { type: 'text', value: '{', start: 4, end: 6 },
+      { type: 'text', value: '$dir}', start: 6, end: 11 },
+    ]);
+  });
+
+  it('applies the same rule to closing braces', () => {
+    expect(tokenize('a\\\\\\}')).toEqual([
+      { type: 'text', value: 'a\\\\', start: 0, end: 3 },
+      { type: 'text', value: '}', start: 3, end: 5 },
+    ]);
+  });
+
+  it('opens a macro after an even backslash run', () => {
+    const tokens = tokenize('\\\\{if true}y{/if}');
+    expect(tokens[0]).toMatchObject({ type: 'text', value: '\\\\' });
+    expect(tokens[1]).toMatchObject({ type: 'macro', name: 'if' });
+  });
+});

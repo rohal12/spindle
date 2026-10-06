@@ -1,17 +1,20 @@
 import type { ASTNode } from '../../markup/ast';
+import { readWholeQuoted } from './arg-utils';
 
 export function parseVarArgs(rawArgs: string): {
   varName: string;
   placeholder: string;
 } {
-  const match = rawArgs.match(
-    /^\s*(["']?\$[\w.]+["']?)\s*(?:["'](.*)["'])?\s*$/,
-  );
+  const match = rawArgs.match(/^\s*(["']?\$[\w.]+["']?)\s*(["'].*["'])?\s*$/);
   if (!match) {
     return { varName: rawArgs.trim(), placeholder: '' };
   }
   const varName = match[1]!.replace(/["']/g, '');
-  const placeholder = match[2] || '';
+  // A quoted placeholder accepts \" \' and \\ escapes.
+  const quoted = match[2];
+  const placeholder = quoted
+    ? (readWholeQuoted(quoted) ?? quoted.slice(1, -1))
+    : '';
   return { varName, placeholder };
 }
 
@@ -24,7 +27,8 @@ export function extractOptions(children: ASTNode[]): string[] {
     if (node.type === 'macro' && node.name === 'option') {
       const raw = node.rawArgs.trim();
       // Strip surrounding quotes so {option "Long Sword"} gives "Long Sword"
-      const stripped = raw.replace(/^(["'])(.+)\1$/, '$2');
+      const stripped =
+        readWholeQuoted(raw) ?? raw.replace(/^(["'])(.+)\1$/, '$2');
       options.push(stripped);
     }
   }

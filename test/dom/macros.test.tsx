@@ -421,6 +421,24 @@ describe('macro components', () => {
       expect(useStoryStore.getState().variables.r).toBe('lt');
     });
 
+    it('skips apostrophes in comments (#216)', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      renderPassage("{do}\n$x = 1; // don't reset\n$x = 2;\n{/do}");
+      expect(useStoryStore.getState().variables.x).toBe(2);
+      expect('$x' in globalThis).toBe(false);
+    });
+
+    it('keeps regex literal contents (#217)', () => {
+      renderPassage('{set $matched = /^_name$/.test("_name")}');
+      expect(useStoryStore.getState().variables.matched).toBe(true);
+    });
+
+    it('keeps modulo on a continuation line (#218)', () => {
+      useStoryStore.getState().setVariable('x', 0);
+      renderPassage('{do}\nconst n = 3;\n$x = 5\n%n;\n{/do}');
+      expect(useStoryStore.getState().variables.x).toBe(2);
+    });
+
     it('preserves strings containing HTML and macro markup', () => {
       const el = renderPassage(
         '{do}$s="<b>{x}</b> {set $y = 1} [[L]]";{/do}after',
@@ -558,6 +576,41 @@ describe('macro components', () => {
       expect(meter).not.toBeNull();
       expect(meter!.classList.contains('health-bar')).toBe(true);
       expect(meter!.id).toBe('hp');
+    });
+
+    it('does not split on whitespace inside a string argument', () => {
+      useStoryStore.getState().setVariable('stats', { 'max hp': 200 });
+      const el = renderPassage('{meter "a b c".length $stats["max hp"]}');
+      expect(el.querySelector('.error')).toBeNull();
+      const label = el.querySelector('.macro-meter-label');
+      expect(label!.textContent).toBe('5 / 200');
+    });
+
+    it('does not split inside a template literal', () => {
+      useStoryStore.getState().setVariable('hp', 7);
+      const el = renderPassage('{meter `${$hp} pts`.length 10}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '5 / 10',
+      );
+    });
+
+    it('does not split inside a regex literal argument', () => {
+      useStoryStore.getState().setVariable('s', 'a b');
+      const el = renderPassage('{meter /[ "]/.test($s) 2 "x"}');
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '1 x / 2 x',
+      );
+    });
+
+    it('label mode supports escaped quotes', () => {
+      useStoryStore.getState().setVariable('hp', 75);
+      const el = renderPassage(String.raw`{meter $hp 100 "\"HP\""}`);
+      expect(el.querySelector('.error')).toBeNull();
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '75 "HP" / 100 "HP"',
+      );
     });
 
     it('renders error span on invalid expression', () => {

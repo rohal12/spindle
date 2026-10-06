@@ -14,6 +14,8 @@ Get a story variable's value. The name may be written with or without the `$` si
 {/do}
 ```
 
+Objects and arrays come back frozen; change them with `Story.set()` or an assignment such as `$player.hp = 5`. Inside running code (`{do}`, `{set}`, a `{watch}` run action) `Story.get()` sees the code's own writes so far, so `{do}$hp = 5; _h = Story.get("hp"){/do}` sets `_h` to 5. It returns a frozen copy of the value there, so `Story.get("obj") === Story.get("obj")` is false while the code runs.
+
 ### `Story.set(name, value)` / `Story.set(vars)`
 
 Set one or more story variables. As with `Story.get()`, a leading `$` is optional.
@@ -56,6 +58,8 @@ Navigate to a passage.
   Story.goto("Game Over");
 {/do}
 ```
+
+Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
 
 ### `Story.back()`
 

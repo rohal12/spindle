@@ -9,6 +9,7 @@ import {
 } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { liveLocalsView } from '../../utils/live-locals';
+import { unescapeQuoted } from './arg-utils';
 
 function parseArgs(rawArgs: string): {
   display: string;
@@ -20,7 +21,7 @@ function parseArgs(rawArgs: string): {
   const re = /(["'])((?:\\[^]|(?!\1)[^\\])*)\1/g;
   let m;
   while ((m = re.exec(rawArgs)) !== null) {
-    parts.push(m[2]!.replace(/\\(["'\\])/g, '$1'));
+    parts.push(unescapeQuoted(m[2]!));
   }
   if (parts.length >= 2) {
     return { display: parts[0]!, passage: parts[1]! };

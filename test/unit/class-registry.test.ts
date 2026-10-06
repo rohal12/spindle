@@ -7,6 +7,7 @@ import {
   deepEqual,
   serialize,
   deserialize,
+  isDeserializable,
 } from '../../src/class-registry';
 
 class Player {
@@ -279,6 +280,86 @@ describe('class-registry', () => {
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown'));
 
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('isDeserializable', () => {
+    const tagged = (name: unknown, data: unknown) => ({
+      __spindle_class__: name,
+      __spindle_data__: data,
+    });
+
+    it('accepts everything serialize() produces', () => {
+      registerClass('Player', Player);
+      const value = {
+        n: 1,
+        s: 'x',
+        b: true,
+        nil: null,
+        list: [1, { a: [2] }],
+        date: new Date('2024-01-02T03:04:05.000Z'),
+        re: /a+b/gi,
+        map: new Map<unknown, unknown>([
+          [{ k: 1 }, new Set([new Date(0)])],
+          ['p', new Player({ hp: 3 })],
+        ]),
+        set: new Set(['a', /x/]),
+        player: new Player(),
+      };
+      expect(isDeserializable(serialize(value))).toBe(true);
+    });
+
+    it('accepts tags of unregistered classes, which load as plain objects', () => {
+      expect(isDeserializable(tagged('Unknown', { hp: 1 }))).toBe(true);
+    });
+
+    it.each([
+      ['Map entries that are not an array', tagged('__Map__', { entries: 42 })],
+      ['a Map entry that is not a pair', tagged('__Map__', { entries: [[1]] })],
+      ['a Map entry that is a string', tagged('__Map__', { entries: ['ab'] })],
+      ['Map data that is null', tagged('__Map__', null)],
+      ['Set entries that are not an array', tagged('__Set__', { entries: {} })],
+      ['a Date without an ISO string', tagged('__Date__', { iso: 42 })],
+      ['an invalid Date', tagged('__Date__', { iso: 'not a date' })],
+      ['a RegExp without a source', tagged('__RegExp__', { flags: 'g' })],
+      [
+        'a RegExp with bad flags',
+        tagged('__RegExp__', { source: 'a', flags: 'zz' }),
+      ],
+      [
+        'a RegExp with a bad pattern',
+        tagged('__RegExp__', { source: '(', flags: '' }),
+      ],
+      ['class data that is not an object', tagged('Player', 'hp')],
+      ['class data that is an array', tagged('Player', [1])],
+      ['a class name that is not a string', tagged(42, {})],
+      [
+        'a malformed value nested in an array',
+        [1, { inner: tagged('__Set__', { entries: 1 }) }],
+      ],
+      [
+        'a malformed value nested in a Map',
+        tagged('__Map__', {
+          entries: [['k', tagged('__Map__', { entries: 42 })]],
+        }),
+      ],
+      [
+        'a malformed value nested in class data',
+        tagged('Player', { born: tagged('__Date__', { iso: null }) }),
+      ],
+    ])('rejects %s', (_, value) => {
+      expect(isDeserializable({ v: value })).toBe(false);
+    });
+
+    it('rejects circular data', () => {
+      const a: Record<string, unknown> = {};
+      a.self = a;
+      expect(isDeserializable(a)).toBe(false);
+    });
+
+    it('accepts the same object reached twice without a cycle', () => {
+      const shared = { a: 1 };
+      expect(isDeserializable({ x: shared, y: [shared] })).toBe(true);
     });
   });
 

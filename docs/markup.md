@@ -98,6 +98,16 @@ Object notation: \{ key: "value" \}
 
 This renders as: `The set macro syntax is {set $x = 5}.`
 
+Backslashes before a brace pair up as in markdown, where `\\` displays one backslash. An odd number of backslashes escapes the brace. An even number doesn't, so the brace starts a variable or macro as usual:
+
+| You write     | Renders as                            |
+| ------------- | ------------------------------------- |
+| `\{$dir}`     | `{$dir}`                              |
+| `C:\\{$dir}`  | `C:\` followed by the value of `$dir` |
+| `C:\\\{$dir}` | `C:\{$dir}`                           |
+
+A backslash before a link or an HTML tag is shown as it is: `C:\[[Start]]` renders `C:\` followed by the link.
+
 Braces inside quoted strings or template literals in macro arguments, `{…}` expressions and attribute interpolations need no escaping: `{set $x = "}"}` stores `}`.
 
 ## HTML Tags

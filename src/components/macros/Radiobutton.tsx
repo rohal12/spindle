@@ -1,6 +1,28 @@
 import { defineMacro } from '../../define-macro';
+import {
+  isWhitespace,
+  readQuoted,
+  readWholeQuoted,
+  stripLooseQuotes,
+} from './arg-utils';
 
 function parseRadioArgs(rawArgs: string): { value: string; label: string } {
+  // $var "value" label: a quoted value accepts \" \' and \\ escapes and
+  // may contain the other quote kind.
+  const head = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+/);
+  if (head) {
+    const rest = rawArgs.slice(head[0].length).trim();
+    const value = readQuoted(rest, 0);
+    if (
+      value &&
+      (value.end === rest.length || isWhitespace(rest[value.end]!))
+    ) {
+      const labelRaw = rest.slice(value.end).trim();
+      const label = readWholeQuoted(labelRaw) ?? stripLooseQuotes(labelRaw);
+      return { value: value.value, label };
+    }
+  }
+
   const match = rawArgs.match(
     /^\s*["']?\$?[\w.]+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/,
   );

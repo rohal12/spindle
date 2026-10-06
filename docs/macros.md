@@ -149,6 +149,8 @@ Both arguments are expressions, so `{meter $health $stats.maxHealth}` works.
 {meter $hp 100 "HP"}       → "75 HP / 100 HP"
 ```
 
+Arguments are separated by whitespace, but whitespace inside strings, template and regex literals and brackets doesn't split them, so `{meter $stats["max hp"] 100}` works. A `/` directly after an argument reads as division, as in JavaScript, so wrap an argument that starts with a regex literal in parentheses: `{meter (/hp/.test($s) ? 1 : 0) 1}`. In the label, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
+
 The bar clamps between 0% and 100%.
 
 **Styling examples:**
@@ -244,6 +246,8 @@ A clickable button that runs its body macros on click. The label goes in the ope
 
 Unlike `{link}`, a button does not navigate to another passage — it only runs the body macros when clicked.
 
+As with `{link}`, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash inside the quoted label. The same escapes work in `{dialog}` labels, input placeholders and labels, `{radiobutton}` values and `{option}` values.
+
 ### `{dialog}`
 
 A button that opens a modal dialog showing another passage. The label goes in the opening tag, the passage name goes in the body.
@@ -294,6 +298,8 @@ On restart, `StoryVariables` defaults are restored and `StoryInit` is re-execute
 ## Form Inputs
 
 All form inputs bind to a story variable and update it in real time.
+
+Quoted placeholders, labels and values accept `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
 
 ### `{textbox}`
 
@@ -526,6 +532,12 @@ An edge-triggered watcher that monitors a condition and fires an action when it 
 | `once`     | Remove the watcher after it fires once             |
 | `name`     | Name the watcher for later removal via `{unwatch}` |
 | `priority` | Numeric priority (higher fires first)              |
+
+Inside the quoted condition and option values, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash; other backslash sequences are kept as written:
+
+```
+{watch "$name == \"Bob\"" run "$greeting = \"Hi, Bob\""}
+```
 
 Watchers are **edge-triggered** — they fire only on a `false → true` transition of the condition. A condition that is already true when the watcher is registered will not fire until it becomes false and then true again.
 

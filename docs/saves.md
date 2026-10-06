@@ -66,7 +66,9 @@ Custom save UIs can do the same for slots with [`Story.exportSave(slot?)`](story
 
 ## Save Title
 
-By default, save titles show `passage name - HH:MM`. Customize this with a `SaveTitle` passage or via the JavaScript API:
+By default, save titles show `passage name - HH:MM`. The title is generated again whenever a save is overwritten (quick save, a slot save, or **Save Here** in the dialog), so it always describes what the save now holds. A title the player gave a save with **Rename** is kept when it is overwritten.
+
+Customize the generated title with a `SaveTitle` passage or via the JavaScript API:
 
 ```
 :: SaveTitle
