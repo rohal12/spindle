@@ -142,7 +142,18 @@ export interface MarkupDiagnostic {
  */
 export declare function validateMarkup(
   passages: Iterable<MarkupPassage>,
+  options?: ValidateMarkupOptions,
 ): MarkupDiagnostic[];
+
+/** Options for {@link validateMarkup}. */
+export interface ValidateMarkupOptions {
+  /**
+   * Whether passage names written out (links, quoted `passage` arguments)
+   * must name one of `passages` (default: true). Turn it off to validate
+   * only part of a story.
+   */
+  checkPassageNames?: boolean;
+}
 
 /**
  * A diagnostic as one line of text, as Spindle shows it:

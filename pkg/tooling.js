@@ -55,6 +55,6 @@ export function getMacroRegistry() {
  * macros and those registered with defineMacro), with passage, line and
  * column.
  */
-export function validateMarkup(passages) {
-  return validateStoryMarkup(passages, metadata.values());
+export function validateMarkup(passages, options) {
+  return validateStoryMarkup(passages, metadata.values(), options);
 }
