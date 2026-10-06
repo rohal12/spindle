@@ -241,7 +241,11 @@ describe('quoted labels in macros (#200)', () => {
   });
 
   test.prop(
-    [domLabel, domLabel.filter((p) => p.text.trim() !== '')],
+    // Passage names are one line, and a passage is a JavaScript string
+    [
+      domLabel,
+      domLabel.filter((p) => p.text.trim() !== '' && !/[\r\n]/.test(p.text)),
+    ],
     domOptions,
   )('link text and passage', (display, passage) => {
     // Without the function $f: navigating writes the session, which (like a
@@ -249,7 +253,8 @@ describe('quoted labels in macros (#200)', () => {
     const { f: _f, ...saveable } = EXPR_ENV.variables;
     initStory([passage.text], saveable);
     const el = renderPassage(
-      `{link ${display.quoted} ${passage.quoted}}{/link}`,
+      // The passage is an expression: a JavaScript string names it
+      `{link ${display.quoted} ${JSON.stringify(passage.text)}}{/link}`,
     );
     const a = el.querySelector('a')!;
     expect(a.textContent).toBe(display.text);

@@ -4,15 +4,16 @@ import {
   parseVarArgs,
 } from '../../src/components/macros/option-utils';
 import { parseCheckboxLabel, parseRadioArgs } from '../support/macro-args';
+import { MacroArgumentError } from '../../src/components/macros/macro-args';
 import type { ASTNode } from '../../src/markup/ast';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 describe('extractOptions', () => {
   it('extracts rawArgs from option macro nodes', () => {
     const children: ASTNode[] = [
-      { type: 'macro', name: 'option', rawArgs: 'Red', children: [] },
-      { type: 'macro', name: 'option', rawArgs: 'Green', children: [] },
-      { type: 'macro', name: 'option', rawArgs: 'Blue', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Red"', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Green"', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Blue"', children: [] },
     ];
     expect(extractOptions(children)).toEqual(['Red', 'Green', 'Blue']);
   });
@@ -20,9 +21,9 @@ describe('extractOptions', () => {
   it('ignores non-option nodes', () => {
     const children: ASTNode[] = [
       { type: 'text', value: 'some text' },
-      { type: 'macro', name: 'option', rawArgs: 'Apple', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Apple"', children: [] },
       { type: 'macro', name: 'set', rawArgs: '$x = 1', children: [] },
-      { type: 'macro', name: 'option', rawArgs: 'Banana', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '"Banana"', children: [] },
     ];
     expect(extractOptions(children)).toEqual(['Apple', 'Banana']);
   });
@@ -36,9 +37,9 @@ describe('extractOptions', () => {
     expect(extractOptions([])).toEqual([]);
   });
 
-  it('trims whitespace from option rawArgs', () => {
+  it('trims whitespace around a quoted value', () => {
     const children: ASTNode[] = [
-      { type: 'macro', name: 'option', rawArgs: '  Spaced  ', children: [] },
+      { type: 'macro', name: 'option', rawArgs: '  "Spaced"  ', children: [] },
     ];
     expect(extractOptions(children)).toEqual(['Spaced']);
   });
@@ -58,19 +59,15 @@ describe('extractOptions', () => {
     expect(extractOptions(children)).toEqual(['Fire Staff']);
   });
 
-  it('does not strip mismatched quotes', () => {
-    const children: ASTNode[] = [
-      { type: 'macro', name: 'option', rawArgs: '"Mismatched\'', children: [] },
-    ];
-    expect(extractOptions(children)).toEqual(['"Mismatched\'']);
-  });
-
-  it('leaves unquoted values unchanged', () => {
-    const children: ASTNode[] = [
-      { type: 'macro', name: 'option', rawArgs: 'plain', children: [] },
-    ];
-    expect(extractOptions(children)).toEqual(['plain']);
-  });
+  it.each(['"Mismatched\'', 'plain', 'two words'])(
+    'rejects a value that is not one quoted string: %s',
+    (rawArgs) => {
+      const children: ASTNode[] = [
+        { type: 'macro', name: 'option', rawArgs, children: [] },
+      ];
+      expect(() => extractOptions(children)).toThrow(MacroArgumentError);
+    },
+  );
 
   it('unescapes quotes and backslashes in a quoted value', () => {
     const option = (rawArgs: string): ASTNode => ({
@@ -129,7 +126,7 @@ describe('parseVarArgs', () => {
 });
 
 describe('quoted labels that span lines', () => {
-  it('reads a multi-line option value, even loosely quoted', () => {
+  it('reads a multi-line option value, but not a loosely quoted one', () => {
     const option = (rawArgs: string): ASTNode => ({
       type: 'macro',
       name: 'option',
@@ -137,9 +134,9 @@ describe('quoted labels that span lines', () => {
       children: [],
     });
     expect(extractOptions([option('"Long\nSword"')])).toEqual(['Long\nSword']);
-    expect(extractOptions([option('"Long\nSword\\"')])).toEqual([
-      'Long\nSword\\',
-    ]);
+    expect(() => extractOptions([option('"Long\nSword\\"')])).toThrow(
+      MacroArgumentError,
+    );
   });
 
   it('reads a multi-line checkbox label', () => {

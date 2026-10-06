@@ -142,7 +142,7 @@ describe('action registration', () => {
   describe('Cycle', () => {
     it('registers with options and current value', () => {
       useStoryStore.getState().setVariable('weapon', 'sword');
-      renderPassage('{cycle $weapon}{option sword}{option axe}{/cycle}');
+      renderPassage('{cycle $weapon}{option "sword"}{option "axe"}{/cycle}');
       const actions = getActions();
       const cycleAction = actions.find((a) => a.type === 'cycle');
       expect(cycleAction).toBeDefined();

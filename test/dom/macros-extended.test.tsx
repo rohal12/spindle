@@ -423,6 +423,30 @@ describe('extended macro components', () => {
       expect(useStoryStore.getState().currentPassage).toBe('Room');
     });
 
+    it('navigates to a passage an expression names', () => {
+      useStoryStore.getState().setVariable('dest', 'Room');
+      const el = renderPassage('{link "Go" $dest}{/link}');
+      (el.querySelector('.macro-link') as HTMLElement).click();
+      expect(useStoryStore.getState().currentPassage).toBe('Room');
+    });
+
+    it('shows an error in place for a passage that does not exist', () => {
+      useStoryStore.getState().setVariable('dest', 'Nowhere');
+      const el = renderPassage('{link "Go" $dest}{/link}');
+      expect(el.querySelector('.macro-link')).toBeNull();
+      expect(el.querySelector('.error')!.textContent).toContain(
+        'No passage named "Nowhere"',
+      );
+    });
+
+    it('shows an error in place for unquoted text', () => {
+      const el = renderPassage('{link Go north}{/link}');
+      expect(el.querySelector('.macro-link')).toBeNull();
+      expect(el.querySelector('.error')!.textContent).toContain(
+        'The text must be a quoted string',
+      );
+    });
+
     it('registers as an action', () => {
       renderPassage('{link "Test Link" "Room"}{/link}');
       const actions = getActions();
@@ -511,7 +535,7 @@ describe('extended macro components', () => {
     it('renders a select element with options', () => {
       useStoryStore.getState().setVariable('choice', 'a');
       const el = renderPassage(
-        '{listbox $choice}{option a}{option b}{option c}{/listbox}',
+        '{listbox $choice}{option "a"}{option "b"}{option "c"}{/listbox}',
       );
       const select = el.querySelector('select');
       expect(select).not.toBeNull();
@@ -522,7 +546,7 @@ describe('extended macro components', () => {
     it('selects the current value', () => {
       useStoryStore.getState().setVariable('choice', 'b');
       const el = renderPassage(
-        '{listbox $choice}{option a}{option b}{option c}{/listbox}',
+        '{listbox $choice}{option "a"}{option "b"}{option "c"}{/listbox}',
       );
       const select = el.querySelector('select') as HTMLSelectElement;
       expect(select.value).toBe('b');
@@ -530,7 +554,7 @@ describe('extended macro components', () => {
 
     it('registers as an action', () => {
       useStoryStore.getState().setVariable('choice', 'a');
-      renderPassage('{listbox $choice}{option a}{option b}{/listbox}');
+      renderPassage('{listbox $choice}{option "a"}{option "b"}{/listbox}');
       const actions = getActions();
       expect(actions.some((a) => a.type === 'listbox')).toBe(true);
     });
@@ -602,7 +626,7 @@ describe('extended macro components', () => {
     it('renders a button with current value', () => {
       useStoryStore.getState().setVariable('mode', 'easy');
       const el = renderPassage(
-        '{cycle $mode}{option easy}{option normal}{option hard}{/cycle}',
+        '{cycle $mode}{option "easy"}{option "normal"}{option "hard"}{/cycle}',
       );
       const btn = el.querySelector('button.macro-cycle');
       expect(btn).not.toBeNull();
@@ -612,7 +636,7 @@ describe('extended macro components', () => {
     it('cycles to next value on click', () => {
       useStoryStore.getState().setVariable('mode', 'easy');
       const el = renderPassage(
-        '{cycle $mode}{option easy}{option normal}{option hard}{/cycle}',
+        '{cycle $mode}{option "easy"}{option "normal"}{option "hard"}{/cycle}',
       );
       const btn = el.querySelector('button.macro-cycle') as HTMLElement;
       btn.click();
@@ -622,7 +646,7 @@ describe('extended macro components', () => {
     it('wraps around at end of options', () => {
       useStoryStore.getState().setVariable('mode', 'hard');
       const el = renderPassage(
-        '{cycle $mode}{option easy}{option normal}{option hard}{/cycle}',
+        '{cycle $mode}{option "easy"}{option "normal"}{option "hard"}{/cycle}',
       );
       const btn = el.querySelector('button.macro-cycle') as HTMLElement;
       btn.click();
@@ -631,7 +655,7 @@ describe('extended macro components', () => {
 
     it('registers as an action', () => {
       useStoryStore.getState().setVariable('mode', 'easy');
-      renderPassage('{cycle $mode}{option easy}{option normal}{/cycle}');
+      renderPassage('{cycle $mode}{option "easy"}{option "normal"}{/cycle}');
       const actions = getActions();
       expect(actions.some((a) => a.type === 'cycle')).toBe(true);
     });
@@ -1084,7 +1108,7 @@ describe('extended macro components', () => {
 
     it('listbox reads nested value via dot-path', () => {
       const el = renderPassage(
-        '{listbox $pc.name}{option Maren}{option Zara}{/listbox}',
+        '{listbox $pc.name}{option "Maren"}{option "Zara"}{/listbox}',
       );
       const select = el.querySelector('select') as HTMLSelectElement;
       expect(select.value).toBe('Maren');
@@ -1092,7 +1116,7 @@ describe('extended macro components', () => {
 
     it('cycle reads and writes nested value via dot-path', () => {
       const el = renderPassage(
-        '{cycle $pc.name}{option Maren}{option Zara}{/cycle}',
+        '{cycle $pc.name}{option "Maren"}{option "Zara"}{/cycle}',
       );
       const btn = el.querySelector('button.macro-cycle') as HTMLElement;
       expect(btn.textContent).toBe('Maren');

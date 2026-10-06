@@ -29,7 +29,10 @@ import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { CodeSyntaxError, parseCode, type JsGoal } from './js-lexer';
 import type { ParsedCode } from './js-lexer';
 import type { ParameterDef } from './registry';
-import { parseMacroArgs } from './components/macros/macro-args';
+import {
+  MacroArgumentError,
+  parseMacroArgs,
+} from './components/macros/macro-args';
 import { readWholeQuoted } from './components/macros/arg-utils';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
@@ -88,6 +91,15 @@ export interface PassagePiece {
   label: string;
 }
 
+/** Macro arguments that don't have their parameters' forms. */
+export interface ArgumentErrorPiece {
+  kind: 'argument-error';
+  message: string;
+  offset: number;
+  /** The markup it is in, for the error: `{link Go}`. */
+  label: string;
+}
+
 /** Text in markup that may hold markup of its own, at `offset` in it. */
 export interface TextPiece {
   kind: 'text';
@@ -107,14 +119,13 @@ const CODE_IN_STRINGS: Record<string, Record<string, JsGoal>> = {
 
 /** The `string` parameters of a macro that name a passage. */
 const PASSAGE_STRINGS: Record<string, readonly string[]> = {
-  link: ['passage'],
   watch: ['goto', 'dialog'],
 };
 
 /** Block macros whose body is the name of a passage. */
 const PASSAGE_BODIES = new Set(['dialog']);
 
-type Piece = CodePiece | TextPiece | PassagePiece;
+type Piece = CodePiece | TextPiece | PassagePiece | ArgumentErrorPiece;
 
 /** The goal of the code an argument of this type holds, if it is code. */
 function codeGoal(param: ParameterDef): JsGoal | undefined {
@@ -246,7 +257,14 @@ function* argPieces(
   macro: string,
   label: string,
 ): Generator<Piece> {
-  const values = parseMacroArgs(args, params) as Record<string, unknown>;
+  let values: Record<string, unknown>;
+  try {
+    values = parseMacroArgs(args, params) as Record<string, unknown>;
+  } catch (error) {
+    if (!(error instanceof MacroArgumentError)) throw error;
+    yield { kind: 'argument-error', message: error.message, offset, label };
+    return;
+  }
   const inStrings = CODE_IN_STRINGS[macro.toLowerCase()] ?? {};
   const passageStrings = PASSAGE_STRINGS[macro.toLowerCase()] ?? [];
   let cursor = 0;

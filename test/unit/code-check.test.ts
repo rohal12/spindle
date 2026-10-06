@@ -152,7 +152,7 @@ describe('the story-start code check', () => {
   it('leaves text and the names of widget parameters alone', () => {
     expect(
       errors(
-        "{link Don't go}x{/link}{button Don't panic}x{/button}" +
+        '{link "Don\'t go"}x{/link}{button Don\'t panic}x{/button}' +
           '{widget "Card" @title @body}x{/widget}' +
           '{link "Go" "Shop"}x{/link}{textbox "$name" "Your name"}',
       ),
@@ -236,6 +236,7 @@ describe('the story-start check of passage names', () => {
           '{goto $rooms[0]}{goto `Hall`}{travel fast "Hall"}{travel @to}' +
           '[[Hall]] [[Go|Hall]] [[Go->Hall]] [[Hall<-Go]]' +
           '{link "Go" "Hall"}x{/link}{link "Stay"}x{/link}' +
+          '{link "Go" $room}x{/link}{link \'Go\' "Ha" + "ll"}x{/link}' +
           '{dialog "Map"}Hall{/dialog}{dialog "Map"}{$room}{/dialog}' +
           '{watch "$x" goto "Hall" dialog "Hall"}',
       ),
@@ -243,6 +244,14 @@ describe('the story-start check of passage names', () => {
   });
 
   it.each([
+    [
+      '{link "Go" Kitchen}x{/link}',
+      'column 12: Unquoted passage name in {link "Go" Kitchen}: write "Kitchen" (a passage name is a quoted string or an expression)',
+    ],
+    [
+      '{link "Go" $room +}x{/link}',
+      'column 19: Unexpected end of code in {link "Go" $room +} (a passage name is a quoted string or an expression)',
+    ],
     [
       '{goto Kitchen}',
       'column 7: Unquoted passage name in {goto Kitchen}: write "Kitchen" (a passage name is a quoted string or an expression)',
@@ -277,7 +286,7 @@ describe('the story-start check of passage names', () => {
     ['[[Cook->Kitchen]]', 1, 9, '[[Cook->Kitchen]]'],
     ['[[Kitchen<-Cook]]', 1, 3, '[[Kitchen<-Cook]]'],
     ['[[.big#k Kitchen]]', 1, 10, '[[.big#k Kitchen]]'],
-    ['{link "Cook" "Kitchen"}x{/link}', 1, 15, '{link "Cook" "Kitchen"}'],
+    ['{link "Cook" "Kitchen"}x{/link}', 1, 14, '{link "Cook" "Kitchen"}'],
     ['{dialog "Cook"}Kitchen{/dialog}', 1, 16, '{dialog "Cook"}'],
     ["{dialog 'Cook'}\n 'Kitchen' \n{/dialog}", 2, 3, "{dialog 'Cook'}"],
     ['{watch "$x" goto "Kitchen"}', 1, 19, '{watch "$x" goto "Kitchen"}'],
@@ -313,5 +322,28 @@ describe('the story-start check of passage names', () => {
       },
     );
     expect(diagnostics).toEqual([]);
+  });
+});
+
+describe('the story-start check of quoted arguments', () => {
+  it.each([
+    [
+      '{link Go north}x{/link}',
+      'column 7: The text must be a quoted string ("…" or \'…\'), not Go in {link Go north}',
+    ],
+    [
+      '{listbox $x}{option "a"}{option b}{/listbox}',
+      'column 33: The value must be a quoted string ("…" or \'…\'), not b in {option b}',
+    ],
+    [
+      '{watch $x > 0 once}',
+      'column 8: The condition must be a quoted string ("…" or \'…\'), not $x in {watch $x > 0 once}',
+    ],
+  ])('rejects %s', (content, message) => {
+    expect(errors(content)).toEqual([`Passage "Shop", line 1, ${message}`]);
+  });
+
+  it('accepts an optional string left out at the end', () => {
+    expect(errors('{meter $hp 100}{meter $hp 100 "HP"}')).toEqual([]);
   });
 });

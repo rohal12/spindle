@@ -1,21 +1,36 @@
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 import { useDetachedBody } from './detached-body';
+import { evaluatePassageName } from './macro-args';
+import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'link',
   block: true,
   interpolate: true,
-  // {link "text" "Passage"} or {link "text"}; unquoted, the whole arguments
-  // are the text.
+  merged: true,
+  // {link "text" passage} or {link "text"}; the passage is a quoted name or
+  // an expression, as in {goto}.
   parameters: [
     { name: 'text', type: 'string', required: true },
-    { name: 'passage', type: 'string' },
+    { name: 'passage', type: 'passage' },
   ],
-  render({ rawArgs, children = [] }, ctx) {
-    const { text } = ctx.args;
-    const display = text ?? rawArgs.trim();
-    const passage = text === undefined ? null : (ctx.args.passage ?? null);
+  render({ children = [] }, ctx) {
+    const display = ctx.args.text ?? '';
+    let passage: string | null = null;
+    // Boxed: anything can be thrown, including null and other falsy values
+    let failure: { error: unknown } | undefined;
+    if (ctx.args.passage !== undefined) {
+      try {
+        passage = evaluatePassageName(
+          ctx.args.passage,
+          ctx.evaluate!,
+          useStoryStore.getState(),
+        );
+      } catch (error) {
+        failure = { error };
+      }
+    }
     const runBody = useDetachedBody();
 
     const perform = () => {
@@ -39,6 +54,14 @@ defineMacro({
       perform,
     });
 
+    if (failure) {
+      return (
+        <MacroError
+          macro="link"
+          error={failure.error}
+        />
+      );
+    }
     return (
       <a
         id={ctx.id}
