@@ -55,7 +55,8 @@ function keyOf(val: unknown, ancestors: object[]): string {
   try {
     if (Array.isArray(val)) {
       // Array.from reads a hole as undefined (map would skip it, giving
-      // `[,]` the key of `[]`), matching deepClone, which fills holes.
+      // `[,]` the key of `[]`): as JSON.stringify, a key does not tell a
+      // hole from an undefined element (deepEqual does)
       return `[${Array.from(val, (v) => keyOf(v, ancestors)).join(',')}]`;
     }
     if (val instanceof Map) {

@@ -5,7 +5,8 @@ import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetEmitter } from '../../src/event-emitter';
 import { getBackend, resetBackend } from '../../src/saves/storage';
-import { clearRegistry, serialize } from '../../src/class-registry';
+import { clearRegistry } from '../../src/class-registry';
+import { encodePayload, SAVE_FORMAT_VERSION } from '../../src/saves/format';
 import { isSaveExport } from '../../src/saves/types';
 import type { StoryData, Passage } from '../../src/parser';
 import { fcOptions } from './config';
@@ -121,7 +122,7 @@ const exportArb = fc
       ...(prng ? { prng } : {}),
     };
     const exported = viaJson({
-      version: 1,
+      formatVersion: SAVE_FORMAT_VERSION,
       ifid: IFID,
       exportedAt: '2026-01-01T00:00:00.000Z',
       save: {
@@ -135,14 +136,7 @@ const exportArb = fc
           passage: payload.passage,
           custom: {},
         },
-        payload: {
-          ...payload,
-          variables: serialize(variables),
-          history: history.map((m) => ({
-            ...m,
-            variables: serialize(m.variables),
-          })),
-        },
+        payload: encodePayload(payload),
       },
     }) as Record<string, unknown>;
     return { payload, exported };

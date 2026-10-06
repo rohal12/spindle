@@ -7,9 +7,14 @@ import type {
   SaveExport,
   StorageInfo,
 } from './types';
-import { estimatePayloadBytes, isSaveExport, isSavePayload } from './types';
+import { checkSaveExport, estimatePayloadBytes } from './types';
+import {
+  decodePayload,
+  encodePayload,
+  IncompatibleSaveError,
+  SAVE_FORMAT_VERSION,
+} from './format';
 import { getBackend, resetBackend } from './storage';
-import { serialize, deserialize } from '../class-registry';
 import { deepClone } from '../structural';
 import { emit } from '../event-emitter';
 import { withoutDraws } from '../prng';
@@ -272,30 +277,12 @@ export function saveWithHooks<T>(
 
 // --- Save CRUD ---
 
-/**
- * `payload` with `convert` applied to its live variables and to those of
- * every history moment.
- */
-function mapVariables(
-  payload: SavePayload,
-  convert: (variables: Record<string, unknown>) => Record<string, unknown>,
-): SavePayload {
-  return {
-    ...payload,
-    variables: convert(payload.variables),
-    history: payload.history.map((m) => ({
-      ...m,
-      variables: convert(m.variables),
-    })),
-  };
-}
-
-/** The record to store for a save: `payload` serialized, and its size. */
+/** The record to store for a save: `payload` encoded, and its size. */
 function storedRecord(meta: SaveMeta, payload: SavePayload): SaveRecord {
-  const serialized = mapVariables(deepClone(payload), serialize);
+  const encoded = encodePayload(payload);
   return {
-    meta: { ...meta, estimatedBytes: estimatePayloadBytes(serialized) },
-    payload: serialized,
+    meta: { ...meta, estimatedBytes: estimatePayloadBytes(encoded) },
+    payload: encoded,
   };
 }
 
@@ -372,17 +359,16 @@ async function overwriteSaveNow(
 }
 
 /**
- * Turn a stored (serialized) payload into a live one, restoring class
- * instances and built-ins. Returns a new payload; the stored one is left
- * untouched. Payloads handed to the store's `loadFromPayload()` must be live.
+ * The live payload of a stored save, if there is one (see decodePayload:
+ * throws for a save of an incompatible format). Payloads handed to the
+ * store's `loadFromPayload()` must be live.
  */
-export function deserializePayload(payload: SavePayload): SavePayload {
-  return mapVariables(payload, deserialize);
-}
-
-/** The live payload of a stored save, if there is one. */
 const livePayload = (record: SaveRecord | undefined) =>
-  record && deserializePayload(record.payload);
+  record && decodePayload(record.payload);
+
+/** The live payload of a stored record's payload (see decodePayload). */
+export const decodeSavePayload = (payload: SaveRecord['payload']) =>
+  decodePayload(payload);
 
 export const loadSave = readingSave(livePayload);
 
@@ -650,7 +636,7 @@ export function loadSlotSave(
   return inOrder(async () => {
     const record = await slotRecord(ifid, slot);
     if (!record) return undefined;
-    const payload = deserializePayload(record.payload);
+    const payload = decodePayload(record.payload);
     const { playthroughId } = record.meta;
     if (playthroughId) await adoptPlaythroughNow(ifid, playthroughId);
     return { payload, playthroughId };
@@ -715,28 +701,35 @@ export const deleteSlotSave = queued(async (ifid: string, slot?: string) => {
 const SESSION_KEY_PREFIX = 'spindle.session.';
 
 /**
- * Write a pre-serialized session payload to sessionStorage.
- * Callers are responsible for serializing variables (see persistSession in store.ts).
+ * Write the session payload to sessionStorage, encoded like a save (see
+ * encodePayload). Throws, like a save, when the state holds a value a save
+ * cannot (a function, an instance of an unregistered class, a unique
+ * symbol); the session then keeps its previous copy.
  */
-export function saveSession(ifid: string, data: unknown): void {
+export function saveSession(ifid: string, payload: SavePayload): void {
+  const text = JSON.stringify(encodePayload(payload));
   try {
-    sessionStorage.setItem(
-      `${SESSION_KEY_PREFIX}${ifid}`,
-      JSON.stringify(data),
-    );
+    sessionStorage.setItem(`${SESSION_KEY_PREFIX}${ifid}`, text);
   } catch {
     // sessionStorage unavailable or full — silently ignore
   }
 }
 
+/**
+ * The live payload of the stored session, if there is one that loads. A
+ * session written by an incompatible version of Spindle is dropped with a
+ * warning, and the story starts fresh.
+ */
 export function loadSession(ifid: string): SavePayload | undefined {
   try {
     const raw = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${ifid}`);
     if (!raw) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isSavePayload(parsed)) return undefined;
-    return deserializePayload(parsed);
-  } catch {
+    return decodePayload(JSON.parse(raw));
+  } catch (err) {
+    if (err instanceof IncompatibleSaveError) {
+      console.warn(`spindle: ${err.message}; the session was not restored.`);
+      clearSession(ifid);
+    }
     return undefined;
   }
 }
@@ -755,7 +748,7 @@ export function clearSession(ifid: string): void {
 function toExport(record: SaveRecord | undefined): SaveExport | undefined {
   if (!record) return undefined;
   return {
-    version: 1,
+    formatVersion: SAVE_FORMAT_VERSION,
     ifid: record.meta.ifid,
     exportedAt: new Date().toISOString(),
     save: record,
@@ -769,22 +762,14 @@ export const exportSave = readingSave(toExport);
  * a fresh save ID, and the playthrough record created if it doesn't exist yet.
  * The returned record is not stored yet.
  */
-async function prepareImport(
-  data: SaveExport,
-  ifid: string,
-): Promise<SaveRecord> {
-  if (data.version !== 1) {
-    throw new Error(`Unsupported save version: ${data.version}`);
-  }
+async function prepareImport(data: unknown, ifid: string): Promise<SaveRecord> {
+  // Callers may pass parsed JSON; check the format version and the full
+  // structure before anything is stored or replaced
+  checkSaveExport(data);
   if (data.ifid !== ifid) {
     throw new Error(
       `Save is from a different story (expected IFID ${ifid}, got ${data.ifid})`,
     );
-  }
-  // Callers may pass parsed JSON; check the full structure before anything
-  // is stored or replaced
-  if (!isSaveExport(data)) {
-    throw new Error('Invalid save file format');
   }
 
   // Re-assign a new ID to avoid collisions
@@ -804,10 +789,7 @@ async function prepareImport(
   return record;
 }
 
-export function importSave(
-  data: SaveExport,
-  ifid: string,
-): Promise<SaveRecord> {
+export function importSave(data: unknown, ifid: string): Promise<SaveRecord> {
   return inOrder(async () => {
     const record = await prepareImport(data, ifid);
     await (await getBackend()).putSave(record);
@@ -828,7 +810,7 @@ export const exportSlotSave = readingSlot(toExport);
  * and slot index consistent.
  */
 export function importSlotSave(
-  data: SaveExport,
+  data: unknown,
   ifid: string,
   slot?: string,
 ): Promise<SaveInfo> {

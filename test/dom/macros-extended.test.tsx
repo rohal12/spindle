@@ -278,6 +278,20 @@ describe('extended macro components', () => {
       renderPassage('{goto $dest}');
       expect(useStoryStore.getState().currentPassage).toBe('End');
     });
+
+    it('navigates, and reports a session write error like an error in {do}', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      useStoryStore.getState().setVariable('cb', () => 1);
+      renderPassage('{goto "Room"}');
+      expect(useStoryStore.getState().currentPassage).toBe('Room');
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining('Error in {goto}'),
+        expect.objectContaining({
+          message: expect.stringContaining('Cannot save a function (at $cb)'),
+        }),
+      );
+      error.mockRestore();
+    });
   });
 
   describe('{unset}', () => {

@@ -1810,4 +1810,58 @@ describe('compiled story e2e', () => {
       expect(afterClose).toBe(false);
     });
   });
+
+  describe('saves in the browser (IndexedDB)', () => {
+    it('keeps cycles through class instances and shared references', async () => {
+      await navigateFresh();
+      const result = await page.evaluate(async () => {
+        const Story = (window as any).Story;
+        class Hero {
+          name = 'Ada';
+          friend: Hero | null = null;
+          bag = new Map<string, unknown>();
+        }
+        Story.registerClass('E2EHero', Hero);
+        const ada = new Hero();
+        ada.friend = ada;
+        ada.bag.set('me', ada);
+        const shared = { gold: 3 };
+        Story.set('e2e', { ada, left: shared, right: shared, list: [ada] });
+        Story.goto('Hallway');
+        await Story.save('e2e-slot');
+        const backend = (await Story.storage.getInfo()).backend;
+        Story.set('e2e', null);
+        await Story.load('e2e-slot');
+        const v = Story.get('e2e');
+        return {
+          backend,
+          isHero: v.ada instanceof Hero,
+          selfCycle: v.ada.friend === v.ada,
+          mapCycle: v.ada.bag.get('me') === v.ada,
+          shared: v.left === v.right,
+          inList: v.list[0] === v.ada,
+        };
+      });
+      expect(result).toEqual({
+        backend: 'indexeddb',
+        isHero: true,
+        selfCycle: true,
+        mapCycle: true,
+        shared: true,
+        inList: true,
+      });
+    });
+
+    it('a link click navigates, then reports an unsaveable value as an uncaught error', async () => {
+      await navigateFresh();
+      const errors: string[] = [];
+      const onError = (e: Error) => errors.push(e.message);
+      page.on('pageerror', onError);
+      await page.evaluate(() => (window as any).Story.set('cb', () => 1));
+      await clickLink('Open the door');
+      await page.waitForSelector('[data-passage="Hallway"]');
+      page.off('pageerror', onError);
+      expect(errors).toEqual(['spindle: Cannot save a function (at $cb)']);
+    });
+  });
 });

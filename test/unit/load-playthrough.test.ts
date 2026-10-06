@@ -15,7 +15,7 @@ import { executeMutation } from '../../src/execute-mutation';
 import { resetEmitter } from '../../src/event-emitter';
 import { getBackend, resetBackend } from '../../src/saves/storage';
 import {
-  deserializePayload,
+  decodeSavePayload,
   getSavesGrouped,
   loadSession,
 } from '../../src/saves/save-manager';
@@ -161,7 +161,7 @@ describe('loading a save switches to its playthrough', () => {
     const data = (await Story.exportSave('a'))!;
 
     state().loadFromPayload(
-      deserializePayload(data.save.payload),
+      decodeSavePayload(data.save.payload),
       undefined,
       data.save.meta.playthroughId,
     );
@@ -394,7 +394,7 @@ describe('loading a save switches to its playthrough', () => {
     await Story.storage.deletePlaythrough(first);
 
     state().loadFromPayload(
-      deserializePayload(data.save.payload),
+      decodeSavePayload(data.save.payload),
       undefined,
       first,
     );
@@ -422,6 +422,9 @@ describe('loading a save switches to its playthrough', () => {
     expect(Story.get('hp')).toBe(42);
     expect(await groupOf(first)).toEqual([first, 'Playthrough 1', ['a', 'b']]);
     // The save holds the code's write, made before it (program order)
-    expect((await Story.exportSave('b'))!.save.payload.variables.hp).toBe(5);
+    expect(
+      decodeSavePayload((await Story.exportSave('b'))!.save.payload).variables
+        .hp,
+    ).toBe(5);
   });
 });

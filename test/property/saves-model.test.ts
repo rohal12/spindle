@@ -11,7 +11,7 @@ import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { clearRegistry } from '../../src/class-registry';
 import {
   loadSession,
-  deserializePayload,
+  decodeSavePayload,
   createSave,
   overwriteSave,
   renameSave,
@@ -283,7 +283,7 @@ class DialogLoad extends Base {
     if (!t) return;
     const data = await exportSave(t.id);
     store().loadFromPayload(
-      deserializePayload(data!.save.payload),
+      decodeSavePayload(data!.save.payload),
       undefined,
       data!.save.meta.playthroughId,
     );

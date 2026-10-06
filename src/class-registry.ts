@@ -1,6 +1,7 @@
 // Class registry for preserving class instances across clone/save/load cycles.
 
-import { hasOwn, setOwn } from './utils/namespace';
+import { parse, stringify } from 'devalue';
+import { hasOwn } from './utils/namespace';
 
 type Constructor = new (...args: any[]) => any;
 
@@ -35,288 +36,289 @@ export function clearRegistry(): void {
   ctorToName.clear();
 }
 
-// --- Serialize ---
+// --- Serialize (devalue) ---
+//
+// Serialized data is the JSON text of devalue's flattened form: an array
+// that holds every value once, so shared references and cycles stay shared.
+// devalue itself handles undefined, NaN, ±Infinity, -0, bigint, sparse
+// arrays, Date, RegExp, Map, Set, null-prototype objects, typed arrays,
+// ArrayBuffer, DataView, URL, URLSearchParams, boxed primitives and Temporal
+// values. Spindle adds, with reducers and revivers:
+//
+// - `c:<name>`: an instance of the class registered as <name>, with its own
+//   enumerable keys (and, for Error subclasses, its message and cause);
+// - `E:<name>`: a built-in error (Error, TypeError, ..., AggregateError),
+//   with its message, cause, errors and own enumerable keys (not its stack);
+// - `S`: a symbol from the global registry (Symbol.for);
+// - `K`: a plain object holding a one-character key that JSON escapes (see
+//   GUARD_V8_KEYS).
+//
+// Everything else is refused when saving, with the path to the value:
+// functions, unique symbols, symbol keys, instances of unregistered classes,
+// and a property named "__proto__".
 
-const CLASS_TAG = '__spindle_class__';
-const DATA_TAG = '__spindle_data__';
+const CLASS_PREFIX = 'c:';
+const ERROR_PREFIX = 'E:';
+const SYMBOL_TAG = 'S';
+const KEYS_TAG = 'K';
 
-/** A tagged value, as serialize() writes and deserialize() reads it. */
-const tagged = (name: string, data: Record<string, unknown>) => ({
-  [CLASS_TAG]: name,
-  [DATA_TAG]: data,
-});
+/**
+ * Work around Chromium issue 521080746 (V8 in Chrome/Chromium 14x-153+,
+ * Node 24 and 26): after JSON.parse() has read an object key "\", a later
+ * parse can read a one-character escaped key at the same position in an
+ * object of the same shape ("\"", "\n", "\t", "\u0000"...) as "\". Plain
+ * objects holding such a key are saved as a list of entries instead, which
+ * puts the key in a JSON string, not a JSON object key.
+ */
+const GUARD_V8_KEYS = true;
 
-/** Numbers JSON text cannot hold (it writes null for them, and 0 for -0). */
-const SPECIAL_NUMBERS: Record<string, number> = {
-  NaN: NaN,
-  Infinity: Infinity,
-  '-Infinity': -Infinity,
-  '-0': -0,
+const BUILTIN_ERRORS: ReadonlyMap<object, string> = new Map(
+  (
+    [
+      Error,
+      EvalError,
+      RangeError,
+      ReferenceError,
+      SyntaxError,
+      TypeError,
+      URIError,
+      (globalThis as unknown as { AggregateError: ErrorConstructor })
+        .AggregateError,
+    ] as const
+  ).map((ctor) => [ctor.prototype, ctor.name]),
+);
+const ERROR_CTORS = new Map(
+  [...BUILTIN_ERRORS].map(([proto, name]) => [
+    name,
+    (proto as { constructor: ErrorConstructor }).constructor,
+  ]),
+);
+
+/** Error keys that are own but not enumerable on a live error. */
+const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
+
+const isObject = (v: unknown): v is object =>
+  typeof v === 'object' && v !== null;
+
+const defineData = (target: object, key: string, value: unknown): void => {
+  // Define, so that a "__proto__" key stays a key (devalue refuses it)
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
 };
 
-function specialNumberName(value: number): string | undefined {
-  if (Number.isNaN(value)) return 'NaN';
-  if (value === Infinity) return 'Infinity';
-  if (value === -Infinity) return '-Infinity';
-  if (Object.is(value, -0)) return '-0';
+/**
+ * Own enumerable keys of `value`, as a plain object; for an error also its
+ * message, cause and (AggregateError) errors, which are not enumerable.
+ */
+function ownData(value: object): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (value instanceof Error) {
+    for (const key of ERROR_HIDDEN_KEYS) {
+      if (hasOwn(value, key)) defineData(data, key, value[key as keyof Error]);
+    }
+  }
+  for (const key of Object.keys(value)) {
+    defineData(data, key, (value as Record<string, unknown>)[key]);
+  }
+  return data;
+}
+
+/** Make an error's message, cause and errors non-enumerable again. */
+function hideErrorKeys(value: object): void {
+  for (const key of ERROR_HIDDEN_KEYS) {
+    if (hasOwn(value, key)) {
+      Object.defineProperty(value, key, { enumerable: false });
+    }
+  }
+}
+
+/** Whether JSON.stringify writes `key` as a one-character escape sequence. */
+const isEscapedOneCharKey = (key: string): boolean =>
+  key.length === 1 && JSON.stringify(key).length > 3;
+
+function reducers(): Record<string, (value: unknown) => unknown> {
+  const out: Record<string, (value: unknown) => unknown> = {};
+  for (const [name, ctor] of registry) {
+    out[CLASS_PREFIX + name] = (v) =>
+      isObject(v) && Object.getPrototypeOf(v) === ctor.prototype && ownData(v);
+  }
+  for (const [proto, name] of BUILTIN_ERRORS) {
+    out[ERROR_PREFIX + name] = (v) =>
+      isObject(v) && Object.getPrototypeOf(v) === proto && ownData(v);
+  }
+  // A unique symbol is left to devalue, which refuses it with its path
+  out[SYMBOL_TAG] = (v) => {
+    if (typeof v !== 'symbol') return false;
+    const key = Symbol.keyFor(v);
+    return key !== undefined && [key];
+  };
+  if (GUARD_V8_KEYS) {
+    out[KEYS_TAG] = (v) => {
+      if (!isObject(v) || Object.getPrototypeOf(v) !== Object.prototype) {
+        return false;
+      }
+      const keys = Object.keys(v);
+      if (!keys.some(isEscapedOneCharKey)) return false;
+      if (keys.includes('__proto__')) {
+        throw new TypeError(
+          'spindle: Cannot save a property named "__proto__"',
+        );
+      }
+      return keys.flatMap((k) => [k, (v as Record<string, unknown>)[k]]);
+    };
+  }
+  return out;
+}
+
+/** Restore a registered class instance in place, so cycles through it hold. */
+function reviveClass(name: string) {
+  return (data: Record<string, unknown>): unknown => {
+    if (!isObject(data) || Object.getPrototypeOf(data) !== Object.prototype) {
+      // Already revived: a cycle through the instance revives it twice
+      if (isObject(data) && registeredClassName(data) === name) return data;
+      throw new TypeError(`spindle: Malformed data for class "${name}"`);
+    }
+    const ctor = registry.get(name);
+    if (!ctor) {
+      throw new TypeError(
+        `spindle: The save holds an instance of class "${name}", which is not registered`,
+      );
+    }
+    Object.setPrototypeOf(data, ctor.prototype as object);
+    if (data instanceof Error) hideErrorKeys(data);
+    return data;
+  };
+}
+
+/** Restore a built-in error in place, like a class instance. */
+function reviveError(name: string) {
+  const ctor = ERROR_CTORS.get(name);
+  if (!ctor) return undefined;
+  return (data: Record<string, unknown>): unknown => {
+    if (Object.getPrototypeOf(data) === ctor.prototype) return data;
+    if (!isObject(data) || Object.getPrototypeOf(data) !== Object.prototype) {
+      throw new TypeError(`spindle: Malformed data for "${name}"`);
+    }
+    Object.setPrototypeOf(data, ctor.prototype);
+    hideErrorKeys(data);
+    return data;
+  };
+}
+
+/**
+ * The object of a `K` entry list. A cycle through the object revives it
+ * before its list is complete (devalue holds unread entries as holes), so
+ * the object is kept per list and filled with what the list holds so far.
+ */
+const keyedObjects = new WeakMap<unknown[], Record<string, unknown>>();
+function reviveKeyed(entries: unknown[]): Record<string, unknown> {
+  if (!Array.isArray(entries) || entries.length % 2 !== 0) {
+    throw new TypeError('spindle: Malformed object entries');
+  }
+  let obj = keyedObjects.get(entries);
+  if (!obj) keyedObjects.set(entries, (obj = {}));
+  for (let i = 0; i < entries.length; i += 2) {
+    if (!hasOwn(entries, i)) break;
+    const key = entries[i];
+    if (typeof key !== 'string' || key === '__proto__') {
+      throw new TypeError('spindle: Malformed object entries');
+    }
+    defineData(obj, key, hasOwn(entries, i + 1) ? entries[i + 1] : undefined);
+  }
+  return obj;
+}
+
+/** Revivers for every tag a save may hold. */
+const revivers = new Proxy({} as Record<string, (value: any) => unknown>, {
+  getOwnPropertyDescriptor(_, key) {
+    const fn = reviverFor(key);
+    return fn && { value: fn, enumerable: true, configurable: true };
+  },
+  get: (_, key) => reviverFor(key),
+});
+
+function reviverFor(key: string | symbol) {
+  if (typeof key !== 'string') return undefined;
+  if (key === SYMBOL_TAG) {
+    return (data: unknown) => {
+      if (!Array.isArray(data) || typeof data[0] !== 'string') {
+        throw new TypeError('spindle: Malformed symbol');
+      }
+      return Symbol.for(data[0]);
+    };
+  }
+  if (key === KEYS_TAG) return reviveKeyed;
+  if (key.startsWith(CLASS_PREFIX)) {
+    return reviveClass(key.slice(CLASS_PREFIX.length));
+  }
+  if (key.startsWith(ERROR_PREFIX)) {
+    return reviveError(key.slice(ERROR_PREFIX.length));
+  }
   return undefined;
 }
 
-/**
- * Turn a story value into data that survives JSON text (saves, exports,
- * the session) and that deserialize() restores. Date, RegExp, Map, Set and
- * registered class instances become tagged objects, and so do the values
- * JSON text would drop or change: undefined (also array holes), NaN,
- * ±Infinity, -0, bigint, invalid dates, and plain objects with a key named
- * like the class tag. Throws on circular references and on a property
- * named "__proto__", which story state cannot hold.
- */
-export function serialize<T>(value: T): T {
-  const seen = new Set<object>();
-
-  function ser(val: unknown): unknown {
-    if (val === undefined) return tagged('__Undefined__', {});
-    if (typeof val === 'number') {
-      const name = specialNumberName(val);
-      return name === undefined ? val : tagged('__Number__', { value: name });
-    }
-    if (typeof val === 'bigint') {
-      return tagged('__BigInt__', { value: val.toString() });
-    }
-    if (val === null || typeof val !== 'object') return val;
-
-    if (seen.has(val)) {
-      throw new Error('spindle: Cannot serialize circular references');
-    }
-    seen.add(val);
-    try {
-      return serObject(val);
-    } finally {
-      seen.delete(val);
-    }
+/** A clearer message for devalue's refusals, with the path to the value. */
+function saveError(err: unknown, value: unknown): Error {
+  if (!(err instanceof Error) || err.name !== 'DevalueError') {
+    return err instanceof Error ? err : new Error(String(err));
   }
-
-  function serKeys(obj: object): Record<string, unknown> {
-    const data: Record<string, unknown> = {};
-    for (const key of Object.keys(obj)) {
-      // Story state cannot hold one: replaying history (Immer patches)
-      // would turn it into the object's prototype
-      if (key === '__proto__') {
-        throw new Error('spindle: Cannot save a property named "__proto__"');
-      }
-      data[key] = ser((obj as Record<string, unknown>)[key]);
-    }
-    return data;
+  const { path, value: what } = err as Error & { path: string; value: unknown };
+  const at = path ? ` (at ${path})` : '';
+  let reason = err.message;
+  if (typeof what === 'function') reason = 'Cannot save a function';
+  else if (isObject(what) && /non-POJO/.test(err.message)) {
+    const name = (
+      Object.getPrototypeOf(what) as { constructor?: { name?: string } } | null
+    )?.constructor?.name;
+    reason = `Cannot save an instance of class "${name ?? '?'}", which is not registered (see Story.registerClass)`;
+  } else if (typeof what === 'symbol') {
+    reason = 'Cannot save a unique symbol (only Symbol.for() symbols)';
+  } else if (/symbolic keys/.test(err.message)) {
+    reason = 'Cannot save an object with symbol keys';
+  } else if (/__proto__/.test(err.message)) {
+    reason = 'Cannot save a property named "__proto__"';
   }
-
-  function serObject(val: object): unknown {
-    if (val instanceof Date) {
-      const valid = !Number.isNaN(val.getTime());
-      return tagged('__Date__', { iso: valid ? val.toISOString() : null });
-    }
-
-    if (val instanceof RegExp) {
-      return tagged('__RegExp__', { source: val.source, flags: val.flags });
-    }
-
-    if (Array.isArray(val)) {
-      // Index by index: map() would keep holes, which JSON writes as null
-      const result: unknown[] = [];
-      for (let i = 0; i < val.length; i++) result.push(ser(val[i]));
-      return result;
-    }
-
-    if (val instanceof Map) {
-      const entries = [...val].map(([k, v]) => [ser(k), ser(v)]);
-      return tagged('__Map__', { entries });
-    }
-
-    if (val instanceof Set) {
-      return tagged('__Set__', { entries: [...val].map((v) => ser(v)) });
-    }
-
-    // Registered class instance
-    const name = registeredClassName(val);
-    if (name !== undefined) return tagged(name, serKeys(val));
-
-    // Plain object. One with a key named like the class tag is wrapped, so
-    // that it is not read back as a tagged value.
-    const data = serKeys(val);
-    return hasOwn(val, CLASS_TAG) ? tagged('__Object__', data) : data;
-  }
-
-  return ser(value) as T;
-}
-
-// --- Deserialize ---
-
-export function deserialize<T>(value: T): T {
-  function deserKeys(target: object, data: Record<string, unknown>): object {
-    for (const key of Object.keys(data)) {
-      setOwn(target, key, deser(data[key]));
-    }
-    return target;
-  }
-
-  function deser(val: unknown): unknown {
-    if (val === null || typeof val !== 'object') return val;
-
-    if (Array.isArray(val)) {
-      return val.map((item) => deser(item));
-    }
-
-    const obj = val as Record<string, unknown>;
-
-    // Tagged value (from serialized data)
-    if (CLASS_TAG in obj && DATA_TAG in obj) {
-      const name = obj[CLASS_TAG] as string;
-      const data = obj[DATA_TAG] as Record<string, unknown>;
-
-      // Built-in types and values JSON cannot hold
-      switch (name) {
-        case '__Date__':
-          return new Date(data.iso === null ? NaN : (data.iso as string));
-        case '__RegExp__':
-          return new RegExp(data.source as string, data.flags as string);
-        case '__Map__': {
-          const entries = data.entries as [unknown, unknown][];
-          return new Map(entries.map(([k, v]) => [deser(k), deser(v)]));
-        }
-        case '__Set__':
-          return new Set((data.entries as unknown[]).map((v) => deser(v)));
-        case '__Undefined__':
-          return undefined;
-        case '__Number__':
-          return SPECIAL_NUMBERS[data.value as string];
-        case '__BigInt__':
-          return BigInt(data.value as string);
-        case '__Object__':
-          return deserKeys({}, data);
-      }
-
-      const ctor = registry.get(name);
-      if (!ctor) {
-        console.warn(
-          `spindle: Class "${name}" not registered. Falling back to plain object.`,
-        );
-        return deserKeys({}, data);
-      }
-      return deserKeys(Object.create(ctor.prototype) as object, data);
-    }
-
-    // Already-live built-in — pass through as-is, so deserializing an
-    // already-deserialized value is a no-op instead of flattening it to {}
-    if (
-      val instanceof Date ||
-      val instanceof RegExp ||
-      val instanceof Map ||
-      val instanceof Set
-    ) {
-      return val;
-    }
-
-    // Already-live registered class instance — pass through as-is
-    if (registeredClassName(obj) !== undefined) {
-      return val;
-    }
-
-    // Plain object
-    return deserKeys({}, obj);
-  }
-
-  return deser(value) as T;
-}
-
-// --- Validate ---
-
-function isDataRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  void value;
+  return new TypeError(`spindle: ${reason}${at}`);
 }
 
 /**
- * Whether `value` is serialized data that deserialize() can restore: every
- * tagged value has the shape serialize() writes for its tag (a valid ISO
- * date or null, a compilable RegExp, Map entries as `[key, value]` pairs,
- * Set entries as an array, a special number's name, a bigint in decimal,
- * class data as an object) and no object has a "__proto__" key, at any
- * depth. Use it on data from outside the running story, such as an
- * imported save, before storing it. Tags of unregistered classes pass;
- * they load as plain objects.
+ * Turn a story value into JSON text that deserialize() restores (saves,
+ * exports, the session). Throws, naming the path to the value, on what a
+ * save cannot hold: functions, unique symbols, symbol keys, instances of
+ * unregistered classes, and a property named "__proto__".
  */
-export function isDeserializable(value: unknown): boolean {
-  // Objects on the current path; JSON can't hold cycles, and deserialize()
-  // can't restore them
-  const path = new Set<object>();
-
-  function check(val: unknown): boolean {
-    if (val === null || typeof val !== 'object') return true;
-    if (path.has(val)) return false;
-    path.add(val);
-    const ok = checkObject(val);
-    path.delete(val);
-    return ok;
+export function serialize(value: unknown): string {
+  try {
+    return stringify(value, reducers());
+  } catch (err) {
+    throw saveError(err, value);
   }
+}
 
-  // A "__proto__" key is refused: serialize() never writes one, and story
-  // state cannot hold one (see serialize)
-  const checkKeys = (obj: Record<string, unknown>): boolean =>
-    Object.keys(obj).every((key) => key !== '__proto__' && check(obj[key]));
+/**
+ * Restore a value serialize() wrote. Throws on malformed text, and on an
+ * instance of a class that is not registered.
+ */
+export function deserialize<T = unknown>(text: string): T {
+  return parse(text, revivers) as T;
+}
 
-  function checkObject(val: object): boolean {
-    // Array.from: every() skips the holes of a sparse array, which
-    // deserialize() restores as undefined (and a Map cannot take as entries)
-    if (Array.isArray(val)) return Array.from(val).every(check);
-
-    const obj = val as Record<string, unknown>;
-    if (!(CLASS_TAG in obj && DATA_TAG in obj)) return checkKeys(obj);
-
-    const name = obj[CLASS_TAG];
-    const data = obj[DATA_TAG];
-    if (typeof name !== 'string' || !isDataRecord(data)) return false;
-
-    switch (name) {
-      case '__Date__':
-        return (
-          data.iso === null ||
-          (typeof data.iso === 'string' &&
-            !Number.isNaN(new Date(data.iso).getTime()))
-        );
-      case '__RegExp__':
-        if (typeof data.source !== 'string' || typeof data.flags !== 'string')
-          return false;
-        try {
-          new RegExp(data.source, data.flags);
-          return true;
-        } catch {
-          return false;
-        }
-      case '__Map__':
-        return (
-          Array.isArray(data.entries) &&
-          Array.from(data.entries).every(
-            (entry: unknown) =>
-              Array.isArray(entry) &&
-              entry.length === 2 &&
-              check(entry[0]) &&
-              check(entry[1]),
-          )
-        );
-      case '__Set__':
-        return (
-          Array.isArray(data.entries) && Array.from(data.entries).every(check)
-        );
-      case '__Undefined__':
-        return true;
-      case '__Number__':
-        return (
-          typeof data.value === 'string' && hasOwn(SPECIAL_NUMBERS, data.value)
-        );
-      case '__BigInt__':
-        return typeof data.value === 'string' && /^-?\d+$/.test(data.value);
-      default:
-        return checkKeys(data);
-    }
+/**
+ * Whether `text` is serialized data that deserialize() can restore. Use it
+ * on data from outside the running story, such as an imported save, before
+ * storing it.
+ */
+export function isDeserializable(text: unknown): boolean {
+  if (typeof text !== 'string') return false;
+  try {
+    deserialize(text);
+    return true;
+  } catch {
+    return false;
   }
-
-  return check(value);
 }

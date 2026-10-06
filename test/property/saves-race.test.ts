@@ -26,7 +26,7 @@ import {
   deleteSaveById,
   populateKnownSaves,
   exportSave,
-  deserializePayload,
+  decodeSavePayload,
 } from '../../src/saves/save-manager';
 import { useStoryStore, resolvePlaythroughId } from '../../src/store';
 import type { SaveExport, StorageBackend } from '../../src/saves/types';
@@ -266,7 +266,7 @@ const ops = {
         if (kk === undefined) return;
         const { data } = pre.records.get(kk)!;
         store().loadFromPayload(
-          deserializePayload(data.save.payload),
+          decodeSavePayload(data.save.payload),
           undefined,
           data.save.meta.playthroughId,
         );

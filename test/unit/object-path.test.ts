@@ -73,4 +73,21 @@ describe('object paths', () => {
     const next = produce(state, (d) => deleteByPath(d, ['a', 'constructor']));
     expect(next).toBe(state);
   });
+
+  it('leaves a hole when it deletes an array element, also in a draft', () => {
+    // Immer writes undefined for `delete` on a drafted array element
+    const state = freeze({ o: { list: [1, 2, 3] } }, true) as Rec;
+    const next = produce(state, (d) => {
+      deleteByPath(d, ['o', 'list', '1']);
+      setByPath(d, ['o', 'list', '2'], 4);
+    }) as { o: { list: number[] } };
+    expect(next.o.list).toHaveLength(3);
+    expect(1 in next.o.list).toBe(false);
+    expect(next.o.list[2]).toBe(4);
+    expect(state).toEqual({ o: { list: [1, 2, 3] } });
+
+    const plain = { list: [1, 2] };
+    deleteByPath(plain, ['list', '0']);
+    expect(0 in plain.list).toBe(false);
+  });
 });

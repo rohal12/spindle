@@ -8,13 +8,13 @@
  * not a count) read as 0.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { encodePayload } from '../../src/saves/format';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { evaluate } from '../../src/expression';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetEmitter } from '../../src/event-emitter';
 import { getBackend, resetBackend } from '../../src/saves/storage';
-import { deserializePayload, loadSession } from '../../src/saves/save-manager';
-import type { SavePayload } from '../../src/saves/types';
+import { decodeSavePayload, loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage } from '../../src/parser';
 
 const INHERITED = [
@@ -221,8 +221,9 @@ describe('counters in saves', () => {
   it('survive a JSON round trip of the payload', () => {
     visitAll();
     // Saves serialize the variables only; the counters are plain data
-    const payload = deserializePayload(
-      JSON.parse(JSON.stringify(state().getSavePayload())) as SavePayload,
+    const live = state().getSavePayload();
+    const payload = decodeSavePayload(
+      JSON.parse(JSON.stringify(encodePayload(live))),
     );
     state().restart();
     expectCounts('constructor', 0);

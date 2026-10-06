@@ -44,7 +44,10 @@ function makePassage(pid: number, name: string, content: string): PassageData {
   return { pid, name, tags: [], metadata: {}, content };
 }
 
-function initStory(extraPassages: string[] = []): void {
+function initStory(
+  extraPassages: string[] = [],
+  variables: Record<string, unknown> = EXPR_ENV.variables,
+): void {
   const passages = [
     makePassage(1, 'Start', 'Start'),
     ...extraPassages.map((name, i) => makePassage(10 + i, name, 'Target')),
@@ -60,7 +63,7 @@ function initStory(extraPassages: string[] = []): void {
     userCSS: '',
     userScript: '',
   };
-  useStoryStore.getState().init(storyData, { ...EXPR_ENV.variables });
+  useStoryStore.getState().init(storyData, { ...variables });
 }
 
 let container: HTMLElement | null = null;
@@ -242,7 +245,10 @@ describe('quoted labels in macros (#200)', () => {
     [domLabel, domLabel.filter((p) => p.text.trim() !== '')],
     domOptions,
   )('link text and passage', (display, passage) => {
-    initStory([passage.text]);
+    // Without the function $f: navigating writes the session, which (like a
+    // save) cannot hold a function
+    const { f: _f, ...saveable } = EXPR_ENV.variables;
+    initStory([passage.text], saveable);
     const el = renderPassage(
       `{link ${display.quoted} ${passage.quoted}}{/link}`,
     );

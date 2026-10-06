@@ -1,6 +1,7 @@
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 import { evaluatePassageName } from './macro-args';
+import { logMacroError } from './MacroError';
 
 defineMacro({
   name: 'goto',
@@ -8,9 +9,16 @@ defineMacro({
   parameters: [{ name: 'passage', type: 'expression', required: true }],
   render(_props, ctx) {
     ctx.hooks.useLayoutEffect(() => {
-      useStoryStore
-        .getState()
-        .navigate(evaluatePassageName(ctx.args.passage, ctx.evaluate!));
+      // Reported like an error in {do}: thrown out of an effect, it would
+      // abort the rest of the render's effects (e.g. the session could not
+      // be written because the state holds a function)
+      try {
+        useStoryStore
+          .getState()
+          .navigate(evaluatePassageName(ctx.args.passage, ctx.evaluate!));
+      } catch (err) {
+        logMacroError('goto', err);
+      }
     }, []);
 
     return null;
