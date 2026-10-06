@@ -1,61 +1,91 @@
-import { createJsScanCache, findCodeEnd, type JsScanCache } from '../js-lexer';
+import {
+  createJsScanCache,
+  findCodeEnd,
+  type JsScanCache,
+  type Sigil,
+} from '../js-lexer';
 import { isCodeAttribute } from './code-attributes';
 
-export interface TextToken {
-  type: 'text';
-  value: string;
+/** The namespace a variable reference reads. */
+export type VariableScope = 'variable' | 'temporary' | 'local' | 'transient';
+
+/** Variable sigils: story ($), temporary (_), local (@), transient (%). */
+export const SIGIL_SCOPES: Readonly<Record<Sigil, VariableScope>> = {
+  $: 'variable',
+  _: 'temporary',
+  '@': 'local',
+  '%': 'transient',
+};
+
+/** The sigil of each variable scope. */
+export const SCOPE_SIGILS = Object.fromEntries(
+  Object.entries(SIGIL_SCOPES).map(([sigil, scope]) => [scope, sigil]),
+) as Readonly<Record<VariableScope, Sigil>>;
+
+const SIGIL_CHARS: ReadonlySet<string> = new Set(Object.keys(SIGIL_SCOPES));
+
+/** Whether `c` is a variable sigil. */
+export function isSigil(c: string | undefined): c is Sigil {
+  return c !== undefined && SIGIL_CHARS.has(c);
+}
+
+/** The `.class#id` selectors written before a link, variable or macro. */
+export interface Selectors {
+  className?: string;
+  id?: string;
+}
+
+/** Copy the selectors set in `from` onto `target`, and return it. */
+export function withSelectors<T extends Selectors>(
+  target: T,
+  from: Selectors,
+): T {
+  if (from.className) target.className = from.className;
+  if (from.id) target.id = from.id;
+  return target;
+}
+
+/** Where a token is in the input: from `start` up to `end`. */
+interface Span {
   start: number;
   end: number;
 }
 
-export interface LinkToken {
+export interface TextToken extends Span {
+  type: 'text';
+  value: string;
+}
+
+export interface LinkToken extends Span, Selectors {
   type: 'link';
   display: string;
   target: string;
-  className?: string;
-  id?: string;
-  start: number;
-  end: number;
 }
 
-export interface MacroToken {
+export interface MacroToken extends Span, Selectors {
   type: 'macro';
   name: string;
   rawArgs: string;
   isClose: boolean;
-  className?: string;
-  id?: string;
-  start: number;
-  end: number;
 }
 
-export interface VariableToken {
+export interface VariableToken extends Span, Selectors {
   type: 'variable';
   name: string;
-  scope: 'variable' | 'temporary' | 'local' | 'transient';
-  className?: string;
-  id?: string;
-  start: number;
-  end: number;
+  scope: VariableScope;
 }
 
-export interface ExpressionToken {
+export interface ExpressionToken extends Span, Selectors {
   type: 'expression';
   expression: string;
-  className?: string;
-  id?: string;
-  start: number;
-  end: number;
 }
 
-export interface HtmlToken {
+export interface HtmlToken extends Span {
   type: 'html';
   tag: string;
   attributes: Record<string, string>;
   isClose: boolean;
   isSelfClose: boolean;
-  start: number;
-  end: number;
 }
 
 export type Token =
@@ -87,9 +117,6 @@ const HTML_VOID_TAGS = new Set([
   'wbr',
 ]);
 
-/** Variable sigils: story ($), temporary (_), local (@), transient (%). */
-const SIGIL_CHARS = new Set(['$', '_', '@', '%']);
-
 /**
  * Characters other than a sigil that open an expression after `{`:
  * `{(Math.max($a, 0))}`, `{!$done}`. Other characters that can start an
@@ -102,35 +129,28 @@ const EXPRESSION_START = new Set(['(', '!']);
 const RAW_BODY_MACROS = new Set(['do']);
 
 /**
+ * Link separators, in the order they are tried, and whether the target
+ * comes first: display|target, display->target, target<-display.
+ */
+const LINK_SEPARATORS: readonly (readonly [string, boolean])[] = [
+  ['|', false],
+  ['->', false],
+  ['<-', true],
+];
+
+/**
  * Parse a Twine link interior into display and target.
  * Supports: display|target, display->target, target<-display, plain
  */
 function parseLink(inner: string): { display: string; target: string } {
-  // Pipe syntax: display|target
-  const pipeIdx = inner.indexOf('|');
-  if (pipeIdx !== -1) {
-    return {
-      display: inner.slice(0, pipeIdx).trim(),
-      target: inner.slice(pipeIdx + 1).trim(),
-    };
-  }
-
-  // Arrow syntax: display->target
-  const arrowIdx = inner.indexOf('->');
-  if (arrowIdx !== -1) {
-    return {
-      display: inner.slice(0, arrowIdx).trim(),
-      target: inner.slice(arrowIdx + 2).trim(),
-    };
-  }
-
-  // Reverse arrow: target<-display
-  const revIdx = inner.indexOf('<-');
-  if (revIdx !== -1) {
-    return {
-      target: inner.slice(0, revIdx).trim(),
-      display: inner.slice(revIdx + 2).trim(),
-    };
+  for (const [separator, targetFirst] of LINK_SEPARATORS) {
+    const idx = inner.indexOf(separator);
+    if (idx === -1) continue;
+    const before = inner.slice(0, idx).trim();
+    const after = inner.slice(idx + separator.length).trim();
+    return targetFirst
+      ? { display: after, target: before }
+      : { display: before, target: after };
   }
 
   // Plain: [[passage]]
@@ -167,13 +187,15 @@ function parseMacroContent(content: string): {
 
 /**
  * Parse CSS selectors: .foo.bar#baz → { className: "foo bar", id: "baz" }
- * Scans .[a-zA-Z0-9_-]+ and #[a-zA-Z0-9_-]+ segments in any order.
- * Returns space-joined class string, last id wins, and position after last segment.
+ * Scans .[a-zA-Z0-9_-]+ and #[a-zA-Z0-9_-]+ segments in any order, and one
+ * space after them. Returns space-joined class string, last id wins (each
+ * left out if empty), and the position after them: `startIdx` if there are
+ * none.
  */
 function parseSelectors(
   input: string,
   startIdx: number,
-): { className: string; id: string; endIdx: number } {
+): { selectors: Selectors; end: number } {
   const classes: string[] = [];
   let id = '';
   let i = startIdx;
@@ -186,7 +208,7 @@ function parseSelectors(
       if (/[a-zA-Z0-9_-]/.test(input[i]!)) {
         name += input[i];
         i++;
-      } else if (input[i] === '{' && SIGIL_CHARS.has(input[i + 1]!)) {
+      } else if (input[i] === '{' && isSigil(input[i + 1])) {
         // Consume interpolation: {$var}, {_var}, {@var}, {%var} (with optional dot paths)
         const braceStart = i;
         i += 2; // skip { and prefix
@@ -212,7 +234,15 @@ function parseSelectors(
     }
   }
 
-  return { className: classes.join(' '), id, endIdx: i };
+  // Consume the space after the selectors
+  if (i > startIdx && input[i] === ' ') i++;
+  return {
+    selectors: withSelectors<Selectors>(
+      {},
+      { className: classes.join(' '), id },
+    ),
+    end: i,
+  };
 }
 
 /**
@@ -380,7 +410,7 @@ function scanQuotedValue(
     if (input[j] === '{') {
       const closeIdx = !code
         ? scanBlockClose(input, j, memo)
-        : SIGIL_CHARS.has(input[j + 1]!)
+        : isSigil(input[j + 1])
           ? scanBalancedBrace(input, j + 1, memo)
           : -1;
       if (closeIdx !== -1) {
@@ -502,12 +532,7 @@ function scanMacroClose(
  * code from just past the {. Returns -1 if it is unclosed.
  */
 function scanBlockClose(input: string, open: number, memo: ScanMemo): number {
-  let at = open + 1;
-  const c = input[at];
-  if (c === '.' || c === '#') {
-    at = parseSelectors(input, at).endIdx;
-    if (input[at] === ' ') at++;
-  }
+  const at = parseSelectors(input, open + 1).end;
   const first = input[at];
   if (first !== undefined && (first === '/' || /[a-zA-Z]/.test(first))) {
     return scanMacroClose(input, at, memo);
@@ -765,6 +790,7 @@ export function tokenize(
   let i = 0;
   let textStart = 0;
 
+  /** Push a text token for the text not yet tokenized before `end`. */
   function flushText(end: number) {
     if (end > textStart) {
       tokens.push({
@@ -773,7 +799,14 @@ export function tokenize(
         start: textStart,
         end,
       });
+      textStart = end;
     }
+  }
+
+  /** Push `token` and go on after it. */
+  function emit(token: Token) {
+    tokens.push(token);
+    i = textStart = token.end;
   }
 
   /**
@@ -815,41 +848,99 @@ export function tokenize(
     atRe.lastIndex = closeStart;
     const closeEnd = closeStart + atRe.exec(input)![0].length;
     flushText(closeStart);
-    tokens.push({
+    emit({
       type: 'macro',
       ...parseMacroContent(input.slice(closeStart + 1, closeEnd - 1)),
       start: closeStart,
       end: closeEnd,
     });
-    i = closeEnd;
-    textStart = closeEnd;
   }
 
   /**
    * Push an expression token for the `{…}` block opened at `start` whose
-   * expression starts at `exprStart`, flushing the text before it first
-   * when `flush`. Returns false, consuming nothing, if the block is unclosed.
+   * expression starts at `exprStart`, flushing the text before it first.
+   * Returns false, consuming nothing, if the block is unclosed.
    */
   function pushExpression(
     exprStart: number,
     start: number,
-    flush: boolean,
-    className?: string,
-    id?: string,
+    selectors: Selectors,
   ): boolean {
     const closeIdx = scanBalancedBrace(input, exprStart, memo);
     if (closeIdx === -1) return false;
-    if (flush) flushText(start);
-    const token: ExpressionToken = {
-      type: 'expression',
-      expression: input.slice(exprStart, closeIdx),
-      start,
-      end: closeIdx + 1,
-    };
-    if (className) token.className = className;
-    if (id) token.id = id;
-    tokens.push(token);
-    i = textStart = closeIdx + 1;
+    flushText(start);
+    emit(
+      withSelectors<ExpressionToken>(
+        {
+          type: 'expression',
+          expression: input.slice(exprStart, closeIdx),
+          start,
+          end: closeIdx + 1,
+        },
+        selectors,
+      ),
+    );
+    return true;
+  }
+
+  /**
+   * Push a variable token for the `{…}` block opened at `start` whose sigil
+   * is at `sigilAt`: `{$name}`, `{_name.field.subfield}`. Anything else
+   * after the name makes the block an expression from the sigil on
+   * (`{$expr[...]}`). Returns false, consuming nothing, if it is unclosed.
+   */
+  function pushVariable(
+    sigilAt: number,
+    start: number,
+    selectors: Selectors,
+  ): boolean {
+    let nameEnd = sigilAt + 1;
+    while (nameEnd < input.length && /[\w.]/.test(input[nameEnd]!)) nameEnd++;
+    if (input[nameEnd] !== '}') {
+      // Complex expression — scan for balanced closing }
+      return pushExpression(sigilAt, start, selectors);
+    }
+    emit(
+      withSelectors<VariableToken>(
+        {
+          type: 'variable',
+          name: input.slice(sigilAt + 1, nameEnd),
+          scope: SIGIL_SCOPES[input[sigilAt] as Sigil],
+          start,
+          end: nameEnd + 1,
+        },
+        selectors,
+      ),
+    );
+    return true;
+  }
+
+  /**
+   * Push a macro token for the `{…}` block opened at `start` whose content
+   * (name, then arguments) starts at `contentStart`, then consume the body
+   * of a raw-body macro. Returns false, consuming nothing, if the block is
+   * unclosed.
+   */
+  function pushMacro(
+    contentStart: number,
+    start: number,
+    selectors: Selectors,
+  ): boolean {
+    // Scan to closing }, tracking brace nesting (object literals)
+    // and string literals
+    const closeIdx = scanMacroClose(input, contentStart, memo);
+    if (closeIdx === -1) return false;
+    const token = withSelectors<MacroToken>(
+      {
+        type: 'macro',
+        ...parseMacroContent(input.slice(contentStart, closeIdx)),
+        start,
+        end: closeIdx + 1,
+      },
+      selectors,
+    );
+    emit(token);
+    consumeRawBody(token.name, token.isClose);
     return true;
   }
 
@@ -873,511 +964,69 @@ export function tokenize(
       }
       if ((next === '{' || next === '}') && (k - i) % 2 === 1) {
         flushText(k - 1);
-        tokens.push({ type: 'text', value: next, start: k - 1, end: k + 1 });
-        i = k + 1;
-        textStart = i;
+        emit({ type: 'text', value: next, start: k - 1, end: k + 1 });
         continue;
       }
       i = k;
       continue;
     }
 
-    // Check for [[ link
+    // Check for [[ link, with optional .class or #id syntax after [[
     if (!textMode && input[i] === '[' && input[i + 1] === '[') {
       flushText(i);
       const start = i;
-      i += 2;
-
-      // Check for .class or #id syntax after [[
-      let className: string | undefined;
-      let id: string | undefined;
-      if (input[i] === '.' || input[i] === '#') {
-        const parsed = parseSelectors(input, i);
-        className = parsed.className || undefined;
-        id = parsed.id || undefined;
-        i = parsed.endIdx;
-        // Consume trailing space after selectors
-        if (input[i] === ' ') i++;
-      }
+      const { selectors, end: innerStart } = parseSelectors(input, i + 2);
 
       // Find closing ]]
-      const innerStart = i;
       const closeIdx = scanLinkClose(input, innerStart, memo);
-
       if (closeIdx === -1) {
         // Unclosed link — treat as text
         i = start + 2;
-        textStart = start;
         continue;
       }
 
-      const inner = input.slice(innerStart, closeIdx);
-      i = closeIdx + 2; // skip ]]
-
-      const { display, target } = parseLink(inner);
-      const linkToken: LinkToken = {
-        type: 'link',
-        display,
-        target,
-        start,
-        end: i,
-      };
-      if (className) linkToken.className = className;
-      if (id) linkToken.id = id;
-      tokens.push(linkToken);
-      textStart = i;
+      emit(
+        withSelectors<LinkToken>(
+          {
+            type: 'link',
+            ...parseLink(input.slice(innerStart, closeIdx)),
+            start,
+            end: closeIdx + 2, // skip ]]
+          },
+          selectors,
+        ),
+      );
       continue;
     }
 
-    // Check for { — macro or variable (with optional .class prefix)
+    // Check for { — variable, expression or macro, with an optional
+    // .class/#id prefix: {.foo#bar $var} or {#id.foo macroName ...}
     if (input[i] === '{') {
       const start = i;
-      let nextChar = input[i + 1];
+      const { selectors, end: at } = parseSelectors(input, i + 1);
+      const prefixed = at > i + 1;
+      // The text before a selector prefix ends there, whatever follows it
+      if (prefixed) flushText(start);
+      const c = input[at];
 
-      // Check for .class/#id prefix: {.foo#bar $var} or {#id.foo macroName ...}
-      let className: string | undefined;
-      let id: string | undefined;
-      if (nextChar === '.' || nextChar === '#') {
-        flushText(i);
-        const parsed = parseSelectors(input, i + 1);
-        className = parsed.className || undefined;
-        id = parsed.id || undefined;
-        // After selectors, check what follows (space then $ or _ or letter)
-        let afterSelectors = parsed.endIdx;
-        if (input[afterSelectors] === ' ') afterSelectors++;
-        const charAfter = input[afterSelectors];
-
-        if (charAfter === '$') {
-          // {.class#id $variable.field} or {.class $expr[...]}
-          i = afterSelectors + 1;
-          const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-          const name = input.slice(nameStart, i);
-
-          if (input[i] === '}') {
-            i++; // skip }
-            const token: VariableToken = {
-              type: 'variable',
-              name,
-              scope: 'variable',
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Complex expression — scan for balanced closing }
-          const closeIdx$ = scanBalancedBrace(input, nameStart - 1, memo);
-          if (closeIdx$ !== -1) {
-            const expression = input.slice(afterSelectors, closeIdx$);
-            i = closeIdx$ + 1;
-            const token: ExpressionToken = {
-              type: 'expression',
-              expression,
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Unbalanced — treat as text
-          i = start + 1;
-          textStart = start;
-          continue;
-        }
-
-        if (charAfter === '_') {
-          // {.class#id _temporary.field} or {.class _expr[...]}
-          i = afterSelectors + 1;
-          const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-          const name = input.slice(nameStart, i);
-
-          if (input[i] === '}') {
-            i++; // skip }
-            const token: VariableToken = {
-              type: 'variable',
-              name,
-              scope: 'temporary',
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Complex expression — scan for balanced closing }
-          const closeIdx_ = scanBalancedBrace(input, nameStart - 1, memo);
-          if (closeIdx_ !== -1) {
-            const expression = input.slice(afterSelectors, closeIdx_);
-            i = closeIdx_ + 1;
-            const token: ExpressionToken = {
-              type: 'expression',
-              expression,
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Unbalanced — treat as text
-          i = start + 1;
-          textStart = start;
-          continue;
-        }
-
-        if (charAfter === '@') {
-          // {.class#id @local.field} or {.class @expr[...]}
-          i = afterSelectors + 1;
-          const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-          const name = input.slice(nameStart, i);
-
-          if (input[i] === '}') {
-            i++; // skip }
-            const token: VariableToken = {
-              type: 'variable',
-              name,
-              scope: 'local',
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Complex expression — scan for balanced closing }
-          const closeIdx_at = scanBalancedBrace(input, nameStart - 1, memo);
-          if (closeIdx_at !== -1) {
-            const expression = input.slice(afterSelectors, closeIdx_at);
-            i = closeIdx_at + 1;
-            const token: ExpressionToken = {
-              type: 'expression',
-              expression,
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Unbalanced — treat as text
-          i = start + 1;
-          textStart = start;
-          continue;
-        }
-
-        if (charAfter === '%') {
-          // {.class#id %transient.field} or {.class %expr[...]}
-          i = afterSelectors + 1;
-          const nameStart = i;
-          while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-          const name = input.slice(nameStart, i);
-
-          if (input[i] === '}') {
-            i++; // skip }
-            const token: VariableToken = {
-              type: 'variable',
-              name,
-              scope: 'transient',
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Complex expression — scan for balanced closing }
-          const closeIdx_pct = scanBalancedBrace(input, nameStart - 1, memo);
-          if (closeIdx_pct !== -1) {
-            const expression = input.slice(afterSelectors, closeIdx_pct);
-            i = closeIdx_pct + 1;
-            const token: ExpressionToken = {
-              type: 'expression',
-              expression,
-              start,
-              end: i,
-            };
-            if (className) token.className = className;
-            if (id) token.id = id;
-            tokens.push(token);
-            textStart = i;
-            continue;
-          }
-          // Unbalanced — treat as text
-          i = start + 1;
-          textStart = start;
-          continue;
-        }
-
-        if (
-          EXPRESSION_START.has(charAfter!) &&
-          pushExpression(afterSelectors, start, false, className, id)
-        ) {
-          continue;
-        }
-
-        if (charAfter !== undefined && /[a-zA-Z]/.test(charAfter)) {
-          // {.class#id macroName args}
-          // Scan to closing }, tracking brace nesting and string literals
-          const contentStart = afterSelectors;
-          const closeIdx = scanMacroClose(input, contentStart, memo);
-
-          if (closeIdx === -1) {
-            i = start + 1;
-            textStart = start;
-            continue;
-          }
-
-          const content = input.slice(contentStart, closeIdx);
-          i = closeIdx + 1; // skip closing }
-
-          const { name, rawArgs, isClose } = parseMacroContent(content);
-          const token: MacroToken = {
-            type: 'macro',
-            name,
-            rawArgs,
-            isClose,
-            start,
-            end: i,
-          };
-          if (className) token.className = className;
-          if (id) token.id = id;
-          tokens.push(token);
-          textStart = i;
-          consumeRawBody(name, isClose);
-          continue;
-        }
-
-        // Selector prefix after { but nothing valid follows — treat as text
-        i = start + 1;
-        textStart = start;
-        continue;
-      }
-
-      // {$variable} or {$variable.field.subfield} or {$expr[...]}
-      if (nextChar === '$') {
-        flushText(i);
-        i += 2;
-        const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-        const name = input.slice(nameStart, i);
-
-        if (input[i] === '}') {
-          i++; // skip }
-          tokens.push({
-            type: 'variable',
-            name,
-            scope: 'variable',
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
-        if (closeIdx !== -1) {
-          const expression = input.slice(start + 1, closeIdx);
-          i = closeIdx + 1;
-          tokens.push({
-            type: 'expression',
-            expression,
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Unbalanced — treat as text
-        i = start + 1;
-        textStart = start;
-        continue;
-      }
-
-      // {_temporary.field} or {_expr[...]}
-      if (nextChar === '_') {
-        flushText(i);
-        i += 2;
-        const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-        const name = input.slice(nameStart, i);
-
-        if (input[i] === '}') {
-          i++; // skip }
-          tokens.push({
-            type: 'variable',
-            name,
-            scope: 'temporary',
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
-        if (closeIdx !== -1) {
-          const expression = input.slice(start + 1, closeIdx);
-          i = closeIdx + 1;
-          tokens.push({
-            type: 'expression',
-            expression,
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Unbalanced — treat as text
-        i = start + 1;
-        textStart = start;
-        continue;
-      }
-
-      // {@local.field} or {@expr[...]}
-      if (nextChar === '@') {
-        flushText(i);
-        i += 2;
-        const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-        const name = input.slice(nameStart, i);
-
-        if (input[i] === '}') {
-          i++; // skip }
-          tokens.push({
-            type: 'variable',
-            name,
-            scope: 'local',
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
-        if (closeIdx !== -1) {
-          const expression = input.slice(start + 1, closeIdx);
-          i = closeIdx + 1;
-          tokens.push({
-            type: 'expression',
-            expression,
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Unbalanced — treat as text
-        i = start + 1;
-        textStart = start;
-        continue;
-      }
-
-      // {%transient.field} or {%expr[...]}
-      if (nextChar === '%') {
-        flushText(i);
-        i += 2;
-        const nameStart = i;
-        while (i < input.length && /[\w.]/.test(input[i]!)) i++;
-        const name = input.slice(nameStart, i);
-
-        if (input[i] === '}') {
-          i++; // skip }
-          tokens.push({
-            type: 'variable',
-            name,
-            scope: 'transient',
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Complex expression — scan for balanced closing }
-        const closeIdx = scanBalancedBrace(input, nameStart - 1, memo);
-        if (closeIdx !== -1) {
-          const expression = input.slice(start + 1, closeIdx);
-          i = closeIdx + 1;
-          tokens.push({
-            type: 'expression',
-            expression,
-            start,
-            end: i,
-          });
-          textStart = i;
-          continue;
-        }
-        // Unbalanced — treat as text
-        i = start + 1;
-        textStart = start;
-        continue;
-      }
-
-      // {(expr)} or {!expr}: an expression that doesn't start with a variable
-      if (EXPRESSION_START.has(nextChar!)) {
-        if (pushExpression(i + 1, start, true)) continue;
-        i++;
-        continue;
-      }
-
-      // {macro ...} or {/macro} — but not bare { that's just text
-      // Must start with a letter or /
-      if (
-        nextChar !== undefined &&
-        (nextChar === '/' || /[a-zA-Z]/.test(nextChar))
+      if (isSigil(c)) {
+        // {$variable.field} or {_temporary} or {@local} or {%expr[...]}
+        flushText(start);
+        if (pushVariable(at, start, selectors)) continue;
+      } else if (EXPRESSION_START.has(c!)) {
+        // {(expr)} or {!expr}: an expression that doesn't start with a variable
+        if (pushExpression(at, start, selectors)) continue;
+      } else if (
+        c !== undefined &&
+        (/[a-zA-Z]/.test(c) || (c === '/' && !prefixed))
       ) {
-        flushText(i);
-
-        // Scan to closing }, tracking brace nesting (object literals)
-        // and string literals
-        const contentStart = i + 1;
-        const closeIdx = scanMacroClose(input, contentStart, memo);
-
-        if (closeIdx === -1) {
-          // Unclosed macro — treat as text
-          i = start + 1;
-          textStart = start;
-          continue;
-        }
-
-        const content = input.slice(contentStart, closeIdx);
-        i = closeIdx + 1; // skip closing }
-
-        const { name, rawArgs, isClose } = parseMacroContent(content);
-        tokens.push({
-          type: 'macro',
-          name,
-          rawArgs,
-          isClose,
-          start,
-          end: i,
-        });
-        textStart = i;
-        consumeRawBody(name, isClose);
-        continue;
+        // {macro ...} or {/macro}; a closing tag takes no selectors
+        flushText(start);
+        if (pushMacro(at, start, selectors)) continue;
       }
 
-      // Just a bare { — treat as regular text
-      i++;
+      // Unclosed, or a bare { — treat as regular text
+      i = start + 1;
       continue;
     }
 
@@ -1406,11 +1055,10 @@ export function tokenize(
             flushText(start);
             if (HTML_VOID_TAGS.has(tagLower)) {
               // Void elements never take a closer; drop a redundant </input>
-              textStart = j;
-              i = j;
+              i = textStart = j;
               continue;
             }
-            tokens.push({
+            emit({
               type: 'html',
               tag,
               attributes: {},
@@ -1419,8 +1067,6 @@ export function tokenize(
               start,
               end: j,
             });
-            textStart = j;
-            i = j;
             continue;
           }
         } else {
@@ -1438,7 +1084,7 @@ export function tokenize(
           if (input[j] === '>') {
             j++;
             flushText(start);
-            tokens.push({
+            emit({
               type: 'html',
               tag,
               attributes: parseHtmlAttributes(input, attrsStart, memo)
@@ -1448,8 +1094,6 @@ export function tokenize(
               start,
               end: j,
             });
-            textStart = j;
-            i = j;
             continue;
           }
         }

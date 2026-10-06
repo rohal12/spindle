@@ -1,4 +1,4 @@
-import { createScanMemo, scanBalancedBrace } from './tokenizer';
+import { createScanMemo, isSigil, scanBalancedBrace } from './tokenizer';
 
 /**
  * Attributes whose value is code with braces of its own, not text: event
@@ -41,11 +41,9 @@ export function splitSigilTemplate(template: string): SigilPart[] {
     }
     text += template.slice(i, brace);
     i = brace + 1;
-    const sigil = template[i];
-    const end =
-      sigil === '$' || sigil === '_' || sigil === '@' || sigil === '%'
-        ? scanBalancedBrace(template, i, memo)
-        : -1;
+    const end = isSigil(template[i])
+      ? scanBalancedBrace(template, i, memo)
+      : -1;
     if (end === -1) {
       text += '{';
       continue;
