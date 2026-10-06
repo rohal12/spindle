@@ -10,6 +10,7 @@ import {
   isNamespace,
   type Namespace,
 } from './utils/namespace';
+import { countOf, type Counts } from './utils/counts';
 
 interface ExpressionFns {
   currentPassage: () => Passage | undefined;
@@ -116,8 +117,8 @@ function getOrCompile(key: string, body: string): CompiledExpression {
 }
 
 let cachedFns: ExpressionFns | null = null;
-let cachedVisitCounts: Record<string, number> | null = null;
-let cachedRenderCounts: Record<string, number> | null = null;
+let cachedVisitCounts: Counts | null = null;
+let cachedRenderCounts: Counts | null = null;
 
 export function buildExpressionFns() {
   const state = useStoryStore.getState();
@@ -132,7 +133,7 @@ export function buildExpressionFns() {
   }
 
   const visited = (name?: string): number =>
-    visitCounts[name ?? useStoryStore.getState().currentPassage] ?? 0;
+    countOf(visitCounts, name ?? useStoryStore.getState().currentPassage);
   const hasVisited = (name?: string): boolean => visited(name) > 0;
   const hasVisitedAny = (...names: string[]): boolean =>
     names.some((n) => visited(n) > 0);
@@ -140,7 +141,7 @@ export function buildExpressionFns() {
     names.every((n) => visited(n) > 0);
 
   const rendered = (name?: string): number =>
-    renderCounts[name ?? useStoryStore.getState().currentPassage] ?? 0;
+    countOf(renderCounts, name ?? useStoryStore.getState().currentPassage);
   const hasRendered = (name?: string): boolean => rendered(name) > 0;
   const hasRenderedAny = (...names: string[]): boolean =>
     names.some((n) => rendered(n) > 0);

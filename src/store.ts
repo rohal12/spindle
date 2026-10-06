@@ -64,6 +64,7 @@ import {
   isNamespace,
   type Namespace,
 } from './utils/namespace';
+import { createCounts, type Counts } from './utils/counts';
 
 enablePatches();
 // Story state holds Map and Set values: Immer must be able to draft them
@@ -594,8 +595,8 @@ export interface StoryState {
   temporary: Record<string, unknown>;
   history: HistoryMoment[];
   historyIndex: number;
-  visitCounts: Record<string, number>;
-  renderCounts: Record<string, number>;
+  visitCounts: Counts;
+  renderCounts: Counts;
   knownSaves: Record<string, true>;
   /**
    * The playthrough the running game is in: its saves are grouped under it.
@@ -801,8 +802,8 @@ export const useStoryStore = create<StoryState>()(
     temporary: createNamespace(),
     history: [],
     historyIndex: -1,
-    visitCounts: {},
-    renderCounts: {},
+    visitCounts: createCounts(),
+    renderCounts: createCounts(),
     knownSaves: {},
     playthroughId: '',
     maxHistory: 40,
@@ -870,8 +871,8 @@ export const useStoryStore = create<StoryState>()(
           },
         ];
         state.historyIndex = 0;
-        state.visitCounts = { [startPassage.name]: 1 };
-        state.renderCounts = { [startPassage.name]: 1 };
+        state.visitCounts = createCounts(null, startPassage.name);
+        state.renderCounts = createCounts(null, startPassage.name);
       });
 
       // Update lastNavigationVars to the Immer-produced reference
@@ -955,10 +956,8 @@ export const useStoryStore = create<StoryState>()(
         state.historyIndex = state.history.length - 1;
         // Trim oldest entries if over the limit
         trimHistory(state);
-        state.visitCounts[passageName] =
-          (state.visitCounts[passageName] ?? 0) + 1;
-        state.renderCounts[passageName] =
-          (state.renderCounts[passageName] ?? 0) + 1;
+        state.visitCounts = createCounts(state.visitCounts, passageName);
+        state.renderCounts = createCounts(state.renderCounts, passageName);
       });
 
       // Watchers react to the completed transition (visit counts, cleared
@@ -1094,8 +1093,7 @@ export const useStoryStore = create<StoryState>()(
 
     trackRender: (passageName: string) => {
       set((state) => {
-        state.renderCounts[passageName] =
-          (state.renderCounts[passageName] ?? 0) + 1;
+        state.renderCounts = createCounts(state.renderCounts, passageName);
       });
     },
 
@@ -1144,8 +1142,8 @@ export const useStoryStore = create<StoryState>()(
           },
         ];
         state.historyIndex = 0;
-        state.visitCounts = { [startPassage.name]: 1 };
-        state.renderCounts = { [startPassage.name]: 1 };
+        state.visitCounts = createCounts(null, startPassage.name);
+        state.renderCounts = createCounts(null, startPassage.name);
         if (!keepDeferred) {
           state.renderDeferred = false;
         }
@@ -1492,8 +1490,8 @@ export const useStoryStore = create<StoryState>()(
         );
         // A save made under a higher limit keeps no more than the limit
         trimHistory(state);
-        state.visitCounts = payload.visitCounts ?? {};
-        state.renderCounts = payload.renderCounts ?? {};
+        state.visitCounts = createCounts(payload.visitCounts);
+        state.renderCounts = createCounts(payload.renderCounts);
         state.temporary = createNamespace();
         state.transient = createNamespace(deepClone(get().transientDefaults));
       });

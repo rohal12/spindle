@@ -609,6 +609,12 @@ describe('buildAST', () => {
       );
     });
 
+    it('parses a macro named like an Object.prototype member as a macro', () => {
+      expect(parse('{constructor}')).toMatchObject([
+        { type: 'macro', name: 'constructor' },
+      ]);
+    });
+
     it('throws on else without if', () => {
       expect(() => parse('{else}')).toThrow('{else} without matching {if}');
     });
