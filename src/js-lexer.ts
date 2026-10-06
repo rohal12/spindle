@@ -397,6 +397,14 @@ const MALFORMED = -2;
 /** A frame result: the scan stops at index `s` inside it (`STOPPED - s`). */
 const STOPPED = -3;
 
+/**
+ * The result of a frame that closes at `end`. `bodyStarted`: the code inside
+ * started a function or class body. That body replaced the one to come, and
+ * is gone once the frame is closed, so after the frame no body is to come —
+ * a scan that skips the frame must know, as must the frames around it.
+ */
+const frameEnd = (end: number, bodyStarted: boolean) => end * 2 + +bodyStarted;
+
 /** The closers whose search for their frame a frame result may depend on. */
 const CLOSERS = [')', ']', '}'] as const;
 const FRAME_KINDS: readonly Frame['kind'][] = [
@@ -423,11 +431,13 @@ function frameKey(f: Frame): number | undefined {
  */
 export interface JsScanCache {
   /**
-   * Where each `{…}` frame, template literal or `${…}` interpolation closes:
-   * the index of its `}` or closing backtick, `UNCLOSED` or `MALFORMED`. The
-   * code inside such a frame lexes the same whatever surrounds it, given
-   * where it opens and its kind — a stray `)` or `]` inside never closes it
-   * — so a later scan entering the same frame skips to its end.
+   * Where each `{…}` frame, template literal or `${…}` interpolation closes,
+   * as a frame result (`frameEnd`): its `}` or closing backtick, and whether
+   * the code inside started a function or class body; or `UNCLOSED` or
+   * `MALFORMED`. The code inside such a frame lexes the same whatever
+   * surrounds it, given where it opens and its kind — a stray `)` or `]`
+   * inside never closes it — so a later scan entering the same frame skips
+   * to its end.
    */
   braces: Map<number, number>;
   /** Look-ahead bracket matches (`ScanContext.brackets`). */
@@ -457,10 +467,8 @@ export interface JsScanCache {
   stacks: Map<string, number>;
   /**
    * How `(…)` and `[…]` frames end, by the kind of scan and then by the frame
-   * (`parenKey`): `end * 2 + 1` if it closes at `end` and the code inside
-   * started a function or class body (which replaced the one to come, and
-   * can't follow once the frame is closed), `end * 2` otherwise, or
-   * `UNCLOSED`, `MALFORMED` or `STOPPED - s`. Unlike braces, a stray closer inside may close a frame
+   * (`parenKey`): a frame result (`frameEnd`), or `UNCLOSED`, `MALFORMED` or
+   * `STOPPED - s`. Unlike braces, a stray closer inside may close a frame
    * around them, so the code inside lexes the same only around frames for
    * which the closers it met find nothing to close; the key says which
    * closers met none.
@@ -748,14 +756,33 @@ function scan(
     : undefined;
   /**
    * How many function or class bodies to come the scan has started, and with
-   * `parens`, that count when each open frame opened. Code in a `(…)` or
-   * `[…]` that starts one replaces the one to come, and the new one can't
-   * follow once the frame is closed: none is to come then.
+   * `braces` or `parens`, that count when each open frame opened. Code in a
+   * frame that starts one replaces the one to come, and the new one can't
+   * follow once the frame is closed: none is to come then. A scan skipping
+   * the frame learns this from its result (`frameEnd`, `resume`), and counts
+   * the body as started too, for the frames around it to record.
    */
   let bodyStarts = 0;
-  const startsAt: number[] | undefined = parens ? [0] : undefined;
+  const startsAt: number[] | undefined = braces || parens ? [0] : undefined;
   /** A `(…)` or `[…]` frame result found in `parens`, to skip to. */
   let parenTo: { frame: Frame; result: number } | undefined;
+
+  /** The result of the frame at index `k`, closing at `i`. */
+  const closedAt = (k: number) =>
+    frameEnd(i, startsAt !== undefined && bodyStarts !== startsAt[k]);
+
+  /**
+   * Go on after a frame an earlier scan lexed, whose result (`frameEnd`) is
+   * `result`: returns the index it closes at. A body started in it is gone
+   * after it, with the one it replaced.
+   */
+  function resume(result: number): number {
+    if (result % 2 === 1) {
+      pendingBody = undefined;
+      bodyStarts++;
+    }
+    return Math.floor(result / 2);
+  }
 
   /** The closer `c` looked for its frame and found index `k`. */
   function lookedFor(c: (typeof CLOSERS)[number], k: number) {
@@ -933,8 +960,8 @@ function scan(
     if (lowest) {
       for (let j = frames.length - 1; j >= k; j--) foldLowest(j);
       lowest.length = k;
-      startsAt!.length = k;
     }
+    if (startsAt) startsAt.length = k;
     frames.length = k;
     if (stackIds) stackIds.length = k;
     for (const list of Object.values(closers)) {
@@ -1034,6 +1061,19 @@ function scan(
     keyNext = f.kind === 'object' || f.kind === 'class';
   }
 
+  /**
+   * Go past frame `f` if an earlier scan lexed it: to just after it, or to
+   * the end of the source when it never closes. Whether it did, or
+   * MALFORMED when that scan found the code malformed.
+   */
+  function skipLexed(f: Frame): boolean | typeof MALFORMED {
+    const end = known(f);
+    if (end === undefined) return false;
+    if (end === MALFORMED) return MALFORMED;
+    i = end === UNCLOSED ? src.length : resume(end) + 1;
+    return true;
+  }
+
   function openBrace() {
     let f: Frame;
     if (pendingBody?.depth === frames.length) {
@@ -1079,12 +1119,11 @@ function scan(
       return;
     }
     const closed = frames[k]!;
+    const result = closedAt(k);
     if (lowest && c !== '}') {
       // Its entry complete, with those of the frames still open in it
       for (let j = frames.length - 1; j > k; j--) foldLowest(j);
-      // Whether code in it started a function or class body: none is to come
-      const bodyStarted = bodyStarts !== startsAt![k];
-      recordParen(k, i * 2 + +bodyStarted);
+      recordParen(k, result);
     }
     truncate(k);
     if (c === ']' && !ctx.lookahead) ctx.brackets.set(closed.open, i);
@@ -1095,7 +1134,7 @@ function scan(
     } else if (c === ']') {
       endPunct(c, false);
     } else {
-      record(closed, i);
+      record(closed, result);
       afterBrace(closed);
     }
   }
@@ -1214,24 +1253,17 @@ function scan(
       } else if (ch === '`') {
         literal(ch, i);
         if (frames.length === 1) return i + 1; // the end of `lexTemplate`
-        record(top(), i);
+        record(top(), closedAt(frames.length - 1));
         i++;
         truncate(frames.length - 1);
         endOperand();
       } else if (ch === '$' && src.charAt(i + 1) === '{') {
         const f = frame('expr', '}', i);
         f.interpolation = true;
-        const end = known(f);
-        if (end === MALFORMED) return malformed();
-        if (end === UNCLOSED) {
-          i = src.length;
-          break;
-        }
-        if (end !== undefined) {
-          // An interpolation an earlier scan lexed: on with the text after it
-          i = end + 1;
-          continue;
-        }
+        // An interpolation an earlier scan lexed: on with the text after it
+        const skipped = skipLexed(f);
+        if (skipped === MALFORMED) return malformed();
+        if (skipped) continue;
         literal('${', i);
         i += 2;
         nesting++;
@@ -1261,15 +1293,10 @@ function scan(
     if (ch === '`') {
       endWord();
       const f = frame('template', '`', i);
-      const end = known(f);
-      if (end === MALFORMED) return malformed();
-      if (end === UNCLOSED) {
-        i = src.length;
-        break;
-      }
-      if (end !== undefined) {
-        // A template literal an earlier scan lexed: on after it
-        i = end + 1;
+      // A template literal an earlier scan lexed: on after it
+      const skipped = skipLexed(f);
+      if (skipped === MALFORMED) return malformed();
+      if (skipped) {
         endOperand();
         continue;
       }
@@ -1291,7 +1318,7 @@ function scan(
       lookedFor('}', k);
       if (frames[k]!.interpolation) {
         endWord();
-        record(frames[k]!, i);
+        record(frames[k]!, closedAt(k));
         truncate(k);
         nesting--;
         literal(ch, i);
@@ -1399,8 +1426,17 @@ function scan(
       }
     }
 
-    // End of an `outer` square bracket
-    if (ch === outer.closer && frames.length === 1) break;
+    // End of an `outer` square bracket: a `]` that closes no `[` within the
+    // innermost braces closes it, over any `(` left open in it, as it closes
+    // a nested `[`. Look-ahead scans record where the `[`s nested in theirs
+    // end (`ctx.brackets`), so one starting at a `[` must find the same.
+    if (
+      ch === outer.closer &&
+      (frames.length === 1 ||
+        (ch === ']' && innermost(']') === 0 && innermost('}') === 0))
+    ) {
+      break;
+    }
 
     // Regular code character
     trackCode(ch);
@@ -1413,7 +1449,7 @@ function scan(
         i = src.length;
         break;
       }
-      i = end;
+      i = resume(end);
       afterBrace(skipped);
       i++;
       continue;
@@ -1432,8 +1468,7 @@ function scan(
         strict!.stopped = true;
         return STOPPED - result;
       }
-      i = Math.floor(result / 2);
-      if (result % 2 === 1) pendingBody = undefined;
+      i = resume(result);
       if (skipped.closer === ')') {
         endPunct(')', skipped.header);
         stmtNext = skipped.header;

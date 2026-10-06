@@ -144,6 +144,20 @@ describe('lexJs', () => {
       ['code', ' % 2', 0],
     ]);
   });
+
+  // The look-ahead after `%c` finds where its `[` ends. The look-ahead after
+  // `%b` finds that too, and records it: there the `]` closes the `[` over
+  // the `(` left open in it, as in the main scan. A look-ahead starting at
+  // the `[` must read the `]` the same way, not skip it as stray.
+  it('finds where a bracket ends the same, nested in another or not', () => {
+    const line = 'y\n%c[ ( ] = 1';
+    const transients = (src: string) =>
+      pieces(src)
+        .filter(([kind]) => kind === 'variable')
+        .map(([, text]) => text);
+    expect(transients(line)).toEqual(['%c']);
+    expect(transients(`x\n%b[ ${line} ] = 2`)).toEqual(['%b', '%c']);
+  });
 });
 
 describe('lexTemplate', () => {
@@ -245,10 +259,13 @@ describe('findCodeEnd', () => {
 });
 
 describe('findCodeEnd with a shared cache', () => {
-  /** Scan `src` from each start in turn, sharing all results. */
-  const scanAll = (src: string, starts: number[]) => {
+  /**
+   * Scan `src` from each start in turn, sharing all results (or, with
+   * `shareAll` false, sharing them as the tokenizer does).
+   */
+  const scanAll = (src: string, starts: number[], shareAll = true) => {
     const cache = createJsScanCache();
-    cache.shareAfter = 0;
+    if (shareAll) cache.shareAfter = 0;
     return starts.map((start) => findCodeEnd(src, start, { cache }));
   };
 
@@ -267,6 +284,56 @@ describe('findCodeEnd with a shared cache', () => {
       findCodeEnd(src, brackets),
       end,
     ]);
+  });
+
+  // A scan that skips brackets an earlier scan lexed must still see that a
+  // body started in them: the brackets around them record it for the next
+  // scan, and the body to come is gone after them. Here the scan from the
+  // middle start skips the inner brackets and records the outer ones; the
+  // scan from the first start skips the outer ones, and its `{}` must not
+  // be `f`'s body (after which `/` would divide).
+  it.each([
+    // The counterexample found by the property test
+    [' function f( [ function(){} ] ) {} /}/ }', [13, 11, 1], 39],
+    [' function f( [ function(){} ] ) {} /}/ }', [12, 2, 0], 39],
+    ['function f( ( function(){} ) ) {} /}/ }', [11, 1, 0], 38],
+    ['function f([function(){}]) {} /}/ }', [11, 1, 0], 34],
+    ['function f((class {})) {} /}/ }', [11, 1, 0], 30],
+  ])(
+    '%j from %j: a body started in skipped brackets reaches the brackets around',
+    (src, starts, end) => {
+      const fresh = starts.map((s) => findCodeEnd(src, s));
+      expect(fresh[fresh.length - 1]).toBe(end);
+      expect(scanAll(src, starts)).toEqual(fresh);
+    },
+  );
+
+  // Braces and template literals are shared from the first character, as
+  // the tokenizer shares them: a body started in a `{…}`, a template
+  // literal or an interpolation that a later scan skips is gone after it.
+  it.each([
+    ['function f({a: function(){}}) {} /}/ }', [1, 0], 37],
+    ['function f( { a: function(){} } ) {} /}/ }', [1, 0], 41],
+    ['function f(`${class {}}`) {} /}/ }', [1, 0], 33],
+    ['function f( `${function(){}}` ) {} /}/ }', [1, 0], 39],
+    ['x = function f({a: function(){}}) {} /}/ }', [5, 0], 41],
+    ['return function f({a: function(){}}) {} /}/ }', [1, 0], 44],
+  ])(
+    '%j from %j: a body started in skipped braces is not the one to come',
+    (src, starts, end) => {
+      const fresh = starts.map((s) => findCodeEnd(src, s));
+      expect(fresh[fresh.length - 1]).toBe(end);
+      expect(scanAll(src, starts, false)).toEqual(fresh);
+      expect(scanAll(src, starts)).toEqual(fresh);
+    },
+  );
+
+  it('answers as without a cache when scanning every start in reverse', () => {
+    const src = ' function f( [ function(){} ] ) {} /}/ }';
+    const starts = [...Array(src.length + 1).keys()].reverse();
+    expect(scanAll(src, starts)).toEqual(
+      starts.map((s) => findCodeEnd(src, s)),
+    );
   });
 
   // Inside unclosed brackets, a stray } closes no braces around them, so
