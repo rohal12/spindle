@@ -1061,6 +1061,19 @@ function scan(
     keyNext = f.kind === 'object' || f.kind === 'class';
   }
 
+  /**
+   * Go past frame `f` if an earlier scan lexed it: to just after it, or to
+   * the end of the source when it never closes. Whether it did, or
+   * MALFORMED when that scan found the code malformed.
+   */
+  function skipLexed(f: Frame): boolean | typeof MALFORMED {
+    const end = known(f);
+    if (end === undefined) return false;
+    if (end === MALFORMED) return MALFORMED;
+    i = end === UNCLOSED ? src.length : resume(end) + 1;
+    return true;
+  }
+
   function openBrace() {
     let f: Frame;
     if (pendingBody?.depth === frames.length) {
@@ -1247,17 +1260,10 @@ function scan(
       } else if (ch === '$' && src.charAt(i + 1) === '{') {
         const f = frame('expr', '}', i);
         f.interpolation = true;
-        const end = known(f);
-        if (end === MALFORMED) return malformed();
-        if (end === UNCLOSED) {
-          i = src.length;
-          break;
-        }
-        if (end !== undefined) {
-          // An interpolation an earlier scan lexed: on with the text after it
-          i = resume(end) + 1;
-          continue;
-        }
+        // An interpolation an earlier scan lexed: on with the text after it
+        const skipped = skipLexed(f);
+        if (skipped === MALFORMED) return malformed();
+        if (skipped) continue;
         literal('${', i);
         i += 2;
         nesting++;
@@ -1287,15 +1293,10 @@ function scan(
     if (ch === '`') {
       endWord();
       const f = frame('template', '`', i);
-      const end = known(f);
-      if (end === MALFORMED) return malformed();
-      if (end === UNCLOSED) {
-        i = src.length;
-        break;
-      }
-      if (end !== undefined) {
-        // A template literal an earlier scan lexed: on after it
-        i = resume(end) + 1;
+      // A template literal an earlier scan lexed: on after it
+      const skipped = skipLexed(f);
+      if (skipped === MALFORMED) return malformed();
+      if (skipped) {
         endOperand();
         continue;
       }
