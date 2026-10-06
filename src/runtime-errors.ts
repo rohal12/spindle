@@ -41,6 +41,16 @@ export function showRuntimeError(context: string, error: unknown): void {
   );
 }
 
+/**
+ * The error for `name`, a passage name that names no passage, used in the
+ * passage `from`.
+ */
+export function noPassageError(name: string, from: string): Error {
+  return new Error(
+    `No passage named ${JSON.stringify(name)} (in passage ${JSON.stringify(from)})`,
+  );
+}
+
 /** Remove the shown error `id`. */
 export function dismissRuntimeError(id: number): void {
   update(errors.filter((e) => e.id !== id));

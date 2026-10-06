@@ -12,19 +12,34 @@ import {
   type MacroMetadata,
 } from '../../src/registry';
 
-/** The errors the story-start check reports for a passage. */
-function errors(content: string, extra: MacroMetadata[] = []): string[] {
+/**
+ * The errors the story-start check reports for a story of these passages,
+ * by name.
+ */
+function storyErrors(
+  passages: Record<string, string>,
+  extra: MacroMetadata[] = [],
+): string[] {
   const macros = [...getMacroRegistry(), ...extra];
   const parameters = new Map(
     macros.map((m) => [m.name.toLowerCase(), m.parameters]),
   );
   const known = new Set(macros.map((m) => m.name.toLowerCase()));
-  return validateMarkup([{ name: 'Shop', content }], {
+  const list = Object.entries(passages).map(([name, content]) => ({
+    name,
+    content,
+  }));
+  return validateMarkup(list, {
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || known.has(name),
     macroNames: known,
     parametersOf: (name) => parameters.get(name),
   }).map(formatDiagnostic);
+}
+
+/** The errors the story-start check reports for a passage, Shop. */
+function errors(content: string, extra: MacroMetadata[] = []): string[] {
+  return storyErrors({ Shop: content }, extra);
 }
 
 describe('the story-start code check', () => {
@@ -123,7 +138,7 @@ describe('the story-start code check', () => {
     expect(errors('{button "Count: {$count"}x{/button}')).toEqual([
       'Passage "Shop", line 1, column 17: In the label of {button}: Unclosed {$…: no } ends it',
     ]);
-    expect(errors('{link "Go {sett $x}" "Room"}x{/link}')).toEqual([
+    expect(errors('{link "Go {sett $x}" "Shop"}x{/link}')).toEqual([
       'Passage "Shop", line 1, column 11: In the text of {link}: Unknown macro {sett}. Did you mean {set}?',
     ]);
     expect(
@@ -134,12 +149,12 @@ describe('the story-start code check', () => {
     ]);
   });
 
-  it('leaves passage names, text and the names of widget parameters alone', () => {
+  it('leaves text and the names of widget parameters alone', () => {
     expect(
       errors(
-        "{goto Bob's room}{include Al's}{link Don't go}x{/link}" +
+        "{link Don't go}x{/link}{button Don't panic}x{/button}" +
           '{widget "Card" @title @body}x{/widget}' +
-          '{link "Go" "Room"}x{/link}{textbox "$name" "Your name"}',
+          '{link "Go" "Shop"}x{/link}{textbox "$name" "Your name"}',
       ),
     ).toEqual([]);
   });
@@ -194,5 +209,109 @@ describe('the story-start code check', () => {
       'Passage "Shop", line 1, column 15: Unexpected end of code in {print $gold +}',
       'Passage "Shop", line 1, column 26: Unexpected end of code in {loot $x +}',
     ]);
+  });
+});
+
+describe('the story-start check of passage names', () => {
+  const travel: MacroMetadata = {
+    name: 'travel',
+    block: false,
+    subMacros: [],
+    source: 'user',
+    parameters: [
+      { name: 'fast', type: 'flag' },
+      { name: 'to', type: 'passage' },
+    ],
+  };
+
+  /** The errors of Shop, in a story that also has the passage Hall. */
+  const inShop = (content: string) =>
+    storyErrors({ Hall: '', Shop: content }, [travel]);
+
+  it('accepts quoted names of passages that exist, and expressions', () => {
+    expect(
+      inShop(
+        '{goto "Hall"}{include "Hall"}{include \'Hall\' inline}' +
+          '{goto $room}{include _next inline}{goto "Ha" + "ll"}' +
+          '{goto $rooms[0]}{goto `Hall`}{travel fast "Hall"}{travel @to}' +
+          '[[Hall]] [[Go|Hall]] [[Go->Hall]] [[Hall<-Go]]' +
+          '{link "Go" "Hall"}x{/link}{link "Stay"}x{/link}' +
+          '{dialog "Map"}Hall{/dialog}{dialog "Map"}{$room}{/dialog}' +
+          '{watch "$x" goto "Hall" dialog "Hall"}',
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      '{goto Kitchen}',
+      'column 7: Unquoted passage name in {goto Kitchen}: write "Kitchen" (a passage name is a quoted string or an expression)',
+    ],
+    [
+      '{include Kitchen inline}',
+      'column 10: Unquoted passage name in {include Kitchen inline}: write "Kitchen" (a passage name is a quoted string or an expression)',
+    ],
+    [
+      "{goto Bob's room}",
+      "column 10: Unterminated string constant in {goto Bob's room} (a passage name is a quoted string or an expression)",
+    ],
+    [
+      '{include North Hall}',
+      'column 16: Unexpected "Hall" in {include North Hall} (a passage name is a quoted string or an expression)',
+    ],
+    [
+      '{travel fast Hall}',
+      'column 14: Unquoted passage name in {travel fast Hall}: write "Hall" (a passage name is a quoted string or an expression)',
+    ],
+  ])('rejects the unquoted passage name in %s', (content, error) => {
+    expect(inShop(content)).toEqual([`Passage "Shop", line 1, ${error}`]);
+  });
+
+  it.each([
+    ['{goto "Kitchen"}', 1, 7, '{goto "Kitchen"}'],
+    ['{include "Kitchen"}', 1, 10, '{include "Kitchen"}'],
+    ['{include "Kitchen" inline}', 1, 10, '{include "Kitchen" inline}'],
+    ['{travel "Kitchen"}', 1, 9, '{travel "Kitchen"}'],
+    ['[[Kitchen]]', 1, 3, '[[Kitchen]]'],
+    ['[[Cook|Kitchen]]', 1, 8, '[[Cook|Kitchen]]'],
+    ['[[Cook->Kitchen]]', 1, 9, '[[Cook->Kitchen]]'],
+    ['[[Kitchen<-Cook]]', 1, 3, '[[Kitchen<-Cook]]'],
+    ['[[.big#k Kitchen]]', 1, 10, '[[.big#k Kitchen]]'],
+    ['{link "Cook" "Kitchen"}x{/link}', 1, 15, '{link "Cook" "Kitchen"}'],
+    ['{dialog "Cook"}Kitchen{/dialog}', 1, 16, '{dialog "Cook"}'],
+    ["{dialog 'Cook'}\n 'Kitchen' \n{/dialog}", 2, 3, "{dialog 'Cook'}"],
+    ['{watch "$x" goto "Kitchen"}', 1, 19, '{watch "$x" goto "Kitchen"}'],
+    [
+      '{watch "$x" once dialog "Kitchen"}',
+      1,
+      26,
+      '{watch "$x" once dialog "Kitchen"}',
+    ],
+  ])('rejects a missing passage in %s', (content, line, column, label) => {
+    expect(inShop(content)).toEqual([
+      `Passage "Shop", line ${line}, column ${column}: No passage named "Kitchen" in ${label}.`,
+    ]);
+  });
+
+  it('suggests the passage a missing name is close to', () => {
+    expect(inShop('{goto "hall"}[[Go->Hal]]{goto "Kitchen"}')).toEqual([
+      'Passage "Shop", line 1, column 7: No passage named "hall" in {goto "hall"}. Did you mean "Hall"?',
+      'Passage "Shop", line 1, column 20: No passage named "Hal" in [[Go->Hal]]. Did you mean "Hall"?',
+      'Passage "Shop", line 1, column 31: No passage named "Kitchen" in {goto "Kitchen"}.',
+    ]);
+  });
+
+  it('looks names up among all passages, also those it does not report on', () => {
+    const diagnostics = validateMarkup(
+      [
+        { name: 'StoryInit', content: '[[Hall]]' },
+        { name: 'Hall', content: '[[Nowhere]]' },
+      ],
+      {
+        isKnownMacro: () => true,
+        only: (passage) => passage.name === 'StoryInit',
+      },
+    );
+    expect(diagnostics).toEqual([]);
   });
 });

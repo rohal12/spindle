@@ -431,7 +431,7 @@ Every declared parameter needs a `type`; there is no default. `Story.defineMacro
 | -------------- | ----------------------------------------------------------------------------------------------- |
 | `"expression"` | Code, as written                                                                                |
 | `"statements"` | Code run as statements (`{set}`), as written                                                    |
-| `"passage"`    | A passage name: an expression, or its text when it can't be evaluated (`{goto Bob's room}`)     |
+| `"passage"`    | A passage name: a quoted string or an expression, as written (`{goto "Bob's room"}`)            |
 | `"variable"`   | A variable reference such as `$name` or `"$name"`, as written                                   |
 | `"string"`     | One quoted string, unquoted; anything else leaves the argument `undefined`                      |
 | `"text"`       | One quoted string, or text with any loose quotes stripped                                       |
@@ -452,7 +452,7 @@ parameters: [
 ];
 ```
 
-When the story starts, Spindle parses every `expression` and `statements` argument of your macro wherever it is used, and stops the story on a syntax error, as it does for the built-in macros (see [Code in passages](variables.md#code-in-passages)). Declare arguments that may hold text as `text`, `string` or `passage`, so that they aren't read as code.
+When the story starts, Spindle parses every `expression`, `statements` and `passage` argument of your macro wherever it is used, and stops the story on a syntax error, as it does for the built-in macros (see [Code in passages](variables.md#code-in-passages)). A `passage` argument must be a quoted string or an expression: an unquoted name (`{travel Kitchen}`) stops the story too, and a quoted name must be the name of a passage. Declare arguments that may hold text as `text` or `string`, so that they aren't read as code. Evaluate a `passage` argument with `ctx.evaluate()` (with `merged: true`).
 
 This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests) and [`validateMarkup`](special-passages.md#checking-markup-in-tests), which checks passages against the macros registered there). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 

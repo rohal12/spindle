@@ -16,6 +16,8 @@
  */
 import { parseDelay } from '../../utils/parse-delay';
 import type { MacroArgs, ParameterDef } from '../../registry';
+import type { StoryState } from '../../store';
+import { noPassageError } from '../../runtime-errors';
 import {
   endsWithOperator,
   isWhitespace,
@@ -263,18 +265,24 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
 }
 
 /**
- * The passage a passage-name argument names: the value of its expression
- * or, when that can't be evaluated (`{goto Bob's room}`), its text.
+ * The passage a `passage` argument names (`{goto "Hall"}`, `{goto $room}`):
+ * the value of its expression. Throws what evaluating it throws, and if no
+ * passage of the story `state` holds has that name, an error naming it and
+ * the current passage.
  */
 export function evaluatePassageName(
   expr: string | undefined,
   evaluate: (expr: string) => unknown,
+  {
+    storyData,
+    currentPassage,
+  }: Pick<StoryState, 'storyData' | 'currentPassage'>,
 ): string {
-  try {
-    return String(evaluate(expr ?? ''));
-  } catch {
-    return readText(expr ?? '');
+  const name = String(evaluate(expr ?? ''));
+  if (storyData && !storyData.passages.has(name)) {
+    throw noPassageError(name, currentPassage);
   }
+  return name;
 }
 
 /**

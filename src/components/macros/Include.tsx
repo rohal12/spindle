@@ -4,6 +4,7 @@ import { parseMarkup } from '../../markup/parse';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { evaluatePassageName } from './macro-args';
+import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'include',
@@ -19,7 +20,17 @@ defineMacro({
     const { storyData } = useStoryFields('storyData');
 
     const { inline } = ctx.args;
-    const passageName = evaluatePassageName(ctx.args.passage, ctx.evaluate!);
+    let passageName = '';
+    let failure: { error: unknown } | undefined;
+    try {
+      passageName = evaluatePassageName(
+        ctx.args.passage,
+        ctx.evaluate!,
+        useStoryStore.getState(),
+      );
+    } catch (error) {
+      failure = { error };
+    }
 
     const passage = storyData?.passages.get(passageName);
     // Parse once per included passage: the renderer keys children by AST
@@ -32,15 +43,17 @@ defineMacro({
     );
 
     if (!storyData) return null;
-
-    if (passage) {
-      useStoryStore.getState().trackRender(passageName);
-    }
-    if (!passage || !ast) {
+    if (failure) {
       return (
-        <span class="error">{`{include${ctx.sourceLocation()}: passage "${passageName}" not found}`}</span>
+        <MacroError
+          macro="include"
+          error={failure.error}
+        />
       );
     }
+    if (!passage || !ast) return null;
+
+    useStoryStore.getState().trackRender(passageName);
 
     const nobr = passage.tags.includes('nobr');
     const content = inline

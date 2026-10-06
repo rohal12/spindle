@@ -134,9 +134,11 @@ export interface MarkupDiagnostic {
  * starts: malformed markup (unclosed or mismatched macros, tags, links,
  * braces and attribute values), unknown macros and syntax errors in the
  * code passages run (`{$…}` expressions, `{do}` bodies, conditions and the
- * `expression`/`statements` arguments of macros), checked against the
- * built-in macros, those registered with `defineMacro` and the widgets the
- * passages define. Spindle refuses to start a story with any of these.
+ * `expression`/`statements`/`passage` arguments of macros), checked against
+ * the built-in macros, those registered with `defineMacro` and the widgets
+ * the passages define, and passage names that name none of `passages`
+ * (links, quoted `passage` arguments, `{link}`, `{dialog}`, `{watch}`).
+ * Spindle refuses to start a story with any of these.
  */
 export declare function validateMarkup(
   passages: Iterable<MarkupPassage>,

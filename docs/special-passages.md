@@ -91,7 +91,7 @@ diagnostics.map(formatDiagnostic);
 // ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
 ```
 
-Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros.
+Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)).
 
 ## `StoryInterface`
 

@@ -4,6 +4,7 @@ import {
   parseMacroArgs,
   readBoundVariable,
 } from '../../src/components/macros/macro-args';
+import type { StoryData } from '../../src/parser';
 
 describe('parseMacroArgs', () => {
   it('gives the last parameter the rest of the arguments', () => {
@@ -149,12 +150,34 @@ describe('readBoundVariable', () => {
 });
 
 describe('evaluatePassageName', () => {
-  it('falls back to the text when the expression does not evaluate', () => {
-    const evaluate = (expr: string) => {
-      if (expr.includes("'s")) throw new SyntaxError('bad');
-      return `[${expr}]`;
+  // Only the passages' names matter
+  const state = {
+    storyData: {
+      passages: new Map([
+        ['Start', {}],
+        ['7', {}],
+      ]),
+    } as unknown as StoryData,
+    currentPassage: 'Start',
+  };
+
+  it('gives the value of the expression, as a string', () => {
+    expect(evaluatePassageName('"Start"', () => 'Start', state)).toBe('Start');
+    expect(evaluatePassageName('3 + 4', () => 7, state)).toBe('7');
+  });
+
+  it('throws what the expression throws: there is no text fallback', () => {
+    const evaluate = () => {
+      throw new SyntaxError('bad');
     };
-    expect(evaluatePassageName('$x', evaluate)).toBe('[$x]');
-    expect(evaluatePassageName("Bob's room", evaluate)).toBe("Bob's room");
+    expect(() => evaluatePassageName("Bob's room", evaluate, state)).toThrow(
+      'bad',
+    );
+  });
+
+  it('throws for a name no passage has, naming it and the current passage', () => {
+    expect(() => evaluatePassageName('$x', () => 'Nowhere', state)).toThrow(
+      'No passage named "Nowhere" (in passage "Start")',
+    );
   });
 });

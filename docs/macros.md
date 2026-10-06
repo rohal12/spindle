@@ -212,11 +212,13 @@ With macros in the body:
 
 Body macros execute when clicked, before navigation.
 
-If only one quoted string is given, it's used as both display and passage:
+With only one quoted string, the link has no target: it shows the text and runs its body when clicked, without navigating:
 
 ```
-{link "North Room"}{/link}
+{link "Ring the bell"}{set $rang = true}{/link}
 ```
+
+The target passage must exist: a `{link}` to a passage that does not exist stops the story when it starts (see [Markup errors](markup.md#markup-errors)).
 
 Inside a quoted string, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash:
 
@@ -236,6 +238,8 @@ Navigate to a passage immediately (no user interaction).
 ```
 
 Runs during rendering, so the passage changes instantly.
+
+The passage name is a quoted string or an expression. An unquoted name (`{goto Room Name}`, `{goto Kitchen}`) stops the story when it starts, as does a quoted name no passage has. An expression that names no passage when it runs shows an error in place of the `{goto}`, naming the passage and the passage the `{goto}` is in, and the story stays where it is.
 
 ### `{button}`
 
@@ -259,6 +263,8 @@ A button that opens a modal dialog showing another passage. The label goes in th
 {dialog "Open Map"}Map{/dialog}
 {dialog "View Inventory"}Inventory Screen{/dialog}
 ```
+
+The passage named in the body must exist: a name no passage has stops the story when it starts.
 
 The dialog closes when the player clicks outside it or presses Escape.
 
@@ -464,7 +470,7 @@ Render another passage's content inline.
 {include $currentHeader}
 ```
 
-The argument can be a literal passage name or an expression that evaluates to one.
+The argument is a quoted passage name or an expression that evaluates to one. An unquoted name (`{include Header}`) stops the story when it starts, as does a quoted name no passage has. An expression that names no passage when it runs shows an error in place of the `{include}`, naming the passage and the passage the `{include}` is in.
 
 Add `inline` to skip markdown processing and render the passage content as inline nodes only:
 
@@ -535,6 +541,8 @@ An edge-triggered watcher that monitors a condition and fires an action when it 
 | `once`     | Remove the watcher after it fires once             |
 | `name`     | Name the watcher for later removal via `{unwatch}` |
 | `priority` | Numeric priority (higher fires first)              |
+
+The passages of `dialog` and `goto` must exist: a name no passage has stops the story when it starts.
 
 Inside the quoted condition and option values, write `\"` (or `\'`) for a literal quote and `\\` for a literal backslash; other backslash sequences are kept as written:
 

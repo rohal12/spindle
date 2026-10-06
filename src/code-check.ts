@@ -7,8 +7,8 @@
  * Code is found where passages run it:
  * - `{$…}` expressions, and `{do}` bodies (statements);
  * - the conditions of `{if}`, `{elseif}` and `{case}`;
- * - macro arguments whose declared parameter type is `expression` or
- *   `statements`, built-in and custom macros alike; the
+ * - macro arguments whose declared parameter type is `expression`,
+ *   `statements` or `passage`, built-in and custom macros alike; the
  *   condition and `run` action of `{watch}`, code in quoted strings;
  * - the `{$…}` references in attributes holding code (`onclick`).
  *
@@ -16,9 +16,13 @@
  * `text` and `string`) and HTML attribute values; the check reads its
  * markup in turn.
  *
- * Arguments of type `passage` may be text (`{goto Bob's room}`), and the
- * arguments of macros that declare no parameters may be anything: they are
- * not checked.
+ * Passage names written out are found in links (`[[Go->Hall]]`), in
+ * `passage` arguments that are one quoted string (`{goto "Hall"}`), in the
+ * passage of `{link}`, the `goto` and `dialog` actions of `{watch}` and the
+ * body of `{dialog}`; the check looks each one up.
+ *
+ * The arguments of macros that declare no parameters may be anything:
+ * they are not checked.
  */
 import type { Token } from './markup/tokens';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
@@ -26,6 +30,7 @@ import { CodeSyntaxError, parseCode, type JsGoal } from './js-lexer';
 import type { ParsedCode } from './js-lexer';
 import type { ParameterDef } from './registry';
 import { parseMacroArgs } from './components/macros/macro-args';
+import { readWholeQuoted } from './components/macros/arg-utils';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -70,6 +75,17 @@ export interface CodePiece {
   goal: JsGoal;
   /** The markup it is in, for the error: `{print $a +}`. */
   label: string;
+  /** Whether it names a passage: a `passage` argument. */
+  passage?: boolean;
+}
+
+/** A passage name written out in markup, at `offset` in it. */
+export interface PassagePiece {
+  kind: 'passage';
+  name: string;
+  offset: number;
+  /** The markup it is in, for the error: `[[Go->Hall]]`. */
+  label: string;
 }
 
 /** Text in markup that may hold markup of its own, at `offset` in it. */
@@ -89,9 +105,22 @@ const CODE_IN_STRINGS: Record<string, Record<string, JsGoal>> = {
   watch: { condition: 'expression', run: 'statements' },
 };
 
+/** The `string` parameters of a macro that name a passage. */
+const PASSAGE_STRINGS: Record<string, readonly string[]> = {
+  link: ['passage'],
+  watch: ['goto', 'dialog'],
+};
+
+/** Block macros whose body is the name of a passage. */
+const PASSAGE_BODIES = new Set(['dialog']);
+
+type Piece = CodePiece | TextPiece | PassagePiece;
+
 /** The goal of the code an argument of this type holds, if it is code. */
 function codeGoal(param: ParameterDef): JsGoal | undefined {
-  if (param.type === 'expression') return 'expression';
+  if (param.type === 'expression' || param.type === 'passage') {
+    return 'expression';
+  }
   if (param.type === 'statements') return 'statements';
   return undefined;
 }
@@ -104,10 +133,26 @@ export function* codeAndText(
   src: string,
   tokens: readonly Token[],
   parametersOf: (macro: string) => readonly ParameterDef[] | undefined,
-): Generator<CodePiece | TextPiece> {
+): Generator<Piece> {
+  /** The index of the closing tag of the `name` macro opened at `t`. */
+  const closeOf = (t: number, name: string) =>
+    tokens.findIndex(
+      (c, k) =>
+        k > t &&
+        c.type === 'macro' &&
+        c.isClose &&
+        c.name.toLowerCase() === name,
+    );
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
-    if (token.type === 'expression') {
+    if (token.type === 'link') {
+      yield {
+        kind: 'passage',
+        name: token.target,
+        offset: locate(src, token.target, token.start),
+        label: src.slice(token.start, token.end),
+      };
+    } else if (token.type === 'expression') {
       yield {
         kind: 'code',
         code: token.expression,
@@ -145,13 +190,7 @@ export function* codeAndText(
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
       if (name === 'do') {
-        const close = tokens.findIndex(
-          (c, k) =>
-            k > t &&
-            c.type === 'macro' &&
-            c.isClose &&
-            c.name.toLowerCase() === 'do',
-        );
+        const close = closeOf(t, name);
         if (close < 0) continue;
         const body = src.slice(token.end, tokens[close]!.start);
         yield {
@@ -165,6 +204,21 @@ export function* codeAndText(
         continue;
       }
       const args = token.rawArgs;
+      if (PASSAGE_BODIES.has(name)) {
+        // The body names the passage when it is only text
+        const close = closeOf(t, name);
+        const body = tokens.slice(t + 1, close);
+        if (close > t + 1 && body.every((b) => b.type === 'text')) {
+          const text = src.slice(token.end, tokens[close]!.start);
+          const passage = text.trim().replace(/^["']|["']$/g, '');
+          yield {
+            kind: 'passage',
+            name: passage,
+            offset: locate(src, passage, token.end),
+            label: src.slice(token.start, token.end),
+          };
+        }
+      }
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
       const argsAt = locate(src, args, token.start + 1);
@@ -191,15 +245,16 @@ function* argPieces(
   params: readonly ParameterDef[],
   macro: string,
   label: string,
-): Generator<CodePiece | TextPiece> {
+): Generator<Piece> {
   const values = parseMacroArgs(args, params) as Record<string, unknown>;
   const inStrings = CODE_IN_STRINGS[macro.toLowerCase()] ?? {};
+  const passageStrings = PASSAGE_STRINGS[macro.toLowerCase()] ?? [];
   let cursor = 0;
   /** The pieces of the parameters `list`, with their values in `from`. */
   function* visit(
     list: readonly ParameterDef[],
     from: Record<string, unknown>,
-  ): Generator<CodePiece | TextPiece> {
+  ): Generator<Piece> {
     for (const param of list) {
       const value = from[param.name];
       if (param.type === 'options' && param.parameters) {
@@ -214,8 +269,27 @@ function* argPieces(
       if (at >= cursor) cursor = at + value.length;
       const goal = codeGoal(param) ?? inStrings[param.name];
       if (goal) {
-        yield { kind: 'code', code: value, offset: offset + at, goal, label };
-      } else if (param.type === 'text' || param.type === 'string') {
+        const piece: CodePiece = {
+          kind: 'code',
+          code: value,
+          offset: offset + at,
+          goal,
+          label,
+        };
+        if (param.type === 'passage') piece.passage = true;
+        yield piece;
+      }
+      // A passage written out: a quoted `passage` argument, or a string
+      const name =
+        param.type === 'passage'
+          ? readWholeQuoted(value.trim())
+          : passageStrings.includes(param.name)
+            ? value
+            : null;
+      if (name !== null) {
+        yield { kind: 'passage', name, offset: offset + at, label };
+      }
+      if (!goal && (param.type === 'text' || param.type === 'string')) {
         yield {
           kind: 'text',
           text: value,

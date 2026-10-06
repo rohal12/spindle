@@ -45,7 +45,7 @@ import {
 
 import { deepClone, mergeKeys, mergesWith, shareEqual } from './structural';
 import { shallowCopy } from './utils/object-path';
-import { showRuntimeError } from './runtime-errors';
+import { noPassageError, showRuntimeError } from './runtime-errors';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -277,6 +277,9 @@ function persistSession(get: () => StoryState): void {
 /** What the page shows before a session write error (see RuntimeErrors). */
 const SESSION_ERROR_CONTEXT =
   'The game could not be saved for a page reload; a reload goes back to the last passage it could save:';
+
+/** What the page shows before an error naming a missing passage. */
+const NAVIGATION_ERROR_CONTEXT = 'The story could not go to another passage:';
 
 /**
  * Write the session, then run `after` (the rest of the operation: its
@@ -1145,7 +1148,10 @@ export const useStoryStore = create<StoryState>()(
       }
 
       if (!storyData.passages.has(passageName)) {
-        console.error(`spindle: Passage "${passageName}" not found.`);
+        // Shown on the page too: code (Story.goto()) can name any passage
+        const error = noPassageError(passageName, get().currentPassage);
+        console.error(`spindle: ${error.message}`);
+        showRuntimeError(NAVIGATION_ERROR_CONTEXT, error);
         return;
       }
 

@@ -157,7 +157,7 @@ describe('validateMarkup — what counts as known', () => {
       validate(
         '{if $a}x{elseif $b}y{else}z{/if}',
         '{switch $a}{case 1}one{default}other{/switch}',
-        '{listbox "$a"}{option "x"}{/listbox} [[Start]] {link "a" "b"}{/link}',
+        '{listbox "$a"}{option "x"}{/listbox} [[P1]] {link "a" "b"}{/link}',
       ),
     ).toEqual([]);
   });

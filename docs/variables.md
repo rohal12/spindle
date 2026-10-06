@@ -218,7 +218,7 @@ Passage "Intro", line 2, column 16: Unexpected "{" (missing ")" for the "(" at l
 
 The same errors show in place of a macro when its code runs, with the column in the code and the line marked where the error is: `{print error: Unexpected "$count" at column 7: $gold ▶$count}`.
 
-Passage-name arguments (`{goto}`, `{include}`) are not checked: when one isn't an expression, its text is the passage name (`{goto Bob's room}`).
+Passage-name arguments (`{goto}`, `{include}`, and the `passage` arguments of [custom macros](custom-macros.md#parameter-types)) are code too: a quoted string or an expression. An unquoted name is an error when the story starts, as a syntax error (`{goto Bob's room}`) or because it is a bare word (`{goto Kitchen}`: `Unquoted passage name in {goto Kitchen}: write "Kitchen"`). A quoted name must also name a passage, as links must (see [Links](markup.md#links)). An expression is evaluated when the macro runs; if its value names no passage, the macro shows an error naming that passage and the passage the macro is in.
 
 These restrictions follow from reading the code as JavaScript:
 
