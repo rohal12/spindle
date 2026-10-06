@@ -226,6 +226,7 @@ These restrictions follow from reading the code as JavaScript:
 - **`@name` and `%name` can't be property names:** `obj.@x` is an error. (`obj.$x` and `obj._x` are ordinary property names.)
 - **A line that starts with `%name` after a complete expression** is read as a transient only when the line assigns to it: after `$x = 5`, a next line `%count[i] = 1` works. Otherwise `%` there is the modulo operator, as in JavaScript (`5 % n.go()`): to start such a line with a transient, end the line before with `;`.
 - **Code must be valid JavaScript, even where a browser would only fail when it runs it.** `++f()` and `f() = 1` are syntax errors.
+- **A few rare valid programs are rejected anyway**, because the parser guesses whether a `/` starts a regular expression before it knows the context: a line that starts with a variable named `of` divided by something (`of /= 2` after a complete statement) is one. Name such a variable differently, or end the previous line with `;`.
 - **A shorthand property** (`{ $gold }`) takes the variable's name without its sigil as its key: `{ gold: … }`. In a destructuring assignment, `({ $gold } = loot)` sets `$gold` to `loot.gold`.
 
 ### Passage tracking functions
