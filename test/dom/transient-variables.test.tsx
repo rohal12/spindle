@@ -2,8 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { renderNodes } from '../../src/markup/render';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
@@ -29,8 +28,7 @@ function makeStoryData(passages: Passage[], startNode = 1): StoryData {
 }
 
 function renderMarkup(markup: string): HTMLElement {
-  const tokens = tokenize(markup);
-  const ast = buildAST(tokens);
+  const ast = parseMarkup(markup);
   const container = document.createElement('div');
   render(<>{renderNodes(ast)}</>, container);
   return container;

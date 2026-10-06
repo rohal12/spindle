@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export { parseStoryVariables } from './story-variables.js';
+import { validateStoryMarkup } from './story-variables.js';
+
+export { parseStoryVariables, formatDiagnostic } from './story-variables.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,4 +45,14 @@ export function defineMacro(config) {
  */
 export function getMacroRegistry() {
   return Array.from(metadata.values());
+}
+
+/**
+ * Validate the markup of a story's passages as Spindle does when the story
+ * starts: malformed markup and unknown macros (checked against the built-in
+ * macros and those registered with defineMacro), with passage, line and
+ * column.
+ */
+export function validateMarkup(passages) {
+  return validateStoryMarkup(passages, metadata.values());
 }

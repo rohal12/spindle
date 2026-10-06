@@ -297,7 +297,7 @@ function convertDomNode(
     }
 
     // Convert attributes, as author HTML's (see splitAttributes): markdown
-    // output holds raw HTML the passage tokenizer didn't take as a tag
+    // output holds raw HTML from text nodes (a custom macro's, or comments)
     const svg = el.namespaceURI === SVG_NAMESPACE;
     const attributes: Attribute[] = [];
     let placeholders: Record<string, ASTNode[]> | undefined;

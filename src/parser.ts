@@ -1,4 +1,4 @@
-import { tokenize } from './markup/tokenizer';
+import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 
 export interface Passage {
@@ -88,7 +88,7 @@ function elementMarkup(el: Element): string {
 }
 
 /**
- * An attribute value quoted so that the passage tokenizer reads it back:
+ * An attribute value quoted so that the passage parser reads it back:
  * in double quotes, else single ones, else with the double quotes in its
  * text written as `&quot;`, which rendering decodes. Quotes inside markup in
  * the value (`{print "a"}`) are code, and don't end it.
@@ -97,7 +97,14 @@ function quoteAttribute(name: string, value: string): string {
   const code = isCodeAttribute(name);
   const probe = code ? 'on' : 'a';
   const readsBack = (quoted: string) => {
-    const tokens = tokenize(`<i ${probe}=${quoted}>`);
+    let tokens;
+    try {
+      tokens = tokenizeMarkup(`<i ${probe}=${quoted}>`);
+    } catch (err) {
+      // Malformed markup in the value, such as an unclosed quote
+      if (err instanceof MarkupError) return false;
+      throw err;
+    }
     const tag = tokens[0];
     return (
       tokens.length === 1 &&
@@ -129,7 +136,15 @@ function escapeTextQuotes(value: string, code: boolean): string {
       )
       .join('');
   }
-  return tokenize(value, { text: true })
+  let tokens;
+  try {
+    tokens = tokenizeMarkup(value, { text: true });
+  } catch (err) {
+    // Malformed markup: validation reports it when the story starts
+    if (err instanceof MarkupError) return escape(value);
+    throw err;
+  }
+  return tokens
     .map((token) => {
       const source = value.slice(token.start, token.end);
       return token.type === 'text' ? escape(source) : source;

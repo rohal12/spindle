@@ -4,39 +4,11 @@ import { registerBlockMacro, type ASTNode } from '../../markup/ast';
 import { defineMacro } from '../../define-macro';
 import { checkVariableName } from '../../utils/namespace';
 import { MacroError } from './MacroError';
-import { parseMacroArgs } from './macro-args';
-import type { MacroArgs } from '../../registry';
-
-/** A {widget} definition's name, then its `@` parameters. */
-const WIDGET_PARAMETERS = [
-  { name: 'name', type: 'text', required: true },
-  { name: 'parameters', type: 'expression' },
-] as const;
-
-interface WidgetDef {
-  name: string;
-  params: string[];
-}
-
-/**
- * The widget a {widget} definition's arguments declare: its name and its
- * parameters, the words after it that start with `@` (docs/widgets.md).
- * Other words, such as `$name`, are not parameters.
- */
-function widgetDef({
-  name = '',
-  parameters = '',
-}: MacroArgs<typeof WIDGET_PARAMETERS>): WidgetDef {
-  return {
-    name,
-    params: parameters.split(/\s+/).filter((word) => word.startsWith('@')),
-  };
-}
-
-/** Read the arguments of a {widget} definition (see widgetDef). */
-export function parseWidgetDef(rawArgs: string): WidgetDef {
-  return widgetDef(parseMacroArgs(rawArgs, WIDGET_PARAMETERS));
-}
+import {
+  WIDGET_PARAMETERS,
+  widgetDef,
+  type WidgetDef,
+} from '../../widgets/widget-def';
 
 /**
  * Register the widget a definition declares, with its body. Widgets whose

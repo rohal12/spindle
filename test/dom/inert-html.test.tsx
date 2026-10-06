@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
 import { render } from 'preact';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { parseHtmlInert, renderNodes } from '../../src/markup/render';
 
 /**
@@ -26,14 +25,18 @@ describe('parseHtmlInert', () => {
 describe('markdown output with raw HTML', () => {
   function renderMarkup(markup: string, nobr = false): HTMLElement {
     const container = document.createElement('div');
-    render(<>{renderNodes(buildAST(tokenize(markup)), { nobr })}</>, container);
+    render(<>{renderNodes(parseMarkup(markup), { nobr })}</>, container);
     return container;
   }
 
   it('renders tags micromark passes through', () => {
-    // `a.b` is an attribute name CommonMark accepts and the passage
-    // tokenizer does not, so this tag goes through micromark's output.
-    const el = renderMarkup('**b** <x-probe a.b>');
+    // Passage markup parses every tag itself; raw HTML in a text node (as a
+    // custom macro may hand to ctx.renderNodes) goes through micromark.
+    const el = document.createElement('div');
+    render(
+      <>{renderNodes([{ type: 'text', value: '**b** <x-probe a.b>' }])}</>,
+      el,
+    );
     expect(el.innerHTML).toBe(
       '<p><strong>b</strong> <x-probe a.b=""></x-probe></p>',
     );

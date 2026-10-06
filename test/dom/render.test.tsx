@@ -2,8 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { renderNodes } from '../../src/markup/render';
 import { markdownOptions } from '../../src/markup/markdown';
 import { micromark } from 'micromark';
@@ -32,8 +31,7 @@ function makeStoryData(passages: Passage[], startNode = 1): StoryData {
 }
 
 function renderMarkup(markup: string): HTMLElement {
-  const tokens = tokenize(markup);
-  const ast = buildAST(tokens);
+  const ast = parseMarkup(markup);
   const container = document.createElement('div');
   render(<>{renderNodes(ast)}</>, container);
   return container;
@@ -439,8 +437,7 @@ describe('renderNodes', () => {
 
       const container = document.createElement('div');
       const markup = '{computed $total = $base + $bonus}{$total}';
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       act(() => {
         render(<>{renderNodes(ast)}</>, container);
       });
@@ -462,8 +459,7 @@ describe('renderNodes', () => {
 
       const container = document.createElement('div');
       const markup = '{computed _sum = _a + _b}{_sum}';
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       act(() => {
         render(<>{renderNodes(ast)}</>, container);
       });
@@ -482,7 +478,7 @@ describe('renderNodes', () => {
       const container = document.createElement('div');
       mounted.push(container);
       act(() => {
-        render(<>{renderNodes(buildAST(tokenize(markup)))}</>, container);
+        render(<>{renderNodes(parseMarkup(markup))}</>, container);
       });
       return container;
     }
@@ -598,18 +594,16 @@ describe('renderNodes', () => {
   describe('consecutive {set} mutations (issue #136)', () => {
     it('second {set} sees temp set by first {set}', () => {
       const container = document.createElement('div');
-      const tokens = tokenize(
+      const ast = parseMarkup(
         '{set _x = [3, 1, 2]}{set _y = _x.slice().sort()}Result: {_y}',
       );
-      const ast = buildAST(tokens);
       render(<>{renderNodes(ast)}</>, container);
       expect(container.textContent).toContain('Result: 1,2,3');
     });
 
     it('second {set} sees $var set by first {set}', () => {
       const container = document.createElement('div');
-      const tokens = tokenize('{set $a = 10}{set $b = $a + 5}Answer: {$b}');
-      const ast = buildAST(tokens);
+      const ast = parseMarkup('{set $a = 10}{set $b = $a + 5}Answer: {$b}');
       render(<>{renderNodes(ast)}</>, container);
       expect(container.textContent).toContain('Answer: 15');
     });
@@ -638,8 +632,7 @@ describe('renderNodes', () => {
       ].join('\n');
 
       const container = document.createElement('div');
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       render(<>{renderNodes(ast)}</>, container);
 
       const cards = container.querySelectorAll('.card');
@@ -663,8 +656,7 @@ describe('renderNodes', () => {
       ].join('\n');
 
       const container = document.createElement('div');
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       render(<>{renderNodes(ast)}</>, container);
 
       const strongs = container.querySelectorAll('strong');
@@ -678,8 +670,7 @@ describe('renderNodes', () => {
       const markup = '<div class="box">\n  A **bold** label\n</div>';
 
       const container = document.createElement('div');
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       render(<>{renderNodes(ast)}</>, container);
 
       const box = container.querySelector('.box');

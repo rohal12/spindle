@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { tokenize } from '../../src/markup/tokenizer';
+import { parseMarkup } from '../../src/markup/parse';
 import {
-  buildAST,
   registerBlockMacro,
   unregisterBlockMacro,
   type MacroNode,
@@ -10,7 +9,7 @@ import { defineMacro } from '../../src/define-macro';
 import { getMacro, isSubMacro } from '../../src/registry';
 
 function parse(input: string) {
-  return buildAST(tokenize(input));
+  return parseMarkup(input);
 }
 
 describe('registerBlockMacro', () => {
@@ -31,7 +30,7 @@ describe('registerBlockMacro', () => {
 
   it('without registration, closing tag throws', () => {
     expect(() => parse('{choices}pick one{/choices}')).toThrow(
-      'Unexpected closing {/choices}',
+      '{/choices} closes nothing: no {choices} is open here (line 1, column 18)',
     );
   });
 });
@@ -84,7 +83,7 @@ describe('defineMacro with block flag', () => {
     expect(isSubMacro('section')).toBe(true);
     // Should be treated as self-closing since block: false
     expect(() => parse('{accordion}content{/accordion}')).toThrow(
-      'Unexpected closing {/accordion}',
+      '{/accordion} closes nothing: no {accordion} is open here (line 1, column 19)',
     );
   });
 });
