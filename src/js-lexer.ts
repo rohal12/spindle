@@ -136,6 +136,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
   closedBlock = false;
   /** Look ahead after a `%name` starting a line (off in look-aheads). */
   lookahead = true;
+  /** Where a `%name` is a transient whatever the tokens before it. */
+  operandsAt?: ReadonlySet<number>;
 
   readToken(code: number): void {
     const self = this as unknown as ParserState;
@@ -158,6 +160,7 @@ const SigilParser = class extends (Parser as unknown as Base) {
         if (
           code === 64 ||
           self.exprAllowed ||
+          this.operandsAt?.has(at) ||
           afterPrefix ||
           (this.lookahead && transientAssignment(self, end))
         ) {
@@ -184,8 +187,14 @@ const SigilParser = class extends (Parser as unknown as Base) {
       this.colonEndsTernary = open > 0;
       if (open > 0) this.ternaries[depth] = open - 1;
     }
+    const prevType = (this as unknown as ParserState).type;
     // @ts-expect-error acorn internals
     super.finishToken(type, value);
+    // A keyword after `?.` is a property name, an operand (`a?.typeof % 2`),
+    // as acorn reads one after `.`
+    if (type.keyword && prevType === tt.questionDot) {
+      (this as unknown as ParserState).exprAllowed = false;
+    }
   }
 
   braceIsBlock(prevType: TokenType): boolean {
@@ -433,31 +442,56 @@ export function parseCode(
   src: string,
   goal: JsGoal = 'expression',
 ): ParsedCode {
-  let ast: AnyNode;
-  try {
-    if (goal === 'statements') {
-      ast = (SigilParser as unknown as typeof Parser).parse(
-        src,
-        OPTIONS,
-      ) as unknown as AnyNode;
-    } else {
-      // As acorn's parseExpressionAt, and then the code must end
-      const p = tokenizerAt(src, 0, goal);
-      p.nextToken();
-      ast = p.parseExpression();
-      if (p.type !== tt.eof) {
-        throw Object.assign(new SyntaxError('Unexpected token'), {
-          pos: p.start,
-        });
-      }
+  // Whether `%` is a transient or modulo is guessed from the tokens before
+  // it, as acorn guesses whether `/` opens a regex; where the guess makes
+  // the parser fail at a `%name`, it is a transient (`for (const of of
+  // %list)`), and the code is parsed again
+  const operandsAt = new Set<number>();
+  for (;;) {
+    try {
+      const ast = parseAst(src, goal, operandsAt);
+      const out: ParsedCode = { refs: [], strings: [] };
+      walk(ast, src, out, false, false);
+      out.refs.sort((a, b) => a.start - b.start);
+      return out;
+    } catch (error) {
+      const pos = (error as { pos?: number }).pos ?? -1;
+      if (!(error instanceof SyntaxError) || operandsAt.has(pos)) throw error;
+      TRANS_NAME_RE.lastIndex = pos + 1;
+      if (src.charAt(pos) !== '%' || !TRANS_NAME_RE.test(src)) throw error;
+      operandsAt.add(pos);
     }
+  }
+}
+
+/** Parse `src` as `goal`, with `%name`s at `operandsAt` transients. */
+function parseAst(
+  src: string,
+  goal: JsGoal,
+  operandsAt: ReadonlySet<number>,
+): AnyNode {
+  try {
+    const p = tokenizerAt(src, 0, goal) as ParserState & {
+      parse(): AnyNode;
+      operandsAt?: ReadonlySet<number>;
+    };
+    p.operandsAt = operandsAt;
+    if (goal === 'statements') {
+      p.type = tt.eof;
+      return p.parse();
+    }
+    // As acorn's parseExpressionAt, and then the code must end
+    p.nextToken();
+    const ast = p.parseExpression();
+    if (p.type !== tt.eof) {
+      throw Object.assign(new SyntaxError('Unexpected token'), {
+        pos: p.start,
+      });
+    }
+    return ast;
   } catch (error) {
     throw syntaxError(src, error);
   }
-  const out: ParsedCode = { refs: [], strings: [] };
-  walk(ast, src, out, false, false);
-  out.refs.sort((a, b) => a.start - b.start);
-  return out;
 }
 
 interface AnyNode {
@@ -638,7 +672,7 @@ export interface FindCodeEndOptions {
 }
 
 /** The rest of a word, after a number (`2s`). */
-const WORD_RE = /[\p{ID_Continue}$]*/uy;
+const WORD_RE = /[\p{ID_Continue}$.]*/uy;
 
 /** Words a string may follow with no space between (`of'x'`, `get"y"`). */
 const WORDS_BEFORE_STRING = new Set(['of', 'get', 'set', 'static', 'async']);
@@ -657,11 +691,13 @@ const WORDS_BEFORE_STRING = new Set(['of', 'get', 'set', 'static', 'async']);
  * at its last `}`), so the error is reported in the block the author wrote.
  *
  * Returns -1 when there is no such end, or when the code before it can't be
- * JavaScript: an unterminated string, regex literal or comment, a character
- * no JavaScript has, or a quote directly after a word (`don't`). Callers
- * fall back to a more lenient reading there, so text that only looks like
- * code is not swallowed by an apostrophe or a stray quote. A quoted string
- * may span lines here, as quoted macro labels may.
+ * JavaScript: an unterminated string, regex literal or comment, or a quote
+ * directly after a word (`don't`). Callers fall back to a more lenient
+ * reading there, so text that only looks like code is not swallowed by an
+ * apostrophe or a stray quote. Characters no JavaScript has (a lone `@`,
+ * `→`) are skipped, a number with a unit (`2s`) is one word, and a quoted
+ * string may span lines, as quoted macro labels may: the parse reports
+ * what in it is no JavaScript.
  */
 export function findCodeEnd(
   src: string,
@@ -715,15 +751,16 @@ function scanCodeEnd(
     let resumeAt = -1;
     for (const tok of tokens(src, from, goal, { afterOperand })) {
       if ('error' in tok) {
-        if (/^Unexpected character/.test(tok.error.message)) {
-          // A character no JavaScript has (`@` alone, `#`, `→`): on after
-          // it, as after an operator
-          resumeAt = tok.pos + 1;
+        const { message } = tok.error;
+        if (!/^Unterminated/.test(message)) {
+          // Something no JavaScript has (a lone `@`, `#`, a bad regex flag):
+          // on after its first character, as after an operator
+          resumeAt = Math.max(tok.pos, from) + 1;
           afterOperand = false;
           break;
         }
         const k = stack.lastIndexOf('${');
-        const unclosed = /^Unterminated template/.test(tok.error.message);
+        const unclosed = /^Unterminated template/.test(message);
         // One such slip per block: more is no code an author meant
         if (!unclosed || k < 0 || templateSlip) return -1;
         // The template's text starts just past the backtick that opened it
@@ -802,9 +839,15 @@ function* tokens(
           yield operand(tt.string, pos, end);
           continue;
         }
-      } else if (/^Identifier directly after number/.test(message)) {
-        // A number with a unit, as macro arguments have them (`2s`, `5ms`)
-        WORD_RE.lastIndex = pos;
+      } else if (
+        !/^Unterminated/.test(message) &&
+        p.start <= pos &&
+        /[\d.]/.test(src.charAt(p.start)) &&
+        /\d/.test(src.slice(p.start, p.start + 2))
+      ) {
+        // A number with a unit (`2s`, `5ms`), as macro arguments have them,
+        // or some other word starting with a digit (`0_$`): one word
+        WORD_RE.lastIndex = p.start;
         WORD_RE.test(src);
         yield operand(tt.num, p.start, WORD_RE.lastIndex);
         continue;
