@@ -183,21 +183,17 @@ const takesRest = (param: ParameterDef) =>
 
 /** Read the parameters of one group from `src` (`null`: no text) into `args`. */
 function readGroup(
-  params: ParameterDef[],
+  params: readonly ParameterDef[],
   src: string | null,
   args: Record<string, unknown>,
 ): void {
   let text = src?.trim() ?? '';
-  const positional: ParameterDef[] = [];
-  for (const param of params) {
-    if (param.type !== 'flag') {
-      positional.push(param);
-      continue;
-    }
-    const rest = src === null ? null : takeFlag(text, param.name);
-    args[param.name] = rest !== null;
-    if (rest !== null) text = rest;
+  for (const flag of params.filter((p) => p.type === 'flag')) {
+    const rest = src === null ? null : takeFlag(text, flag.name);
+    args[flag.name] = rest !== null;
+    text = rest ?? text;
   }
+  const positional = params.filter((p) => p.type !== 'flag');
   if (positional.length === 0) return;
 
   // The last expression or text parameter, else the last one, reads the rest.
@@ -242,21 +238,19 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   parameters: P,
 ): MacroArgs<P> {
   const args: Record<string, unknown> = {};
+  // The text after the last separator read, null once one is missing
   let rest: string | null = rawArgs.trim();
-  let group: ParameterDef[] = [];
-  for (const param of parameters) {
-    if (param.type !== 'separator') {
-      group.push(param);
-      continue;
-    }
-    const at: Span | null =
-      rest === null ? null : findSeparator(rest, param.name);
-    args[param.name] = at !== null;
-    readGroup(group, at ? rest!.slice(0, at[0]) : rest, args);
+  let groupStart = 0;
+  parameters.forEach((separator, i) => {
+    if (separator.type !== 'separator') return;
+    const at = rest === null ? null : findSeparator(rest, separator.name);
+    args[separator.name] = at !== null;
+    const before = at ? rest!.slice(0, at[0]) : rest;
+    readGroup(parameters.slice(groupStart, i), before, args);
     rest = at ? rest!.slice(at[1]) : null;
-    group = [];
-  }
-  readGroup(group, rest, args);
+    groupStart = i + 1;
+  });
+  readGroup(parameters.slice(groupStart), rest, args);
   return args as MacroArgs<P>;
 }
 

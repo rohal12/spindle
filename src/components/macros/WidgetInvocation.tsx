@@ -1,28 +1,12 @@
-import {
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-} from 'preact/hooks';
-import {
-  LocalsValuesContext,
-  LocalsUpdateContext,
-  NobrContext,
-  InlineContext,
-  WidgetChildrenContext,
-  RawTextContext,
-  renderNodes,
-} from '../../markup/render';
+import { useMemo } from 'preact/hooks';
+import { WidgetChildrenContext, renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
 import { splitArgs } from './arg-utils';
-import {
-  checkVariableName,
-  createNamespace,
-  withEntry,
-} from '../../utils/namespace';
+import { createNamespace } from '../../utils/namespace';
+import { useRenderOptions } from '../../hooks/use-render-options';
+import { LocalsScope } from './locals-scope';
 
 export { splitArgs };
 
@@ -33,60 +17,14 @@ interface WidgetInvocationProps {
   invocationChildren?: ASTNode[];
 }
 
-function WidgetBody({
-  body,
-  parentValues,
-  ownKeys,
-}: {
-  body: ASTNode[];
-  parentValues: Record<string, unknown>;
-  ownKeys: Record<string, unknown>;
-}) {
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
-  const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
-    {},
-  );
-
-  const localState = useMemo(
-    () => createNamespace(parentValues, ownKeys, localMutations),
-    [parentValues, ownKeys, localMutations],
-  );
-
-  const valuesRef = useRef(localState);
-  valuesRef.current = localState;
-
-  const getValues = useCallback(() => valuesRef.current, []);
-  const update = useCallback((key: string, value: unknown) => {
-    // Apply synchronously so later macros in the same render pass (e.g. a
-    // second {set}) read the new value via getValues(); the state update
-    // then re-renders consumers of LocalsValuesContext.
-    checkVariableName(key, `@${key}`);
-    valuesRef.current = withEntry(valuesRef.current, key, value);
-    setLocalMutations((prev) => ({ ...prev, [key]: value }));
-  }, []);
-  const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
-
-  return (
-    <LocalsUpdateContext.Provider value={updater}>
-      <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(body, { nobr, inline, raw, locals: localState })}
-      </LocalsValuesContext.Provider>
-    </LocalsUpdateContext.Provider>
-  );
-}
-
 export function WidgetInvocation({
   body,
   params,
   rawArgs,
   invocationChildren,
 }: WidgetInvocationProps) {
-  const parentValues = useContext(LocalsValuesContext);
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
+  const renderOptions = useRenderOptions();
+  const parentValues = renderOptions.locals;
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -97,7 +35,7 @@ export function WidgetInvocation({
   if (params.length === 0) {
     return (
       <WidgetChildrenContext.Provider value={childrenValue}>
-        {renderNodes(body, { nobr, inline, raw, locals: parentValues })}
+        {renderNodes(body, renderOptions)}
       </WidgetChildrenContext.Provider>
     );
   }
@@ -137,7 +75,7 @@ export function WidgetInvocation({
 
   return (
     <WidgetChildrenContext.Provider value={childrenValue}>
-      <WidgetBody
+      <LocalsScope
         body={body}
         parentValues={parentValues}
         ownKeys={ownKeys}

@@ -1,27 +1,11 @@
-import {
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-} from 'preact/hooks';
-import {
-  LocalsValuesContext,
-  LocalsUpdateContext,
-  NobrContext,
-  InlineContext,
-  RawTextContext,
-  renderNodes,
-} from '../../markup/render';
+import { useContext, useMemo } from 'preact/hooks';
+import { LocalsValuesContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
 import type { ASTNode } from '../../markup/ast';
-import {
-  checkVariableName,
-  createNamespace,
-  withEntry,
-} from '../../utils/namespace';
+import { checkVariableName } from '../../utils/namespace';
+import { LocalsScope } from './locals-scope';
 
 /**
  * Check the arguments of "@item, @i of $list" or "@item of $list".
@@ -75,10 +59,6 @@ function ForIteration({
   indexValue: number;
   children: ASTNode[];
 }) {
-  const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
-    () => ({}),
-  );
-
   const ownKeys = useMemo(
     () => ({
       [itemVar]: itemValue,
@@ -87,35 +67,12 @@ function ForIteration({
     [itemVar, itemValue, indexVar, indexValue],
   );
 
-  const localState = useMemo(
-    () => createNamespace(parentValues, ownKeys, localMutations),
-    [parentValues, ownKeys, localMutations],
-  );
-
-  const valuesRef = useRef(localState);
-  valuesRef.current = localState;
-
-  const getValues = useCallback(() => valuesRef.current, []);
-  const update = useCallback((key: string, value: unknown) => {
-    // Apply synchronously so later macros in the same render pass (e.g. a
-    // second {set}) read the new value via getValues(); the state update
-    // then re-renders consumers of LocalsValuesContext.
-    checkVariableName(key, `@${key}`);
-    valuesRef.current = withEntry(valuesRef.current, key, value);
-    setLocalMutations((prev) => ({ ...prev, [key]: value }));
-  }, []);
-  const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
-
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
-
   return (
-    <LocalsUpdateContext.Provider value={updater}>
-      <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children, { nobr, inline, raw, locals: localState })}
-      </LocalsValuesContext.Provider>
-    </LocalsUpdateContext.Provider>
+    <LocalsScope
+      body={children}
+      parentValues={parentValues}
+      ownKeys={ownKeys}
+    />
   );
 }
 

@@ -2,9 +2,8 @@ import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { readState } from '../../execute-mutation';
 import { deepEqual } from '../../class-registry';
-import { currentSourceLocation } from '../../utils/source-location';
 import { defineMacro } from '../../define-macro';
-import { MacroError } from './MacroError';
+import { MacroError, logMacroError } from './MacroError';
 import { checkVariableName } from '../../utils/namespace';
 
 /**
@@ -61,10 +60,7 @@ function computeAndApply(
     const { variables, temporary, transient } = readState();
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
-    console.error(
-      `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
-      err,
-    );
+    logMacroError(`computed ${rawArgs}`, err);
     return;
   }
 
@@ -74,10 +70,7 @@ function computeAndApply(
       try {
         localsUpdate!(name, newValue);
       } catch (err) {
-        console.error(
-          `spindle: Error in {computed ${rawArgs}}${currentSourceLocation()}:`,
-          err,
-        );
+        logMacroError(`computed ${rawArgs}`, err);
       }
     } else {
       const state = useStoryStore.getState();
@@ -117,9 +110,7 @@ defineMacro({
 
     const prevOutput = ctx.hooks.useRef<unknown>(UNSET);
 
-    const ran = ctx.hooks.useRef(false);
-    if (!ran.current) {
-      ran.current = true;
+    const compute = () =>
       computeAndApply(
         expr,
         name,
@@ -130,22 +121,21 @@ defineMacro({
         prevOutput,
         localsUpdate,
       );
+
+    const ran = ctx.hooks.useRef(false);
+    if (!ran.current) {
+      ran.current = true;
+      compute();
     }
 
     // The merged values only decide when to recompute; computeAndApply reads
     // the current ones.
-    ctx.hooks.useLayoutEffect(() => {
-      computeAndApply(
-        expr,
-        name,
-        isTemp,
-        isLocal,
-        ctx.getValues,
-        rawArgs,
-        prevOutput,
-        localsUpdate,
-      );
-    }, [mergedVars, mergedTemps, mergedLocals, mergedTrans]);
+    ctx.hooks.useLayoutEffect(compute, [
+      mergedVars,
+      mergedTemps,
+      mergedLocals,
+      mergedTrans,
+    ]);
 
     return null;
   },

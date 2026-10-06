@@ -1,4 +1,5 @@
 import { defineMacro } from '../../define-macro';
+import { logMacroError } from './MacroError';
 
 defineMacro({
   name: 'do',
@@ -11,7 +12,7 @@ defineMacro({
       try {
         ctx.mutate(code);
       } catch (err) {
-        console.error(`spindle: Error in {do}${ctx.sourceLocation()}:`, err);
+        logMacroError('do', err);
       }
     }, []);
 
