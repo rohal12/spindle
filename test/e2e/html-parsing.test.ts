@@ -115,3 +115,38 @@ describe('HTML in markdown output is parsed inertly', () => {
     expect(runs).toEqual({ live: 1, detached: 0 });
   });
 });
+
+describe('passage data', () => {
+  /**
+   * The value of `attribute` on the element with `id` in the passage shown.
+   * Not encoded, the passage data holds such an element too.
+   */
+  const attributeOf = (id: string, attribute: string) =>
+    page.getAttribute(`[data-passage] #${id}`, attribute, { timeout: 2000 });
+
+  it('reads a no-break space as U+00A0', async () => {
+    await boot({
+      passages: {
+        Start: encode(
+          '{set _s = "a b"}<span id="n">{print _s === "a\\u00A0b"}</span>',
+        ),
+      },
+    });
+    expect(await page.textContent('[data-passage] #n')).toBe('true');
+  });
+
+  it('keeps quotes in attribute values of HTML that is not encoded', async () => {
+    await boot({
+      passages: {
+        // As a compiler that doesn't HTML-escape passage text writes it
+        Start:
+          `<i id="a" title='say "hi"'>a</i>` +
+          `<i id="b" title="it's &quot;x&quot;">b</i>` +
+          `<i id="c" title="{print 'p' + &quot;q&quot;} it's">c</i>`,
+      },
+    });
+    expect(await attributeOf('a', 'title')).toBe('say "hi"');
+    expect(await attributeOf('b', 'title')).toBe(`it's "x"`);
+    expect(await attributeOf('c', 'title')).toBe(`pq it's`);
+  });
+});
