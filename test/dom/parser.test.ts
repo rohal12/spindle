@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseStoryData } from '../../src/parser';
+import { tokenize } from '../../src/markup/tokenizer';
 
 function setDocumentHTML(html: string) {
   document.body.innerHTML = html;
@@ -90,6 +91,20 @@ describe('parseStoryData', () => {
     expect(data.passages.get('Start')!.content).toBe('Tom & Jerry <3');
   });
 
+  it('keeps a no-break space as U+00A0, not the &nbsp; innerHTML writes', () => {
+    setDocumentHTML(`
+      <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
+        <tw-passagedata pid="1" name="Start" tags="">{set $x = "a b"}[[Café Noir]] &amp;nbsp;</tw-passagedata>
+      </tw-storydata>
+    `);
+    const data = parseStoryData();
+
+    // An author-written `&nbsp;` (stored as &amp;nbsp;) stays text.
+    expect(data.passages.get('Start')!.content).toBe(
+      '{set $x = "a b"}[[Café Noir]] &nbsp;',
+    );
+  });
+
   it('parses passages with multiple space-separated tags', () => {
     setDocumentHTML(`
       <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
@@ -139,6 +154,71 @@ describe('parseStoryData', () => {
     expect(data.passages.get('Start')!.content).toBe(
       '{button}<div class="nav-item">Click me</div>{set $myVar = "clicked"}{/button}',
     );
+  });
+
+  describe('passage HTML that is NOT HTML-encoded', () => {
+    /** The content of a passage whose data holds `html` as written. */
+    function contentOf(html: string): string {
+      setDocumentHTML(
+        `<tw-storydata name="T" startnode="1"><tw-passagedata pid="1" name="Start">${html}</tw-passagedata></tw-storydata>`,
+      );
+      return parseStoryData().passages.get('Start')!.content;
+    }
+
+    /** The attributes the passage tokenizer reads from the first tag. */
+    function attributesOf(content: string): Record<string, string> {
+      const tag = tokenize(content).find((t) => t.type === 'html');
+      return tag?.type === 'html' ? tag.attributes : {};
+    }
+
+    it('quotes an attribute value holding double quotes', () => {
+      const content = contentOf(`<i title='say "hi"'>t</i>`);
+      expect(content).toBe(`<i title='say "hi"'>t</i>`);
+      expect(attributesOf(content)).toEqual({ title: 'say "hi"' });
+    });
+
+    it('escapes quotes in text when the value holds both kinds', () => {
+      const content = contentOf(`<i title="it's &quot;x&quot;">t</i>`);
+      expect(content).toBe(`<i title="it's &quot;x&quot;">t</i>`);
+    });
+
+    it('keeps quotes inside markup in a value as written', () => {
+      const content = contentOf(
+        `<i title="{print 'a' + &quot;b&quot;} it's">t</i>`,
+      );
+      expect(content).toBe(`<i title="{print 'a' + "b"} it's">t</i>`);
+      expect(attributesOf(content)).toEqual({
+        title: `{print 'a' + "b"} it's`,
+      });
+    });
+
+    it('escapes only the quotes outside markup in a value', () => {
+      const content = contentOf(
+        `<i title="{print &quot;a&quot;} it's &quot;b&quot;">t</i>`,
+      );
+      expect(content).toBe(`<i title="{print "a"} it's &quot;b&quot;">t</i>`);
+    });
+
+    it('escapes only the quotes outside references in a code attribute', () => {
+      const content = contentOf(
+        `<b onclick="f({$a + &quot;x&quot;}, 'it&quot;s')">t</b>`,
+      );
+      expect(content).toBe(`<b onclick="f({$a + "x"}, 'it&quot;s')">t</b>`);
+    });
+
+    // Comments too, but happy-dom decodes references in comments, which
+    // browsers don't (see test/e2e/html-parsing.test.ts).
+    it('keeps text the serializer leaves unescaped as written', () => {
+      expect(contentOf('<style>p::after { content: "&amp;" }</style>')).toBe(
+        '<style>p::after { content: "&amp;" }</style>',
+      );
+    });
+
+    it('writes void elements without an end tag', () => {
+      expect(contentOf('a<br>b<img src="x.png" alt="">c')).toBe(
+        'a<br>b<img src="x.png" alt="">c',
+      );
+    });
   });
 
   it('makes passages accessible by both name and pid', () => {

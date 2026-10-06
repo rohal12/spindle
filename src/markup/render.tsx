@@ -1,4 +1,4 @@
-import { createContext } from 'preact';
+import { createContext, type RefObject } from 'preact';
 import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
@@ -62,6 +62,8 @@ export const RawTextContext = createContext(false);
  * no live form properties, so they are set as written (see splitAttributes).
  */
 const SvgContext = createContext(false);
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 /** Elements whose content is literal text, not markdown. */
 const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea']);
@@ -139,31 +141,59 @@ function expandPlaceholderText(
   );
 }
 
+/** An attribute: its name, value and value as written (see splitAttributes). */
+type Attribute = [name: string, value: string, written: string];
+
 /**
- * An element whose attributes contain placeholders (a variable in image alt
- * text or a link title). Each such attribute is evaluated as text against
- * the store and locals, so it follows its variables as the component would.
+ * An element of markdown output whose attributes contain placeholders (a
+ * variable in image alt text or a link title). Each such attribute is
+ * evaluated as text against the store and locals, so it follows its
+ * variables as the component would.
  */
 function PlaceholderAttributes({
   tag,
-  props,
   attributes,
+  placeholders,
+  svg,
   children,
 }: {
   tag: string;
-  props: Record<string, string>;
-  attributes: Record<string, ASTNode[]>;
+  attributes: Attribute[];
+  placeholders: Record<string, ASTNode[]>;
+  svg: boolean;
   children: preact.ComponentChildren[];
 }) {
   const scope = useTextScope();
-  const resolved: Record<string, string> = { ...props };
   const errors: AttributeError[] = [];
-  for (const [name, nodes] of Object.entries(attributes)) {
+  const resolved = attributes.map(([name, value, written]): Attribute => {
+    const nodes = placeholders[name];
+    if (!nodes) return [name, value, written];
     const result = renderText(nodes, scope);
-    resolved[name] = result.text;
     for (const error of result.errors) errors.push([name, error]);
-  }
-  return withAttributeErrors(errors, h(tag, resolved, ...children));
+    return [name, result.text, written];
+  });
+  const { props, direct } = splitAttributes(resolved, svg);
+  const ref = useDirectAttributes(direct);
+  return withAttributeErrors(
+    errors,
+    h(tag, ref ? { ...props, ref } : props, ...children),
+  );
+}
+
+/** An element of markdown output with attributes to set directly. */
+function DirectAttributes({
+  tag,
+  props,
+  direct,
+  children,
+}: {
+  tag: string;
+  props: Record<string, unknown>;
+  direct: [string, string][];
+  children: preact.ComponentChildren[];
+}) {
+  const ref = useDirectAttributes(direct);
+  return h(tag, { ...props, ref }, ...children);
 }
 
 /** An error met while evaluating the named attribute. */
@@ -202,6 +232,19 @@ function placeholderIndex(node: Node | null, ph: Placeholders): number {
 }
 
 /**
+ * Parse HTML into nodes without side effects. The content of a `<template>`
+ * belongs to a document with no browsing context, so parsing it fetches no
+ * images and media, runs no inline event handlers (`<img onerror>`) and
+ * constructs no custom elements. A detached `<div>` belongs to the page's
+ * document, which does all of these while parsing.
+ */
+export function parseHtmlInert(html: string): DocumentFragment {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return template.content;
+}
+
+/**
  * Convert an HTML string (from micromark) to Preact VNodes,
  * replacing placeholder elements with pre-rendered components.
  * With `unwrapParagraphs` (nobr or inline content), top-level <p> wrappers are
@@ -212,14 +255,15 @@ function htmlToPreact(
   ph: Placeholders,
   unwrapParagraphs = false,
 ): preact.ComponentChildren {
-  const temp = document.createElement('div');
-  temp.innerHTML = html.trim();
+  const content = parseHtmlInert(html.trim());
   if (unwrapParagraphs) {
-    for (const p of Array.from(temp.querySelectorAll(':scope > p'))) {
-      p.replaceWith(...Array.from(p.childNodes));
+    for (const child of Array.from(content.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE && child.nodeName === 'P') {
+        (child as Element).replaceWith(...Array.from(child.childNodes));
+      }
     }
   }
-  const children = Array.from(temp.childNodes).map((child, i) =>
+  const children = Array.from(content.childNodes).map((child, i) =>
     convertDomNode(child, i, ph),
   );
   return <>{children}</>;
@@ -252,17 +296,17 @@ function convertDomNode(
       return ph.components[idx];
     }
 
-    // Convert attributes
-    const props: Record<string, string> = {};
-    let withPlaceholders: Record<string, ASTNode[]> | undefined;
-    for (const attr of Array.from(el.attributes)) {
-      const parts = splitPlaceholderText(attr.value, ph);
-      if (parts.every((part) => typeof part === 'string')) {
-        props[attr.name] = attr.value;
-        continue;
-      }
-      withPlaceholders ??= {};
-      withPlaceholders[attr.name] = parts.map(
+    // Convert attributes, as author HTML's (see splitAttributes): markdown
+    // output holds raw HTML the passage tokenizer didn't take as a tag
+    const svg = el.namespaceURI === SVG_NAMESPACE;
+    const attributes: Attribute[] = [];
+    let placeholders: Record<string, ASTNode[]> | undefined;
+    for (const { name, value } of Array.from(el.attributes)) {
+      attributes.push([name, value, value]);
+      const parts = splitPlaceholderText(value, ph);
+      if (parts.every((part) => typeof part === 'string')) continue;
+      placeholders ??= {};
+      placeholders[name] = parts.map(
         (part): ASTNode =>
           typeof part === 'string'
             ? { type: 'text', value: part }
@@ -275,13 +319,26 @@ function convertDomNode(
       convertDomNode(child, i, ph),
     );
 
-    if (withPlaceholders) {
+    if (placeholders) {
       return (
         <PlaceholderAttributes
           key={key}
           tag={tag}
+          attributes={attributes}
+          placeholders={placeholders}
+          svg={svg}
+          children={children}
+        />
+      );
+    }
+    const { props, direct } = splitAttributes(attributes, svg);
+    if (direct.length > 0) {
+      return (
+        <DirectAttributes
+          key={key}
+          tag={tag}
           props={props}
-          attributes={withPlaceholders}
+          direct={direct}
           children={children}
         />
       );
@@ -395,9 +452,8 @@ function setRawAttribute(el: Element, name: string, value: string) {
     el.setAttribute(name, value);
     return;
   }
-  const template = document.createElement('template');
-  template.innerHTML = `<i ${name}=""></i>`;
-  const parsed = (template.content.firstChild as Element).attributes[0];
+  const parsed = (parseHtmlInert(`<i ${name}=""></i>`).firstChild as Element)
+    .attributes[0];
   if (!parsed) return;
   const attr = parsed.cloneNode() as Attr;
   attr.value = value;
@@ -422,7 +478,7 @@ function setRawAttribute(el: Element, name: string, value: string) {
  * `className` into `class`) are set directly instead.
  */
 function splitAttributes(
-  attributes: [name: string, value: string, written: string][],
+  attributes: Attribute[],
   svg: boolean,
 ): { props: Record<string, unknown>; direct: [string, string][] } {
   const props: Record<string, unknown> = {};
@@ -447,6 +503,27 @@ function splitAttributes(
   return { props, direct };
 }
 
+/**
+ * Set the attributes `splitAttributes` leaves to set directly on the element
+ * given the returned ref (none if there are none), and remove them again
+ * when they change.
+ */
+function useDirectAttributes(
+  direct: [string, string][],
+): RefObject<Element> | undefined {
+  const elementRef = useRef<Element>(null);
+  const directKey = JSON.stringify(direct);
+  useLayoutEffect(() => {
+    const el = elementRef.current;
+    if (!el || direct.length === 0) return;
+    for (const [name, value] of direct) setRawAttribute(el, name, value);
+    return () => {
+      for (const [name] of direct) el.removeAttribute(name);
+    };
+  }, [directKey]);
+  return direct.length > 0 ? elementRef : undefined;
+}
+
 const decodedAttributeText = new Map<string, string>();
 
 /**
@@ -457,10 +534,10 @@ function decodeAttributeText(text: string): string {
   if (!text.includes('&')) return text;
   let decoded = decodedAttributeText.get(text);
   if (decoded === undefined) {
-    const template = document.createElement('template');
-    template.innerHTML = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
+    const html = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
     decoded =
-      (template.content.firstChild as Element).getAttribute('title') ?? text;
+      (parseHtmlInert(html).firstChild as Element).getAttribute('title') ??
+      text;
     decodedAttributeText.set(text, decoded);
   }
   return decoded;
@@ -532,24 +609,11 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
   const errors: AttributeError[] = [];
   const resolved = Object.entries(node.attributes).map(
-    ([k, v]): [string, string, string] => [
-      k,
-      resolveAttributeValue(k, v, scope, errors),
-      v,
-    ],
+    ([k, v]): Attribute => [k, resolveAttributeValue(k, v, scope, errors), v],
   );
   const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
-  const elementRef = useRef<Element>(null);
-  const directKey = JSON.stringify(direct);
-  useLayoutEffect(() => {
-    const el = elementRef.current;
-    if (!el || direct.length === 0) return;
-    for (const [name, value] of direct) setRawAttribute(el, name, value);
-    return () => {
-      for (const [name] of direct) el.removeAttribute(name);
-    };
-  }, [directKey]);
-  if (direct.length > 0) props.ref = elementRef;
+  const ref = useDirectAttributes(direct);
+  if (ref) props.ref = ref;
   const isInline = INLINE_ELEMENTS.has(tag);
   // Inside SVG and preformatted elements, skip markdown processing entirely
   // (see RawTextContext).
