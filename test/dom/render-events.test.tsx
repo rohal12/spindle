@@ -6,8 +6,7 @@ import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { resetEmitter } from '../../src/event-emitter';
 import { resetTriggers } from '../../src/triggers';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { renderNodes } from '../../src/markup/render';
 import { TriggerDialogHost } from '../../src/components/TriggerDialogHost';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
@@ -37,7 +36,7 @@ function makeStoryData(passages: PassageData[]): StoryData {
 }
 
 function renderApp(container: HTMLElement): void {
-  const ast = buildAST(tokenize('{passage}'));
+  const ast = parseMarkup('{passage}');
   act(() => {
     render(
       <>

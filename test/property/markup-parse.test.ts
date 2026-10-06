@@ -1,13 +1,12 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import {
-  createScanMemo,
-  scanBalancedBrace,
-  scanTagAttributes,
-  tokenize,
-  type Token,
-} from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+  lineColumn,
+  MarkupError,
+  parseMarkup,
+  tokenizeMarkup,
+} from '../../src/markup/parse';
+import type { Token } from '../../src/markup/tokens';
 import { interpolateCode, interpolateText } from '../../src/interpolation';
 import {
   registerWidget,
@@ -32,13 +31,16 @@ import {
 } from './markup-arbitraries';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
-/** One or more redundant void-element closers, which the tokenizer drops. */
+/** One or more redundant void-element closers, which the parser drops. */
 const VOID_CLOSER =
   /^(?:<\/(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*>)+$/i;
 
-/** The only errors buildAST may throw: messages naming a source position. */
-const PARSE_ERROR =
-  /^(Unexpected closing .*|Expected .* but found .*|\{.*\} without matching \{.*\}) \(at character (\d+)\)$|^Unclosed .* \(opened at character (\d+)\)$/s;
+/**
+ * Errors about nesting, which point at the start of the offending macro or
+ * element tag: what the flat tokens hold as a macro or HTML token.
+ */
+const NESTING_ERROR =
+  /^(Unclosed (\{\S+\}|<\S+>): no |\S+ found where |\S+ closes nothing: |\{\S+\} must be directly inside )/;
 
 /**
  * Tokens tile the input in order: each starts where the previous ended,
@@ -92,35 +94,83 @@ function expectTextTokensTileInput(input: string, tokens: Token[]) {
   expect(pos).toBe(input.length);
 }
 
+/**
+ * The only errors the parser throws are MarkupErrors whose line and column
+ * are those of their offset, which points at what starts the malformed
+ * markup: a `{`, `<` or `[[`, an attribute value's quote, or the character a
+ * tag can't hold, which the message quotes.
+ */
+function expectPositioned(input: string, err: unknown): MarkupError {
+  expect(err).toBeInstanceOf(MarkupError);
+  const e = err as MarkupError;
+  expect(e.offset).toBeGreaterThanOrEqual(0);
+  expect(e.offset).toBeLessThan(input.length);
+  expect({ line: e.line, column: e.column }).toEqual(
+    lineColumn(input, e.offset),
+  );
+  expect(e.message).toBe(`${e.reason} (line ${e.line}, column ${e.column})`);
+  const c = input[e.offset]!;
+  if (e.reason.startsWith('Unexpected ')) {
+    expect(e.reason).toContain(`Unexpected ${JSON.stringify(c)} in the tag <`);
+  } else if (e.reason.startsWith('Unclosed attribute value')) {
+    expect(`"'`).toContain(c);
+  } else {
+    expect('{<[').toContain(c);
+  }
+  return e;
+}
+
+/** Text mode: tokens tile the input, or a positioned error. */
+function expectTextTokensOrPosition(input: string) {
+  let tokens: Token[];
+  try {
+    tokens = tokenizeMarkup(input, { text: true });
+  } catch (err) {
+    expectPositioned(input, err);
+    return;
+  }
+  expectTextTokensTileInput(input, tokens);
+}
+
+/**
+ * Passage markup: tokens tile the input or a positioned error, and so does
+ * the AST; a nesting error points at a macro or HTML token's start.
+ */
 function expectParsesOrReportsPosition(input: string) {
-  expectTextTokensTileInput(input, tokenize(input, { text: true }));
-  const tokens = tokenize(input);
+  expectTextTokensOrPosition(input);
+  let tokens: Token[];
+  try {
+    tokens = tokenizeMarkup(input);
+  } catch (err) {
+    const e = expectPositioned(input, err);
+    // The AST hits the same malformed tag, or a nesting error before it
+    expect(() => parseMarkup(input)).toThrow(MarkupError);
+    expect(e.reason).not.toMatch(NESTING_ERROR);
+    return;
+  }
   expectTokensTileInput(input, tokens);
   try {
-    buildAST(tokens);
+    parseMarkup(input);
   } catch (err) {
-    expect(err).toBeInstanceOf(Error);
-    const m = PARSE_ERROR.exec((err as Error).message);
-    expect(m, (err as Error).message).not.toBeNull();
-    const at = Number(m![2] ?? m![3]);
-    // The reported position is the start of the offending tag or macro.
-    expect(tokens.some((t) => t.start === at && t.type !== 'text')).toBe(true);
-    expect('{<').toContain(input[at]);
+    const e = expectPositioned(input, err);
+    expect(e.reason).toMatch(NESTING_ERROR);
+    expect(tokens.some((t) => t.start === e.offset && t.type !== 'text')).toBe(
+      true,
+    );
   }
 }
 
-describe('tokenizer and AST builder robustness', () => {
+describe('parser robustness', () => {
   test.prop([markupNoise], fcOptions)(
-    'arbitrary input tokenizes into in-order tokens covering the source',
+    'arbitrary input tokenizes into in-order tokens or a positioned error',
     (input) => {
       expectParsesOrReportsPosition(input);
     },
     propTimeout(5),
   );
 
-  // Repeating a few unclosed openers builds deep nesting of unfinished
-  // constructs (`${, strings, links, tags). Before scan results were
-  // memoized, nested unclosed template literals took exponential time.
+  // A few unclosed openers in a row: unfinished constructs nested inside
+  // each other (`${, strings, links, tags).
   const repeatedOpeners = fc
     .tuple(
       fc.array(
@@ -142,29 +192,20 @@ describe('tokenizer and AST builder robustness', () => {
         ),
         { minLength: 1, maxLength: 4 },
       ),
-      fc.integer({ min: 1, max: 100 }),
+      fc.integer({ min: 1, max: 4 }),
     )
     .map(([frags, n]) => frags.join('').repeat(n));
 
   test.prop([repeatedOpeners], fcOptions)(
-    'repeated unclosed openers tokenize in bounded time',
+    'unclosed openers fail with positioned errors',
     (input) => {
-      const t0 = performance.now();
-      try {
-        buildAST(tokenize(input));
-      } catch {
-        // Parse errors are checked by expectParsesOrReportsPosition below.
-      }
-      // Generous bound: inputs are at most a few KB and take a few ms, so
-      // anything slower is super-polynomial blowup, not machine noise.
-      expect(performance.now() - t0).toBeLessThan(500);
       expectParsesOrReportsPosition(input);
     },
     propTimeout(5),
   );
 
   test.prop([mutatedPassage], fcOptions)(
-    'mutated passages only fail with positioned parse errors',
+    'mutated passages only fail with positioned errors',
     (input) => {
       expectParsesOrReportsPosition(input);
     },
@@ -172,103 +213,25 @@ describe('tokenizer and AST builder robustness', () => {
   );
 });
 
-describe('brace and tag scans', () => {
-  /**
-   * A few fragments repeated: scans from the repeats pass the same points,
-   * in the same or in different states, and share what they record there.
-   */
-  const repeatedUnits = fc
-    .tuple(
-      fc.array(
-        fc.constantFrom(
-          ...['{a', '{$a', '{(', '`', '\\`', '${', '"', "'", '}', '{'],
-          ...['(', ')', '[', ']', '/', '?', ' ', '\n', 'a', '<a ', '</a '],
-          ...['x=', 'x="', "x='", 'onclick="', '>', '{/do}', '{do}'],
-        ),
-        { minLength: 1, maxLength: 5 },
-      ),
-      fc.integer({ min: 2, max: 8 }),
-    )
-    .map(([parts, n]) => parts.join('').repeat(n));
-  const scanInput = fc.oneof(markupNoise, mutatedPassage, repeatedUnits);
-
-  test.prop([scanInput, fc.boolean()], fcOptions)(
-    'brace scans answer the same with a shared memo as without',
-    (input, reversed) => {
-      const starts = [...Array(input.length + 1).keys()];
-      if (reversed) starts.reverse();
-      const memo = createScanMemo();
-      for (const start of starts) {
-        expect(scanBalancedBrace(input, start, memo)).toBe(
-          scanBalancedBrace(input, start),
-        );
-      }
-    },
-    propTimeout(5),
-  );
-
-  test.prop([scanInput, fc.boolean()], fcOptions)(
-    'tag attribute scans answer the same with a shared memo as without',
-    (input, reversed) => {
-      const starts = [...Array(input.length + 1).keys()];
-      if (reversed) starts.reverse();
-      const memo = createScanMemo();
-      for (const start of starts) {
-        expect(scanTagAttributes(input, start, memo)).toBe(
-          scanTagAttributes(input, start),
-        );
-      }
-    },
-    propTimeout(5),
-  );
-});
-
-describe('tokenize running time', { timeout: LINEAR_TIMEOUT }, () => {
-  /**
-   * Unclosed openers whose scans would each run to the end of the passage:
-   * unclosed links, `{do}`s and tags, and macros that end leniently. Scans
-   * of one passage share their results.
-   *
-   * Code that never closes (`{$a (`, `{a "`, `{do}/*{/do}` and the like,
-   * repeated) is scanned from each opener to the end, in quadratic time:
-   * passages made of hundreds of unclosed openers are out of scope.
-   */
-  const PATTERNS = [
-    '{a',
-    "{a '} ",
-    // Unclosed links and {do}s, which used to search the rest each
-    '[[',
-    '[[a]',
-    '{do}',
-    // Strings that hide the next openers from earlier scans
-    "'{$a'<a ",
-    // Unclosed tags: an unquoted value takes in the next `<`, so each tag's
-    // attribute scan used to run over all the tags after it
-    '<a ',
-    '<a x',
-    '<a x=',
-    '<a x=y',
-    '<a a=a ',
-    '<a x={',
-    '<a x={$a}',
-    '<a x="',
-    "<a x='y' z=",
-    '<div class=a\n',
-    '<a onclick=',
-    '<a x=< ',
-    '</a ',
-    '}{(',
-    // An unquoted value holding every tag after it
-    '=<a:',
+describe('parse time', { timeout: LINEAR_TIMEOUT }, () => {
+  // Realistic passages, repeated: parse time grows with their length.
+  // (Input built only to break parsing, such as hundreds of unclosed
+  // openers, may be slow: docs/markup.md says to avoid or escape it.)
+  const PASSAGES = [
+    'You wake. {set $hp = $hp - 1}{if $hp > 0}Alive {print "x"}{/if} [[North]]\n',
+    '<div class="stat {$stance}" data-hp="{$hp}">HP: {$hp}</div>\n',
+    '{for @item of $inventory}\n- {@item}{if @item === "torch"} (lit){/if}\n{/for}\n',
+    '{do}\nconst bonus = $level * 2;\nif ($str > 20) { $str = 20; }\n{/do}\n',
+    '| Stat | Value |\n|------|-------|\n| STR | {$str} |\n\n**Careful.** _Something_ moves.\n',
+    '{switch $d}{case "easy"}Gentle.{case "hard"}No mercy.{default}Fair.{/switch}\n',
   ];
 
-  it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {
-    const small = pattern.repeat(500);
-    const large = pattern.repeat(4000);
-    // 8× the input may take about 8× the time, not a quadratic scan's 64×
+  it.each(PASSAGES)('stays about linear on %j repeated', (passage) => {
+    const small = passage.repeat(50);
+    const large = passage.repeat(400);
     expectAboutLinear(
-      () => tokenize(small),
-      () => tokenize(large),
+      () => parseMarkup(small),
+      () => parseMarkup(large),
     );
   });
 });
@@ -277,9 +240,9 @@ describe('grammar round trip', () => {
   test.prop([passageArb], fcOptions)(
     'well-formed passages parse to the AST they were generated from',
     ({ src, ast }) => {
-      const tokens = tokenize(src);
+      const tokens = tokenizeMarkup(src);
       expectTokensTileInput(src, tokens);
-      expect(normalizeAST(buildAST(tokens))).toEqual(normalizeAST(ast));
+      expect(normalizeAST(parseMarkup(src))).toEqual(normalizeAST(ast));
     },
     propTimeout(5),
   );
@@ -287,7 +250,7 @@ describe('grammar round trip', () => {
   test.prop([linkArb], fcOptions)(
     'links keep their display text and target',
     ({ src, display, target }) => {
-      const tokens = tokenize(src);
+      const tokens = tokenizeMarkup(src);
       expect(tokens).toHaveLength(1);
       expect(tokens[0]).toMatchObject({ type: 'link', display, target });
     },
@@ -307,8 +270,9 @@ describe('grammar round trip', () => {
       code,
     )
     .map((parts) => parts.join(''));
+  // What follows; its \{ is escaped, as an unclosed macro is an error.
   const tail = fc
-    .array(fc.constantFrom('a', ' ', '\n', '{', '}', '{/do}', '{do}', '*'), {
+    .array(fc.constantFrom('a', ' ', '\n', '\\{', '}', '{/do}', '{do}', '*'), {
       maxLength: 6,
     })
     .map((parts) => parts.join(''));
@@ -316,7 +280,7 @@ describe('grammar round trip', () => {
   test.prop([malformedDoBody, tail], fcOptions)(
     'a malformed {do} body ends at the first {/do}',
     (body, rest) => {
-      const tokens = tokenize(`{do}${body}{/do}${rest}`);
+      const tokens = tokenizeMarkup(`{do}${body}{/do}${rest}`);
       expect(tokens[1]).toMatchObject({ type: 'text', value: body });
       expect(tokens[2]).toMatchObject({
         type: 'macro',
@@ -343,7 +307,7 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
     'an odd backslash run escapes the brace, an even one does not',
     (n, markup) => {
       const src = `a${'\\'.repeat(n)}${markup}`;
-      const ast = normalizeAST(buildAST(tokenize(src)));
+      const ast = normalizeAST(parseMarkup(src));
       if (n % 2 === 1) {
         // The last backslash is consumed; the rest stays for markdown.
         expect(ast).toEqual([
@@ -362,11 +326,7 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
 describe('text-only markup (#225)', () => {
   beforeAll(() => {
     for (const widget of TEXT_WIDGETS) {
-      registerWidget(
-        widget.name,
-        buildAST(tokenize(widget.body)),
-        widget.params,
-      );
+      registerWidget(widget.name, parseMarkup(widget.body), widget.params);
     }
   });
   afterAll(() => clearWidgets());

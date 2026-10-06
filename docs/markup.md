@@ -1,6 +1,8 @@
 # Markup
 
-Spindle passage content is processed through a single-pass tokenizer that recognizes links, variables, macros, and HTML tags. Text content is then run through CommonMark markdown.
+Spindle parses passage content into links, variables, macros and HTML tags, and runs the text around them through CommonMark markdown.
+
+Every passage is checked when the story starts, including passages the player never sees. Malformed markup and unknown macros stop the story there, with a list of what is wrong and where. See [Markup errors](#markup-errors).
 
 ## Links
 
@@ -14,6 +16,8 @@ Navigate to another passage using double-bracket syntax:
 ```
 
 All four forms navigate to `Target` when clicked. The first form uses the passage name as the display text.
+
+A link ends at the first `]]`, so its text can't contain `[[`. A `[[` without a `]]` after it is an error.
 
 ### Links with CSS classes
 
@@ -65,6 +69,8 @@ An expression that doesn't start with a variable starts with `(` or `!`:
 
 Any other `{` followed by something that isn't a variable, a macro name or `.`/`#` selectors is literal text: `{3}`, `{ x }` and `{"a": 1}` show as written. `{print …}` displays any expression too.
 
+A `{` followed by a sigil (`$`, `_`, `@`, `%`), `(`, `!`, a letter or `/`, after any selectors, starts markup, which must end with its `}`. Without one it is an error. To show such a brace as text, [escape it](#escaped-braces): `\{`.
+
 ## Macros
 
 Macros use curly braces. Self-closing macros have no closing tag; block macros wrap content:
@@ -77,7 +83,9 @@ Macros use curly braces. Self-closing macros have no closing tag; block macros w
 {/if}
 ```
 
-Close a block macro with `{/macroName}`.
+Close a block macro with `{/macroName}`. A closing tag takes no arguments or selectors. Branches such as `{else}` and `{case}` go directly inside their own macro, not inside an HTML element or another macro within it.
+
+Spindle knows which macros take a body from the built-in macros, the custom macros defined before the story starts (see [Custom Macros](custom-macros.md#block-macros-children)) and the widgets whose body uses `{@children}`. A closing tag for any other macro is an error.
 
 ### Macros with CSS selectors
 
@@ -125,7 +133,7 @@ Backslashes before a brace pair up as in markdown, where `\\` displays one backs
 | `C:\\{$dir}`  | `C:\` followed by the value of `$dir` |
 | `C:\\\{$dir}` | `C:\{$dir}`                           |
 
-A backslash before a link or an HTML tag is shown as it is: `C:\[[Start]]` renders `C:\` followed by the link.
+A backslash before a link or an HTML tag is shown as it is: `C:\[[Start]]` renders `C:\` followed by the link. To show `<` before a letter, write `&lt;` (see [HTML Tags](#html-tags)).
 
 Backslashes escape braces the same way in [attribute values](#markup-in-attribute-values).
 
@@ -145,11 +153,9 @@ Arguments that are not valid JavaScript, such as `{goto Bob's room}`, are read a
 
 ## HTML Tags
 
-A curated set of HTML tags is supported directly in passage content:
+HTML tags work directly in passage content. A tag is `<` followed by a name (a letter, then letters, digits or `-`), its attributes and `>`. Any name makes an element, custom elements included: an unknown or misspelt one such as `<sapn>` renders as an element the browser doesn't know, not as text.
 
-`a`, `article`, `aside`, `b`, `blockquote`, `br`, `caption`, `code`, `col`, `colgroup`, `dd`, `del`, `details`, `dfn`, `div`, `dl`, `dt`, `em`, `figcaption`, `figure`, `footer`, `h1`-`h6`, `header`, `hr`, `i`, `img`, `ins`, `kbd`, `li`, `main`, `mark`, `nav`, `ol`, `p`, `pre`, `q`, `s`, `samp`, `section`, `small`, `span`, `strong`, `sub`, `summary`, `sup`, `table`, `tbody`, `td`, `tfoot`, `th`, `thead`, `tr`, `u`, `ul`, `wbr`
-
-Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`) are self-closing and need no closing tag (a redundant one such as `</input>` is ignored). All other tags require a closing tag.
+Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`) are self-closing and need no closing tag (a redundant one such as `</input>` is ignored). A tag ending in `/>` closes itself too. All other tags require a closing tag, and elements must nest: `<b><i>x</b></i>` is an error.
 
 ```
 <div class="box">
@@ -159,7 +165,9 @@ Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `
 </div>
 ```
 
-Tags not in the supported set are treated as plain text.
+Attribute names are as in HTML: any characters except whitespace, quotes, `>`, `/` and `=`, and in Spindle also `<`, `{` and `}`. So `a.b`, `x:y` and `@click` are names. A value is quoted with `"` or `'`, or unquoted up to whitespace or `>`. A quoted value must be closed.
+
+`<` directly before a letter always starts a tag, which must end with its `>`. Write `&lt;` for a `<` that starts no tag: `x&lt;y` shows `x<y`. Prose such as `if x<y and y>z` is read as a tag `<y and y>`, and `a<b` (no `>`) is an error. A `<` before anything else, as in `3 < 4` or `<3`, is text.
 
 ### Markup in attribute values
 
@@ -180,7 +188,7 @@ These macros have a text form and work in attribute values: `{if}`/`{elseif}`/`{
 
 The value is plain text: no markdown, links or HTML tags, and line breaks are kept. Character references (`&amp;`, `&#123;`) in the attribute's own text are decoded, as in HTML; in a variable's value they are not, and a decoded `{` never starts markup.
 
-Macros that do something rather than produce text (`{set}`, `{do}`, `{goto}`, `{button}`, `{link}`, input macros, ...) can't be used in an attribute value. They don't run; an error is shown in front of the element instead, as are unknown macros, failing expressions and unclosed macros (an unclosed macro leaves the value as written). A boolean attribute whose markup yields nothing, such as `disabled="{if $locked}disabled{/if}"`, is left out.
+Macros that do something rather than produce text (`{set}`, `{do}`, `{goto}`, `{button}`, `{link}`, input macros, ...) can't be used in an attribute value. They don't run; an error is shown in front of the element instead, as it is for expressions that fail. Unknown macros and malformed markup in an attribute value (an unclosed macro or expression, say) stop the story when it starts, like those in passage text. A boolean attribute whose markup yields nothing, such as `disabled="{if $locked}disabled{/if}"`, is left out.
 
 For literal braces in an attribute value, escape them as in passage text: `title="\{$x}"` shows `{$x}`. A backslash run before a brace pairs up (`\\` shows one backslash); other backslashes are kept as written. Braces that start no markup, such as JSON in `data-config='{"a": 1}'`, need no escaping.
 
@@ -281,3 +289,40 @@ Line two
 ```
 
 Without trailing spaces, adjacent lines are joined into a single paragraph.
+
+## Markup errors
+
+Spindle checks the markup of every passage when the story starts, before it shows anything: `StoryInit` before it runs, and every other passage after `StoryInit` has run, so the macros it defines are known. If any passage has an error, the story doesn't start. The page lists every error instead, with its passage, line and column:
+
+```
+Passage "Shop", line 2, column 1 (story.twee:14): Unknown macro {sett}. Did you mean {set}?
+Passage "Hall", line 5, column 37: {/if} found where {/for} should close the {for} opened at line 5, column 10
+```
+
+Lines and columns count from 1 within the passage's text. The `(file:line)` part appears when the story was compiled with source information (for example by twee-ts with `sourceInfo`), and gives the line in the source file. Each passage reports its first malformed markup; fix it and the next one, if any, shows.
+
+These are errors:
+
+| Mistake                                                      | Example                            |
+| ------------------------------------------------------------ | ---------------------------------- |
+| A block macro without its closing tag                        | `{if $x}yes`                       |
+| A closing tag for another macro or element                   | `{if $x}{for @i of $l}{/if}{/for}` |
+| A closing tag with nothing to close                          | `text{/if}`                        |
+| A branch outside its macro                                   | `{for @i of $l}{else}{/for}`       |
+| A closing tag with arguments or selectors                    | `{/if $x}`, `{.c /if}`             |
+| An unknown macro                                             | `{sett $x = 1}`                    |
+| A macro, variable or expression without its `}`              | `{print $name`, `{$hp`, `{(1 + 2`  |
+| A link without its `]]`                                      | `[[North`                          |
+| An HTML element without its closing tag, or misnested        | `<div>text`, `<b><i>x</b></i>`     |
+| A tag without its `>`, or with something no attribute can be | `<span class="x" {$hp}</span>`     |
+| An attribute value without its closing quote                 | `<img src="a.png alt="map">`       |
+| Any of these inside an attribute value or a quoted label     | `<b title="{if $x}hi">`            |
+| Code that is not valid JavaScript                            | `{print $a +}`, `{do}if (x {{/do}` |
+
+Errors in code name what is wrong and the open bracket that is likely missing its closer: see [Code in passages](variables.md#code-in-passages).
+
+Text that only looks like markup is not an error: `{3}`, `{ x }`, `{"a": 1}`, `3 < 4` and a lone `]]` or `}` show as written. To show the rest as text, escape it: `\{` for a brace (see [Escaped Braces](#escaped-braces)) and `&lt;` for a `<` before a letter.
+
+Input built only to break parsing, such as hundreds of unclosed `{` or `[[` in a row, may make the check slow. Escape such text or leave it out.
+
+Errors that depend on the story's state, such as an expression that throws, still show where they happen while the story runs.

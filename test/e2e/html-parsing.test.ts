@@ -77,12 +77,19 @@ afterAll(async () => {
 });
 
 describe('HTML in markdown output is parsed inertly', () => {
+  /**
+   * Passage markup parses every tag itself, so raw HTML reaches micromark's
+   * output from text nodes a custom macro renders: `{raw …}` renders its
+   * arguments as such a text node.
+   */
+  const RAW_MACRO = `
+    Story.defineMacro({ name: 'raw', render: (props, ctx) =>
+      ctx.renderNodes([{ type: 'text', value: props.rawArgs }]) });`;
+
   it('constructs a custom element only when it is rendered', async () => {
-    // `a.b` is an attribute name CommonMark accepts and the passage tokenizer
-    // does not, so the tag reaches the page through micromark's output.
     await boot({
-      passages: { Start: encode('**Probe** <x-probe a.b>') },
-      script: `
+      passages: { Start: encode('{raw **Probe** <x-probe a.b>}') },
+      script: `${RAW_MACRO}
         window.constructed = 0;
         customElements.define('x-probe', class extends HTMLElement {
           constructor() { super(); window.constructed++; }
@@ -100,9 +107,11 @@ describe('HTML in markdown output is parsed inertly', () => {
   it('runs an inline handler only on the rendered element', async () => {
     await boot({
       passages: {
-        Start: encode('**Probe** <img src="data:," a.b onerror="seen(this)">'),
+        Start: encode(
+          '{raw **Probe** <img src="data:," a.b onerror="seen(this)">}',
+        ),
       },
-      script: `
+      script: `${RAW_MACRO}
         window.runs = { live: 0, detached: 0 };
         window.seen = (el) => el.isConnected ? runs.live++ : runs.detached++;`,
     });

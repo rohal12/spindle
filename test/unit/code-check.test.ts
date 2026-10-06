@@ -1,28 +1,35 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { checkPassageCode } from '../../src/code-check';
+/**
+ * The story-start check of the code in passages (code-check.ts), run as
+ * part of the markup check (markup/validate.ts).
+ */
+import { describe, it, expect } from 'vitest';
+import { formatDiagnostic, validateMarkup } from '../../src/markup/validate';
+import { validateStoryMarkup } from '../../src/tooling';
 import {
-  parseStoryVariables,
-  validatePassages,
-} from '../../src/story-variables';
-import type { Passage } from '../../src/parser';
-import type { MacroMetadata } from '../../src/registry';
-import { getMacroRegistry } from '../../src/registry';
+  getMacro,
+  getMacroRegistry,
+  isSubMacro,
+  type MacroMetadata,
+} from '../../src/registry';
 
-/** The syntax errors `checkPassageCode` reports for a passage. */
-function errors(content: string, macros?: readonly MacroMetadata[]): string[] {
-  const out: string[] = [];
-  checkPassageCode(content, (m) => out.push(m), macros ? { macros } : {});
-  return out;
+/** The errors the story-start check reports for a passage. */
+function errors(content: string, extra: MacroMetadata[] = []): string[] {
+  const macros = [...getMacroRegistry(), ...extra];
+  const parameters = new Map(
+    macros.map((m) => [m.name.toLowerCase(), m.parameters]),
+  );
+  const known = new Set(macros.map((m) => m.name.toLowerCase()));
+  return validateMarkup([{ name: 'Shop', content }], {
+    isKnownMacro: (name) =>
+      !!getMacro(name) || isSubMacro(name) || known.has(name),
+    macroNames: known,
+    parametersOf: (name) => parameters.get(name),
+  }).map(formatDiagnostic);
 }
 
-beforeAll(() => {
-  // The built-in macros (registered by the test setup) declare parameters
-  expect(getMacroRegistry().some((m) => m.name === 'computed')).toBe(true);
-});
-
-describe('checkPassageCode', () => {
-  // What authors see at story start for typical mistakes: the line and
-  // column in the passage, what is wrong, and the block it is in.
+describe('the story-start code check', () => {
+  // What authors see for typical mistakes: the line and column in the
+  // passage, what is wrong, and the block it is in.
   it.each([
     [
       'You have {if $gold > }plenty{/if} of gold.',
@@ -74,7 +81,7 @@ describe('checkPassageCode', () => {
       'line 1, column 26: Unterminated template literal (missing "}" for the "${" at line 1, column 18) in {set $name = `Hi ${$name`}',
     ],
   ])('%j', (content, message) => {
-    expect(errors(content)).toEqual([message]);
+    expect(errors(content)).toEqual([`Passage "Shop", ${message}`]);
   });
 
   it('accepts well-formed code', () => {
@@ -89,42 +96,50 @@ describe('checkPassageCode', () => {
 
   it('checks the code arguments of built-in macros', () => {
     expect(errors('{computed _total = $a + }')).toEqual([
-      'line 1, column 24: Unexpected end of code in {computed _total = $a +}',
+      'Passage "Shop", line 1, column 24: Unexpected end of code in {computed _total = $a +}',
     ]);
     expect(errors('{for @item, @i of $list.filter(}x{/for}')).toEqual([
-      'line 1, column 32: Unexpected end of code (missing ")" for the "(" at line 1, column 31) in {for @item, @i of $list.filter(}',
+      'Passage "Shop", line 1, column 32: Unexpected end of code (missing ")" for the "(" at line 1, column 31) in {for @item, @i of $list.filter(}',
     ]);
     expect(errors('{meter ($hp $max "HP"}')).toEqual([
-      'line 1, column 13: Unexpected "$max" in {meter ($hp $max "HP"}',
+      'Passage "Shop", line 1, column 13: Unexpected "$max" in {meter ($hp $max "HP"}',
     ]);
   });
 
   it("checks {watch}'s condition and run action, code in quoted strings", () => {
     expect(errors('{watch "$gold >" run "$x = "}')).toEqual([
-      'line 1, column 16: Unexpected end of code in {watch "$gold >" run "$x = "}',
-      'line 1, column 28: Unexpected end of code in {watch "$gold >" run "$x = "}',
+      'Passage "Shop", line 1, column 16: Unexpected end of code in {watch "$gold >" run "$x = "}',
+      'Passage "Shop", line 1, column 28: Unexpected end of code in {watch "$gold >" run "$x = "}',
     ]);
     expect(errors('{watch "$gold > 5" run "$x = 1"}')).toEqual([]);
   });
 
-  it('checks markup in quoted labels and HTML attribute values', () => {
+  it('checks markup and code in quoted labels and HTML attribute values', () => {
     expect(
       errors('{button "Count: {$count + }"}{set $c = 1}{/button}'),
-    ).toEqual(['line 1, column 27: Unexpected end of code in {$count + }']);
+    ).toEqual([
+      'Passage "Shop", line 1, column 27: In the label of {button}: Unexpected end of code in {$count + }',
+    ]);
+    expect(errors('{button "Count: {$count"}x{/button}')).toEqual([
+      'Passage "Shop", line 1, column 17: In the label of {button}: Unclosed {$…: no } ends it',
+    ]);
+    expect(errors('{link "Go {sett $x}" "Room"}x{/link}')).toEqual([
+      'Passage "Shop", line 1, column 11: In the text of {link}: Unknown macro {sett}. Did you mean {set}?',
+    ]);
     expect(
       errors('<b class="{if $lit >}on{/if}" onclick="{$x +}">b</b>'),
     ).toEqual([
-      'line 1, column 21: Unexpected end of code in {if $lit >}',
-      'line 1, column 45: Unexpected end of code in {$x +} in onclick',
+      'Passage "Shop", line 1, column 21: In the class attribute of <b>: Unexpected end of code in {if $lit >}',
+      'Passage "Shop", line 1, column 45: Unexpected end of code in {$x +} in the onclick attribute of <b>',
     ]);
   });
 
   it('leaves passage names, text and the names of widget parameters alone', () => {
     expect(
       errors(
-        "{goto Bob's room}{include Al's}{link Don't go}" +
+        "{goto Bob's room}{include Al's}{link Don't go}x{/link}" +
           '{widget "Card" @title @body}x{/widget}' +
-          '{link "Go" "Room"}{textbox "$name" "Your name"}',
+          '{link "Go" "Room"}x{/link}{textbox "$name" "Your name"}',
       ),
     ).toEqual([]);
   });
@@ -151,28 +166,30 @@ describe('checkPassageCode', () => {
       { name: 'free', block: false, subMacros: [], source: 'user' },
     ];
     expect(errors('{damage $hp $str *}', macros)).toEqual([
-      'line 1, column 19: Unexpected end of code in {damage $hp $str *}',
+      'Passage "Shop", line 1, column 19: Unexpected end of code in {damage $hp $str *}',
     ]);
     expect(errors('{later "Soon" $x = ; $y = 2}', macros)).toEqual([
-      'line 1, column 20: Unexpected ";" in {later "Soon" $x = ; $y = 2}',
+      'Passage "Shop", line 1, column 20: Unexpected ";" in {later "Soon" $x = ; $y = 2}',
     ]);
     expect(errors("{free Don't (}", macros)).toEqual([]);
   });
-});
 
-describe('validatePassages', () => {
-  const schema = parseStoryVariables('$gold = 5\n$name = "Ann"');
-  const passages = (content: string) =>
-    new Map<string, Passage>([
-      ['Shop', { pid: 1, name: 'Shop', tags: [], metadata: {}, content }],
-    ]);
-
-  it('reports syntax errors with the passage, beside undeclared variables', () => {
-    expect(
-      validatePassages(passages('{print $gold +}\n{$nope}'), schema),
-    ).toEqual([
-      'Passage "Shop": Undeclared variable: $nope',
-      'Passage "Shop" line 1, column 15: Unexpected end of code in {print $gold +}',
+  it('runs in the tooling check, with the macros it is given', () => {
+    const diagnostics = validateStoryMarkup(
+      [{ name: 'Shop', content: '{print $gold +}{loot $x +}' }],
+      [
+        ...getMacroRegistry(),
+        {
+          name: 'loot',
+          block: false,
+          subMacros: [],
+          parameters: [{ name: 'amount', type: 'expression' }],
+        },
+      ],
+    );
+    expect(diagnostics.map(formatDiagnostic)).toEqual([
+      'Passage "Shop", line 1, column 15: Unexpected end of code in {print $gold +}',
+      'Passage "Shop", line 1, column 26: Unexpected end of code in {loot $x +}',
     ]);
   });
 });

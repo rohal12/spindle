@@ -440,14 +440,14 @@ describe('parseCode', () => {
     expect(e.pos).toBe(pos);
   });
 
-  it('describes an error by its line and column in a passage', () => {
+  it('describes an error with the place of its open bracket in a passage', () => {
     const passage = 'Text\n{do}\nif ($gold < 10 {\n}\n{/do}';
     const code = 'if ($gold < 10 {\n}';
-    expect(
-      error(code, 'statements').describeIn(passage, passage.indexOf('if')),
-    ).toBe(
-      'line 3, column 16: Unexpected "{" (missing ")" for the "(" at line 3, column 4)',
+    const e = error(code, 'statements');
+    expect(e.reasonIn(passage, passage.indexOf('if'))).toBe(
+      'Unexpected "{" (missing ")" for the "(" at line 3, column 4)',
     );
+    expect(e.pos).toBe(15);
   });
 
   it('rejects declaring a sigil variable', () => {

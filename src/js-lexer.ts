@@ -13,10 +13,11 @@
  * - `parseCode`: the references and string text of well-formed code, or a
  *   `CodeSyntaxError` that says what is wrong and where. The expression
  *   engine (`expression.ts`) rewrites the references it finds, and the
- *   story-start check (`story-variables.ts`) reports the errors.
- * - `findCodeEnd`: where the code in a `{…}` ends, for the passage
- *   tokenizer. -1 when acorn can't tokenize it: the tokenizer then scans it
- *   leniently, as prose-like macro arguments (`{link Don't go}`) need.
+ *   story-start check (`markup/validate.ts`) reports the errors.
+ * - `findCodeEnd`: where the code in a `{…}` ends, for the markup grammar
+ *   (`markup/code-end.ts`). -1 when acorn can't read it: the grammar then
+ *   scans it leniently, as prose-like macro arguments (`{link Don't go}`)
+ *   need.
  * - `lexJs`: a lenient token walk for the macro argument splitters
  *   (`components/macros/arg-utils.ts`), which also read text that is no
  *   JavaScript.
@@ -297,18 +298,17 @@ export class CodeSyntaxError extends SyntaxError {
   }
 
   /**
-   * The error as found in `text` (a passage) where the code starts at
-   * `offset`: `line 2, column 16: Unexpected "{" (missing ")" for the "("
-   * at line 2, column 4)`.
+   * What is wrong, for the code found at `offset` in `text` (a passage):
+   * `Unexpected "{" (missing ")" for the "(" at line 2, column 4)`. The
+   * error itself is at `offset + pos` there.
    */
-  describeIn(text: string, offset: number): string {
-    const at = (pos: number) => {
-      const { line, column } = getLineInfo(text, offset + pos);
-      return `line ${line}, column ${column + 1}`;
-    };
+  reasonIn(text: string, offset: number): string {
     return (
-      `${at(this.pos)}: ${this.reason}` +
-      bracketHint(this.bracket, (pos) => `at ${at(pos)}`)
+      this.reason +
+      bracketHint(this.bracket, (pos) => {
+        const { line, column } = getLineInfo(text, offset + pos);
+        return `at line ${line}, column ${column + 1}`;
+      })
     );
   }
 }
@@ -635,18 +635,6 @@ export interface FindCodeEndOptions {
   goal?: JsGoal;
   /** End the code at a `{` in code, at any depth, for which this holds. */
   stop?: (index: number) => boolean;
-  /** @deprecated Ignored: scans share no results. */
-  stopKey?: string;
-  /** @deprecated Ignored: scans share no results. */
-  cache?: JsScanCache;
-}
-
-/** @deprecated Scans share no results; kept for callers' signatures. */
-export type JsScanCache = Record<string, never>;
-
-/** @deprecated Scans share no results; kept for callers' signatures. */
-export function createJsScanCache(): JsScanCache {
-  return {};
 }
 
 /** The rest of a word, after a number (`2s`). */

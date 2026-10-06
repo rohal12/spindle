@@ -1,7 +1,6 @@
 import { useMemo } from 'preact/hooks';
 import { useStoryFields } from '../hooks/use-story-fields';
-import { tokenize } from '../markup/tokenizer';
-import { buildAST } from '../markup/ast';
+import { parseMarkup } from '../markup/parse';
 import { renderInlineNodes, NobrContext } from '../markup/render';
 import { errorMessage } from '../utils/error-message';
 
@@ -18,8 +17,7 @@ export function StoryInterface() {
 
   const rendered = useMemo(() => {
     try {
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       return <>{renderInlineNodes(ast)}</>;
     } catch (err) {
       return (

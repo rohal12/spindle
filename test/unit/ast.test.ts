@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { tokenize } from '../../src/markup/tokenizer';
+import { MarkupError, parseMarkup } from '../../src/markup/parse';
 import {
-  buildAST,
   registerBlockMacro,
   unregisterBlockMacro,
   type ASTNode,
@@ -10,10 +9,10 @@ import {
 } from '../../src/markup/ast';
 
 function parse(input: string): ASTNode[] {
-  return buildAST(tokenize(input));
+  return parseMarkup(input);
 }
 
-describe('buildAST', () => {
+describe('parseMarkup', () => {
   describe('flat nodes', () => {
     it('converts text tokens to text nodes', () => {
       const ast = parse('Hello world');
@@ -589,24 +588,45 @@ describe('buildAST', () => {
   });
 
   describe('errors', () => {
+    /** Parsing `input` throws a MarkupError for `reason` at line:column. */
+    function expectError(
+      input: string,
+      reason: string,
+      line: number,
+      column: number,
+    ) {
+      let error: unknown;
+      try {
+        parse(input);
+      } catch (err) {
+        error = err;
+      }
+      expect(error).toBeInstanceOf(MarkupError);
+      expect(error).toMatchObject({ reason, line, column });
+      expect((error as Error).message).toBe(
+        `${reason} (line ${line}, column ${column})`,
+      );
+    }
+
     it('throws on unclosed block macro', () => {
-      expect(() => parse('{if $x}hello')).toThrow('Unclosed {if} macro');
+      expectError('{if $x}hello', 'Unclosed {if}: no {/if} closes it', 1, 1);
     });
 
     it('throws on mismatched close tag', () => {
-      expect(() => parse('{if $x}hello{/for}')).toThrow(
-        'Expected {/if} but found {/for}',
+      expectError(
+        '{if $x}hello{/for}',
+        '{/for} found where {/if} should close the {if} opened at line 1, column 1',
+        1,
+        13,
       );
     });
 
     it('throws on unexpected close tag', () => {
-      expect(() => parse('{/if}')).toThrow('Unexpected closing {/if}');
+      expectError('{/if}', '{/if} closes nothing: no {if} is open here', 1, 1);
     });
 
     it('throws on elseif without if', () => {
-      expect(() => parse('{elseif $x}')).toThrow(
-        '{elseif} without matching {if}',
-      );
+      expectError('{elseif $x}', '{elseif} must be directly inside {if}', 1, 1);
     });
 
     it('parses a macro named like an Object.prototype member as a macro', () => {
@@ -616,58 +636,68 @@ describe('buildAST', () => {
     });
 
     it('throws on else without if', () => {
-      expect(() => parse('{else}')).toThrow('{else} without matching {if}');
+      expectError('{else}', '{else} must be directly inside {if}', 1, 1);
     });
 
     it('throws on case without switch', () => {
-      expect(() => parse('{case 1}')).toThrow(
-        '{case} without matching {switch}',
-      );
+      expectError('{case 1}', '{case} must be directly inside {switch}', 1, 1);
     });
 
     it('throws on default without switch', () => {
-      expect(() => parse('{default}')).toThrow(
-        '{default} without matching {switch}',
+      expectError(
+        '{default}',
+        '{default} must be directly inside {switch}',
+        1,
+        1,
       );
     });
 
     it('throws on next without timed', () => {
-      expect(() => parse('{next 1s}')).toThrow(
-        '{next} without matching {timed}',
-      );
+      expectError('{next 1s}', '{next} must be directly inside {timed}', 1, 1);
     });
 
     it('throws on case inside if (wrong parent)', () => {
-      expect(() => parse('{if $x}{case 1}{/if}')).toThrow(
-        '{case} without matching {switch}',
+      expectError(
+        '{if $x}{case 1}{/if}',
+        '{case} must be directly inside {switch}, not inside {if}',
+        1,
+        8,
       );
     });
 
     it('throws on next inside switch (wrong parent)', () => {
-      expect(() => parse('{switch $x}{next 1s}{/switch}')).toThrow(
-        '{next} without matching {timed}',
+      expectError(
+        '{switch $x}{next 1s}{/switch}',
+        '{next} must be directly inside {timed}, not inside {switch}',
+        1,
+        12,
       );
     });
 
     it('throws on unclosed new block macros', () => {
-      expect(() => parse('{link "Go" "Target"}hello')).toThrow(
-        'Unclosed {link} macro',
-      );
-      expect(() => parse('{switch $x}{case 1}one')).toThrow(
-        'Unclosed {switch} macro',
-      );
-      expect(() => parse('{timed 1s}hello')).toThrow('Unclosed {timed} macro');
-      expect(() => parse('{repeat 1s}hello')).toThrow(
-        'Unclosed {repeat} macro',
-      );
-      expect(() => parse('{type 50ms}hello')).toThrow('Unclosed {type} macro');
-      expect(() => parse('{widget "foo"}hello')).toThrow(
-        'Unclosed {widget} macro',
+      for (const name of ['link', 'switch', 'timed', 'repeat', 'type']) {
+        expectError(
+          `{${name} 1}hello`,
+          `Unclosed {${name}}: no {/${name}} closes it`,
+          1,
+          1,
+        );
+      }
+      expectError(
+        '{widget "foo"}hello',
+        'Unclosed {widget}: no {/widget} closes it',
+        1,
+        1,
       );
     });
 
-    it('includes position in error for unclosed macro', () => {
-      expect(() => parse('abc{if $x}hello')).toThrow('character 3');
+    it('gives the line and column of the opening tag', () => {
+      expectError(
+        'abc\n  de{if $x}hello',
+        'Unclosed {if}: no {/if} closes it',
+        2,
+        5,
+      );
     });
   });
 
@@ -736,7 +766,7 @@ describe('buildAST', () => {
   });
 });
 
-describe('buildAST — HTML void elements (#170)', () => {
+describe('parseMarkup — HTML void elements (#170)', () => {
   const VOID = [
     'area',
     'base',
@@ -784,7 +814,7 @@ describe('buildAST — HTML void elements (#170)', () => {
   });
 });
 
-describe('buildAST — raw {do} bodies (#176)', () => {
+describe('parseMarkup — raw {do} bodies (#176)', () => {
   it('gives {do} a single text child with the source verbatim', () => {
     const ast = parse('{do}const o={foo:1}; if(a<b){f("<b>{x}</b>")}{/do}');
     expect(ast).toEqual([

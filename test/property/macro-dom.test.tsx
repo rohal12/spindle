@@ -19,8 +19,7 @@ import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { defineMacro } from '../../src/define-macro';
 import { registerWidget } from '../../src/widgets/widget-registry';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { readWholeQuoted } from '../../src/components/macros/arg-utils';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
@@ -117,7 +116,7 @@ function widgetCall(arb: fc.Arbitrary<Expr>, sep: fc.Arbitrary<string>) {
 
 describe('widget invocation', () => {
   beforeAll(() => {
-    registerWidget('PropW', buildAST(tokenize('{propcapture}')), PARAMS);
+    registerWidget('PropW', parseMarkup('{propcapture}'), PARAMS);
   });
 
   function expectParams(exprs: Expr[]) {

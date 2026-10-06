@@ -1,5 +1,6 @@
 import type { Passage } from './parser';
-import { tokenize, type Token } from './markup/tokenizer';
+import type { Token } from './markup/tokens';
+import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 import {
@@ -8,9 +9,21 @@ import {
   scanStringLiteral,
   type JsGoal,
 } from './js-lexer';
-import { checkPassageCode, parseOrError, withParseCache } from './code-check';
-import { getMacroRegistry, type MacroMetadata } from './registry';
+import { parseOrError, withParseCache } from './code-check';
 import { createNamespace, variableNameError } from './utils/namespace';
+
+/**
+ * The tokens of markup, or none if it is malformed: validateMarkup reports
+ * that, with its position.
+ */
+function tokensOf(text: string, textMode: boolean): Token[] {
+  try {
+    return tokenizeMarkup(text, { text: textMode });
+  } catch (err) {
+    if (err instanceof MarkupError) return [];
+    throw err;
+  }
+}
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -224,7 +237,7 @@ function scanInterpolations(
   storeVarMacros: ReadonlySet<string> = NO_STORE_VAR_MACROS,
 ): void {
   if (!text.includes('{')) return;
-  collectTokenRefs(text, tokenize(text, { text: true }), storeVarMacros, onRef);
+  collectTokenRefs(text, tokensOf(text, true), storeVarMacros, onRef);
 }
 
 /**
@@ -296,6 +309,22 @@ function scanCodeLeniently(
   for (const t of templates) if (t.text) scanInterpolations(t.text, onRef);
 }
 
+/**
+ * Report the `$var` references a passage evaluates at runtime: `{$var}`
+ * displays, `{$expr}` expressions, macro arguments and `{do}` bodies (as
+ * code), quoted variable names bound by input macros, and `{$…}`
+ * interpolations in HTML attributes. Prose is literal text and not scanned.
+ */
+function collectPassageRefs(
+  content: string,
+  storeVarMacros: ReadonlySet<string>,
+  onRef: RefCallback,
+): void {
+  withParseCache(() =>
+    collectTokenRefs(content, tokensOf(content, false), storeVarMacros, onRef),
+  );
+}
+
 /** Report the `$var` references in the tokens of `content`. */
 function collectTokenRefs(
   content: string,
@@ -325,7 +354,7 @@ function collectTokenRefs(
 
       if (token.name === 'do') {
         // A {do} body is JavaScript: scan its source text as code, however
-        // the markup tokenizer split it up.
+        // the markup tokens split it up.
         let close = t + 1;
         while (close < tokens.length) {
           const c = tokens[close]!;
@@ -343,19 +372,17 @@ function collectTokenRefs(
 }
 
 /**
- * Check all passages at story start: their `$var` references against the
- * schema, and the syntax of the code they run (see code-check.ts). Returns
- * the error messages (empty = valid).
+ * Check the `$var` references of all passages against the schema, at story
+ * start. Returns the error messages (empty = valid). (The syntax of their
+ * code is checked with their markup: see markup/validate.ts.)
  *
  * `storeVarMacros` lists the input macros whose first argument names a bound
- * variable; it defaults to the built-in ones. `macros` are the registered
- * macros, whose declared parameters tell which arguments are code.
+ * variable; it defaults to the built-in ones.
  */
 export function validatePassages(
   passages: Map<string, Passage>,
   schema: Map<string, VariableSchema>,
   storeVarMacros: Iterable<string> = BUILTIN_STORE_VAR_MACROS,
-  macros: readonly MacroMetadata[] = getMacroRegistry(),
 ): string[] {
   const errors: string[] = [];
   const storeVarSet = new Set(
@@ -367,19 +394,11 @@ export function validatePassages(
     if (name === 'StoryVariables' || name === 'StoryTransients') continue;
 
     const forLocals = extractForLocals(passage.content);
-    const tokens = tokenize(passage.content);
-    withParseCache(() => {
-      collectTokenRefs(passage.content, tokens, storeVarSet, (ref) => {
-        const error = validateRef(ref, schema, forLocals);
-        if (error) {
-          errors.push(`Passage "${name}": ${error}`);
-        }
-      });
-      checkPassageCode(
-        passage.content,
-        (error) => errors.push(`Passage "${name}" ${error}`),
-        { tokens, macros },
-      );
+    collectPassageRefs(passage.content, storeVarSet, (ref) => {
+      const error = validateRef(ref, schema, forLocals);
+      if (error) {
+        errors.push(`Passage "${name}": ${error}`);
+      }
     });
   }
 

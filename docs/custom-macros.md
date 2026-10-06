@@ -47,7 +47,7 @@ Usage: `{shout hello world}` displays **HELLO WORLD**.
 
 ## Block Macros (Children)
 
-If your macro has a closing tag, the content between the tags is available as `props.children`. Add `block: true` to your config so the parser knows to expect a closing tag. Use `ctx.renderNodes()` to turn that content into displayable output:
+If your macro has a closing tag, the content between the tags is available as `props.children`. Add `block: true` to your config so the parser knows to expect a closing tag. Define the macro before the passages that use it are checked: in the story JavaScript, on `:storystartup`, or in `StoryInit`. Spindle checks every passage when the story starts, and an unknown macro or closing tag stops it (see [Markup errors](markup.md#markup-errors)). `StoryInit`'s own markup is checked before it runs, so `StoryInit` itself can't use the macros it defines. Use `ctx.renderNodes()` to turn that content into displayable output:
 
 ```
 :: StoryInit
@@ -452,7 +452,7 @@ parameters: [
 
 When the story starts, Spindle parses every `expression` (or untyped) and `statements` argument of your macro wherever it is used, and stops the story on a syntax error, as it does for the built-in macros (see [Code in passages](variables.md#code-in-passages)). Declare arguments that may hold text as `text`, `string` or `passage`, so that they aren't read as code.
 
-This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests)). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
+This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests) and [`validateMarkup`](special-passages.md#checking-markup-in-tests), which checks passages against the macros registered there). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 
 ## Reference
 

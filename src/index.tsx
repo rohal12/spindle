@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { App } from './components/App';
-import { parseStoryData } from './parser';
+import { parseStoryData, type StoryData } from './parser';
 import { useStoryStore, enterRuntimePhase } from './store';
 import {
   installStoryAPI,
@@ -16,10 +16,17 @@ import {
   validatePassages,
   extractDefaults,
 } from './story-variables';
-import { getMacroRegistry } from './registry';
-import { tokenize } from './markup/tokenizer';
-import { buildAST, registerBlockMacro } from './markup/ast';
-import { parseWidgetDef, registerWidgetDef } from './components/macros/Widget';
+import { getMacro, getMacroRegistry, isSubMacro } from './registry';
+import { getWidget } from './widgets/widget-registry';
+import {
+  formatDiagnostic,
+  validateMarkup,
+  type MarkupPassage,
+} from './markup/validate';
+import { blockWidgetNames, parseWidgetDef } from './widgets/widget-def';
+import { parseMarkup } from './markup/parse';
+import { registerBlockMacro } from './markup/ast';
+import { registerWidgetDef } from './components/macros/Widget';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
@@ -45,10 +52,42 @@ function renderErrors(root: HTMLElement, errors: string[]) {
   root.appendChild(container);
 }
 
+/** Show the validation errors instead of the story, and stop booting. */
+function stopWithErrors(errors: string[]): never {
+  const root = document.getElementById('root');
+  if (root) renderErrors(root, errors);
+  throw new Error(
+    `spindle: ${errors.length} validation error(s):\n${errors.join('\n')}`,
+  );
+}
+
+/**
+ * The markup errors (malformed markup, unknown macros, syntax errors in
+ * code) of the passages for which `only` holds, with the macros and widgets
+ * known now.
+ */
+function markupErrors(
+  storyData: StoryData,
+  only: (passage: MarkupPassage) => boolean,
+): string[] {
+  const macros = getMacroRegistry();
+  const parameters = new Map(
+    macros.map((m) => [m.name.toLowerCase(), m.parameters]),
+  );
+  return validateMarkup(storyData.passages.values(), {
+    isKnownMacro: (name) =>
+      !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
+    macroNames: macros.map((m) => m.name),
+    parametersOf: (name) => parameters.get(name),
+    only,
+  }).map(formatDiagnostic);
+}
+
 /**
  * Boot Spindle in the current document: parse `<tw-storydata>`, install the
- * `Story` API, run author JavaScript, validate `StoryVariables`, run
- * `StoryInit`, and render into `#root`. Dispatches `:storyready` when the
+ * `Story` API, run author JavaScript, validate `StoryVariables` and
+ * `StoryInit`'s markup, run `StoryInit`, validate the other passages' markup
+ * (with the macros StoryInit defined), and render into `#root`. Dispatches `:storyready` when the
  * first passage is shown. Call once per page (module state is global).
  * The browser story format calls it from `main.tsx`.
  */
@@ -101,7 +140,18 @@ export function boot() {
   const storeVarMacros = getMacroRegistry()
     .filter((m) => m.storeVar)
     .map((m) => m.name);
+  // Pass 1: Register the block widgets as block macros BEFORE any passage
+  // is parsed (validation and StoryInit included), so that passages
+  // invoking block widgets and widget bodies using other block widgets
+  // parse correctly regardless of passage or definition order.
+  for (const name of blockWidgetNames(storyData.passages.values())) {
+    registerBlockMacro(name);
+  }
+
   const errors = validatePassages(storyData.passages, schema, storeVarMacros);
+  // StoryInit's markup must be valid before it runs; the other passages are
+  // validated once it has run, as it may define macros (see below).
+  errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
@@ -124,13 +174,7 @@ export function boot() {
     transientDefaults = extractDefaults(transientSchema);
   }
 
-  if (errors.length > 0) {
-    const root = document.getElementById('root');
-    if (root) renderErrors(root, errors);
-    throw new Error(
-      `spindle: ${errors.length} validation error(s):\n${errors.join('\n')}`,
-    );
-  }
+  if (errors.length > 0) stopWithErrors(errors);
 
   defaults = extractDefaults(schema);
   setDeclaredVariables(Object.keys(defaults), Object.keys(transientDefaults));
@@ -140,36 +184,18 @@ export function boot() {
   // Enter runtime phase — handlers registered from here on are cleaned on restart
   enterRuntimePhase();
 
-  // Pass 1: Pre-scan StoryInit and all widget passages to discover block
-  // widgets. Register them as block macros BEFORE any tokenize/buildAST
-  // calls (StoryInit's included), so that passages invoking block widgets
-  // and widget bodies using other block widgets parse correctly regardless
-  // of passage or definition order.
-  const blockWidgetPattern =
-    /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
-  for (const [passageName, passage] of storyData.passages) {
-    if (passageName === 'StoryInit' || passage.tags.includes('widget')) {
-      let match;
-      while ((match = blockWidgetPattern.exec(passage.content)) !== null) {
-        const name = match[1]!;
-        const body = match[2]!;
-        if (/\{@children\}/.test(body)) {
-          registerBlockMacro(name);
-        }
-      }
-      blockWidgetPattern.lastIndex = 0;
-    }
-  }
-
   // Run StoryInit, restore the session if the page was refreshed, and fire
   // storyinit after all state is settled (defaults + StoryInit + session)
   initializeStory(loadSession(storyData.ifid));
 
+  // Every other passage's markup, now that StoryInit may have defined macros
+  const markup = markupErrors(storyData, (p) => p.name !== 'StoryInit');
+  if (markup.length > 0) stopWithErrors(markup);
+
   // Pass 2: Full parse and register widgets from passages tagged "widget"
   for (const [, passage] of storyData.passages) {
     if (passage.tags.includes('widget')) {
-      const widgetTokens = tokenize(passage.content);
-      const widgetAST = buildAST(widgetTokens);
+      const widgetAST = parseMarkup(passage.content);
       for (const node of widgetAST) {
         if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
           // Read and registered as the {widget} macro does

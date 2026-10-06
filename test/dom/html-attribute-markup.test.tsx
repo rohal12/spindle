@@ -6,8 +6,8 @@ import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { defineMacro } from '../../src/define-macro';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST, registerBlockMacro } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
+import { registerBlockMacro } from '../../src/markup/ast';
 import type { ASTNode } from '../../src/markup/ast';
 import {
   registerWidget,
@@ -52,7 +52,7 @@ function renderPassage(content: string): HTMLElement {
 
 /** Register a widget from definition markup, mimicking boot-time logic. */
 function defineWidget(markup: string): void {
-  for (const node of buildAST(tokenize(markup))) {
+  for (const node of parseMarkup(markup)) {
     if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
       const parts = node.rawArgs.trim().split(/\s+/);
       const name = parts[0]!.replace(/["']/g, '');

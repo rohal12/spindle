@@ -87,7 +87,7 @@ $character = { strength: 5, dexterity: 5, intelligence: 5, name: "Adventurer", a
 
 These defaults are applied before `StoryInit` runs and are restored on restart.
 
-When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early. The same check reports syntax errors in the code of your passages (see [Code in passages](#code-in-passages)).
+When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early.
 
 Only real references are checked: `{$var}` displays, expressions, macro arguments, `{do}` bodies, and the same markup inside strings and HTML attributes (`<b class="{if $lit}on{/if}">`). A `$` inside a string literal (`{print "Price: $cost"}`), a JavaScript comment, or plain passage prose is literal text and is not validated.
 
@@ -208,12 +208,12 @@ A sigil only starts a variable where a JavaScript identifier starts. Names that 
 
 The code in a passage is JavaScript: valid, modern JavaScript, as a browser runs it outside strict mode, with the sigils above in place of variable names. Spindle reads it with the [acorn](https://github.com/acornjs/acorn) parser.
 
-**Syntax errors are found when the story starts.** Before the first passage shows, Spindle parses every piece of code in every passage: `{$…}` expressions, `{do}` bodies, the conditions of `{if}`, `{elseif}` and `{case}`, the code arguments of macros (`{set}`, `{print}`, `{switch}`, `{computed}`, `{for}`, `{meter}`, the condition and `run` action of `{watch}`, and the `expression` and `statements` arguments of [custom macros](custom-macros.md#reading-arguments)), and the same markup inside quoted labels and HTML attribute values. If any of it is not valid, the story does not start; it shows the list of errors instead, as it does for undeclared variables. Each error names the passage, the line and column in the passage, what is wrong and the code it is in:
+**Syntax errors are found when the story starts.** Before the first passage shows, Spindle parses every piece of code in every passage: `{$…}` expressions, `{do}` bodies, the conditions of `{if}`, `{elseif}` and `{case}`, the code arguments of macros (`{set}`, `{print}`, `{switch}`, `{computed}`, `{for}`, `{meter}`, the condition and `run` action of `{watch}`, and the `expression` and `statements` arguments of [custom macros](custom-macros.md#reading-arguments)), and the same markup inside quoted labels and HTML attribute values. If any of it is not valid, the story does not start; it shows the list of errors instead, with the [markup errors](markup.md#markup-errors). Each error names the passage, the line and column in the passage, what is wrong and the code it is in:
 
 ```
-Passage "Shop" line 3, column 22: Unexpected end of code (missing ")" for the "(" at line 3, column 14) in {print ($gold + $count}
-Passage "Shop" line 7, column 14: Unterminated string constant in {set $name = "Bob}
-Passage "Intro" line 2, column 16: Unexpected "{" (missing ")" for the "(" at line 2, column 4) in {do}
+Passage "Shop", line 3, column 22: Unexpected end of code (missing ")" for the "(" at line 3, column 14) in {print ($gold + $count}
+Passage "Shop", line 7, column 14: Unterminated string constant in {set $name = "Bob}
+Passage "Intro", line 2, column 16: Unexpected "{" (missing ")" for the "(" at line 2, column 4) in {do}
 ```
 
 The same errors show in place of a macro when its code runs, with the column in the code and the line marked where the error is: `{print error: Unexpected "$count" at column 7: $gold ▶$count}`.

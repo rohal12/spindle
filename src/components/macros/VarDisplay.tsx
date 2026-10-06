@@ -3,7 +3,7 @@ import { useContext } from 'preact/hooks';
 import { LocalsValuesContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { ownValue, variableNameError } from '../../utils/namespace';
-import { SCOPE_SIGILS } from '../../markup/tokenizer';
+import { SCOPE_SIGILS } from '../../markup/tokens';
 import type { VariableNode } from '../../markup/ast';
 import { display, wrapContent } from './display';
 

@@ -34,7 +34,7 @@ $inventory = ["sword", "torch"]
 $character = { strength: 5, dexterity: 5, intelligence: 5 }
 ```
 
-When this passage exists, Spindle validates every `$variable` reference in your story at startup. Undeclared variables, invalid field accesses and [syntax errors in passage code](variables.md#code-in-passages) stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
+When this passage exists, Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
 
 See [Variables](variables.md) for details.
 
@@ -67,6 +67,31 @@ parseStoryVariables(storyTransientsContent, '%');
 ```
 
 It returns a `Map` from variable name to `{ name, type, default, fields? }` and throws the same errors Spindle reports at startup.
+
+### Checking markup in tests
+
+Spindle also checks the markup of every passage, and the [code](variables.md#code-in-passages) in it, at startup (see [Markup errors](markup.md#markup-errors)). The tooling entry point runs the same check, against the built-in macros and those registered with its `defineMacro`:
+
+```ts
+import {
+  defineMacro,
+  formatDiagnostic,
+  validateMarkup,
+} from '@rohal12/spindle/tooling';
+
+defineMacro({ name: 'alert', block: true, render: () => null });
+
+const diagnostics = validateMarkup([
+  { name: 'Start', content: 'Hi {sett $x = 1}' },
+  { name: 'Hall', content: '{alert}Careful!{/alert}' },
+]);
+// [{ passage: 'Start', line: 1, column: 4,
+//    message: 'Unknown macro {sett}. Did you mean {set}?' }]
+diagnostics.map(formatDiagnostic);
+// ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
+```
+
+Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros.
 
 ## `StoryInterface`
 

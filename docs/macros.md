@@ -1,6 +1,6 @@
 # Macros
 
-All macros are case-insensitive. Block macros require a closing `{/macroName}` tag.
+All macros are case-insensitive. Block macros require a closing `{/macroName}` tag. An unknown macro name, a missing or mismatched closing tag, and a branch (`{else}`, `{case}`, `{next}`) outside its macro stop the story when it starts, with the passage, line and column of the mistake: see [Markup errors](markup.md#markup-errors).
 
 Every macro that renders visible output supports optional CSS selectors: `{.class#id macroName args}`.
 
@@ -74,7 +74,7 @@ Execute JavaScript statements without rendering anything.
 
 Code runs during rendering. Use `$var` and `_var` syntax inside the code block.
 
-The body is plain JavaScript: it is not parsed as story markup, so compact object literals (`{foo:1}`), `if (a < b) {...}` blocks and strings containing HTML or macros all work as written. The first `{/do}` in the code ends the block; a `{/do}` inside a string, template literal, regex literal or comment does not, so `{do}$tag = "{/do}";{/do}` stores `{/do}`. A `//` comment runs to the end of its line, so put `{/do}` on the next line after one. If the body is not valid JavaScript up to a `{/do}` in the code (an unterminated string, say), the first `{/do}` ends it.
+The body is plain JavaScript: it is not parsed as story markup, so compact object literals (`{foo:1}`), `if (a < b) {...}` blocks and strings containing HTML or macros all work as written. The first `{/do}` in the code ends the block; a `{/do}` inside a string, template literal, regex literal or comment does not, so `{do}$tag = "{/do}";{/do}` stores `{/do}`. A `//` comment runs to the end of its line, so put `{/do}` on the next line after one. If the body is not valid JavaScript up to a `{/do}` in the code (an unterminated string, say), the first `{/do}` ends it. A `{do}` without a `{/do}` is an error.
 
 ## Variables
 

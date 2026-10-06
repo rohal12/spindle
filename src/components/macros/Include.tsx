@@ -1,7 +1,6 @@
 import { useStoryStore } from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
-import { tokenize } from '../../markup/tokenizer';
-import { buildAST } from '../../markup/ast';
+import { parseMarkup } from '../../markup/parse';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { evaluatePassageName } from './macro-args';
@@ -28,7 +27,7 @@ defineMacro({
     // included passage changes, while re-renders of the same passage keep
     // its macros mounted (#175).
     const ast = ctx.hooks.useMemo(
-      () => (passage ? buildAST(tokenize(passage.content)) : null),
+      () => (passage ? parseMarkup(passage.content) : null),
       [passage],
     );
 

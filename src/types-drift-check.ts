@@ -21,7 +21,19 @@ import type {
   MacroProps as PublishedMacroProps,
   ASTNode as PublishedASTNode,
 } from '../types/index';
-import type { parseStoryVariables as PublishedParse } from '../types/tooling';
+import type {
+  parseStoryVariables as PublishedParse,
+  formatDiagnostic as PublishedFormatDiagnostic,
+  MarkupDiagnostic as PublishedMarkupDiagnostic,
+  MarkupPassage as PublishedMarkupPassage,
+  validateMarkup as PublishedValidateMarkup,
+} from '../types/tooling';
+import type {
+  formatDiagnostic as SourceFormatDiagnostic,
+  MarkupDiagnostic as SourceMarkupDiagnostic,
+  MarkupPassage as SourceMarkupPassage,
+  validateStoryMarkup as SourceValidateStoryMarkup,
+} from './tooling';
 import type { bootStory as PublishedBootStory } from '../types/headless';
 
 /** What the source declares, by published name. */
@@ -30,6 +42,11 @@ interface Source {
   // Tooling entry point (`@rohal12/spindle/tooling`): the parser that
   // dist/pkg/tooling.js re-exports.
   parseStoryVariables: typeof SourceParse;
+  // Its markup validator (pkg/tooling.js binds validateStoryMarkup to the
+  // macro metadata, so validateMarkup itself takes only the passages).
+  MarkupPassage: SourceMarkupPassage;
+  MarkupDiagnostic: SourceMarkupDiagnostic;
+  formatDiagnostic: typeof SourceFormatDiagnostic;
   // Custom macro API: the MacroContext/MacroDefinition defineMacro()
   // actually passes and accepts.
   MacroContext: SourceMacroContext;
@@ -44,6 +61,9 @@ interface Source {
 interface Published {
   StoryAPI: PublishedAPI;
   parseStoryVariables: typeof PublishedParse;
+  MarkupPassage: PublishedMarkupPassage;
+  MarkupDiagnostic: PublishedMarkupDiagnostic;
+  formatDiagnostic: typeof PublishedFormatDiagnostic;
   MacroContext: PublishedMacroContext;
   MacroDefinition: PublishedMacroDefinition;
   MacroProps: PublishedMacroProps;
@@ -90,3 +110,10 @@ const _exampleMacro: PublishedMacroDefinition = {
     );
   },
 };
+
+// pkg/tooling.js's validateMarkup is validateStoryMarkup bound to the macro
+// metadata.
+declare const validateStoryMarkup: typeof SourceValidateStoryMarkup;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _validateMarkup: typeof PublishedValidateMarkup = (passages) =>
+  validateStoryMarkup(passages, []);
