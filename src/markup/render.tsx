@@ -669,10 +669,7 @@ function renderSingleNode(node: ASTNode): preact.ComponentChildren {
       return (
         <VarDisplay
           key={key}
-          name={node.name}
-          scope={node.scope}
-          className={node.className}
-          id={node.id}
+          node={node}
         />
       );
 
@@ -680,9 +677,7 @@ function renderSingleNode(node: ASTNode): preact.ComponentChildren {
       return (
         <ExprDisplay
           key={key}
-          expression={node.expression}
-          className={node.className}
-          id={node.id}
+          node={node}
         />
       );
 

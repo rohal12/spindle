@@ -232,6 +232,13 @@ function readGroup(
       : unset(rest);
 }
 
+/** The duration a timing macro ({repeat}, {type}, {timed}/{next}) waits. */
+export const DELAY_PARAMETER = {
+  name: 'delay',
+  type: 'delay',
+  required: true,
+} as const;
+
 /** Read `rawArgs` into the declared `parameters` (see above). */
 export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   rawArgs: string,

@@ -2,22 +2,15 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import {
   registerAction,
   generateActionId,
+  OPTIONAL_ACTION_FIELDS,
   type ActionRegistration,
-  type ActionType,
   type StoryAction,
 } from '../action-registry';
 
-export interface UseActionOptions {
-  type: ActionType;
+/** The action to register, and what its ID is generated from. */
+export interface UseActionOptions extends Omit<StoryAction, 'id'> {
   key: string;
   authorId?: string;
-  label: string;
-  target?: string;
-  variable?: string;
-  options?: string[];
-  value?: unknown;
-  disabled?: boolean;
-  perform: (value?: unknown) => void;
 }
 
 export function useAction(opts: UseActionOptions): string {
@@ -39,11 +32,10 @@ export function useAction(opts: UseActionOptions): string {
       label: opts.label,
       perform: (...args) => performRef.current(...args),
     };
-    if (opts.target !== undefined) action.target = opts.target;
-    if (opts.variable !== undefined) action.variable = opts.variable;
-    if (opts.options !== undefined) action.options = opts.options;
-    if (opts.value !== undefined) action.value = opts.value;
-    if (opts.disabled !== undefined) action.disabled = opts.disabled;
+    for (const field of OPTIONAL_ACTION_FIELDS) {
+      if (opts[field] !== undefined)
+        Object.assign(action, { [field]: opts[field] });
+    }
     return action;
   };
 

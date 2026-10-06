@@ -1,62 +1,61 @@
 /**
- * Compile-time check: the hand-written types/index.d.ts must stay in sync
- * with the source StoryAPI interface.  If this file fails to compile,
- * the published types have drifted from the implementation.
+ * Compile-time check: the hand-written published types (types/*.d.ts) must
+ * stay in sync with the source they describe. If this file fails to
+ * compile, the published types have drifted from the implementation.
  *
  * Run: npx tsc --noEmit
  */
 import type { StoryAPI as SourceAPI } from './story-api';
-import type { StoryAPI as PublishedAPI } from '../types/index';
-
-// Both directions — if either fails, the types have drifted.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _sourceToPublished: PublishedAPI = {} as SourceAPI;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _publishedToSource: SourceAPI = {} as PublishedAPI;
-
-// Tooling entry point (`@rohal12/spindle/tooling`): types/tooling.d.ts must
-// match the parser that dist/pkg/tooling.js re-exports.
 import type { parseStoryVariables as SourceParse } from './story-variables';
-import type { parseStoryVariables as PublishedParse } from '../types/tooling';
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _parseSourceToPublished: typeof PublishedParse = {} as typeof SourceParse;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _parsePublishedToSource: typeof SourceParse = {} as typeof PublishedParse;
-
-// Custom macro API: the published MacroContext/MacroDefinition must match the
-// ones defineMacro() actually passes and accepts.
 import type {
   MacroContext as SourceMacroContext,
   MacroDefinition as SourceMacroDefinition,
 } from './define-macro';
 import type { MacroProps as SourceMacroProps } from './registry';
 import type { ASTNode as SourceASTNode } from './markup/ast';
+import type { bootStory as SourceBootStory } from './headless';
 import type {
+  StoryAPI as PublishedAPI,
   MacroContext as PublishedMacroContext,
   MacroDefinition as PublishedMacroDefinition,
   MacroProps as PublishedMacroProps,
   ASTNode as PublishedASTNode,
 } from '../types/index';
+import type { parseStoryVariables as PublishedParse } from '../types/tooling';
+import type { bootStory as PublishedBootStory } from '../types/headless';
 
+/** What the source declares, by published name. */
+interface Source {
+  StoryAPI: SourceAPI;
+  // Tooling entry point (`@rohal12/spindle/tooling`): the parser that
+  // dist/pkg/tooling.js re-exports.
+  parseStoryVariables: typeof SourceParse;
+  // Custom macro API: the MacroContext/MacroDefinition defineMacro()
+  // actually passes and accepts.
+  MacroContext: SourceMacroContext;
+  MacroDefinition: SourceMacroDefinition;
+  MacroProps: SourceMacroProps;
+  ASTNode: SourceASTNode;
+  // Headless entry point (`@rohal12/spindle/headless`).
+  bootStory: typeof SourceBootStory;
+}
+
+/** What types/index.d.ts, tooling.d.ts and headless.d.ts publish. */
+interface Published {
+  StoryAPI: PublishedAPI;
+  parseStoryVariables: typeof PublishedParse;
+  MacroContext: PublishedMacroContext;
+  MacroDefinition: PublishedMacroDefinition;
+  MacroProps: PublishedMacroProps;
+  ASTNode: PublishedASTNode;
+  bootStory: typeof PublishedBootStory;
+}
+
+// Both directions — if either fails, the types have drifted.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _ctxSourceToPublished: PublishedMacroContext = {} as SourceMacroContext;
+const _sourceToPublished: Published = {} as Source;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _ctxPublishedToSource: SourceMacroContext = {} as PublishedMacroContext;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _defSourceToPublished: PublishedMacroDefinition =
-  {} as SourceMacroDefinition;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _defPublishedToSource: SourceMacroDefinition =
-  {} as PublishedMacroDefinition;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _propsSourceToPublished: PublishedMacroProps = {} as SourceMacroProps;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _propsPublishedToSource: SourceMacroProps = {} as PublishedMacroProps;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _astSourceToPublished: PublishedASTNode = {} as SourceASTNode;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _astPublishedToSource: SourceASTNode = {} as PublishedASTNode;
+const _publishedToSource: Source = {} as Published;
 
 // A typical custom macro written against the published types must type-check,
 // and misuse of the hooks must not (no `any` leaking through).
@@ -91,15 +90,3 @@ const _exampleMacro: PublishedMacroDefinition = {
     );
   },
 };
-
-// Headless entry point (`@rohal12/spindle/headless`): types/headless.d.ts must
-// match src/headless.ts.
-import type { bootStory as SourceBootStory } from './headless';
-import type { bootStory as PublishedBootStory } from '../types/headless';
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _bootSourceToPublished: typeof PublishedBootStory =
-  {} as typeof SourceBootStory;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _bootPublishedToSource: typeof SourceBootStory =
-  {} as typeof PublishedBootStory;

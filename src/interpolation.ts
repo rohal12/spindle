@@ -27,6 +27,7 @@ import { getMacro, getMacroText, isSubMacro } from './registry';
 import type { MacroTextContext } from './registry';
 import { getWidget } from './widgets/widget-registry';
 import { splitArgs } from './components/macros/arg-utils';
+import { display } from './components/macros/display';
 import { splitSigilTemplate } from './markup/code-attributes';
 import {
   checkVariableName,
@@ -118,10 +119,6 @@ export function mapTextNodes(
 /** Deep enough for any real nesting; stops a widget that includes itself. */
 const MAX_DEPTH = 100;
 
-function display(value: unknown): string {
-  return value == null ? '' : String(value);
-}
-
 /**
  * The value of a variable reference (`name` without its sigil, with an
  * optional dot path), as `{$name}` shows it in passage text (see
@@ -154,6 +151,17 @@ function resolveVariable(
   return value;
 }
 
+/** Evaluate an expression in `scope`. */
+function evaluateIn(expr: string, scope: TextScope): unknown {
+  return evaluate(
+    expr,
+    scope.variables,
+    scope.temporary,
+    scope.locals,
+    scope.transient,
+  );
+}
+
 class TextEvaluator {
   readonly errors: TextError[] = [];
 
@@ -161,16 +169,6 @@ class TextEvaluator {
     let text = '';
     for (const node of nodes) text += this.node(node, scope, depth);
     return text;
-  }
-
-  private evaluate(expr: string, scope: TextScope): unknown {
-    return evaluate(
-      expr,
-      scope.variables,
-      scope.temporary,
-      scope.locals,
-      scope.transient,
-    );
   }
 
   private node(node: ASTNode, scope: TextScope, depth: number): string {
@@ -190,7 +188,7 @@ class TextEvaluator {
         return this.variable(node.scope, node.name, scope);
       case 'expression':
         try {
-          return display(this.evaluate(node.expression, scope));
+          return display(evaluateIn(node.expression, scope));
         } catch (error) {
           this.errors.push({ macro: 'expression', error });
           return '';
@@ -255,7 +253,7 @@ class TextEvaluator {
           const expr = argExprs[i];
           if (expr !== undefined) {
             try {
-              value = this.evaluate(expr, scope);
+              value = evaluateIn(expr, scope);
             } catch {
               value = undefined;
             }
@@ -279,7 +277,7 @@ class TextEvaluator {
     }
 
     const ctx: MacroTextContext = {
-      evaluate: (expr) => this.evaluate(expr, scope),
+      evaluate: (expr) => evaluateIn(expr, scope),
       renderText: (nodes, locals) =>
         this.nested(
           node.name,
@@ -369,15 +367,7 @@ export function interpolateCode(
       }
     } else {
       try {
-        text += display(
-          evaluate(
-            part.expr,
-            scope.variables,
-            scope.temporary,
-            scope.locals,
-            scope.transient,
-          ),
-        );
+        text += display(evaluateIn(part.expr, scope));
       } catch (error) {
         errors.push({ macro: 'expression', error });
       }
@@ -386,22 +376,28 @@ export function interpolateCode(
   return { text, errors };
 }
 
+/** The namespaces of a TextScope, passed one by one. */
+type ScopeArgs = [
+  variables: Record<string, unknown>,
+  temporary: Record<string, unknown>,
+  locals: Record<string, unknown>,
+  transient?: Record<string, unknown>,
+];
+
+function scopeOf(
+  ...[variables, temporary, locals, transient = {}]: ScopeArgs
+): TextScope {
+  return { variables, temporary, locals, transient };
+}
+
 /**
  * Evaluate text-only markup to a string, throwing the first error met.
  */
 export function interpolate(
   template: string,
-  variables: Record<string, unknown>,
-  temporary: Record<string, unknown>,
-  locals: Record<string, unknown>,
-  transient: Record<string, unknown> = {},
+  ...namespaces: ScopeArgs
 ): string {
-  const { text, errors } = interpolateText(template, {
-    variables,
-    temporary,
-    locals,
-    transient,
-  });
+  const { text, errors } = interpolateText(template, scopeOf(...namespaces));
   if (errors.length > 0) throw errors[0]!.error;
   return text;
 }
@@ -412,10 +408,7 @@ export function interpolate(
  */
 export function interpolateExpression(
   expr: string,
-  variables: Record<string, unknown>,
-  temporary: Record<string, unknown>,
-  locals: Record<string, unknown>,
-  transient: Record<string, unknown> = {},
+  ...namespaces: ScopeArgs
 ): string {
-  return display(evaluate(expr, variables, temporary, locals, transient));
+  return display(evaluateIn(expr, scopeOf(...namespaces)));
 }

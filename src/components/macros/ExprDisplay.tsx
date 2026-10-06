@@ -1,41 +1,24 @@
 import { evaluate } from '../../expression';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
+import { display, wrapContent } from './display';
+import type { ExpressionNode } from '../../markup/ast';
 
-interface ExprDisplayProps {
-  expression: string;
-  className?: string;
-  id?: string;
-}
-
-export function ExprDisplay({ expression, className, id }: ExprDisplayProps) {
+/** An expression display: `{$hp + 1}`. */
+export function ExprDisplay({ node }: { node: ExpressionNode }) {
+  const { expression } = node;
   const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
+  const className = resolve(node.className);
+  const id = resolve(node.id);
   const [variables, temporary, localsValues, transient] = useMergedLocals();
 
-  let display: string;
+  let text: string;
   try {
-    const value = evaluate(
-      expression,
-      variables,
-      temporary,
-      localsValues,
-      transient,
+    text = display(
+      evaluate(expression, variables, temporary, localsValues, transient),
     );
-    display = value == null ? '' : String(value);
   } catch {
-    display = `{error: ${expression}}`;
+    text = `{error: ${expression}}`;
   }
-
-  if (className || id)
-    return (
-      <span
-        id={id}
-        class={className}
-      >
-        {display}
-      </span>
-    );
-  return <>{display}</>;
+  return wrapContent(className, id, text);
 }

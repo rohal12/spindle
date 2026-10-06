@@ -1,21 +1,19 @@
 import { defineMacro } from '../../define-macro';
+import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
+import { display } from './display';
 
 defineMacro({
   name: 'listbox',
   subMacros: ['option'],
   storeVar: true,
-  parameters: [{ name: 'variable', type: 'variable', required: true }],
+  parameters: [VARIABLE_PARAMETER],
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 
-    ctx.useAction({
+    useVariableAction(ctx, {
       type: 'listbox',
-      key: `$${ctx.varName}`,
-      authorId: ctx.id,
       label: ctx.varName!,
-      variable: ctx.varName,
       options,
-      value: ctx.value,
       perform: (v) => {
         if (v !== undefined) ctx.setValue!(String(v));
       },
@@ -25,7 +23,7 @@ defineMacro({
       <select
         id={ctx.id}
         class={ctx.cls}
-        value={ctx.value == null ? '' : String(ctx.value)}
+        value={display(ctx.value)}
         onChange={(e) => ctx.setValue!((e.target as HTMLSelectElement).value)}
       >
         {options.map((opt) => (

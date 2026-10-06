@@ -1,10 +1,11 @@
 import { defineMacro } from '../../define-macro';
+import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
 defineMacro({
   name: 'radiobutton',
   storeVar: true,
   parameters: [
-    { name: 'variable', type: 'variable', required: true },
+    VARIABLE_PARAMETER,
     { name: 'value', type: 'text', required: true },
     { name: 'label', type: 'text' },
   ],
@@ -12,13 +13,10 @@ defineMacro({
     const radioValue = ctx.args.value ?? '';
     const label = ctx.args.label ?? '';
 
-    ctx.useAction({
+    useVariableAction(ctx, {
       type: 'radiobutton',
       key: `$${ctx.varName}:${radioValue}`,
-      authorId: ctx.id,
       label: label || radioValue,
-      variable: ctx.varName,
-      value: ctx.value,
       perform: () => ctx.setValue!(radioValue),
     });
 

@@ -3,13 +3,9 @@ import { useContext } from 'preact/hooks';
 import { LocalsValuesContext } from '../../markup/render';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { ownValue, variableNameError } from '../../utils/namespace';
-
-const SIGILS = {
-  variable: '$',
-  temporary: '_',
-  local: '@',
-  transient: '%',
-} as const;
+import { SCOPE_SIGILS } from '../../markup/tokenizer';
+import type { VariableNode } from '../../markup/ast';
+import { display, wrapContent } from './display';
 
 const STORE_NAMESPACES = {
   variable: 'variables',
@@ -17,17 +13,12 @@ const STORE_NAMESPACES = {
   transient: 'transient',
 } as const;
 
-interface VarDisplayProps {
-  name: string;
-  scope: 'variable' | 'temporary' | 'local' | 'transient';
-  className?: string;
-  id?: string;
-}
-
-export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
+/** A `{$name}` (`{_name}`, `{@name}`, `{%name}`) variable display. */
+export function VarDisplay({ node }: { node: VariableNode }) {
+  const { name, scope } = node;
   const resolve = useInterpolate();
-  className = resolve(className);
-  id = resolve(id);
+  const className = resolve(node.className);
+  const id = resolve(node.id);
   const localsValues = useContext(LocalsValuesContext);
   const parts = name.split('.');
   const root = parts[0]!;
@@ -36,11 +27,10 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
     scope === 'local' ? undefined : ownValue(s[STORE_NAMESPACES[scope]], root),
   );
 
-  const nameError = variableNameError(root, SIGILS[scope] + root);
+  const sigil = SCOPE_SIGILS[scope];
+  const nameError = variableNameError(root, sigil + root);
   if (nameError) {
-    return (
-      <span class="error">{`{${SIGILS[scope]}${name} error: ${nameError}}`}</span>
-    );
+    return <span class="error">{`{${sigil}${name} error: ${nameError}}`}</span>;
   }
 
   let value: unknown;
@@ -61,15 +51,5 @@ export function VarDisplay({ name, scope, className, id }: VarDisplayProps) {
     value = (value as Record<string, unknown>)[part];
   }
 
-  const display = value == null ? '' : String(value);
-  if (className || id)
-    return (
-      <span
-        id={id}
-        class={className}
-      >
-        {display}
-      </span>
-    );
-  return <>{display}</>;
+  return wrapContent(className, id, display(value));
 }

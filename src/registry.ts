@@ -1,5 +1,6 @@
 import type { ComponentType } from 'preact';
 import type { ASTNode, Branch } from './markup/ast';
+import { NameMap, NameSet } from './utils/macro-names';
 
 export interface MacroProps {
   rawArgs: string;
@@ -9,17 +10,17 @@ export interface MacroProps {
   branches?: Branch[];
 }
 
-const registry = new Map<string, ComponentType<MacroProps>>();
+const registry = new NameMap<ComponentType<MacroProps>>();
 
 export function registerMacro(
   name: string,
   component: ComponentType<MacroProps>,
 ): void {
-  registry.set(name.toLowerCase(), component);
+  registry.set(name, component);
 }
 
 export function getMacro(name: string): ComponentType<MacroProps> | undefined {
-  return registry.get(name.toLowerCase());
+  return registry.get(name);
 }
 
 /**
@@ -42,29 +43,29 @@ export type MacroTextRenderer = (
   ctx: MacroTextContext,
 ) => string;
 
-const textRegistry = new Map<string, MacroTextRenderer>();
+const textRegistry = new NameMap<MacroTextRenderer>();
 
 /** Register (or, with undefined, remove) the text form of a macro. */
 export function registerMacroText(
   name: string,
   text: MacroTextRenderer | undefined,
 ): void {
-  if (text) textRegistry.set(name.toLowerCase(), text);
-  else textRegistry.delete(name.toLowerCase());
+  if (text) textRegistry.set(name, text);
+  else textRegistry.delete(name);
 }
 
 export function getMacroText(name: string): MacroTextRenderer | undefined {
-  return textRegistry.get(name.toLowerCase());
+  return textRegistry.get(name);
 }
 
-const subMacros = new Set<string>();
+const subMacros = new NameSet();
 
 export function registerSubMacro(name: string): void {
-  subMacros.add(name.toLowerCase());
+  subMacros.add(name);
 }
 
 export function isSubMacro(name: string): boolean {
-  return subMacros.has(name.toLowerCase());
+  return subMacros.has(name);
 }
 
 /**
@@ -133,13 +134,13 @@ export interface MacroMetadata {
   parameters?: ParameterDef[];
 }
 
-const metadataRegistry = new Map<string, MacroMetadata>();
+const metadataRegistry = new NameMap<MacroMetadata>();
 
 export function registerMacroMetadata(
   name: string,
   metadata: MacroMetadata,
 ): void {
-  metadataRegistry.set(name.toLowerCase(), metadata);
+  metadataRegistry.set(name, metadata);
 }
 
 export function getMacroRegistry(): MacroMetadata[] {

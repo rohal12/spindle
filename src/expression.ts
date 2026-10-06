@@ -132,7 +132,7 @@ export function previousPassage(): Passage | undefined {
  * visited()/rendered() and their has-forms, counting in the counters
  * `counts()` returns. A missing name means the current passage.
  */
-export function countQueries(counts: () => Counts) {
+function countQueries(counts: () => Counts) {
   const count = (name?: string): number =>
     countOf(counts(), name ?? useStoryStore.getState().currentPassage);
   return {
@@ -140,6 +140,31 @@ export function countQueries(counts: () => Counts) {
     has: (name?: string): boolean => count(name) > 0,
     any: (...names: string[]): boolean => names.some((n) => count(n) > 0),
     all: (...names: string[]): boolean => names.every((n) => count(n) > 0),
+  };
+}
+
+/**
+ * The history functions of passage code and the story API: the current and
+ * previous passage, and visited()/rendered() with their has-forms, counting
+ * in the counters `visitCounts()` and `renderCounts()` return.
+ */
+export function historyQueries(
+  visitCounts: () => Counts,
+  renderCounts: () => Counts,
+) {
+  const visits = countQueries(visitCounts);
+  const renders = countQueries(renderCounts);
+  return {
+    currentPassage,
+    previousPassage,
+    visited: visits.count,
+    hasVisited: visits.has,
+    hasVisitedAny: visits.any,
+    hasVisitedAll: visits.all,
+    rendered: renders.count,
+    hasRendered: renders.has,
+    hasRenderedAny: renders.any,
+    hasRenderedAll: renders.all,
   };
 }
 
@@ -159,19 +184,11 @@ export function buildExpressionFns() {
     return cachedFns;
   }
 
-  const visits = countQueries(() => visitCounts);
-  const renders = countQueries(() => renderCounts);
   cachedFns = {
-    currentPassage,
-    previousPassage,
-    visited: visits.count,
-    hasVisited: visits.has,
-    hasVisitedAny: visits.any,
-    hasVisitedAll: visits.all,
-    rendered: renders.count,
-    hasRendered: renders.has,
-    hasRenderedAny: renders.any,
-    hasRenderedAll: renders.all,
+    ...historyQueries(
+      () => visitCounts,
+      () => renderCounts,
+    ),
     random,
     randomInt,
   };
@@ -195,21 +212,24 @@ function namespaceArg(ns: Namespace): Namespace {
   return ns;
 }
 
-/**
- * Evaluate an expression and return its value.
- * e.g. evaluate("$health + 10", variables, temporary) → number
- */
-export function evaluate(
-  expr: string,
+/** The namespaces code runs in, as evaluate() and execute() take them. */
+type Namespaces = [
   variables: Namespace,
   temporary: Namespace,
-  locals: Namespace = EMPTY_NAMESPACE,
-  transient: Namespace = EMPTY_NAMESPACE,
+  locals?: Namespace,
+  transient?: Namespace,
+];
+
+/** Run compiled code in `namespaces`. */
+function run(
+  fn: CompiledExpression,
+  ...[
+    variables,
+    temporary,
+    locals = EMPTY_NAMESPACE,
+    transient = EMPTY_NAMESPACE,
+  ]: Namespaces
 ): unknown {
-  const transformed = transform(expr);
-  // The line break keeps a trailing `// comment` from swallowing the `)`.
-  const body = `return (${transformed}\n);`;
-  const fn = getOrCompile(body, body);
   return fn(
     namespaceArg(variables),
     namespaceArg(temporary),
@@ -220,25 +240,23 @@ export function evaluate(
 }
 
 /**
+ * Evaluate an expression and return its value.
+ * e.g. evaluate("$health + 10", variables, temporary) → number
+ */
+export function evaluate(expr: string, ...namespaces: Namespaces): unknown {
+  const transformed = transform(expr);
+  // The line break keeps a trailing `// comment` from swallowing the `)`.
+  const body = `return (${transformed}\n);`;
+  return run(getOrCompile(body, body), ...namespaces);
+}
+
+/**
  * Execute statements (no return value).
  * e.g. execute("$health = 100; $name = 'Hero'", variables, temporary)
  */
-export function execute(
-  code: string,
-  variables: Namespace,
-  temporary: Namespace,
-  locals: Namespace = EMPTY_NAMESPACE,
-  transient: Namespace = EMPTY_NAMESPACE,
-): void {
+export function execute(code: string, ...namespaces: Namespaces): void {
   const transformed = transform(code, 'statements');
-  const fn = getOrCompile('exec:' + transformed, transformed);
-  fn(
-    namespaceArg(variables),
-    namespaceArg(temporary),
-    namespaceArg(locals),
-    buildExpressionFns(),
-    namespaceArg(transient),
-  );
+  run(getOrCompile('exec:' + transformed, transformed), ...namespaces);
 }
 
 /**

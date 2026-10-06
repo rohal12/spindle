@@ -256,6 +256,19 @@ export function createLocalStorageBackend(): StorageBackend {
 const IDB_DB_NAME = 'spindle';
 const IDB_DB_VERSION = 1;
 
+/** Each object store's key path, and the key path of each of its indexes. */
+const IDB_STORES: Record<
+  TableName,
+  { keyPath: string; indexes: Record<string, string> }
+> = {
+  saves: {
+    keyPath: 'meta.id',
+    indexes: { ifid: 'meta.ifid', playthroughId: 'meta.playthroughId' },
+  },
+  playthroughs: { keyPath: 'id', indexes: { ifid: 'ifid' } },
+  meta: { keyPath: 'key', indexes: {} },
+};
+
 function createIDBBackend(): StorageBackend {
   let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -267,26 +280,12 @@ function createIDBBackend(): StorageBackend {
 
       req.onupgradeneeded = () => {
         const db = req.result;
-
-        if (!db.objectStoreNames.contains('saves')) {
-          const savesStore = db.createObjectStore('saves', {
-            keyPath: 'meta.id',
-          });
-          savesStore.createIndex('ifid', 'meta.ifid', { unique: false });
-          savesStore.createIndex('playthroughId', 'meta.playthroughId', {
-            unique: false,
-          });
-        }
-
-        if (!db.objectStoreNames.contains('playthroughs')) {
-          const ptStore = db.createObjectStore('playthroughs', {
-            keyPath: 'id',
-          });
-          ptStore.createIndex('ifid', 'ifid', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('meta')) {
-          db.createObjectStore('meta', { keyPath: 'key' });
+        for (const [name, { keyPath, indexes }] of Object.entries(IDB_STORES)) {
+          if (db.objectStoreNames.contains(name)) continue;
+          const store = db.createObjectStore(name, { keyPath });
+          for (const [index, path] of Object.entries(indexes)) {
+            store.createIndex(index, path, { unique: false });
+          }
         }
       };
 
