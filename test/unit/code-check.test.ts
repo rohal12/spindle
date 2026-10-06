@@ -347,3 +347,69 @@ describe('the story-start check of quoted arguments', () => {
     expect(errors('{meter $hp 100}{meter $hp 100 "HP"}')).toEqual([]);
   });
 });
+
+describe('the story-start check: reported bugs', () => {
+  it('does not read SaveTitle as markup (#251)', () => {
+    expect(
+      storyErrors({
+        Start: 'Hello.',
+        SaveTitle: 'const {gold} = variables;\nreturn "[[slot]]";',
+      }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['link', '{link "Go" "\\u0048all"}{/link}'],
+    ['goto', '{goto "\\x48all"}'],
+    ['goto with u{}', '{goto "\\u{48}all"}'],
+    ['goto with a line continuation', '{goto "Ha\\\nll"}'],
+  ])('decodes JavaScript escapes in a passage name: %s (#252)', (_, markup) => {
+    expect(storyErrors({ Start: markup, Hall: 'Arrived.' })).toEqual([]);
+    expect(storyErrors({ Start: markup, '\\u0048all': 'x' })).toHaveLength(1);
+  });
+
+  it('does not throw for unknown prototype member macros (#253)', () => {
+    expect(storyErrors({ Start: '{constructor x}' })).toEqual([
+      expect.stringContaining('Unknown macro {constructor}'),
+    ]);
+    expect(storyErrors({ Start: '{toString x}{__proto__ y}' })).toHaveLength(2);
+  });
+
+  it('validates a registered constructor macro without parameters (#253)', () => {
+    const extra: MacroMetadata[] = [
+      {
+        name: 'constructor',
+        block: false,
+        subMacros: [],
+        source: 'user',
+      },
+    ];
+    expect(storyErrors({ Start: '{constructor x}' }, extra)).toEqual([]);
+  });
+
+  it('keeps literal option and watcher names out of markup checks (#254)', () => {
+    expect(
+      storyErrors({
+        Start:
+          '{listbox $c}{option "{literal}"}{/listbox}{watch "1" name "{literal}"}{unwatch "{literal}"}',
+      }),
+    ).toEqual([]);
+    expect(storyErrors({ Start: '{button "{literal}"}{/button}' })).toEqual([
+      expect.stringContaining('Unknown macro {literal}'),
+    ]);
+  });
+
+  it.each([
+    ['unquoted goto', '{watch "1" goto Hall}', 'goto'],
+    ['unquoted run', '{watch "1" run doStuff}', 'run'],
+    ['numeric goto', '{watch "1" goto 123}', 'goto'],
+    ['missing name', '{watch "1" name}', 'name'],
+  ])(
+    'rejects a string option that is not quoted: %s (#256)',
+    (_, m, option) => {
+      expect(storyErrors({ Start: m })).toEqual([
+        expect.stringContaining(`The ${option} must be a quoted string`),
+      ]);
+    },
+  );
+});

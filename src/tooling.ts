@@ -10,12 +10,50 @@ import {
   type MarkupPassage,
 } from './markup/validate';
 import { isBlockMacro } from './markup/ast';
+import { tokenizeMarkupTolerant } from './markup/parse';
+import { collectPassageReferences, type PassageReference } from './code-check';
+import { subMacroParameters } from './components/macros/option-utils';
 import { blockWidgetNames } from './widgets/widget-def';
 import type { ParameterDef } from './registry';
 
 export { parseStoryVariables } from './story-variables';
 export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
+
+// The parsing rules (see "Tooling API" in docs/tooling.md): the leaf rules
+// the runtime parses with, so editor tooling needn't mirror them.
+export { findCodeEnd, lexJs, lexTemplate, scanStringLiteral } from './js-lexer';
+export type {
+  FindCodeEndOptions,
+  JsGoal,
+  JsLexHandlers,
+  Sigil,
+} from './js-lexer';
+export {
+  MarkupError,
+  parseSelectors,
+  tokenizeMarkup,
+  tokenizeMarkupTolerant,
+} from './markup/parse';
+export type { ParseMarkupOptions, TolerantTokens } from './markup/parse';
+export { SIGIL_SCOPES, isSigil } from './markup/tokens';
+export type { Selectors, Token, VariableScope } from './markup/tokens';
+export {
+  endsWithOperator,
+  readQuoted,
+  splitArgs,
+  splitTopLevel,
+  stripLooseQuotes,
+  unescapeQuoted,
+} from './components/macros/arg-utils';
+export { splitIncludeFlag } from './components/macros/include-args';
+export {
+  evaluatePassageName,
+  passageTarget,
+} from './components/macros/macro-args';
+export type { PassageTarget } from './components/macros/macro-args';
+export { transform } from './transform';
+export type { PassageReference } from './code-check';
 export type { MarkupDiagnostic, MarkupPassage } from './markup/validate';
 
 /** What tooling knows about a macro (see MacroMetadata). */
@@ -67,4 +105,25 @@ export function validateStoryMarkup(
       blocks.has(name.toLowerCase()) || isBlockMacro(name),
     checkPassageNames: options.checkPassageNames,
   });
+}
+
+/**
+ * The passages the markup of `source` names (see PassageReference), against
+ * the given macros: what the story-start check looks up. Malformed tags are
+ * skipped, so it reads half-typed markup.
+ */
+export function collectStoryPassageReferences(
+  source: string,
+  macros: Iterable<ToolingMacro>,
+): PassageReference[] {
+  const parameters = new Map<string, readonly ParameterDef[] | undefined>();
+  for (const macro of macros) {
+    parameters.set(macro.name.toLowerCase(), macro.parameters);
+  }
+  const { tokens } = tokenizeMarkupTolerant(source);
+  return collectPassageReferences(
+    source,
+    tokens,
+    (name) => parameters.get(name.toLowerCase()) ?? subMacroParameters(name),
+  );
 }

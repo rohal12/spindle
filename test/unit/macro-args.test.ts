@@ -182,3 +182,38 @@ describe('evaluatePassageName', () => {
     );
   });
 });
+
+describe('parseMacroArgs: keyword options (#256)', () => {
+  const params = [
+    { name: 'condition', type: 'string' },
+    {
+      name: 'options',
+      type: 'options',
+      parameters: [
+        { name: 'goto', type: 'string' },
+        { name: 'priority', type: 'number' },
+        { name: 'once', type: 'flag' },
+      ],
+    },
+  ] as const;
+
+  it('reads quoted values and flags', () => {
+    expect(parseMacroArgs('"$x" goto "Hall" priority 5 once', params)).toEqual({
+      condition: '$x',
+      options: { goto: 'Hall', priority: 5, once: true },
+    });
+  });
+
+  it.each([['goto Hall'], ['goto 123'], ['goto'], ['goto once']])(
+    'rejects a string option written as `%s`',
+    (options) => {
+      expect(() => parseMacroArgs(`"$x" ${options}`, params)).toThrow(
+        MacroArgumentError,
+      );
+    },
+  );
+
+  it('leaves out an omitted optional keyword', () => {
+    expect(parseMacroArgs('"$x" once', params).options).toEqual({ once: true });
+  });
+});

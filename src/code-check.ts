@@ -32,8 +32,9 @@ import type { ParameterDef } from './registry';
 import {
   MacroArgumentError,
   parseMacroArgs,
+  passageTarget,
+  type PassageTarget,
 } from './components/macros/macro-args';
-import { readWholeQuoted } from './components/macros/arg-utils';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -80,6 +81,10 @@ export interface CodePiece {
   label: string;
   /** Whether it names a passage: a `passage` argument. */
   passage?: boolean;
+  /** Whether it is the code in a quoted string, as in `{watch}`. */
+  inString?: boolean;
+  /** The macro it is the argument of, for a `passage` argument. */
+  macro?: string;
 }
 
 /** A passage name written out in markup, at `offset` in it. */
@@ -89,6 +94,10 @@ export interface PassagePiece {
   offset: number;
   /** The markup it is in, for the error: `[[Go->Hall]]`. */
   label: string;
+  /** How much of the markup is the name, as written. */
+  length: number;
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
 }
 
 /** Macro arguments that don't have their parameters' forms. */
@@ -113,14 +122,24 @@ export interface TextPiece {
 const CONDITION_MACROS = new Set(['if', 'elseif', 'case']);
 
 /** Code inside the quoted strings of a macro's arguments, by parameter. */
-const CODE_IN_STRINGS: Record<string, Record<string, JsGoal>> = {
-  watch: { condition: 'expression', run: 'statements' },
-};
+const CODE_IN_STRINGS: ReadonlyMap<string, Record<string, JsGoal>> = new Map([
+  ['watch', { condition: 'expression', run: 'statements' }],
+]);
 
 /** The `string` parameters of a macro that name a passage. */
-const PASSAGE_STRINGS: Record<string, readonly string[]> = {
-  watch: ['goto', 'dialog'],
-};
+const PASSAGE_STRINGS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['watch', ['goto', 'dialog']],
+]);
+
+/**
+ * The `text` and `string` parameters of a macro that the runtime keeps as
+ * written, not as markup: an option's value, the name of a watcher.
+ */
+const LITERAL_STRINGS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['option', ['value']],
+  ['watch', ['name']],
+  ['unwatch', ['name']],
+]);
 
 /** Block macros whose body is the name of a passage. */
 const PASSAGE_BODIES = new Set(['dialog']);
@@ -161,6 +180,8 @@ export function* codeAndText(
         kind: 'passage',
         name: token.target,
         offset: locate(src, token.target, token.start),
+        length: token.target.length,
+        macro: 'link',
         label: src.slice(token.start, token.end),
       };
     } else if (token.type === 'expression') {
@@ -226,6 +247,8 @@ export function* codeAndText(
             kind: 'passage',
             name: passage,
             offset: locate(src, passage, token.end),
+            length: passage.length,
+            macro: name,
             label: src.slice(token.start, token.end),
           };
         }
@@ -250,7 +273,7 @@ export function* codeAndText(
 }
 
 /** The code and text in the arguments `args` (at `offset`) of `macro`. */
-function* argPieces(
+export function* argPieces(
   args: string,
   offset: number,
   params: readonly ParameterDef[],
@@ -265,8 +288,10 @@ function* argPieces(
     yield { kind: 'argument-error', message: error.message, offset, label };
     return;
   }
-  const inStrings = CODE_IN_STRINGS[macro.toLowerCase()] ?? {};
-  const passageStrings = PASSAGE_STRINGS[macro.toLowerCase()] ?? [];
+  const key = macro.toLowerCase();
+  const inStrings = CODE_IN_STRINGS.get(key) ?? {};
+  const passageStrings = PASSAGE_STRINGS.get(key) ?? [];
+  const literalStrings = LITERAL_STRINGS.get(key) ?? [];
   let cursor = 0;
   /** The pieces of the parameters `list`, with their values in `from`. */
   function* visit(
@@ -294,20 +319,36 @@ function* argPieces(
           goal,
           label,
         };
-        if (param.type === 'passage') piece.passage = true;
+        if (param.type === 'passage') {
+          piece.passage = true;
+          piece.macro = macro.toLowerCase();
+        }
+        if (!codeGoal(param)) piece.inString = true;
         yield piece;
       }
       // A passage written out: a quoted `passage` argument, or a string
-      const name =
+      const written = param.type === 'passage' ? value.trim() : value;
+      const target =
         param.type === 'passage'
-          ? readWholeQuoted(value.trim())
+          ? passageTarget(value)
           : passageStrings.includes(param.name)
-            ? value
+            ? ({ kind: 'name', name: value } as const)
             : null;
-      if (name !== null) {
-        yield { kind: 'passage', name, offset: offset + at, label };
+      if (target?.kind === 'name') {
+        yield {
+          kind: 'passage',
+          name: target.name,
+          offset: offset + at + value.indexOf(written),
+          length: written.length,
+          macro: macro.toLowerCase(),
+          label,
+        };
       }
-      if (!goal && (param.type === 'text' || param.type === 'string')) {
+      if (
+        !goal &&
+        (param.type === 'text' || param.type === 'string') &&
+        !literalStrings.includes(param.name)
+      ) {
         yield {
           kind: 'text',
           text: value,
@@ -329,4 +370,53 @@ function locate(text: string, part: string, from: number): number {
   if (at >= 0) return at;
   const anywhere = text.indexOf(part);
   return anywhere >= 0 ? anywhere : from;
+}
+
+/** A passage a piece of markup names, and where. */
+export interface PassageReference {
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
+  /** The name written out, or the expression whose value is the name. */
+  target: PassageTarget;
+  /** Where the name is written, as it is written (quotes included). */
+  start: number;
+  end: number;
+}
+
+/**
+ * The passages the markup `src` (with the `tokens` it tokenizes to) names:
+ * `[[…]]` links, the passage argument of `{goto}`, `{include}` and `{link}`
+ * (and of macros that declare one), the `goto` and `dialog` actions of
+ * `{watch}` and the body of `{dialog}`, in source order. A name written out
+ * is a literal; the others are expressions, which name a passage when they
+ * run.
+ */
+export function collectPassageReferences(
+  src: string,
+  tokens: readonly Token[],
+  parametersOf: (macro: string) => readonly ParameterDef[] | undefined,
+): PassageReference[] {
+  const refs: PassageReference[] = [];
+  for (const piece of codeAndText(src, tokens, parametersOf)) {
+    if (piece.kind === 'passage') {
+      refs.push({
+        macro: piece.macro,
+        target: { kind: 'name', name: piece.name },
+        start: piece.offset,
+        end: piece.offset + piece.length,
+      });
+    } else if (piece.kind === 'code' && piece.passage) {
+      refs.push({
+        macro: piece.macro!,
+        target: passageTarget(piece.code),
+        start: piece.offset,
+        end: piece.offset + piece.code.length,
+      });
+    }
+  }
+  return refs.filter(
+    (ref, i) =>
+      refs.findIndex((r) => r.start === ref.start && r.macro === ref.macro) ===
+      i,
+  );
 }

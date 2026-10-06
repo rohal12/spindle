@@ -2,9 +2,36 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { checkParameterTypes, validateStoryMarkup } from './story-variables.js';
+import {
+  checkParameterTypes,
+  collectStoryPassageReferences,
+  validateStoryMarkup,
+} from './story-variables.js';
 
-export { parseStoryVariables, formatDiagnostic } from './story-variables.js';
+export {
+  parseStoryVariables,
+  formatDiagnostic,
+  findCodeEnd,
+  lexJs,
+  lexTemplate,
+  scanStringLiteral,
+  MarkupError,
+  parseSelectors,
+  tokenizeMarkup,
+  tokenizeMarkupTolerant,
+  transform,
+  passageTarget,
+  evaluatePassageName,
+  SIGIL_SCOPES,
+  isSigil,
+  endsWithOperator,
+  readQuoted,
+  splitArgs,
+  splitTopLevel,
+  stripLooseQuotes,
+  unescapeQuoted,
+  splitIncludeFlag,
+} from './story-variables.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,4 +84,14 @@ export function getMacroRegistry() {
  */
 export function validateMarkup(passages, options) {
   return validateStoryMarkup(passages, metadata.values(), options);
+}
+
+/**
+ * The passages the markup of `source` names, with where each is written:
+ * `[[…]]` links and the passage of `{goto}`, `{include}`, `{link}`,
+ * `{watch}` and `{dialog}`, as the macros registered here declare them.
+ * Malformed tags are skipped, so half-typed markup reads.
+ */
+export function collectPassageReferences(source) {
+  return collectStoryPassageReferences(source, metadata.values());
 }

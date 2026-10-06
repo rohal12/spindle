@@ -11,7 +11,7 @@ import { parseWidgetDef } from '../widgets/widget-def';
 import { codeAndText, parseOrError, withParseCache } from '../code-check';
 import { CodeSyntaxError } from '../js-lexer';
 import type { ParameterDef } from '../registry';
-import { SUB_MACRO_PARAMETERS } from '../components/macros/option-utils';
+import { subMacroParameters } from '../components/macros/option-utils';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -67,8 +67,15 @@ export interface MarkupValidationOptions {
   parametersOf?(name: string): readonly ParameterDef[] | undefined;
 }
 
-/** Passages that hold no markup. */
-const NOT_MARKUP = new Set(['StoryVariables', 'StoryTransients']);
+/**
+ * Passages that hold no markup: declarations, and the JavaScript function
+ * body of SaveTitle.
+ */
+export const NOT_MARKUP = new Set([
+  'StoryVariables',
+  'StoryTransients',
+  'SaveTitle',
+]);
 const NOT_MARKUP_TAGS = ['script', 'stylesheet'];
 
 /** Branch macros, which their parent macro renders. */
@@ -222,7 +229,7 @@ export function validateMarkup(
   };
 
   const parametersOf = (name: string) =>
-    options.parametersOf?.(name) ?? SUB_MACRO_PARAMETERS[name.toLowerCase()];
+    options.parametersOf?.(name) ?? subMacroParameters(name);
 
   /**
    * Check `tokens`, the tokens of `src`, which starts at `base` in the

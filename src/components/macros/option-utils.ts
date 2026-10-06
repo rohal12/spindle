@@ -20,9 +20,15 @@ const OPTION_PARAMETERS = [
 ] as const;
 
 /** The parameters of the built-in sub-macros that take arguments. */
-export const SUB_MACRO_PARAMETERS: Record<string, readonly ParameterDef[]> = {
-  option: OPTION_PARAMETERS,
-};
+const SUB_MACRO_PARAMETERS: ReadonlyMap<string, readonly ParameterDef[]> =
+  new Map([['option', OPTION_PARAMETERS]]);
+
+/** The parameters of the built-in sub-macro `name`, if it takes any. */
+export function subMacroParameters(
+  name: string,
+): readonly ParameterDef[] | undefined {
+  return SUB_MACRO_PARAMETERS.get(name.toLowerCase());
+}
 
 /**
  * Walk AST children to find {option} macro nodes, returning their values.

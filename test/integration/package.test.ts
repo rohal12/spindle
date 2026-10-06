@@ -105,4 +105,54 @@ describe('@rohal12/spindle/tooling', async () => {
       /Unsupported type/,
     );
   });
+
+  it('exports the parsing rules', () => {
+    for (const name of [
+      'lexJs',
+      'lexTemplate',
+      'findCodeEnd',
+      'scanStringLiteral',
+      'parseSelectors',
+      'tokenizeMarkup',
+      'tokenizeMarkupTolerant',
+      'transform',
+      'passageTarget',
+      'evaluatePassageName',
+      'collectPassageReferences',
+      'isSigil',
+      'splitArgs',
+      'splitTopLevel',
+      'readQuoted',
+      'unescapeQuoted',
+      'stripLooseQuotes',
+      'endsWithOperator',
+      'splitIncludeFlag',
+    ]) {
+      expect(typeof tooling[name], name).toBe('function');
+    }
+    expect(tooling.SIGIL_SCOPES.$).toBe('variable');
+    expect(tooling.parseSelectors('.a#b x')).toEqual({
+      className: 'a',
+      id: 'b',
+      end: 5,
+    });
+    expect(tooling.tokenizeMarkup('{$x}')[0].type).toBe('variable');
+    expect(tooling.tokenizeMarkupTolerant('{$x} {if').errors).toHaveLength(1);
+    expect(tooling.transform('$x')).toBe('variables["x"]');
+    expect(
+      tooling
+        .collectPassageReferences('[[Go->Hall]] {goto "Roof"}')
+        .map((r: { macro: string }) => r.macro),
+    ).toEqual(['link', 'goto']);
+  });
+
+  it('does not load or bundle the runtime', () => {
+    // Imported or inlined, Preact, zustand, immer and micromark would show
+    // by name in the bundle (their sources and import specifiers)
+    const bundle = readFileSync(
+      resolve(projectRoot, 'dist/pkg/story-variables.js'),
+      'utf-8',
+    );
+    expect(bundle.match(/\b(?:preact|zustand|immer|micromark)\b/g)).toBeNull();
+  });
 });

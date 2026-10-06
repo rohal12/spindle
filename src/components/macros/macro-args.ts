@@ -22,6 +22,7 @@ import {
   endsWithOperator,
   isWhitespace,
   readQuoted,
+  readWholeJsString,
   readWholeQuoted,
   stripLooseQuotes,
   topLevelIndices,
@@ -56,7 +57,9 @@ export function readText(src: string): string {
  */
 export class MacroArgumentError extends Error {
   constructor(param: ParameterDef, src: string) {
-    super(`The ${param.name} must be a quoted string ("…" or '…'), not ${src}`);
+    super(
+      `The ${param.name} must be a quoted string ("…" or '…'), ${src ? `not ${src}` : 'but it has no value'}`,
+    );
     this.name = 'MacroArgumentError';
   }
 }
@@ -90,6 +93,7 @@ function unset(param: ParameterDef): unknown {
 
 const WORD_RE = /\w+/y;
 const DIGITS_RE = /\d+/y;
+const WORD_OR_PUNCT_RE = /\S+/y;
 
 /** Match the sticky regex `re` at `pos`, returning the matched text. */
 function matchAt(re: RegExp, src: string, pos: number): string | null {
@@ -100,7 +104,8 @@ function matchAt(re: RegExp, src: string, pos: number): string | null {
 /**
  * Read keyword options (`goto "X" priority 5 once`). A keyword takes the
  * quoted string or digit run after it as its value; keywords that aren't
- * declared, and their values, are skipped.
+ * declared, and their values, are skipped. A keyword of a `string` parameter
+ * must be followed by a quoted string.
  */
 function readOptions(
   params: readonly ParameterDef[],
@@ -119,10 +124,11 @@ function readOptions(
 
     // A value is a quoted string or a digit run, after whitespace.
     let val: string | undefined;
+    let quoted: ReturnType<typeof readQuoted> = null;
     let j = i;
     while (j < src.length && isWhitespace(src[j]!)) j++;
     if (j > i) {
-      const quoted = readQuoted(src, j);
+      quoted = readQuoted(src, j);
       const digits = quoted ? null : matchAt(DIGITS_RE, src, j);
       if (quoted) {
         val = quoted.value;
@@ -134,6 +140,13 @@ function readOptions(
     }
 
     const param = params.find((p) => p.name === key);
+    // A keyword that takes a string was given anything else, or nothing
+    if (param?.type === 'string' && (!quoted || val === undefined)) {
+      throw new MacroArgumentError(
+        param,
+        matchAt(WORD_OR_PUNCT_RE, src, j) ?? '',
+      );
+    }
     if (param?.type === 'flag') options[key] = true;
     else if (param?.type === 'number') options[key] = Number(val ?? 0);
     else if (param) options[key] = val;
@@ -286,6 +299,25 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   });
   readGroup(parameters.slice(groupStart), rest, args);
   return args as MacroArgs<P>;
+}
+
+/** What a `passage` argument is: a quoted name, or an expression. */
+export type PassageTarget =
+  | { kind: 'name'; name: string }
+  | { kind: 'expression'; expression: string };
+
+/**
+ * Read a `passage` argument as written (`{goto "Hall"}`, `{goto $room}`): a
+ * quoted string is the name its JavaScript literal has (`"\u0048all"` is
+ * `Hall`), anything else an expression, whose value is the name when it
+ * runs (see evaluatePassageName).
+ */
+export function passageTarget(arg: string): PassageTarget {
+  const expression = arg.trim();
+  const name = readWholeJsString(expression);
+  return name === null
+    ? { kind: 'expression', expression }
+    : { kind: 'name', name };
 }
 
 /**

@@ -9,7 +9,7 @@ import peggy from 'peggy';
 import type { Plugin } from 'vite';
 
 /** The grammar's start rules (see spindle.peggy). */
-const START_RULES = ['Markup', 'Tokens'];
+const START_RULES = ['Markup', 'Tokens', 'SelectorsPrefix'];
 
 const PEGGY_FILE = /\.peggy$/;
 
@@ -19,6 +19,7 @@ export function compileGrammar(grammar: string, path: string): string {
     output: 'source',
     format: 'es',
     allowedStartRules: START_RULES,
+    dependencies: { shared: './grammar-shared' },
     grammarSource: path,
   });
 }

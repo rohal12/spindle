@@ -288,4 +288,37 @@ describe('action registration', () => {
       expect(own()).toEqual([]);
     });
   });
+
+  describe('a link whose target fails to resolve (#255)', () => {
+    it('is disabled and does not run its body, until the target resolves', () => {
+      const store = useStoryStore.getState();
+      store.setVariable('brokenDest', 'Nowhere');
+      store.setVariable('brokenHit', 0);
+      const container = document.createElement('div');
+      const show = () =>
+        act(() => {
+          render(
+            <Passage
+              passage={makePassage(
+                1,
+                'Test',
+                '{link "Broken" $brokenDest}{set $brokenHit = 42}{/link}',
+              )}
+            />,
+            container,
+          );
+        });
+      show();
+      const broken = () => getActions().find((a) => a.label === 'Broken')!;
+
+      expect(container.querySelector('a')).toBeNull();
+      expect(broken().disabled).toBe(true);
+      act(() => broken().perform());
+      expect(useStoryStore.getState().variables['brokenHit']).toBe(0);
+
+      act(() => useStoryStore.getState().setVariable('brokenDest', 'Forest'));
+      expect(broken().disabled).toBeUndefined();
+      act(() => render(null, container));
+    });
+  });
 });
