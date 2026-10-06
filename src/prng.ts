@@ -40,6 +40,8 @@ let enabled = false;
 let currentSeed = '';
 let currentPull = 0;
 let generator: (() => number) | null = null;
+/** Incremented whenever the generator is replaced (init, restore, reset). */
+let generation = 0;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -71,6 +73,7 @@ export function initPRNG(seed?: string, useEntropy = true): void {
   currentPull = 0;
   generator = mulberry32(hashSeed(resolvedSeed));
   enabled = true;
+  generation++;
 }
 
 /**
@@ -78,6 +81,12 @@ export function initPRNG(seed?: string, useEntropy = true): void {
  * Recreates the generator from the seed and fast-forwards to the saved pull count.
  */
 export function restorePRNG(seed: string, pull: number): void {
+  generation++;
+  moveTo(seed, pull);
+}
+
+/** Recreate the generator at `pull` pulls from `seed`. */
+function moveTo(seed: string, pull: number): void {
   currentSeed = seed;
   // Fast-forward in constant time: each pull adds MULBERRY_STEP to the
   // 32-bit state, so `pull` pulls add pull × MULBERRY_STEP (mod 2^32). A
@@ -90,10 +99,34 @@ export function restorePRNG(seed: string, pull: number): void {
 
 /** Disable the PRNG (used on restart before StoryInit re-enables it). */
 export function resetPRNG(): void {
+  generation++;
   enabled = false;
   currentSeed = '';
   currentPull = 0;
   generator = null;
+}
+
+/**
+ * Run `fn` without its draws advancing the sequence: the draws it makes are
+ * taken back afterwards (also when it throws), so the next draws return the
+ * same values again. Save and load event handlers run like this, so that
+ * saving or loading never shifts the story's random sequence (a load replays
+ * the saved passage from its entry state, without the save's handlers). A
+ * generator `fn` replaced (a restart or load it started) is kept.
+ */
+export function withoutDraws<T>(fn: () => T): T {
+  const start = { generation, seed: currentSeed, pull: currentPull };
+  try {
+    return fn();
+  } finally {
+    if (
+      enabled &&
+      generation === start.generation &&
+      currentPull !== start.pull
+    ) {
+      moveTo(start.seed, start.pull);
+    }
+  }
 }
 
 /** Returns the current PRNG state for snapshotting, or null if disabled. */

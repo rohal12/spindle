@@ -4,7 +4,8 @@ import { current } from 'immer';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { resetBackend } from '../../src/saves/storage';
-import { loadSession } from '../../src/saves/save-manager';
+import { loadSession, saveWithHooks } from '../../src/saves/save-manager';
+import type { SavePayload } from '../../src/saves/types';
 import { resetEmitter } from '../../src/event-emitter';
 import { initPRNG, random } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
@@ -359,6 +360,49 @@ describe('load pipeline', () => {
       useStoryStore.getState().loadFromPayload(payload);
 
       expect(Story.prng.pull).toBe(1);
+    });
+
+    it('saves and goes on with the PRNG state before save hook draws', async () => {
+      initPRNG('seed', false);
+      Story.goto('B');
+      random();
+      Story.on('beforesave', () => random());
+      Story.on('aftersave', () => random());
+      await saveTo('hooked');
+
+      expect(Story.prng.pull).toBe(1);
+      const payload = (await Story.exportSave('hooked'))!.save.payload;
+      // The fallback for saves whose moments have no PRNG state
+      expect(payload.prng).toEqual({ seed: 'seed', pull: 1 });
+    });
+
+    it('takes back save hook draws on the save dialog path', async () => {
+      initPRNG('seed', false);
+      Story.on('beforesave', () => random());
+      Story.on('aftersave', () => random());
+      let saved: SavePayload | undefined;
+      await saveWithHooks(
+        undefined,
+        undefined,
+        useStoryStore.getState().beginSave,
+        async (payload) => {
+          saved = payload;
+        },
+      );
+      expect(saved!.prng).toEqual({ seed: 'seed', pull: 0 });
+      expect(Story.prng.pull).toBe(0);
+    });
+
+    it('replays the passage rolls after afterload draws', async () => {
+      initPRNG('seed', false);
+      Story.goto('B');
+      await saveTo('s');
+      Story.on('afterload', () => random());
+
+      await loadFrom('s');
+
+      // The passage's first roll comes next, as on entering it
+      expect(Story.prng.pull).toBe(0);
     });
   });
 

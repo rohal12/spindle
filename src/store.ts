@@ -51,6 +51,7 @@ import {
   snapshotPRNG,
   restorePRNG,
   resetPRNG,
+  withoutDraws,
   type PRNGSnapshot,
 } from './prng';
 import { errorMessage } from './utils/error-message';
@@ -1604,7 +1605,8 @@ export const useStoryStore = create<StoryState>()(
       // Write the loaded game to the session so a refresh restores it
       persistSession(get);
 
-      emit('afterload', slot);
+      // Draws made by the handlers would shift the passage's replayed rolls
+      withoutDraws(() => emit('afterload', slot));
     },
 
     getHistoryVariables: (index: number): Record<string, unknown> => {
