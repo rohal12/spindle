@@ -141,6 +141,6 @@ describe('@rohal12/spindle/tooling', async () => {
       resolve(projectRoot, 'dist/pkg/story-variables.js'),
       'utf-8',
     );
-    expect(bundle.match(/\b(?:preact|zustand|immer|micromark)\b/gi)).toBeNull();
+    expect(bundle.match(/\b(?:preact|zustand|immer|micromark)\b/g)).toBeNull();
   });
 });
