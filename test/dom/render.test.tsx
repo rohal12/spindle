@@ -9,7 +9,7 @@ import { markdownOptions } from '../../src/markup/markdown';
 import { micromark } from 'micromark';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
-import { expectAboutLinear } from '../support/linear-time';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -727,7 +727,7 @@ describe('renderNodes', () => {
   // Found by fuzzing: the whitespace trimmed at the edges of a paragraph and
   // around its line endings was found with regexes (`/[ \t]*$/`) that try
   // every position of a whitespace run, quadratic in its length.
-  describe('long whitespace runs', () => {
+  describe('long whitespace runs', { timeout: LINEAR_TIMEOUT }, () => {
     it.each([
       ['plain text', (ws: string) => `a${ws}b`],
       ['markdown', (ws: string) => `*a*${ws}b`],

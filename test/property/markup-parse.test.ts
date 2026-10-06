@@ -30,7 +30,7 @@ import {
   passageArb,
   propTimeout,
 } from './markup-arbitraries';
-import { expectAboutLinear } from '../support/linear-time';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 /** One or more redundant void-element closers, which the tokenizer drops. */
 const VOID_CLOSER =
@@ -227,7 +227,7 @@ describe('brace and tag scans', () => {
   );
 });
 
-describe('tokenize running time', () => {
+describe('tokenize running time', { timeout: LINEAR_TIMEOUT }, () => {
   /**
    * Unclosed openers whose scans would each run to the end of the passage:
    * macros and expressions in unclosed brackets, template literals, regex

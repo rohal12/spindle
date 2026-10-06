@@ -14,7 +14,7 @@ import {
 } from '../../src/js-lexer';
 import { NUM_RUNS, fcOptions } from './config';
 import { jsArbitraries, render } from './arbitraries/js';
-import { expectAboutLinear } from '../support/linear-time';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 /** Characters that steer the lexer's state machine. */
 const LEXICAL = [
@@ -281,7 +281,7 @@ describe('findCodeEnd', () => {
   );
 });
 
-describe('findCodeEnd running time', () => {
+describe('findCodeEnd running time', { timeout: LINEAR_TIMEOUT }, () => {
   /**
    * Code scanned from many starts with a shared cache, as the tokenizer
    * scans the `{` blocks of a passage: scans that each ran on to the end of
@@ -319,7 +319,7 @@ describe('findCodeEnd running time', () => {
   });
 });
 
-describe('lexJs running time', () => {
+describe('lexJs running time', { timeout: LINEAR_TIMEOUT }, () => {
   /**
    * Inputs that make a lexer backtrack or rescan: nested unterminated
    * literals and brackets, and `%name` assignments starting lines (which

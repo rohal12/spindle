@@ -1,6 +1,13 @@
 import { expect } from 'vitest';
 
 /**
+ * Timeout for a test that calls `expectAboutLinear`. These tests compare
+ * growth, not speed, and coverage instrumentation in CI slows every run
+ * alike, so their total time must not be held to the 5s default.
+ */
+export const LINEAR_TIMEOUT = 60_000;
+
+/**
  * Assert that work scales about linearly with its input.
  *
  * `small` and `large` run the same work on an input and on 8× that input. A

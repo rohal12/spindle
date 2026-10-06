@@ -8,7 +8,7 @@ import { test, fc } from '@fast-check/vitest';
 import { micromark } from 'micromark';
 import { markdownOptions, markdownToHtml } from '../../src/markup/markdown';
 import { fcOptions } from './config';
-import { expectAboutLinear } from '../support/linear-time';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 /** micromark with spindle's extensions, as it renders on its own. */
 function reference(text: string, inline: boolean): string {
@@ -79,7 +79,7 @@ describe('markdownToHtml', () => {
   });
 });
 
-describe('markdownToHtml running time', () => {
+describe('markdownToHtml running time', { timeout: LINEAR_TIMEOUT }, () => {
   /**
    * Raw HTML openers that never close. micromark reads on from each one
    * looking for its closer, to the end of the paragraph: quadratic time in
