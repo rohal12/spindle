@@ -187,14 +187,15 @@ const SigilParser = class extends (Parser as unknown as Base) {
       this.colonEndsTernary = open > 0;
       if (open > 0) this.ternaries[depth] = open - 1;
     }
+    // A keyword after `.` or `?.` is a property name (`a?.typeof`,
+    // `p.in⏎function f() {}`): read it as a name, so what follows it reads
+    // as after an operand, a function after it as a declaration
     const prevType = (this as unknown as ParserState).type;
+    const property =
+      type.keyword !== undefined &&
+      (prevType === tt.dot || prevType === tt.questionDot);
     // @ts-expect-error acorn internals
-    super.finishToken(type, value);
-    // A keyword after `?.` is a property name, an operand (`a?.typeof % 2`),
-    // as acorn reads one after `.`
-    if (type.keyword && prevType === tt.questionDot) {
-      (this as unknown as ParserState).exprAllowed = false;
-    }
+    super.finishToken(property ? tt.name : type, value);
   }
 
   braceIsBlock(prevType: TokenType): boolean {
@@ -673,6 +674,8 @@ export interface FindCodeEndOptions {
 
 /** The rest of a word, after a number (`2s`). */
 const WORD_RE = /[\p{ID_Continue}$.]*/uy;
+/** The flags after a regex literal, whatever they are. */
+const FLAGS_RE = /[\p{ID_Continue}$]*/uy;
 
 /** Words a string may follow with no space between (`of'x'`, `get"y"`). */
 const WORDS_BEFORE_STRING = new Set(['of', 'get', 'set', 'static', 'async']);
@@ -752,17 +755,21 @@ function scanCodeEnd(
     for (const tok of tokens(src, from, goal, { afterOperand })) {
       if ('error' in tok) {
         const { message } = tok.error;
-        if (!/^Unterminated/.test(message)) {
+        // In a template literal, a fresh tokenizer would lose its place
+        const inTemplate = stack.includes('${');
+        if (!/^Unterminated/.test(message) && !inTemplate) {
           // Something no JavaScript has (a lone `@`, `#`, a bad regex flag):
           // on after its first character, as after an operator
           resumeAt = Math.max(tok.pos, from) + 1;
           afterOperand = false;
+          if (resumeAt >= src.length) return -1;
           break;
         }
         const k = stack.lastIndexOf('${');
         const unclosed = /^Unterminated template/.test(message);
-        // One such slip per block: more is no code an author meant
-        if (!unclosed || k < 0 || templateSlip) return -1;
+        // One such slip per block: more is no code an author meant. (A raw
+        // body that is no code ends at its first closer.)
+        if (!unclosed || k < 0 || templateSlip || stop) return -1;
         // The template's text starts just past the backtick that opened it
         templateSlip = true;
         stack.length = k;
@@ -770,6 +777,7 @@ function scanCodeEnd(
         afterOperand = true;
         break;
       }
+      if (tok.restarted && stack.includes('${')) return -1;
       const t = tok.type;
       if (t === tt.eof) return -1;
       if (t === tt.string && prevWord && tok.start === prevEnd) return -1;
@@ -801,6 +809,11 @@ interface Tok {
   start: number;
   end: number;
   value: unknown;
+  /**
+   * Read past an error, by a fresh tokenizer after it: one that knows
+   * nothing of the template literals around it.
+   */
+  restarted?: boolean;
 }
 
 /**
@@ -831,8 +844,10 @@ function* tokens(
           onComment: options.onComment,
           afterOperand: true,
         });
-        return { type, start: from, end, value: undefined };
+        return { type, start: from, end, value: undefined, restarted: true };
       };
+      const first = src.charAt(p.start);
+      const unterminated = /^Unterminated/.test(message);
       if (/^Unterminated string/.test(message)) {
         const { end, closed } = scanStringLiteral(src, pos);
         if (closed) {
@@ -840,9 +855,27 @@ function* tokens(
           continue;
         }
       } else if (
-        !/^Unterminated/.test(message) &&
+        !unterminated &&
         p.start <= pos &&
-        /[\d.]/.test(src.charAt(p.start)) &&
+        (first === '"' || first === "'")
+      ) {
+        // A string with an escape no JavaScript has (`"\x"`): one string
+        const { end, closed } = scanStringLiteral(src, p.start);
+        if (closed) {
+          yield operand(tt.string, p.start, end);
+          continue;
+        }
+      } else if (!unterminated && p.start <= pos && first === '/') {
+        // A regex with flags no JavaScript has (`/a/gb`): one regex
+        const end = regexEnd(src, p.start);
+        if (end > 0) {
+          yield operand(tt.regexp, p.start, end);
+          continue;
+        }
+      } else if (
+        !unterminated &&
+        p.start <= pos &&
+        /[\d.]/.test(first) &&
         /\d/.test(src.slice(p.start, p.start + 2))
       ) {
         // A number with a unit (`2s`, `5ms`), as macro arguments have them,
@@ -1021,6 +1054,27 @@ function keyPosition(
   next.lastIndex = end;
   const c = next.exec(src)?.[0];
   return c === ':' || c === '(';
+}
+
+/**
+ * Index just past the regex literal (and its flags, whatever they are)
+ * opening at `start`, or -1 when no `/` on its line closes it.
+ */
+function regexEnd(src: string, start: number): number {
+  let inClass = false;
+  for (let i = start + 1; i < src.length; i++) {
+    const c = src.charAt(i);
+    if (LINE_BREAK_RE.test(c)) return -1;
+    if (c === '\\') i++;
+    else if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) {
+      FLAGS_RE.lastIndex = i + 1;
+      FLAGS_RE.test(src);
+      return FLAGS_RE.lastIndex;
+    }
+  }
+  return -1;
 }
 
 /**
