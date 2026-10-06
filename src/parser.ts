@@ -19,16 +19,28 @@ export interface StoryData {
 }
 
 /**
- * Decode the HTML entities that browsers use when serializing innerHTML.
- * &amp; is decoded last to avoid double-decoding (e.g. &amp;lt; → &lt;, not <).
+ * The character references the HTML serializer writes (innerHTML): `&amp;`,
+ * `&nbsp;` (U+00A0), `&lt;` and `&gt;` in text, and `&quot;` in attribute
+ * values. `&#39;` is kept for compilers that write it.
+ */
+const SERIALIZED_ENTITIES: Readonly<Record<string, string>> = {
+  amp: '&',
+  nbsp: ' ',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+};
+
+/**
+ * Undo innerHTML's escaping. One pass, so `&amp;lt;` becomes `&lt;`, not
+ * `<`.
  */
 function decodeHtmlEntities(html: string): string {
-  return html
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
+  return html.replace(
+    /&(amp|nbsp|lt|gt|quot|#39);/g,
+    (_, name: string) => SERIALIZED_ENTITIES[name]!,
+  );
 }
 
 /**

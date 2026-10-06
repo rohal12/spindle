@@ -90,6 +90,20 @@ describe('parseStoryData', () => {
     expect(data.passages.get('Start')!.content).toBe('Tom & Jerry <3');
   });
 
+  it('keeps a no-break space as U+00A0, not the &nbsp; innerHTML writes', () => {
+    setDocumentHTML(`
+      <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
+        <tw-passagedata pid="1" name="Start" tags="">{set $x = "a b"}[[Café Noir]] &amp;nbsp;</tw-passagedata>
+      </tw-storydata>
+    `);
+    const data = parseStoryData();
+
+    // An author-written `&nbsp;` (stored as &amp;nbsp;) stays text.
+    expect(data.passages.get('Start')!.content).toBe(
+      '{set $x = "a b"}[[Café Noir]] &nbsp;',
+    );
+  });
+
   it('parses passages with multiple space-separated tags', () => {
     setDocumentHTML(`
       <tw-storydata name="Test" startnode="1" ifid="X" format="" format-version="">
