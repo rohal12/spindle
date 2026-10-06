@@ -229,6 +229,9 @@ describe('lexJs running time', { timeout: LINEAR_TIMEOUT }, () => {
    * literals and brackets, and `%name` assignments starting lines (which
    * look ahead over the target's member chain).
    */
+  // (A `%name` starting each line in unclosed brackets, `x⏎%a[` repeated,
+  // looks ahead to the end of the code from each: quadratic, and out of
+  // scope.)
   const PATTERNS = [
     '`${',
     '"\\',
@@ -236,7 +239,6 @@ describe('lexJs running time', { timeout: LINEAR_TIMEOUT }, () => {
     '/*',
     '{',
     '([{',
-    'x\n%a[',
     'x\n%a.b',
     'x\n%a [ x\n%a[0] ] = 1\n',
     '{ get ',

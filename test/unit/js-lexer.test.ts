@@ -264,7 +264,25 @@ describe('findCodeEnd', () => {
     expect(findCodeEnd('"a }', 0)).toBe(-1);
     expect(findCodeEnd('/a }\n}', 0)).toBe(-1);
     expect(findCodeEnd('/* }', 0)).toBe(-1);
-    expect(findCodeEnd('a \u2192 b }', 0)).toBe(-1);
+  });
+
+  it('skips characters no JavaScript has', () => {
+    expect(findCodeEnd('a \u2192 b } x', 0)).toBe(6);
+    // `@` alone, then a regex holding the `{/do}` that does not end the body
+    const src = '@=/[{/do}]a/g{/do} x';
+    const stop = (i: number) => src.startsWith('{/do}', i);
+    expect(findCodeEnd(src, 0, { goal: 'statements', stop })).toBe(13);
+  });
+
+  it('reads a { after a block, or a statement and a line break, as a block', () => {
+    const src = '{ }{ } %n = /}/ } x';
+    expect(findCodeEnd(src, 0, { goal: 'statements' })).toBe(16);
+    const kinds = (code: string) =>
+      pieces(code, 'statements').map(([kind]) => kind);
+    expect(kinds('p\n{ } %n = 1')).toEqual(['code', 'variable', 'code']);
+    expect(kinds('x = {}\n{ } %n = 1')).toEqual(['code', 'variable', 'code']);
+    // On one line, `{}` after an operand is no block: `%` is modulo
+    expect(kinds('x = a ? {} : {} %n')).toEqual(['code']);
   });
 
   it('ends the code at a } in an unclosed bracket, for the parse to report', () => {

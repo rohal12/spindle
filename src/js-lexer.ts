@@ -95,10 +95,30 @@ interface ParserState {
 
 type Base = new (options: Options, input: string, start?: number) => Parser;
 
+/** Tokens that may end an operand, and so a statement before a line break. */
+const OPERAND_ENDS: ReadonlySet<TokenType> = new Set([
+  tt.name,
+  tt.num,
+  tt.string,
+  tt.regexp,
+  tt.backQuote,
+  tt.bracketR,
+  tt.braceR,
+  tt.parenR,
+  tt.incDec,
+  tt._this,
+  tt._null,
+  tt._true,
+  tt._false,
+]);
+
 /**
- * acorn with the `@name` and `%name` sigils, and a fix to its guess whether
- * a `{` after `:` opens a block: after the `:` of a conditional it opens an
- * object literal (`a ? b : {} / 2`), not a block as after a label.
+ * acorn with the `@name` and `%name` sigils, and three fixes to its guess
+ * whether a `{` opens a block or an object literal, which decides whether a
+ * `/` after its `}` opens a regex and a `%` a transient: after the `:` of a
+ * conditional it opens an object literal (`a ? b : {} / 2`), not a block as
+ * after a label; after a block's `}` it opens another block (`{}{} %n = 1`),
+ * and so it does on a new line after a statement (`p⏎{} %n = 1`).
  */
 const SigilParser = class extends (Parser as unknown as Base) {
   /** Whether an operand could start before the last token, and this one. */
@@ -111,6 +131,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
   ternaries: number[] = [];
   /** The last `:` ended a conditional's `?`. */
   colonEndsTernary = false;
+  /** The last `}` closed a block. */
+  closedBlock = false;
   /** Look ahead after a `%name` starting a line (off in look-aheads). */
   lookahead = true;
 
@@ -149,8 +171,12 @@ const SigilParser = class extends (Parser as unknown as Base) {
   }
 
   finishToken(type: TokenType, value?: unknown): void {
-    const depth = (this as unknown as ParserState).context.length;
-    if (type === tt.question) {
+    const { context } = this as unknown as ParserState;
+    const depth = context.length;
+    if (type === tt.braceR) {
+      const closed = context[depth - 1] as { token: string; isExpr: boolean };
+      this.closedBlock = closed.token === '{' && !closed.isExpr;
+    } else if (type === tt.question) {
       this.ternaries[depth] = (this.ternaries[depth] ?? 0) + 1;
     } else if (type === tt.colon) {
       const open = this.ternaries[depth] ?? 0;
@@ -163,6 +189,16 @@ const SigilParser = class extends (Parser as unknown as Base) {
 
   braceIsBlock(prevType: TokenType): boolean {
     if (prevType === tt.colon && this.colonEndsTernary) return false;
+    if (prevType === tt.braceR && this.closedBlock) return true;
+    // A statement ended by a line break (`p⏎{ }`): a block starts
+    if (this.breakHere && OPERAND_ENDS.has(prevType)) {
+      const { context } = this as unknown as ParserState;
+      const parent = context[context.length - 1] as {
+        token: string;
+        isExpr: boolean;
+      };
+      if (parent.token === '{' && !parent.isExpr) return true;
+    }
     // @ts-expect-error acorn internals
     return super.braceIsBlock(prevType);
   }
@@ -686,17 +722,27 @@ function scanCodeEnd(
   let prevWord = false;
   let from = start;
   let afterOperand = false;
+  let templateSlip = false;
   for (;;) {
     let resumeAt = -1;
     for (const tok of tokens(src, from, goal, { afterOperand })) {
       if ('error' in tok) {
+        if (/^Unexpected character/.test(tok.error.message)) {
+          // A character no JavaScript has (`@` alone, `#`, `→`): on after
+          // it, as after an operator
+          resumeAt = tok.pos + 1;
+          afterOperand = false;
+          break;
+        }
         const k = stack.lastIndexOf('${');
         const unclosed = /^Unterminated template/.test(tok.error.message);
         // One such slip per block: more is no code an author meant
-        if (!unclosed || k < 0 || afterOperand) return -1;
+        if (!unclosed || k < 0 || templateSlip) return -1;
         // The template's text starts just past the backtick that opened it
+        templateSlip = true;
         stack.length = k;
         resumeAt = tok.pos;
+        afterOperand = true;
         break;
       }
       const t = tok.type;
@@ -721,7 +767,6 @@ function scanCodeEnd(
       }
     }
     from = resumeAt;
-    afterOperand = true;
     prevWord = false;
   }
 }

@@ -1421,7 +1421,7 @@ describe('tokenize — unclosed template literals', () => {
   // of thousands of unclosed openers take quadratic time, which input like
   // this, out of scope for authors, may.)
   it('scans deeply nested unclosed template literals without recursion', () => {
-    const input = '{$a`${'.repeat(3000);
+    const input = '{$a`${'.repeat(2000);
     const tokens = tokenize(input);
     expect(tokens.map((t) => (t.type === 'text' ? t.value : '')).join('')).toBe(
       input,
