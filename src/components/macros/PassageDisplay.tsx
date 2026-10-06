@@ -55,6 +55,20 @@ function setCSSProperties(el: HTMLElement, config: ResolvedTransition): void {
 }
 
 /**
+ * Set up `containerEl` for an outgoing transition and snapshot the passage
+ * it shows, or return null if there is no container or passage.
+ */
+function snapshotPassage(
+  containerEl: HTMLElement | null,
+  config: ResolvedTransition,
+): HTMLElement | null {
+  if (!containerEl) return null;
+  setCSSProperties(containerEl, config);
+  const passageEl = containerEl.querySelector('.passage');
+  return passageEl ? createSnapshot(passageEl, config.type) : null;
+}
+
+/**
  * Remove all snapshot elements and crossfading class from a container.
  */
 function cleanupSnapshots(containerEl: Element | null): void {
@@ -183,23 +197,19 @@ defineMacro({
         return;
       }
 
+      // The outgoing transitions start from a snapshot of the current passage
+      const snapshot =
+        config.type === 'fade-through' || config.type === 'crossfade'
+          ? snapshotPassage(containerEl, config)
+          : null;
+      if (!containerEl || !snapshot) {
+        // Fallback: unknown type or nothing to snapshot, just mount
+        setDisplayedPassage(currentPassage);
+        return;
+      }
+
       if (config.type === 'fade-through') {
         // idle → outgoing (fade out snapshot) → paused → incoming (mount new, fade in) → idle
-        if (!containerEl) {
-          setDisplayedPassage(currentPassage);
-          return;
-        }
-
-        setCSSProperties(containerEl, config);
-
-        // Take snapshot of current passage
-        const passageEl = containerEl.querySelector('.passage');
-        if (!passageEl) {
-          setDisplayedPassage(currentPassage);
-          return;
-        }
-
-        const snapshot = createSnapshot(passageEl, config.type);
         containerEl.appendChild(snapshot);
 
         // Hide the current passage during outgoing phase by setting empty key
@@ -221,42 +231,22 @@ defineMacro({
         return;
       }
 
-      if (config.type === 'crossfade') {
-        // idle → crossfading (mount new + fade in, simultaneously fade out snapshot) → idle
-        if (!containerEl) {
-          setDisplayedPassage(currentPassage);
-          return;
-        }
+      // crossfade: idle → crossfading (mount new + fade in, simultaneously
+      // fade out snapshot) → idle
 
-        setCSSProperties(containerEl, config);
+      // Use CSS grid stacking for crossfade
+      containerEl.classList.add('passage-container--crossfading');
+      containerEl.appendChild(snapshot);
 
-        // Take snapshot of current passage
-        const passageEl = containerEl.querySelector('.passage');
-        if (!passageEl) {
-          setDisplayedPassage(currentPassage);
-          return;
-        }
-
-        const snapshot = createSnapshot(passageEl, config.type);
-
-        // Use CSS grid stacking for crossfade
-        containerEl.classList.add('passage-container--crossfading');
-        containerEl.appendChild(snapshot);
-
-        // Mount new passage immediately alongside snapshot
-        setDisplayedPassage(currentPassage);
-
-        // After duration, clean up snapshot and remove crossfading class
-        const t1 = setTimeout(() => {
-          cleanupSnapshots(containerEl);
-        }, config.duration);
-
-        timeoutsRef.current = [t1];
-        return;
-      }
-
-      // Fallback: unknown type, just mount
+      // Mount new passage immediately alongside snapshot
       setDisplayedPassage(currentPassage);
+
+      // After duration, clean up snapshot and remove crossfading class
+      const t1 = setTimeout(() => {
+        cleanupSnapshots(containerEl);
+      }, config.duration);
+
+      timeoutsRef.current = [t1];
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [navigationId]);
 

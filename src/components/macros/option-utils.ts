@@ -1,22 +1,17 @@
 import type { ASTNode } from '../../markup/ast';
 import { readWholeQuoted } from './arg-utils';
+import { parseMacroArgs } from './macro-args';
 
+/** `$var "placeholder"`, the arguments of the input macros. */
 export function parseVarArgs(rawArgs: string): {
   varName: string;
   placeholder: string;
 } {
-  // `s`: a quoted placeholder may span lines.
-  const match = rawArgs.match(/^\s*(["']?\$[\w.]+["']?)\s*(["'].*["'])?\s*$/s);
-  if (!match) {
-    return { varName: rawArgs.trim(), placeholder: '' };
-  }
-  const varName = match[1]!.replace(/["']/g, '');
-  // A quoted placeholder accepts \" \' and \\ escapes.
-  const quoted = match[2];
-  const placeholder = quoted
-    ? (readWholeQuoted(quoted) ?? quoted.slice(1, -1))
-    : '';
-  return { varName, placeholder };
+  const { variable = '', placeholder = '' } = parseMacroArgs(rawArgs, [
+    { name: 'variable', type: 'variable' },
+    { name: 'placeholder', type: 'string' },
+  ]);
+  return { varName: variable.replace(/["']/g, ''), placeholder };
 }
 
 /**

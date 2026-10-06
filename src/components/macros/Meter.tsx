@@ -1,46 +1,21 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
-import {
-  endsWithOperator,
-  isWhitespace,
-  readWholeQuoted,
-  splitTopLevel,
-} from './arg-utils';
 
-/**
- * Parse `{meter currentExpr maxExpr ["label"]}`. Arguments are separated by
- * whitespace outside string and template literals and bracket pairs; a
- * trailing standalone `"…"` or `'…'` string is the label mode, with `\"`,
- * `\'` and `\\` escapes. A string after an operator (`$a ?? "5"`) is an
- * operand of the max expression, not the label.
- */
-export function parseMeterArgs(rawArgs: string): {
-  currentExpr: string;
-  maxExpr: string;
-  labelMode: string;
-} {
-  const tokens = splitTopLevel(rawArgs.trim(), isWhitespace).filter(Boolean);
-
-  let labelMode = '';
-  const label =
-    tokens.length >= 2 && !endsWithOperator(tokens.slice(0, -1).join(' '))
-      ? readWholeQuoted(tokens[tokens.length - 1]!)
-      : null;
-  if (label !== null) {
-    labelMode = label;
-    tokens.pop();
-  }
-
-  if (tokens.length < 2) {
+/** Check the arguments of `{meter currentExpr maxExpr ["label"]}`. */
+export function meterArgs(args: {
+  current?: string;
+  max?: string;
+  label?: string;
+}): { currentExpr: string; maxExpr: string; labelMode: string } {
+  if (args.current === undefined || args.max === undefined) {
     throw new Error(
       'meter requires two arguments: {meter currentExpr maxExpr}',
     );
   }
-
   return {
-    currentExpr: tokens[0]!,
-    maxExpr: tokens.slice(1).join(' '),
-    labelMode,
+    currentExpr: args.current,
+    maxExpr: args.max,
+    labelMode: args.label ?? '',
   };
 }
 
@@ -60,9 +35,16 @@ defineMacro({
   name: 'meter',
   interpolate: true,
   merged: true,
-  render({ rawArgs }, ctx) {
+  // {meter currentExpr maxExpr ["label"]}. A string after an operator
+  // (`$a ?? "5"`) is an operand of the max expression, not the label.
+  parameters: [
+    { name: 'current', type: 'expression', required: true },
+    { name: 'max', type: 'expression', required: true },
+    { name: 'label', type: 'string' },
+  ],
+  render(_props, ctx) {
     try {
-      const { currentExpr, maxExpr, labelMode } = parseMeterArgs(rawArgs);
+      const { currentExpr, maxExpr, labelMode } = meterArgs(ctx.args);
       const current = Number(ctx.evaluate!(currentExpr));
       const max = Number(ctx.evaluate!(maxExpr));
       const pct =

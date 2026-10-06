@@ -240,6 +240,35 @@ export interface StorageQuota {
 }
 
 /**
+ * How a macro argument is read into `ctx.args`. Quoted strings accept `\"`,
+ * `\'` and `\\` escapes.
+ * - `expression`: code, as written (the default).
+ * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
+ * - `string`: one quoted string; anything else leaves the argument unset.
+ * - `text`: one quoted string, or text with any loose quotes stripped.
+ * - `names`: a comma-separated list of names (`@item, @i`).
+ * - `delay`: a duration (`2s`, `500ms`, `300`) in milliseconds.
+ * - `number`: a number.
+ * - `flag`: a keyword, the parameter's name, at the start or end; a boolean.
+ * - `separator`: a word (`of`) or `=` separating the parameters before it
+ *   from those after it; a boolean.
+ * - `options`: keywords, the names of its `parameters`, each followed by a
+ *   quoted string or a number unless it is a flag.
+ * @see {@link ../../src/registry.ts} for the implementation.
+ */
+export type ParameterType =
+  | 'expression'
+  | 'variable'
+  | 'string'
+  | 'text'
+  | 'names'
+  | 'delay'
+  | 'number'
+  | 'flag'
+  | 'separator'
+  | 'options';
+
+/**
  * Parameter metadata for a macro definition.
  * @see {@link ../../src/registry.ts} for the implementation.
  */
@@ -247,7 +276,31 @@ export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
+  /** How the argument is read (default `expression`). */
+  type?: ParameterType;
+  /** The options of an `options` parameter. */
+  parameters?: readonly ParameterDef[];
 }
+
+type ArgValue<T, D> = T extends 'flag' | 'separator'
+  ? boolean
+  : T extends 'names'
+    ? string[] | undefined
+    : T extends 'delay' | 'number'
+      ? number | undefined
+      : T extends 'options'
+        ? D extends { parameters: infer Q extends readonly ParameterDef[] }
+          ? Partial<MacroArgs<Q>>
+          : Partial<MacroArgs>
+        : string | undefined;
+
+/**
+ * A macro's arguments (`ctx.args`), by parameter name.
+ * @see {@link ../../src/registry.ts} for the implementation.
+ */
+export type MacroArgs<P extends readonly ParameterDef[] = ParameterDef[]> = {
+  [D in P[number] as D['name']]: ArgValue<D['type'], D>;
+};
 
 /**
  * Metadata about a registered macro, returned by `Story.getMacroRegistry()`.
@@ -363,7 +416,9 @@ export interface UseActionOptions {
  * this package), so `ctx.hooks.useState<T>()`, `ctx.h()` etc. are fully typed.
  * @see {@link ../../src/define-macro.ts} for the implementation.
  */
-export interface MacroContext {
+export interface MacroContext<A = MacroArgs> {
+  /** The arguments, read into the macro's declared `parameters`. */
+  args: A;
   className?: string;
   id?: string;
   resolve?: (s: string | undefined) => string | undefined;
@@ -437,7 +492,9 @@ export interface MacroTextContext {
  * Configuration object for `Story.defineMacro()`.
  * @see {@link ../../src/define-macro.ts} for the implementation.
  */
-export interface MacroDefinition {
+export interface MacroDefinition<
+  P extends readonly ParameterDef[] = ParameterDef[],
+> {
   name: string;
   /** Sub-macro names (e.g. `['option']`); a non-empty list makes the macro a block macro. */
   subMacros?: string[];
@@ -451,15 +508,21 @@ export interface MacroDefinition {
   storeVar?: boolean;
   /** Tooling hint: one-line description shown by editors. */
   description?: string;
-  /** Tooling hint: positional parameters. */
-  parameters?: ParameterDef[];
-  render: (props: MacroProps, ctx: MacroContext) => ComponentChildren;
+  /** The parameters: read into `ctx.args`, and shown by tooling. */
+  parameters?: P;
+  render: (
+    props: MacroProps,
+    ctx: MacroContext<MacroArgs<P>>,
+  ) => ComponentChildren;
   /**
    * The macro's text form, used where markup becomes a string: HTML
    * attribute values, image alt text and link titles, macro labels. Without
    * one, the macro can't be used there and is reported as an error.
    */
-  text?: (props: MacroProps, ctx: MacroTextContext) => string;
+  text?: (
+    props: MacroProps,
+    ctx: MacroTextContext & { args: MacroArgs<P> },
+  ) => string;
 }
 
 /**

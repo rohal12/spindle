@@ -1,46 +1,16 @@
 import { defineMacro } from '../../define-macro';
-import {
-  isWhitespace,
-  readQuoted,
-  readWholeQuoted,
-  stripLooseQuotes,
-} from './arg-utils';
-
-export function parseRadioArgs(rawArgs: string): {
-  value: string;
-  label: string;
-} {
-  // $var "value" label: a quoted value accepts \" \' and \\ escapes and
-  // may contain the other quote kind.
-  const head = rawArgs.match(/^\s*["']?\$?[\w.]+["']?\s+/);
-  if (head) {
-    const rest = rawArgs.slice(head[0].length).trim();
-    const value = readQuoted(rest, 0);
-    if (
-      value &&
-      (value.end === rest.length || isWhitespace(rest[value.end]!))
-    ) {
-      const labelRaw = rest.slice(value.end).trim();
-      const label = readWholeQuoted(labelRaw) ?? stripLooseQuotes(labelRaw);
-      return { value: value.value, label };
-    }
-  }
-
-  const match = rawArgs.match(
-    /^\s*["']?\$?[\w.]+["']?\s+["'](.+?)["']\s+["']?(.+?)["']?\s*$/s,
-  );
-  if (!match) {
-    const parts = rawArgs.trim().split(/\s+/).slice(1);
-    return { value: parts[0] ?? '', label: parts.slice(1).join(' ') };
-  }
-  return { value: match[1]!, label: match[2]! };
-}
 
 defineMacro({
   name: 'radiobutton',
   storeVar: true,
-  render({ rawArgs }, ctx) {
-    const { value: radioValue, label } = parseRadioArgs(rawArgs);
+  parameters: [
+    { name: 'variable', type: 'variable', required: true },
+    { name: 'value', type: 'text', required: true },
+    { name: 'label', type: 'text' },
+  ],
+  render(_props, ctx) {
+    const radioValue = ctx.args.value ?? '';
+    const label = ctx.args.label ?? '';
 
     ctx.useAction({
       type: 'radiobutton',

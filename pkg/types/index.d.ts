@@ -122,6 +122,34 @@ export interface SaveInfo {
 }
 
 /**
+ * How a macro argument is read into `ctx.args`. Quoted strings accept `\"`,
+ * `\'` and `\\` escapes.
+ * - `expression`: code, as written (the default).
+ * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
+ * - `string`: one quoted string; anything else leaves the argument unset.
+ * - `text`: one quoted string, or text with any loose quotes stripped.
+ * - `names`: a comma-separated list of names (`@item, @i`).
+ * - `delay`: a duration (`2s`, `500ms`, `300`) in milliseconds.
+ * - `number`: a number.
+ * - `flag`: a keyword, the parameter's name, at the start or end; a boolean.
+ * - `separator`: a word (`of`) or `=` separating the parameters before it
+ *   from those after it; a boolean.
+ * - `options`: keywords, the names of its `parameters`, each followed by a
+ *   quoted string or a number unless it is a flag.
+ */
+export type ParameterType =
+  | 'expression'
+  | 'variable'
+  | 'string'
+  | 'text'
+  | 'names'
+  | 'delay'
+  | 'number'
+  | 'flag'
+  | 'separator'
+  | 'options';
+
+/**
  * Typed parameter definition for macro tooling metadata.
  * Macro authors can provide these to help LSP servers, linters, and documentation generators.
  */
@@ -129,6 +157,10 @@ export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
+  /** How the argument is read (default `expression`). */
+  type?: ParameterType;
+  /** The options of an `options` parameter. */
+  parameters?: readonly ParameterDef[];
 }
 
 /**

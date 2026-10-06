@@ -1,36 +1,21 @@
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
-import { unescapeQuoted } from './arg-utils';
 import { useDetachedBody } from './detached-body';
-
-export function parseLinkArgs(rawArgs: string): {
-  display: string;
-  passage: string | null;
-} {
-  // {link "text" "Passage"} or {link "text"}. A backslash escapes a quote
-  // or another backslash inside a quoted argument (#200).
-  const parts: string[] = [];
-  const re = /(["'])((?:\\[^]|(?!\1)[^\\])*)\1/g;
-  let m;
-  while ((m = re.exec(rawArgs)) !== null) {
-    parts.push(unescapeQuoted(m[2]!));
-  }
-  if (parts.length >= 2) {
-    return { display: parts[0]!, passage: parts[1]! };
-  }
-  if (parts.length === 1) {
-    return { display: parts[0]!, passage: null };
-  }
-  // Fallback: treat entire rawArgs as display text
-  return { display: rawArgs.trim(), passage: null };
-}
 
 defineMacro({
   name: 'link',
   block: true,
   interpolate: true,
+  // {link "text" "Passage"} or {link "text"}; unquoted, the whole arguments
+  // are the text.
+  parameters: [
+    { name: 'text', type: 'string', required: true },
+    { name: 'passage', type: 'string' },
+  ],
   render({ rawArgs, children = [] }, ctx) {
-    const { display, passage } = parseLinkArgs(rawArgs);
+    const { text } = ctx.args;
+    const display = text ?? rawArgs.trim();
+    const passage = text === undefined ? null : (ctx.args.passage ?? null);
     const runBody = useDetachedBody();
 
     const perform = () => {

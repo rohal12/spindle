@@ -1,47 +1,29 @@
-import {
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useMemo,
-} from 'preact/hooks';
-import {
-  LocalsValuesContext,
-  LocalsUpdateContext,
-  NobrContext,
-  InlineContext,
-  RawTextContext,
-  renderNodes,
-} from '../../markup/render';
+import { useContext, useMemo } from 'preact/hooks';
+import { LocalsValuesContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
 import type { ASTNode } from '../../markup/ast';
-import {
-  checkVariableName,
-  createNamespace,
-  withEntry,
-} from '../../utils/namespace';
+import { checkVariableName } from '../../utils/namespace';
+import { LocalsScope } from './locals-scope';
 
 /**
- * Parse for-loop args: "@item, @i of $list" or "@item of $list"
+ * Check the arguments of "@item, @i of $list" or "@item of $list".
  */
-function parseForArgs(rawArgs: string): {
+function loopArgs(
+  rawArgs: string,
+  args: { variables?: string[]; of: boolean; list?: string },
+): {
   itemVar: string;
   indexVar: string | null;
   listExpr: string;
 } {
-  const ofIdx = rawArgs.indexOf(' of ');
-  if (ofIdx === -1) {
+  if (!args.of) {
     throw new Error(`{for} requires "of" keyword: {for ${rawArgs}}`);
   }
 
-  const varsPart = rawArgs.slice(0, ofIdx).trim();
-  const listExpr = rawArgs.slice(ofIdx + 4).trim();
-
-  const vars = varsPart.split(',').map((v) => v.trim());
-  const itemVar = vars[0]!;
-  const indexVar = vars.length > 1 ? vars[1]! : null;
+  const [itemVar = '', indexVar = null] = args.variables ?? [];
+  const listExpr = args.list ?? '';
 
   if (!itemVar.startsWith('@')) {
     throw new Error(`{for} loop variable must use @ prefix: got "${itemVar}"`);
@@ -77,10 +59,6 @@ function ForIteration({
   indexValue: number;
   children: ASTNode[];
 }) {
-  const [localMutations, setLocalMutations] = useState<Record<string, unknown>>(
-    () => ({}),
-  );
-
   const ownKeys = useMemo(
     () => ({
       [itemVar]: itemValue,
@@ -89,35 +67,12 @@ function ForIteration({
     [itemVar, itemValue, indexVar, indexValue],
   );
 
-  const localState = useMemo(
-    () => createNamespace(parentValues, ownKeys, localMutations),
-    [parentValues, ownKeys, localMutations],
-  );
-
-  const valuesRef = useRef(localState);
-  valuesRef.current = localState;
-
-  const getValues = useCallback(() => valuesRef.current, []);
-  const update = useCallback((key: string, value: unknown) => {
-    // Apply synchronously so later macros in the same render pass (e.g. a
-    // second {set}) read the new value via getValues(); the state update
-    // then re-renders consumers of LocalsValuesContext.
-    checkVariableName(key, `@${key}`);
-    valuesRef.current = withEntry(valuesRef.current, key, value);
-    setLocalMutations((prev) => ({ ...prev, [key]: value }));
-  }, []);
-  const updater = useMemo(() => ({ update, getValues }), [update, getValues]);
-
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
-
   return (
-    <LocalsUpdateContext.Provider value={updater}>
-      <LocalsValuesContext.Provider value={localState}>
-        {renderNodes(children, { nobr, inline, raw, locals: localState })}
-      </LocalsValuesContext.Provider>
-    </LocalsUpdateContext.Provider>
+    <LocalsScope
+      body={children}
+      parentValues={parentValues}
+      ownKeys={ownKeys}
+    />
   );
 }
 
@@ -126,26 +81,19 @@ defineMacro({
   block: true,
   interpolate: true,
   merged: true,
+  parameters: [
+    { name: 'variables', type: 'names', required: true },
+    { name: 'of', type: 'separator' },
+    { name: 'list', type: 'expression', required: true },
+  ],
   render({ rawArgs, children = [] }, ctx) {
     const parentValues = useContext(LocalsValuesContext);
 
-    let parsed: ReturnType<typeof parseForArgs>;
-    try {
-      parsed = parseForArgs(rawArgs);
-    } catch (err) {
-      return (
-        <MacroError
-          macro="for"
-          error={err}
-        />
-      );
-    }
-
-    const { itemVar, indexVar, listExpr } = parsed;
-
+    let loop: ReturnType<typeof loopArgs>;
     let list: unknown[];
     try {
-      const result = ctx.evaluate!(listExpr);
+      loop = loopArgs(rawArgs, ctx.args);
+      const result = ctx.evaluate!(loop.listExpr);
       if (!Array.isArray(result)) {
         return (
           <span class="error">
@@ -163,6 +111,7 @@ defineMacro({
       );
     }
 
+    const { itemVar, indexVar } = loop;
     const content = list.map((item, i) => (
       <ForIteration
         key={`${i}-${stableKey(item)}`}
@@ -178,7 +127,7 @@ defineMacro({
     return ctx.wrap(content);
   },
   text({ rawArgs, children = [] }, ctx) {
-    const { itemVar, indexVar, listExpr } = parseForArgs(rawArgs);
+    const { itemVar, indexVar, listExpr } = loopArgs(rawArgs, ctx.args);
     const list = ctx.evaluate(listExpr);
     if (!Array.isArray(list)) {
       throw new Error('expression did not evaluate to an array');

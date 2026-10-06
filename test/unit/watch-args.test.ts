@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseWatchArgs,
-  parseUnwatchName,
-} from '../../src/components/macros/Watch';
+import { parseWatchArgs, parseUnwatchName } from '../support/macro-args';
 
 describe('parseWatchArgs', () => {
   // ── Existing behaviour ────────────────────────────────────────────

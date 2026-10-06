@@ -1,5 +1,4 @@
 import { createContext } from 'preact';
-import { parseDelay } from '../../utils/parse-delay';
 import { defineMacro } from '../../define-macro';
 
 export const RepeatContext = createContext<{ stop: () => void }>({
@@ -10,10 +9,11 @@ defineMacro({
   name: 'repeat',
   block: true,
   interpolate: true,
-  render({ rawArgs, children = [] }, ctx) {
+  parameters: [{ name: 'delay', type: 'delay', required: true }],
+  render({ children = [] }, ctx) {
     const { useState, useEffect, useCallback } = ctx.hooks;
 
-    const delay = parseDelay(rawArgs);
+    const delay = ctx.args.delay ?? 0;
     const [count, setCount] = useState(0);
     const [stopped, setStopped] = useState(false);
 
