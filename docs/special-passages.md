@@ -68,6 +68,31 @@ parseStoryVariables(storyTransientsContent, '%');
 
 It returns a `Map` from variable name to `{ name, type, default, fields? }` and throws the same errors Spindle reports at startup.
 
+### Checking markup in tests
+
+Spindle also checks the markup of every passage at startup (see [Markup errors](markup.md#markup-errors)). The tooling entry point runs the same check, against the built-in macros and those registered with its `defineMacro`:
+
+```ts
+import {
+  defineMacro,
+  formatDiagnostic,
+  validateMarkup,
+} from '@rohal12/spindle/tooling';
+
+defineMacro({ name: 'alert', block: true, render: () => null });
+
+const diagnostics = validateMarkup([
+  { name: 'Start', content: 'Hi {sett $x = 1}' },
+  { name: 'Hall', content: '{alert}Careful!{/alert}' },
+]);
+// [{ passage: 'Start', line: 1, column: 4,
+//    message: 'Unknown macro {sett}. Did you mean {set}?' }]
+diagnostics.map(formatDiagnostic);
+// ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
+```
+
+Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros.
+
 ## `StoryInterface`
 
 Controls the entire page layout. When this passage exists, its content replaces the default UI — including the menubar and passage display area. Use the `{passage}` macro to place the current passage within your custom layout.
