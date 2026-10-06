@@ -202,6 +202,19 @@ function placeholderIndex(node: Node | null, ph: Placeholders): number {
 }
 
 /**
+ * Parse HTML into nodes without side effects. The content of a `<template>`
+ * belongs to a document with no browsing context, so parsing it fetches no
+ * images and media, runs no inline event handlers (`<img onerror>`) and
+ * constructs no custom elements. A detached `<div>` belongs to the page's
+ * document, which does all of these while parsing.
+ */
+export function parseHtmlInert(html: string): DocumentFragment {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return template.content;
+}
+
+/**
  * Convert an HTML string (from micromark) to Preact VNodes,
  * replacing placeholder elements with pre-rendered components.
  * With `unwrapParagraphs` (nobr or inline content), top-level <p> wrappers are
@@ -212,14 +225,15 @@ function htmlToPreact(
   ph: Placeholders,
   unwrapParagraphs = false,
 ): preact.ComponentChildren {
-  const temp = document.createElement('div');
-  temp.innerHTML = html.trim();
+  const content = parseHtmlInert(html.trim());
   if (unwrapParagraphs) {
-    for (const p of Array.from(temp.querySelectorAll(':scope > p'))) {
-      p.replaceWith(...Array.from(p.childNodes));
+    for (const child of Array.from(content.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE && child.nodeName === 'P') {
+        (child as Element).replaceWith(...Array.from(child.childNodes));
+      }
     }
   }
-  const children = Array.from(temp.childNodes).map((child, i) =>
+  const children = Array.from(content.childNodes).map((child, i) =>
     convertDomNode(child, i, ph),
   );
   return <>{children}</>;
@@ -395,9 +409,8 @@ function setRawAttribute(el: Element, name: string, value: string) {
     el.setAttribute(name, value);
     return;
   }
-  const template = document.createElement('template');
-  template.innerHTML = `<i ${name}=""></i>`;
-  const parsed = (template.content.firstChild as Element).attributes[0];
+  const parsed = (parseHtmlInert(`<i ${name}=""></i>`).firstChild as Element)
+    .attributes[0];
   if (!parsed) return;
   const attr = parsed.cloneNode() as Attr;
   attr.value = value;
@@ -457,10 +470,10 @@ function decodeAttributeText(text: string): string {
   if (!text.includes('&')) return text;
   let decoded = decodedAttributeText.get(text);
   if (decoded === undefined) {
-    const template = document.createElement('template');
-    template.innerHTML = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
+    const html = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
     decoded =
-      (template.content.firstChild as Element).getAttribute('title') ?? text;
+      (parseHtmlInert(html).firstChild as Element).getAttribute('title') ??
+      text;
     decodedAttributeText.set(text, decoded);
   }
   return decoded;
