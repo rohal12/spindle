@@ -76,17 +76,6 @@ const AT_NAME_RE = /\w+(?![\p{ID_Continue}$\u200c\u200d])/uy;
 const TRANS_NAME_RE = /[A-Za-z_]\w*(?![\p{ID_Continue}$\u200c\u200d])/uy;
 /** A `$`/`_` identifier that is a variable reference: `$a`, not `$a$b`. */
 const SIGIL_IDENT_RE = /^[$_]\w+$/;
-/**
- * `%name` starting a line after an operand, assigned to: `$x = 5⏎%a = 1`
- * would otherwise read as `5 % a = 1`. Its target may go on with `.name`
- * and `[…]` (no brackets inside); otherwise a `;` must end the line before.
- */
-const TRANSIENT_ASSIGN_RE = (() => {
-  const ws = String.raw`(?:\s|/\*[\s\S]*?\*/)*`;
-  const member = String.raw`(?:\.${ws}[\w$]+|\[[^[\]]*\])`;
-  const op = String.raw`(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])?=(?![=>])`;
-  return new RegExp(`${ws}(?:${member}${ws})*${op}`, 'y');
-})();
 const LINE_BREAK_RE = /[\n\r\u2028\u2029]/;
 
 /** acorn's tokenizer state, which its typings leave out. */
@@ -122,6 +111,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
   ternaries: number[] = [];
   /** The last `:` ended a conditional's `?`. */
   colonEndsTernary = false;
+  /** Look ahead after a `%name` starting a line (off in look-aheads). */
+  lookahead = true;
 
   readToken(code: number): void {
     const self = this as unknown as ParserState;
@@ -145,7 +136,7 @@ const SigilParser = class extends (Parser as unknown as Base) {
           code === 64 ||
           self.exprAllowed ||
           afterPrefix ||
-          transientAssignment(self, end)
+          (this.lookahead && transientAssignment(self, end))
         ) {
           self.pos = end;
           self.finishToken(tt.name, self.input.charAt(at) + name);
@@ -177,11 +168,40 @@ const SigilParser = class extends (Parser as unknown as Base) {
   }
 };
 
+/**
+ * Is the `%name` ending at `end`, at the start of a line after an operand,
+ * assigned to (`$x = 5⏎%a[i].b = 1`, not the `5 % a` of `$x = 5⏎%a`)?
+ * Its target may go on with `.name` and `[…]`.
+ */
 function transientAssignment(p: ParserState, end: number): boolean {
   if (!LINE_BREAK_RE.test(p.input.slice(p.end, p.pos))) return false;
-  TRANSIENT_ASSIGN_RE.lastIndex = end;
-  return TRANSIENT_ASSIGN_RE.test(p.input);
+  const q = tokenizerAt(p.input, end, 'statements', { afterOperand: true });
+  (q as unknown as { lookahead: boolean }).lookahead = false;
+  let depth = 0;
+  try {
+    for (;;) {
+      q.nextToken();
+      const t = q.type;
+      if (t === tt.eof) return false;
+      if (depth > 0) {
+        if (OPENERS.has(t)) depth++;
+        else if (CLOSERS.has(t)) depth--;
+      } else if (t === tt.bracketL) {
+        depth = 1;
+      } else if (t === tt.dot) {
+        q.nextToken();
+        if (q.type !== tt.name && !q.type.keyword) return false;
+      } else {
+        return t === tt.eq || t === tt.assign;
+      }
+    }
+  } catch {
+    return false;
+  }
 }
+
+const OPENERS = new Set([tt.parenL, tt.bracketL, tt.braceL, tt.dollarBraceL]);
+const CLOSERS = new Set([tt.parenR, tt.bracketR, tt.braceR]);
 
 /**
  * A tokenizer (and parser) for `src` from `start` on. In an expression, the
@@ -593,6 +613,9 @@ export function createJsScanCache(): JsScanCache {
   return {};
 }
 
+/** The rest of a word, after a number (`2s`). */
+const WORD_RE = /[\p{ID_Continue}$]*/uy;
+
 /** Words a string may follow with no space between (`of'x'`, `get"y"`). */
 const WORDS_BEFORE_STRING = new Set(['of', 'get', 'set', 'static', 'async']);
 
@@ -620,6 +643,43 @@ export function findCodeEnd(
   src: string,
   start: number,
   { goal = 'expression', stop }: FindCodeEndOptions = {},
+): number {
+  const end = scanCodeEnd(src, start, goal, stop);
+  return end < 0 && !stop ? parsedCodeEnd(src, start, goal) : end;
+}
+
+/**
+ * Where the code from `start` ends, as the parser finds it: the `}` it
+ * stops at, or -1. The token scan of `findCodeEnd` guesses whether a `/`
+ * opens a regex from the tokens before it, and a few rare constructs (a
+ * class field named `class` inside a template literal) mislead it; the
+ * parser knows. Only asked when the scan finds no end.
+ */
+function parsedCodeEnd(src: string, start: number, goal: JsGoal): number {
+  const p = tokenizerAt(src, start, goal) as ParserState & {
+    parse(): unknown;
+  };
+  try {
+    if (goal === 'statements') {
+      p.parse();
+    } else {
+      p.nextToken();
+      p.parseExpression();
+      if (p.type === tt.braceR) return p.start;
+    }
+  } catch (error) {
+    const pos = (error as { pos?: number }).pos ?? -1;
+    if (src.charAt(pos) === '}') return pos;
+  }
+  return -1;
+}
+
+/** `findCodeEnd` by the tokens: see there. */
+function scanCodeEnd(
+  src: string,
+  start: number,
+  goal: JsGoal,
+  stop: ((index: number) => boolean) | undefined,
 ): number {
   const stack: string[] = [];
   let prevEnd = -1;
@@ -694,16 +754,27 @@ function* tokens(
         (error as { pos?: number }).pos ?? p.pos,
         src.length,
       );
-      if (/^Unterminated string/.test((error as Error).message)) {
+      const message = (error as Error).message;
+      /** Go on after `[from, end)`, read as an operand of `type`. */
+      const operand = (type: TokenType, from: number, end: number) => {
+        p = tokenizerAt(src, end, 'statements', {
+          onComment: options.onComment,
+          afterOperand: true,
+        });
+        return { type, start: from, end, value: undefined };
+      };
+      if (/^Unterminated string/.test(message)) {
         const { end, closed } = scanStringLiteral(src, pos);
         if (closed) {
-          yield { type: tt.string, start: pos, end, value: undefined };
-          p = tokenizerAt(src, end, 'statements', {
-            onComment: options.onComment,
-            afterOperand: true,
-          });
+          yield operand(tt.string, pos, end);
           continue;
         }
+      } else if (/^Identifier directly after number/.test(message)) {
+        // A number with a unit, as macro arguments have them (`2s`, `5ms`)
+        WORD_RE.lastIndex = pos;
+        WORD_RE.test(src);
+        yield operand(tt.num, p.start, WORD_RE.lastIndex);
+        continue;
       }
       yield { error: error as Error, pos };
       return;

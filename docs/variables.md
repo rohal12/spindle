@@ -224,7 +224,7 @@ These restrictions follow from reading the code as JavaScript:
 
 - **Sigil variables can't be declared.** `let _x = 1`, `const $y`, `function f(_a) {}` and `(@b) => …` are errors: story, temporary, local and transient variables need no declaration. Name your own JavaScript variables and parameters without a sigil (`let x`, `(a) => …`).
 - **`@name` and `%name` can't be property names:** `obj.@x` is an error. (`obj.$x` and `obj._x` are ordinary property names.)
-- **A line that starts with `%name` after a complete expression** is read as a transient only when the line assigns to it, through `.name` and `[…]` with no brackets inside: `$x = 5` then `%count[i] = 1` on the next line works; for anything else (`%list[a[0]] = 1`, `%n.go()`) end the line before with `;`. Otherwise `%` there is the modulo operator, as in JavaScript.
+- **A line that starts with `%name` after a complete expression** is read as a transient only when the line assigns to it: after `$x = 5`, a next line `%count[i] = 1` works. Otherwise `%` there is the modulo operator, as in JavaScript (`5 % n.go()`): to start such a line with a transient, end the line before with `;`.
 - **Code must be valid JavaScript, even where a browser would only fail when it runs it.** `++f()` and `f() = 1` are syntax errors.
 - **A shorthand property** (`{ $gold }`) takes the variable's name without its sigil as its key: `{ gold: … }`. In a destructuring assignment, `({ $gold } = loot)` sets `$gold` to `loot.gold`.
 

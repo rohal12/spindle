@@ -146,9 +146,9 @@ describe('lexJs', () => {
     ]);
   });
 
-  // A `%name` starting a line after an operand is a transient when it is
-  // assigned to, through `.name` and `[…]` with no brackets inside
-  // (docs/variables.md "Code in passages"); otherwise `;` ends the line.
+  // A `%name` starting a line after an operand is a transient when the line
+  // assigns to it (docs/variables.md "Code in passages"); otherwise `%` is
+  // the modulo operator, and a `;` ends the line before.
   it('reads a %name assigned to at a line start as a transient', () => {
     const transients = (src: string) =>
       pieces(src, 'statements')
@@ -156,8 +156,10 @@ describe('lexJs', () => {
         .map(([, text]) => text);
     expect(transients('y\n%c[ i ] = 1')).toEqual(['%c']);
     expect(transients('y\n%c /* c */ .d += 1')).toEqual(['%c']);
-    expect(transients('y\n%c[ a[0] ] = 1')).toEqual([]);
-    expect(transients('y;\n%c[ a[0] ] = 1')).toEqual(['%c']);
+    expect(transients('y\n%c // c\n[ a["]"] ] ??= 1')).toEqual(['%c']);
+    expect(transients('y\n%c[ ( ] = 1')).toEqual([]);
+    expect(transients('y\n%c.go()')).toEqual([]);
+    expect(transients('y;\n%c.go()')).toEqual(['%c']);
     expect(transients('y\n%c == 1')).toEqual([]);
   });
 

@@ -12,7 +12,7 @@ import {
   type JsGoal,
 } from '../../src/js-lexer';
 import { fcOptions } from './config';
-import { jsArbitraries, render } from './arbitraries/js';
+import { compiles, jsArbitraries, render } from './arbitraries/js';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
 /** Characters that steer the lexer's state machine. */
@@ -179,16 +179,24 @@ describe('findCodeEnd', () => {
   const DO_CLOSER = '{/do}';
   const atCloser = (src: string) => (i: number) => src.startsWith(DO_CLOSER, i);
 
+  /**
+   * Valid code: what acorn parses (and V8 compiles). acorn rejects a few
+   * programs V8 runs, such as a variable named `of` divided at the start of
+   * a line (`x = 1⏎of /= 2`, read as a regex), and so does Spindle.
+   */
+  const valid = (doc: Parameters<typeof render>[0], goal: JsGoal) => {
+    const native = render(doc, 'native');
+    return compiles(goal === 'expression' ? `return (\n${native}\n);` : native);
+  };
+
   /** A valid expression or statement list, with its goal. */
   const validCode = fc.oneof(
-    sigils.sequence.map((d) => ({
-      code: render(d, 'sigil'),
-      g: 'expression' as const,
-    })),
-    sigils.program.map((d) => ({
-      code: render(d, 'sigil'),
-      g: 'statements' as const,
-    })),
+    sigils.sequence
+      .filter((d) => valid(d, 'expression'))
+      .map((d) => ({ code: render(d, 'sigil'), g: 'expression' as const })),
+    sigils.program
+      .filter((d) => valid(d, 'statements'))
+      .map((d) => ({ code: render(d, 'sigil'), g: 'statements' as const })),
   );
 
   test.prop([validCode, anyText], fcOptions)(
@@ -204,7 +212,7 @@ describe('findCodeEnd', () => {
     'finds the stop after valid statements',
     (doc, tail) => {
       const code = render(doc, 'sigil');
-      fc.pre(!code.includes(DO_CLOSER));
+      fc.pre(!code.includes(DO_CLOSER) && valid(doc, 'statements'));
       const src = `${code}\n${DO_CLOSER}${tail}`;
       const end = findCodeEnd(src, 0, {
         goal: 'statements',
