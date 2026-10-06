@@ -179,6 +179,8 @@ function findSeparator(src: string, word: string): Span | null {
 const takesRest = (param: ParameterDef) =>
   param.type === undefined ||
   param.type === 'expression' ||
+  param.type === 'statements' ||
+  param.type === 'passage' ||
   param.type === 'text';
 
 /** Read the parameters of one group from `src` (`null`: no text) into `args`. */

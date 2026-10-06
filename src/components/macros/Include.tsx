@@ -14,7 +14,7 @@ defineMacro({
   // passage names and expressions containing the word stay intact (#201).
   parameters: [
     { name: 'inline', type: 'flag' },
-    { name: 'passage', type: 'expression', required: true },
+    { name: 'passage', type: 'passage', required: true },
   ],
   render(_props, ctx) {
     const { storyData } = useStoryFields('storyData');

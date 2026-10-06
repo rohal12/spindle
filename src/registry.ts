@@ -72,6 +72,9 @@ export function isSubMacro(name: string): boolean {
  * How a macro argument is read (see components/macros/macro-args.ts).
  * Quoted strings accept `\"`, `\'` and `\\` escapes.
  * - `expression`: code, as written (the default).
+ * - `statements`: code run as statements (`{set}`), as written.
+ * - `passage`: a passage name: an expression, or its text when it can't
+ *   be evaluated (`{goto Bob's room}`), as written.
  * - `variable`: a variable reference such as `$name` or `"$name"`, as written.
  * - `string`: one quoted string; anything else leaves the argument unset.
  * - `text`: one quoted string, or text with any loose quotes stripped.
@@ -86,6 +89,8 @@ export function isSubMacro(name: string): boolean {
  */
 export type ParameterType =
   | 'expression'
+  | 'statements'
+  | 'passage'
   | 'variable'
   | 'string'
   | 'text'

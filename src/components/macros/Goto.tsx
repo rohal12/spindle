@@ -5,7 +5,7 @@ import { evaluatePassageName } from './macro-args';
 defineMacro({
   name: 'goto',
   merged: true,
-  parameters: [{ name: 'passage', type: 'expression', required: true }],
+  parameters: [{ name: 'passage', type: 'passage', required: true }],
   render(_props, ctx) {
     ctx.hooks.useLayoutEffect(() => {
       useStoryStore

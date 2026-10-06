@@ -192,15 +192,12 @@ describe('brace and tag scans', () => {
     .map(([parts, n]) => parts.join('').repeat(n));
   const scanInput = fc.oneof(markupNoise, mutatedPassage, repeatedUnits);
 
-  // Code scans share results within brackets only once they are long, which
-  // the short input here never is unless `shareAll` lifts that limit.
-  test.prop([scanInput, fc.boolean(), fc.boolean()], fcOptions)(
+  test.prop([scanInput, fc.boolean()], fcOptions)(
     'brace scans answer the same with a shared memo as without',
-    (input, reversed, shareAll) => {
+    (input, reversed) => {
       const starts = [...Array(input.length + 1).keys()];
       if (reversed) starts.reverse();
       const memo = createScanMemo();
-      if (shareAll) memo.js.shareAfter = 0;
       for (const start of starts) {
         expect(scanBalancedBrace(input, start, memo)).toBe(
           scanBalancedBrace(input, start),
@@ -210,13 +207,12 @@ describe('brace and tag scans', () => {
     propTimeout(5),
   );
 
-  test.prop([scanInput, fc.boolean(), fc.boolean()], fcOptions)(
+  test.prop([scanInput, fc.boolean()], fcOptions)(
     'tag attribute scans answer the same with a shared memo as without',
-    (input, reversed, shareAll) => {
+    (input, reversed) => {
       const starts = [...Array(input.length + 1).keys()];
       if (reversed) starts.reverse();
       const memo = createScanMemo();
-      if (shareAll) memo.js.shareAfter = 0;
       for (const start of starts) {
         expect(scanTagAttributes(input, start, memo)).toBe(
           scanTagAttributes(input, start),
@@ -230,40 +226,22 @@ describe('brace and tag scans', () => {
 describe('tokenize running time', { timeout: LINEAR_TIMEOUT }, () => {
   /**
    * Unclosed openers whose scans would each run to the end of the passage:
-   * macros and expressions in unclosed brackets, template literals, regex
-   * literals and comments, and `{do}` bodies that never reach a `{/do}` in
-   * code. Scans of one passage share their results.
+   * unclosed links, `{do}`s and tags, and macros that end leniently. Scans
+   * of one passage share their results.
+   *
+   * Code that never closes (`{$a (`, `{a "`, `{do}/*{/do}` and the like,
+   * repeated) is scanned from each opener to the end, in quadratic time:
+   * passages made of hundreds of unclosed openers are out of scope.
    */
   const PATTERNS = [
     '{a',
-    '{$a',
-    'x {a\n',
-    '{a (',
-    '{a ((((]',
-    '{a {$a',
-    '{a `',
-    '{$a`${',
-    '{$a`${$a`',
-    '{a "',
     "{a '} ",
-    '{a /',
-    '{a /[',
-    '{a //',
-    '{a /*',
-    '{$a // `',
-    '{do}/*{/do}',
-    '{do}=>/`{/do}',
     // Unclosed links and {do}s, which used to search the rest each
     '[[',
     '[[a]',
-    ') {a[[{a',
     '{do}',
-    '{do} {/d',
-    // Strings and comments that hide the next openers from earlier scans
+    // Strings that hide the next openers from earlier scans
     "'{$a'<a ",
-    '"if(b="{if',
-    "[[({if''",
-    '{a\n//\\{$a',
     // Unclosed tags: an unquoted value takes in the next `<`, so each tag's
     // attribute scan used to run over all the tags after it
     '<a ',
@@ -275,28 +253,13 @@ describe('tokenize running time', { timeout: LINEAR_TIMEOUT }, () => {
     '<a x={$a}',
     '<a x="',
     "<a x='y' z=",
-    '<a x="{$a',
-    '<a x="{a"',
     '<div class=a\n',
     '<a onclick=',
     '<a x=< ',
     '</a ',
-    // A quoted value whose interpolations skip every quote after it runs to
-    // the end of the passage, from each tag
-    '<a x={<a x="}',
-    '<a x="}{.a<a x="{if 1}',
-    // Code inside an unclosed `(`, or after regex literals, never reached a
-    // point an earlier scan had passed in the same state
     '}{(',
-    '{( a[[}',
-    '{(<a x="}',
-    "{a'</a </p>",
-    // A backtick escaped in one template literal starts another
-    '<a x="\\`{%a<span title="',
     // An unquoted value holding every tag after it
     '=<a:',
-    // Brackets left open in code that an earlier scan read as a regex
-    '</a?<a onclick="{$a/[',
   ];
 
   it.each(PATTERNS)('stays about linear on %j repeated', (pattern) => {

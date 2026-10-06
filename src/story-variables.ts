@@ -2,7 +2,14 @@ import type { Passage } from './parser';
 import { tokenize, type Token } from './markup/tokenizer';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
-import { lexJs, scanStringLiteral, type JsGoal } from './js-lexer';
+import {
+  CodeSyntaxError,
+  lexJs,
+  scanStringLiteral,
+  type JsGoal,
+} from './js-lexer';
+import { checkPassageCode, parseOrError, withParseCache } from './code-check';
+import { getMacroRegistry, type MacroMetadata } from './registry';
 import { createNamespace, variableNameError } from './utils/namespace';
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
@@ -232,6 +239,25 @@ function scanCode(
   onRef: RefCallback,
   goal: JsGoal = 'expression',
 ): void {
+  const parsed = parseOrError(code, goal);
+  if (parsed instanceof CodeSyntaxError) {
+    scanCodeLeniently(code, onRef, goal);
+    return;
+  }
+  for (const ref of parsed.refs) {
+    if (ref.sigil !== '$') continue;
+    VAR_PATH_RE.lastIndex = ref.start;
+    onRef(VAR_PATH_RE.exec(code)![1]!);
+  }
+  for (const text of parsed.strings) scanInterpolations(text, onRef);
+}
+
+/** `scanCode` for code acorn can't parse: lexed leniently. */
+function scanCodeLeniently(
+  code: string,
+  onRef: RefCallback,
+  goal: JsGoal,
+): void {
   /** Open template literals: their text so far, null in an interpolation. */
   const templates: { nesting: number; text: string | null }[] = [];
   lexJs(
@@ -268,20 +294,6 @@ function scanCode(
   );
   // An unterminated template literal's text
   for (const t of templates) if (t.text) scanInterpolations(t.text, onRef);
-}
-
-/**
- * Report the `$var` references a passage evaluates at runtime: `{$var}`
- * displays, `{$expr}` expressions, macro arguments and `{do}` bodies (as
- * code), quoted variable names bound by input macros, and `{$…}`
- * interpolations in HTML attributes. Prose is literal text and not scanned.
- */
-function collectPassageRefs(
-  content: string,
-  storeVarMacros: ReadonlySet<string>,
-  onRef: RefCallback,
-): void {
-  collectTokenRefs(content, tokenize(content), storeVarMacros, onRef);
 }
 
 /** Report the `$var` references in the tokens of `content`. */
@@ -331,16 +343,19 @@ function collectTokenRefs(
 }
 
 /**
- * Scan all passages for $var references, check against schema.
- * Returns list of error messages (empty = valid).
+ * Check all passages at story start: their `$var` references against the
+ * schema, and the syntax of the code they run (see code-check.ts). Returns
+ * the error messages (empty = valid).
  *
  * `storeVarMacros` lists the input macros whose first argument names a bound
- * variable; it defaults to the built-in ones.
+ * variable; it defaults to the built-in ones. `macros` are the registered
+ * macros, whose declared parameters tell which arguments are code.
  */
 export function validatePassages(
   passages: Map<string, Passage>,
   schema: Map<string, VariableSchema>,
   storeVarMacros: Iterable<string> = BUILTIN_STORE_VAR_MACROS,
+  macros: readonly MacroMetadata[] = getMacroRegistry(),
 ): string[] {
   const errors: string[] = [];
   const storeVarSet = new Set(
@@ -352,12 +367,19 @@ export function validatePassages(
     if (name === 'StoryVariables' || name === 'StoryTransients') continue;
 
     const forLocals = extractForLocals(passage.content);
-
-    collectPassageRefs(passage.content, storeVarSet, (ref) => {
-      const error = validateRef(ref, schema, forLocals);
-      if (error) {
-        errors.push(`Passage "${name}": ${error}`);
-      }
+    const tokens = tokenize(passage.content);
+    withParseCache(() => {
+      collectTokenRefs(passage.content, tokens, storeVarSet, (ref) => {
+        const error = validateRef(ref, schema, forLocals);
+        if (error) {
+          errors.push(`Passage "${name}": ${error}`);
+        }
+      });
+      checkPassageCode(
+        passage.content,
+        (error) => errors.push(`Passage "${name}" ${error}`),
+        { tokens, macros },
+      );
     });
   }
 

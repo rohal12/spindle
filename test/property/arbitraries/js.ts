@@ -19,6 +19,7 @@
  * merge into different ones (`a + +b` must not become `a++b`).
  */
 import { fc } from '@fast-check/vitest';
+import { parse } from 'acorn';
 
 export type Sigil = '$' | '_' | '@' | '%';
 /** A sigil variable reference. */
@@ -1072,9 +1073,14 @@ export function bindIdentsStmts(doc: Doc): Doc {
   ]);
 }
 
-/** Does `src` compile as a function body? */
+/**
+ * Is `body` a valid function body? V8 compiles some code the specification
+ * rejects before it runs, such as `++f()` (V8 throws only when it runs), and
+ * Spindle rejects that code too (docs/variables.md "Code in passages").
+ */
 export function compiles(body: string): boolean {
   try {
+    parse(body, { ecmaVersion: 'latest', allowReturnOutsideFunction: true });
     new Function(body);
     return true;
   } catch {

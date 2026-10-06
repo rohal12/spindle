@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createJsScanCache,
+  CodeSyntaxError,
   findCodeEnd,
   lexJs,
   lexTemplate,
+  parseCode,
   scanStringLiteral,
 } from '../../src/js-lexer';
 import type { JsGoal } from '../../src/js-lexer';
@@ -145,18 +146,48 @@ describe('lexJs', () => {
     ]);
   });
 
-  // The look-ahead after `%c` finds where its `[` ends. The look-ahead after
-  // `%b` finds that too, and records it: there the `]` closes the `[` over
-  // the `(` left open in it, as in the main scan. A look-ahead starting at
-  // the `[` must read the `]` the same way, not skip it as stray.
-  it('finds where a bracket ends the same, nested in another or not', () => {
-    const line = 'y\n%c[ ( ] = 1';
+  // A `%name` starting a line after an operand is a transient when it is
+  // assigned to, through `.name` and `[…]` with no brackets inside
+  // (docs/variables.md "Code in passages"); otherwise `;` ends the line.
+  it('reads a %name assigned to at a line start as a transient', () => {
     const transients = (src: string) =>
-      pieces(src)
+      pieces(src, 'statements')
         .filter(([kind]) => kind === 'variable')
         .map(([, text]) => text);
-    expect(transients(line)).toEqual(['%c']);
-    expect(transients(`x\n%b[ ${line} ] = 2`)).toEqual(['%b', '%c']);
+    expect(transients('y\n%c[ i ] = 1')).toEqual(['%c']);
+    expect(transients('y\n%c /* c */ .d += 1')).toEqual(['%c']);
+    expect(transients('y\n%c[ a[0] ] = 1')).toEqual([]);
+    expect(transients('y;\n%c[ a[0] ] = 1')).toEqual(['%c']);
+    expect(transients('y\n%c == 1')).toEqual([]);
+  });
+
+  it('reads a %name after a prefix ++ as a transient, after a postfix one as modulo', () => {
+    const kinds = (src: string) => pieces(src).map(([kind]) => kind);
+    expect(kinds('++%n')).toEqual(['code', 'variable']);
+    expect(kinds('$n++ %n')).toEqual(['variable', 'code']);
+    expect(kinds('a\n++%n')).toEqual(['code', 'variable']);
+  });
+
+  it('reads a { after the : of a conditional as an object literal', () => {
+    expect(literals('p ? 1 : {} / 2 / "x"', 'statements')).toEqual(['"x"']);
+    expect(literals('lbl: {}\n/a"/.test(s)', 'statements')).toEqual(['/a"/']);
+  });
+
+  it('reads a function or class expression starting an expression as an operand', () => {
+    expect(literals('class {} / 2 / "x"')).toEqual(['"x"']);
+    expect(literals('function () {} / 2 / "x"')).toEqual(['"x"']);
+  });
+
+  it('reads characters no JavaScript has as code, and goes on after them', () => {
+    expect(pieces('a # "b" \\')).toEqual([
+      ['code', 'a # ', 0],
+      ['literal', '"b"', 0],
+      ['code', ' \\', 0],
+    ]);
+  });
+
+  it('reads a quoted string across lines as one literal', () => {
+    expect(literals('"a\nb" "c"')).toEqual(['"a\nb"', '"c"']);
   });
 });
 
@@ -207,18 +238,6 @@ describe('lexJs nesting', () => {
     expect(variables).toBe(1);
     expect(maxNesting).toBe(depth);
   });
-
-  it('keeps a stray closer in an interpolation from closing outer brackets', () => {
-    expect(pieces('(`${)}`) / 2')).toEqual([
-      ['code', '(', 0],
-      ['literal', '`', 0],
-      ['literal', '${', 0],
-      ['code', ')', 1],
-      ['literal', '}', 0],
-      ['literal', '`', 0],
-      ['code', ') / 2', 0],
-    ]);
-  });
 });
 
 describe('findCodeEnd', () => {
@@ -243,7 +262,32 @@ describe('findCodeEnd', () => {
     expect(findCodeEnd('"a }', 0)).toBe(-1);
     expect(findCodeEnd('/a }\n}', 0)).toBe(-1);
     expect(findCodeEnd('/* }', 0)).toBe(-1);
-    expect(findCodeEnd('(a }', 0)).toBe(-1);
+    expect(findCodeEnd('a \u2192 b }', 0)).toBe(-1);
+  });
+
+  it('ends the code at a } in an unclosed bracket, for the parse to report', () => {
+    expect(findCodeEnd('(a } x', 0)).toBe(3);
+    expect(findCodeEnd('[1, 2} x', 0)).toBe(5);
+  });
+
+  it('reads a quoted string across lines, as quoted labels may be', () => {
+    expect(findCodeEnd('"a\n}" } x', 0)).toBe(6);
+  });
+
+  // A backtick in an interpolation the code never closes opens a template
+  // of its own, which never ends: it is read as closing the template around
+  // it instead, so the code ends where its author meant it to.
+  it('ends the code after a template literal whose interpolation is unclosed', () => {
+    const src = ' $s = `Hi ${$name`} after';
+    expect(findCodeEnd(src, 0)).toBe(src.indexOf('} after'));
+  });
+
+  it('reads an object literal after the : of a conditional', () => {
+    // A block there would make `/\nMath}…` an unterminated regex
+    const src = 'p ? "" : { //\n} /\nMath} x';
+    expect(findCodeEnd(src, 0, { goal: 'statements' })).toBe(
+      src.indexOf('} x'),
+    );
   });
 
   it('accepts a string right after a keyword or modifier', () => {
@@ -258,100 +302,161 @@ describe('findCodeEnd', () => {
   });
 });
 
-describe('findCodeEnd with a shared cache', () => {
-  /**
-   * Scan `src` from each start in turn, sharing all results (or, with
-   * `shareAll` false, sharing them as the tokenizer does).
-   */
-  const scanAll = (src: string, starts: number[], shareAll = true) => {
-    const cache = createJsScanCache();
-    if (shareAll) cache.shareAfter = 0;
-    return starts.map((start) => findCodeEnd(src, start, { cache }));
-  };
+describe('parseCode', () => {
+  it('finds the references in code, but not property names', () => {
+    const refs = parseCode('a.$b + { $c: 1, _d() {} }.c + $e + @f + %g % 2');
+    expect(refs.refs.map((r) => r.sigil + r.name)).toEqual(['$e', '@f', '%g']);
+  });
 
-  // A scan that lexed the brackets records how they end, for the next scan
-  // opening them to skip them. The function or class body to come is not
-  // the same after them: one they start replaces it, and is gone when they
-  // close.
-  it.each([
-    ['x = function f(a = function(){}) {} /}/ }', 40],
-    ['x = function f(a = class {}) {} /}/ }', 36],
-    ['x = class A extends (function(){}) {} /}/ }', 42],
-    ['x = function f([a] = [function(){}]) {} /}/ }', 44],
-  ])('%j: a body started in brackets is not the one to come', (src, end) => {
-    const brackets = src.indexOf('(');
-    expect(scanAll(src, [brackets, 0])).toEqual([
-      findCodeEnd(src, brackets),
-      end,
+  it('marks shorthand properties', () => {
+    const { refs } = parseCode('({ $gold, x: @y })');
+    expect(refs.map((r) => [r.sigil + r.name, r.shorthand])).toEqual([
+      ['$gold', true],
+      ['@y', false],
     ]);
   });
 
-  // A scan that skips brackets an earlier scan lexed must still see that a
-  // body started in them: the brackets around them record it for the next
-  // scan, and the body to come is gone after them. Here the scan from the
-  // middle start skips the inner brackets and records the outer ones; the
-  // scan from the first start skips the outer ones, and its `{}` must not
-  // be `f`'s body (after which `/` would divide).
-  it.each([
-    // The counterexample found by the property test
-    [' function f( [ function(){} ] ) {} /}/ }', [13, 11, 1], 39],
-    [' function f( [ function(){} ] ) {} /}/ }', [12, 2, 0], 39],
-    ['function f( ( function(){} ) ) {} /}/ }', [11, 1, 0], 38],
-    ['function f([function(){}]) {} /}/ }', [11, 1, 0], 34],
-    ['function f((class {})) {} /}/ }', [11, 1, 0], 30],
-  ])(
-    '%j from %j: a body started in skipped brackets reaches the brackets around',
-    (src, starts, end) => {
-      const fresh = starts.map((s) => findCodeEnd(src, s));
-      expect(fresh[fresh.length - 1]).toBe(end);
-      expect(scanAll(src, starts)).toEqual(fresh);
-    },
-  );
+  it('reports the text of string literals and template pieces', () => {
+    expect(parseCode('"a{$b}" + `c${$d}e`').strings).toEqual([
+      'a{$b}',
+      'c',
+      'e',
+    ]);
+  });
 
-  // Braces and template literals are shared from the first character, as
-  // the tokenizer shares them: a body started in a `{…}`, a template
-  // literal or an interpolation that a later scan skips is gone after it.
-  it.each([
-    ['function f({a: function(){}}) {} /}/ }', [1, 0], 37],
-    ['function f( { a: function(){} } ) {} /}/ }', [1, 0], 41],
-    ['function f(`${class {}}`) {} /}/ }', [1, 0], 33],
-    ['function f( `${function(){}}` ) {} /}/ }', [1, 0], 39],
-    ['x = function f({a: function(){}}) {} /}/ }', [5, 0], 41],
-    ['return function f({a: function(){}}) {} /}/ }', [1, 0], 44],
-  ])(
-    '%j from %j: a body started in skipped braces is not the one to come',
-    (src, starts, end) => {
-      const fresh = starts.map((s) => findCodeEnd(src, s));
-      expect(fresh[fresh.length - 1]).toBe(end);
-      expect(scanAll(src, starts, false)).toEqual(fresh);
-      expect(scanAll(src, starts)).toEqual(fresh);
-    },
-  );
+  /** The error `parseCode` throws for `src`. */
+  const error = (
+    src: string,
+    goal: 'expression' | 'statements' = 'expression',
+  ) => {
+    try {
+      parseCode(src, goal);
+    } catch (e) {
+      expect(e).toBeInstanceOf(CodeSyntaxError);
+      return e as CodeSyntaxError;
+    }
+    throw new Error(`no error for ${src}`);
+  };
 
-  it('answers as without a cache when scanning every start in reverse', () => {
-    const src = ' function f( [ function(){} ] ) {} /}/ }';
-    const starts = [...Array(src.length + 1).keys()].reverse();
-    expect(scanAll(src, starts)).toEqual(
-      starts.map((s) => findCodeEnd(src, s)),
+  // What authors see for typical mistakes: the reason, where (column, and
+  // line for code over several lines), the line marked there, and the
+  // bracket left open when that is the likely cause.
+  it.each([
+    [
+      '$gold > ',
+      'expression',
+      'Unexpected end of code at column 9: $gold > ▶',
+      8,
+    ],
+    [
+      '$name = "Bob',
+      'statements',
+      'Unterminated string constant at column 9: $name = ▶"Bob',
+      8,
+    ],
+    [
+      '($gold + $count',
+      'expression',
+      'Unexpected end of code at column 16: ($gold + $count▶ (missing ")" for the "(" at column 1)',
+      15,
+    ],
+    [
+      '$name.toUpperCase(',
+      'expression',
+      'Unexpected end of code at column 19: $name.toUpperCase(▶ (missing ")" for the "(" at column 18)',
+      18,
+    ],
+    [
+      'if ($gold < 10 {\n  $gold = 10;\n}',
+      'statements',
+      'Unexpected "{" at line 1, column 16: if ($gold < 10 ▶{ (missing ")" for the "(" at line 1, column 4)',
+      15,
+    ],
+    [
+      '$list.push("rope";',
+      'statements',
+      'Unexpected ";" at column 18: $list.push("rope"▶; (missing ")" for the "(" at column 11)',
+      17,
+    ],
+    [
+      '$gold $count',
+      'expression',
+      'Unexpected "$count" at column 7: $gold ▶$count',
+      6,
+    ],
+    [
+      'const o = { a: 1\n  b: 2 };',
+      'statements',
+      'Unexpected "b" at line 2, column 3: ▶b: 2 };',
+      19,
+    ],
+    [
+      '$count = $count ++ 1',
+      'statements',
+      'Unexpected "1" at column 20: $count = $count ++ ▶1',
+      19,
+    ],
+    [
+      '$list = [1, 2',
+      'statements',
+      'Unexpected end of code at column 14: $list = [1, 2▶ (missing "]" for the "[" at column 9)',
+      13,
+    ],
+    [
+      "$name == Bob's",
+      'expression',
+      "Unterminated string constant at column 13: $name == Bob▶'s",
+      12,
+    ],
+    [
+      '$s = `Hi ${$name`',
+      'statements',
+      'Unterminated template literal at column 18: $s = `Hi ${$name`▶ (missing "}" for the "${" at column 10)',
+      17,
+    ],
+  ] as const)('%j: %s', (src, goal, message, pos) => {
+    const e = error(src, goal);
+    expect(e.message).toBe(message);
+    expect(e.pos).toBe(pos);
+  });
+
+  it('describes an error by its line and column in a passage', () => {
+    const passage = 'Text\n{do}\nif ($gold < 10 {\n}\n{/do}';
+    const code = 'if ($gold < 10 {\n}';
+    expect(
+      error(code, 'statements').describeIn(passage, passage.indexOf('if')),
+    ).toBe(
+      'line 3, column 16: Unexpected "{" (missing ")" for the "(" at line 3, column 4)',
     );
   });
 
-  // Inside unclosed brackets, a stray } closes no braces around them, so
-  // where they end is the same for every scan opening them there.
-  it('shares how unclosed brackets end across scans', () => {
-    const src = '( a[[}'.repeat(3);
-    const starts = [0, 6, 12, 3, 9];
-    expect(scanAll(src, starts)).toEqual(
-      starts.map((s) => findCodeEnd(src, s)),
+  it('rejects declaring a sigil variable', () => {
+    expect(error('let _x = 1', 'statements').message).toBe(
+      '"_x" is a temporary variable and can\'t be declared at column 5: let ▶_x = 1',
+    );
+    expect(error('(_a) => _a').message).toMatch(
+      /^"_a" is a temporary variable/,
+    );
+    expect(error('function f($x) {}', 'statements').message).toMatch(
+      /^"\$x" is a story variable/,
     );
   });
 
-  // Brackets in braces: a } in them closes the braces, so how they end
-  // depends on what is around them.
-  it('keeps apart brackets that a } closes and brackets it does not', () => {
-    const src = '{ ( } ) } x';
-    // From 2 the brackets close at 6; from 0 the } at 4 closes the braces
-    // and the brackets with them, and the } at 8 ends the code
-    expect(scanAll(src, [2, 0])).toEqual([8, 8]);
+  it('rejects a local or transient as a property name', () => {
+    expect(error('obj.@x').message).toBe(
+      '"@x" can\'t be a property name at column 5: obj.▶@x',
+    );
+  });
+
+  it('rejects code that is not valid JavaScript, though V8 would run it', () => {
+    expect(error('++f()').reason).toBe('Assigning to rvalue');
+    expect(error('f() = 1', 'statements').reason).toBe('Assigning to rvalue');
+  });
+
+  it('parses valid code that guessing regex or division gets wrong', () => {
+    expect(() => parseCode('class C extends Object {} / 0')).not.toThrow();
+    expect(() => parseCode('function () {} / 2')).not.toThrow();
+    expect(() => parseCode('p ? 1 : {} / 2', 'statements')).not.toThrow();
+    expect(() => parseCode('{ a: 1 }')).not.toThrow();
   });
 });

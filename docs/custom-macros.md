@@ -423,11 +423,13 @@ You can add optional metadata to your macro definition to help LSP servers, lint
 
 ### Reading Arguments
 
-The declared parameters are also how your macro reads its arguments: `ctx.args` holds each one by name, read from `props.rawArgs` the way the built-in macros read theirs. Arguments are separated by whitespace outside quotes and brackets, and quoted strings accept `\"`, `\'` and `\\` escapes. The last `expression` or `text` parameter takes whatever the other parameters leave, so in the example above `{damage $hp $str * 2}` gives `ctx.args.target === "$hp"` and `ctx.args.amount === "$str * 2"`. An argument that is missing is `undefined`.
+The declared parameters are also how your macro reads its arguments: `ctx.args` holds each one by name, read from `props.rawArgs` the way the built-in macros read theirs. Arguments are separated by whitespace outside quotes and brackets, and quoted strings accept `\"`, `\'` and `\\` escapes. The last `expression`, `statements`, `passage` or `text` parameter takes whatever the other parameters leave, so in the example above `{damage $hp $str * 2}` gives `ctx.args.target === "$hp"` and `ctx.args.amount === "$str * 2"`. An argument that is missing is `undefined`.
 
 | `type`         | Reads                                                                                           |
 | -------------- | ----------------------------------------------------------------------------------------------- |
 | `"expression"` | Code, as written (the default)                                                                  |
+| `"statements"` | Code run as statements (`{set}`), as written                                                    |
+| `"passage"`    | A passage name: an expression, or its text when it can't be evaluated (`{goto Bob's room}`)     |
 | `"variable"`   | A variable reference such as `$name` or `"$name"`, as written                                   |
 | `"string"`     | One quoted string, unquoted; anything else leaves the argument `undefined`                      |
 | `"text"`       | One quoted string, or text with any loose quotes stripped                                       |
@@ -447,6 +449,8 @@ parameters: [
   { name: 'rare', type: 'flag' },
 ];
 ```
+
+When the story starts, Spindle parses every `expression` (or untyped) and `statements` argument of your macro wherever it is used, and stops the story on a syntax error, as it does for the built-in macros (see [Code in passages](variables.md#code-in-passages)). Declare arguments that may hold text as `text`, `string` or `passage`, so that they aren't read as code.
 
 This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests)). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 
