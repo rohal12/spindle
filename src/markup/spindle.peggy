@@ -359,6 +359,10 @@ Selectors
   = parts:SelectorPart+ " "? { return selectorsOf(parts); }
   / "" { return NO_SELECTORS; }
 
+/** The selectors at the start of the input, and where they end. */
+SelectorsPrefix
+  = s:Selectors end:Here .* { return { ...s, end }; }
+
 SelectorPart
   = prefix:[.#] name:$SelectorChar* { return [prefix, name]; }
 

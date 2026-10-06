@@ -4,7 +4,26 @@ import { fileURLToPath } from 'node:url';
 
 import { checkParameterTypes, validateStoryMarkup } from './story-variables.js';
 
-export { parseStoryVariables, formatDiagnostic } from './story-variables.js';
+export {
+  parseStoryVariables,
+  formatDiagnostic,
+  findCodeEnd,
+  lexJs,
+  lexTemplate,
+  scanStringLiteral,
+  MarkupError,
+  parseSelectors,
+  tokenizeMarkup,
+  SIGIL_SCOPES,
+  isSigil,
+  endsWithOperator,
+  readQuoted,
+  splitArgs,
+  splitTopLevel,
+  stripLooseQuotes,
+  unescapeQuoted,
+  splitIncludeFlag,
+} from './story-variables.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

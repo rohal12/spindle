@@ -5,7 +5,7 @@
  */
 import { parse as pegParse } from './spindle.peggy';
 import { isBlockMacro, type ASTNode } from './ast';
-import type { Token } from './tokens';
+import type { Selectors, Token } from './tokens';
 import { isCodeAttribute } from './code-attributes';
 import { defaultCodeEnd, type CodeEnd } from './code-end';
 
@@ -74,7 +74,7 @@ export function lineColumn(
 
 function run(
   source: string,
-  startRule: 'Markup' | 'Tokens',
+  startRule: 'Markup' | 'Tokens' | 'SelectorsPrefix',
   options: ParseMarkupOptions,
 ): unknown {
   const hooks = options.hooks
@@ -115,4 +115,19 @@ export function tokenizeMarkup(
   options: ParseMarkupOptions = {},
 ): Token[] {
   return run(source, 'Tokens', options) as Token[];
+}
+
+/**
+ * The `.class#id` selectors that start `source` at `at`, with the index just
+ * past them and the one space that may follow (`end`; `at` if there are
+ * none). A selector name may hold `{$name}` interpolations, as in markup.
+ */
+export function parseSelectors(
+  source: string,
+  at = 0,
+): Selectors & { end: number } {
+  const found = run(source.slice(at), 'SelectorsPrefix', {}) as Selectors & {
+    end: number;
+  };
+  return { ...found, end: at + found.end };
 }

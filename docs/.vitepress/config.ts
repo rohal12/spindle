@@ -113,6 +113,7 @@ export default defineConfig({
         items: [
           { text: 'Automation', link: '/automation' },
           { text: 'npm Package', link: '/story-format-packages' },
+          { text: 'Tooling API', link: '/tooling' },
         ],
       },
     ],

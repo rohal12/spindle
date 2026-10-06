@@ -16,6 +16,29 @@ import type { ParameterDef } from './registry';
 export { parseStoryVariables } from './story-variables';
 export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
+
+// The parsing rules (see "Tooling API" in docs/tooling.md): the leaf rules
+// the runtime parses with, so editor tooling needn't mirror them.
+export { findCodeEnd, lexJs, lexTemplate, scanStringLiteral } from './js-lexer';
+export type {
+  FindCodeEndOptions,
+  JsGoal,
+  JsLexHandlers,
+  Sigil,
+} from './js-lexer';
+export { MarkupError, parseSelectors, tokenizeMarkup } from './markup/parse';
+export type { ParseMarkupOptions } from './markup/parse';
+export { SIGIL_SCOPES, isSigil } from './markup/tokens';
+export type { Selectors, Token, VariableScope } from './markup/tokens';
+export {
+  endsWithOperator,
+  readQuoted,
+  splitArgs,
+  splitTopLevel,
+  stripLooseQuotes,
+  unescapeQuoted,
+} from './components/macros/arg-utils';
+export { splitIncludeFlag } from './components/macros/include-args';
 export type { MarkupDiagnostic, MarkupPassage } from './markup/validate';
 
 /** What tooling knows about a macro (see MacroMetadata). */

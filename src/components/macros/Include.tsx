@@ -4,18 +4,14 @@ import { parseMarkup } from '../../markup/parse';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { evaluatePassageName } from './macro-args';
+import { INCLUDE_PARAMETERS } from './include-args';
 import { MacroError } from './MacroError';
 
 defineMacro({
   name: 'include',
   interpolate: true,
   merged: true,
-  // A standalone `inline` flag only counts outside quotes and brackets, so
-  // passage names and expressions containing the word stay intact (#201).
-  parameters: [
-    { name: 'inline', type: 'flag' },
-    { name: 'passage', type: 'passage', required: true },
-  ],
+  parameters: INCLUDE_PARAMETERS,
   render(_props, ctx) {
     const { storyData } = useStoryFields('storyData');
 
