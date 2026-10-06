@@ -1,16 +1,21 @@
-import { parseDelay } from '../../utils/parse-delay';
 import { defineMacro } from '../../define-macro';
+import { DELAY_PARAMETER, parseMacroArgs } from './macro-args';
+import { wrapContent } from './display';
+
+/** The parameters of {timed} and of each {next}: the delay before it shows. */
+const TIMED_PARAMETERS = [DELAY_PARAMETER] as const;
 
 defineMacro({
   name: 'timed',
   subMacros: ['next'],
   interpolate: true,
+  parameters: TIMED_PARAMETERS,
   render({ branches = [] }, ctx) {
     const { useState, useEffect, useMemo } = ctx.hooks;
 
     const sections = useMemo(() => {
       return branches.map((branch) => ({
-        delay: branch.rawArgs ? parseDelay(branch.rawArgs) : 0,
+        delay: parseMacroArgs(branch.rawArgs, TIMED_PARAMETERS).delay ?? 0,
         nodes: branch.children,
         className: branch.className,
         id: branch.id,
@@ -35,21 +40,12 @@ defineMacro({
     if (visibleIndex < 0) return ctx.wrap(null);
 
     const section = sections[visibleIndex]!;
-    const content = ctx.renderNodes(section.nodes);
-    const sectionClass = ctx.resolve!(section.className);
-    const sectionId = ctx.resolve!(section.id);
-
-    const inner =
-      sectionClass || sectionId ? (
-        <span
-          id={sectionId}
-          class={sectionClass}
-        >
-          {content}
-        </span>
-      ) : (
-        content
-      );
-    return ctx.wrap(inner);
+    return ctx.wrap(
+      wrapContent(
+        ctx.resolve!(section.className),
+        ctx.resolve!(section.id),
+        ctx.renderNodes(section.nodes),
+      ),
+    );
   },
 });

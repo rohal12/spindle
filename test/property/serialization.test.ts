@@ -2,11 +2,11 @@ import { beforeAll, afterAll, describe, expect, vi } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import {
   clearRegistry,
-  deepClone,
   deserialize,
   isDeserializable,
   serialize,
 } from '../../src/class-registry';
+import { deepClone } from '../../src/structural';
 import { fcOptions } from './config';
 import {
   reachableObjects,

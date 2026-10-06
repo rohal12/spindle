@@ -9,7 +9,7 @@ import type { SavePayload } from '../../src/saves/types';
 import { resetEmitter } from '../../src/event-emitter';
 import { initPRNG, random } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
-import { deepClone } from '../../src/class-registry';
+import { deepClone } from '../../src/structural';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };

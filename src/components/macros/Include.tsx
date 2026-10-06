@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { useStoryFields } from '../../hooks/use-story-fields';
 import { tokenize } from '../../markup/tokenizer';
 import { buildAST } from '../../markup/ast';
 import { NobrContext } from '../../markup/render';
@@ -16,7 +17,7 @@ defineMacro({
     { name: 'passage', type: 'expression', required: true },
   ],
   render(_props, ctx) {
-    const storyData = useStoryStore((s) => s.storyData);
+    const { storyData } = useStoryFields('storyData');
 
     const { inline } = ctx.args;
     const passageName = evaluatePassageName(ctx.args.passage, ctx.evaluate!);

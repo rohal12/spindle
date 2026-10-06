@@ -1,5 +1,5 @@
 import { useMemo } from 'preact/hooks';
-import { useStoryStore } from '../store';
+import { useStoryFields } from '../hooks/use-story-fields';
 import { tokenize } from '../markup/tokenizer';
 import { buildAST } from '../markup/ast';
 import { renderInlineNodes, NobrContext } from '../markup/render';
@@ -9,7 +9,7 @@ const DEFAULT_MARKUP =
   '<header class="story-menubar">{story-title}{back}{forward}{restart}{quicksave}{quickload}{saves}{settings}</header>\n{passage}';
 
 export function StoryInterface() {
-  const storyData = useStoryStore((s) => s.storyData);
+  const { storyData } = useStoryFields('storyData');
 
   const overridePassage = storyData?.passages.get('StoryInterface');
   const markup =

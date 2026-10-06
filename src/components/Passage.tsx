@@ -8,7 +8,7 @@ import {
 import { tokenize } from '../markup/tokenizer';
 import { buildAST, type ASTNode } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
-import { useStoryStore } from '../store';
+import { useStoryFields } from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
@@ -74,7 +74,7 @@ export function Passage({
   dataTransition,
   navigationId,
 }: PassageProps) {
-  const storyData = useStoryStore((s) => s.storyData);
+  const { storyData } = useStoryFields('storyData');
   const isCodePassage = CODE_PASSAGES.has(passage.name);
   const [doneReady, setDoneReady] = useState(false);
 

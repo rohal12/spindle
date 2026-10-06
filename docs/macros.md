@@ -502,15 +502,15 @@ A passage's own top-level text keeps its paragraphs under `setNobr(true)`; use t
 
 ### `{widget}`
 
-Define a reusable content block. Optionally declare parameters after the name.
+Define a reusable content block. Optionally declare parameters after the name: `@` locals, scoped to the widget body.
 
 ```
 {widget "StatusBar"}
   Health: {$health} | Mana: {$mana}
 {/widget}
 
-{widget "StatLine" $label $value $max}
-  **{$label}:** {$value} / {$max}
+{widget "StatLine" @label @value @max}
+  **{@label}:** {@value} / {@max}
 {/widget}
 ```
 

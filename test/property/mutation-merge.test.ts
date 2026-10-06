@@ -15,11 +15,8 @@ import { test, fc } from '@fast-check/vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { executeMutation } from '../../src/execute-mutation';
-import {
-  clearRegistry,
-  deepClone,
-  deserialize,
-} from '../../src/class-registry';
+import { clearRegistry, deserialize } from '../../src/class-registry';
+import { deepClone } from '../../src/structural';
 import { getBackend, resetBackend } from '../../src/saves/storage';
 import { deleteByPath, setByPath } from '../../src/utils/object-path';
 import { createNamespace } from '../../src/utils/namespace';

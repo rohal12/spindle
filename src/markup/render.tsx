@@ -588,12 +588,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 
 function ChildrenSlot() {
   const childrenAST = useContext(WidgetChildrenContext);
-  const nobr = useContext(NobrContext);
-  const inline = useContext(InlineContext);
-  const raw = useContext(RawTextContext);
-  const locals = useContext(LocalsValuesContext);
+  const renderOptions = useRenderOptions();
   if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, { nobr, locals, inline, raw })}</>;
+  return <>{renderNodes(childrenAST, renderOptions)}</>;
 }
 
 /**

@@ -1,6 +1,23 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import type { Branch } from '../../markup/ast';
+import { selectBranch } from './branches';
+import { wrapContent } from './display';
+
+/**
+ * The {if}/{elseif}/{else} branch whose condition holds, else the {else}
+ * branch, else null: the chain ends at its first bare branch. Throws what a
+ * condition throws.
+ */
+function selectIfBranch(
+  branches: Branch[],
+  evaluate: (expr: string) => unknown,
+): Branch | null {
+  const end = branches.findIndex((branch) => branch.rawArgs === '');
+  return selectBranch(end < 0 ? branches : branches.slice(0, end + 1), (expr) =>
+    Boolean(evaluate(expr)),
+  );
+}
 
 defineMacro({
   name: 'if',
@@ -8,49 +25,26 @@ defineMacro({
   interpolate: true,
   merged: true,
   render({ branches = [] }, ctx) {
-    function renderBranch(branch: Branch) {
-      const children = ctx.renderNodes(branch.children);
-      const cls = ctx.resolve!(branch.className);
-      const branchId = ctx.resolve!(branch.id);
-      if (cls || branchId)
-        return (
-          <span
-            id={branchId}
-            class={cls}
-          >
-            {children}
-          </span>
-        );
-      return <>{children}</>;
+    let branch: Branch | null;
+    try {
+      branch = selectIfBranch(branches, ctx.evaluate!);
+    } catch (err) {
+      return (
+        <MacroError
+          macro="if"
+          error={err}
+        />
+      );
     }
-
-    for (const branch of branches) {
-      if (branch.rawArgs === '') {
-        return renderBranch(branch);
-      }
-
-      try {
-        if (ctx.evaluate!(branch.rawArgs)) {
-          return renderBranch(branch);
-        }
-      } catch (err) {
-        return (
-          <MacroError
-            macro="if"
-            error={err}
-          />
-        );
-      }
-    }
-
-    return null;
+    if (!branch) return null;
+    return wrapContent(
+      ctx.resolve!(branch.className),
+      ctx.resolve!(branch.id),
+      ctx.renderNodes(branch.children),
+    );
   },
   text({ branches = [] }, ctx) {
-    for (const branch of branches) {
-      if (branch.rawArgs === '' || ctx.evaluate(branch.rawArgs)) {
-        return ctx.renderText(branch.children);
-      }
-    }
-    return '';
+    const branch = selectIfBranch(branches, ctx.evaluate);
+    return branch ? ctx.renderText(branch.children) : '';
   },
 });

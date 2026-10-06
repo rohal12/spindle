@@ -9,7 +9,8 @@ import type {
 } from './types';
 import { estimatePayloadBytes, isSaveExport, isSavePayload } from './types';
 import { getBackend, resetBackend } from './storage';
-import { deepClone, serialize, deserialize } from '../class-registry';
+import { serialize, deserialize } from '../class-registry';
+import { deepClone } from '../structural';
 import { emit } from '../event-emitter';
 import { withoutDraws } from '../prng';
 

@@ -3,12 +3,11 @@ import {
   registerClass,
   getClassName,
   clearRegistry,
-  deepClone,
-  deepEqual,
   serialize,
   deserialize,
   isDeserializable,
 } from '../../src/class-registry';
+import { deepClone, deepEqual } from '../../src/structural';
 
 class Player {
   name: string;
