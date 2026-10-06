@@ -33,7 +33,7 @@ import {
   MacroArgumentError,
   parseMacroArgs,
 } from './components/macros/macro-args';
-import { readWholeQuoted } from './components/macros/arg-utils';
+import { readWholeJsString } from './components/macros/arg-utils';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -80,6 +80,8 @@ export interface CodePiece {
   label: string;
   /** Whether it names a passage: a `passage` argument. */
   passage?: boolean;
+  /** Whether it is the code in a quoted string, as in `{watch}`. */
+  inString?: boolean;
 }
 
 /** A passage name written out in markup, at `offset` in it. */
@@ -113,14 +115,24 @@ export interface TextPiece {
 const CONDITION_MACROS = new Set(['if', 'elseif', 'case']);
 
 /** Code inside the quoted strings of a macro's arguments, by parameter. */
-const CODE_IN_STRINGS: Record<string, Record<string, JsGoal>> = {
-  watch: { condition: 'expression', run: 'statements' },
-};
+const CODE_IN_STRINGS: ReadonlyMap<string, Record<string, JsGoal>> = new Map([
+  ['watch', { condition: 'expression', run: 'statements' }],
+]);
 
 /** The `string` parameters of a macro that name a passage. */
-const PASSAGE_STRINGS: Record<string, readonly string[]> = {
-  watch: ['goto', 'dialog'],
-};
+const PASSAGE_STRINGS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['watch', ['goto', 'dialog']],
+]);
+
+/**
+ * The `text` and `string` parameters of a macro that the runtime keeps as
+ * written, not as markup: an option's value, the name of a watcher.
+ */
+const LITERAL_STRINGS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['option', ['value']],
+  ['watch', ['name']],
+  ['unwatch', ['name']],
+]);
 
 /** Block macros whose body is the name of a passage. */
 const PASSAGE_BODIES = new Set(['dialog']);
@@ -250,7 +262,7 @@ export function* codeAndText(
 }
 
 /** The code and text in the arguments `args` (at `offset`) of `macro`. */
-function* argPieces(
+export function* argPieces(
   args: string,
   offset: number,
   params: readonly ParameterDef[],
@@ -265,8 +277,10 @@ function* argPieces(
     yield { kind: 'argument-error', message: error.message, offset, label };
     return;
   }
-  const inStrings = CODE_IN_STRINGS[macro.toLowerCase()] ?? {};
-  const passageStrings = PASSAGE_STRINGS[macro.toLowerCase()] ?? [];
+  const key = macro.toLowerCase();
+  const inStrings = CODE_IN_STRINGS.get(key) ?? {};
+  const passageStrings = PASSAGE_STRINGS.get(key) ?? [];
+  const literalStrings = LITERAL_STRINGS.get(key) ?? [];
   let cursor = 0;
   /** The pieces of the parameters `list`, with their values in `from`. */
   function* visit(
@@ -295,19 +309,24 @@ function* argPieces(
           label,
         };
         if (param.type === 'passage') piece.passage = true;
+        if (!codeGoal(param)) piece.inString = true;
         yield piece;
       }
       // A passage written out: a quoted `passage` argument, or a string
       const name =
         param.type === 'passage'
-          ? readWholeQuoted(value.trim())
+          ? readWholeJsString(value.trim())
           : passageStrings.includes(param.name)
             ? value
             : null;
       if (name !== null) {
         yield { kind: 'passage', name, offset: offset + at, label };
       }
-      if (!goal && (param.type === 'text' || param.type === 'string')) {
+      if (
+        !goal &&
+        (param.type === 'text' || param.type === 'string') &&
+        !literalStrings.includes(param.name)
+      ) {
         yield {
           kind: 'text',
           text: value,

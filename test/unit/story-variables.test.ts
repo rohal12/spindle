@@ -375,3 +375,44 @@ describe('validatePassages: only real references (#178)', () => {
     expect(errorsFor('{picker "$cost"}', ['Picker'])).toHaveLength(1);
   });
 });
+
+describe('validatePassages: code in watch strings (#257)', () => {
+  const schema = parseStoryVariables('$x = 0');
+
+  function errorsFor(content: string): string[] {
+    return validatePassages(
+      makePassages(['StoryVariables', '$x = 0'], ['A', content]),
+      schema,
+    );
+  }
+
+  it('rejects undeclared names in the condition and the run action', () => {
+    expect(errorsFor('{watch "$notdeclared > 0"}')).toHaveLength(1);
+    expect(errorsFor('{watch "$x > 0" run "$alsoMissing = 1"}')).toEqual([
+      expect.stringContaining('alsoMissing'),
+    ]);
+  });
+
+  it('accepts declared names', () => {
+    expect(errorsFor('{watch "$x > 0" run "$x = 1"}')).toEqual([]);
+  });
+
+  it('keeps literal $name text in other strings', () => {
+    expect(errorsFor('{watch "$x > 0" name "$cost" goto "Hall"}')).toEqual([]);
+    expect(errorsFor('{button "Pay $cost"}{/button}')).toEqual([]);
+  });
+});
+
+describe('validatePassages: SaveTitle is JavaScript (#251)', () => {
+  it('does not read SaveTitle as markup', () => {
+    expect(
+      validatePassages(
+        makePassages(
+          ['StoryVariables', '$x = 0'],
+          ['SaveTitle', 'return "$notdeclared {$nope}";'],
+        ),
+        parseStoryVariables('$x = 0'),
+      ),
+    ).toEqual([]);
+  });
+});

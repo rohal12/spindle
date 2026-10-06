@@ -9,7 +9,9 @@ import {
   scanStringLiteral,
   type JsGoal,
 } from './js-lexer';
-import { parseOrError, withParseCache } from './code-check';
+import { argPieces, parseOrError, withParseCache } from './code-check';
+import { getMacroParameters, type ParameterDef } from './registry';
+import { NOT_MARKUP } from './markup/validate';
 import { createNamespace, variableNameError } from './utils/namespace';
 
 /**
@@ -319,10 +321,38 @@ function collectPassageRefs(
   content: string,
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
+  parametersOf: ParametersOf,
 ): void {
   withParseCache(() =>
-    collectTokenRefs(content, tokensOf(content, false), storeVarMacros, onRef),
+    collectTokenRefs(
+      content,
+      tokensOf(content, false),
+      storeVarMacros,
+      onRef,
+      parametersOf,
+    ),
   );
+}
+
+/** The declared parameters of a macro, if it has any. */
+type ParametersOf = (macro: string) => readonly ParameterDef[] | undefined;
+
+/**
+ * Report the references in the code that a macro's quoted arguments hold,
+ * the condition and `run` action of `{watch}`: the argument scan sees only
+ * the strings.
+ */
+function scanStringCode(
+  token: Extract<Token, { type: 'macro' }>,
+  params: readonly ParameterDef[] | undefined,
+  onRef: RefCallback,
+): void {
+  if (!params || !token.rawArgs) return;
+  for (const piece of argPieces(token.rawArgs, 0, params, token.name, '')) {
+    if (piece.kind === 'code' && piece.inString) {
+      scanCode(piece.code, onRef, piece.goal);
+    }
+  }
 }
 
 /** Report the `$var` references in the tokens of `content`. */
@@ -331,6 +361,7 @@ function collectTokenRefs(
   tokens: Token[],
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
+  parametersOf: ParametersOf = () => undefined,
 ): void {
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
@@ -345,6 +376,7 @@ function collectTokenRefs(
       }
     } else if (token.type === 'macro' && !token.isClose) {
       scanCode(token.rawArgs, onRef);
+      scanStringCode(token, parametersOf(token.name), onRef);
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
@@ -383,6 +415,7 @@ export function validatePassages(
   passages: Map<string, Passage>,
   schema: Map<string, VariableSchema>,
   storeVarMacros: Iterable<string> = BUILTIN_STORE_VAR_MACROS,
+  parametersOf: ParametersOf = getMacroParameters,
 ): string[] {
   const errors: string[] = [];
   const storeVarSet = new Set(
@@ -390,16 +423,21 @@ export function validatePassages(
   );
 
   for (const [name, passage] of passages) {
-    // Don't validate the StoryVariables/StoryTransients passages themselves
-    if (name === 'StoryVariables' || name === 'StoryTransients') continue;
+    // Don't validate the declarations or the SaveTitle code themselves
+    if (NOT_MARKUP.has(name)) continue;
 
     const forLocals = extractForLocals(passage.content);
-    collectPassageRefs(passage.content, storeVarSet, (ref) => {
-      const error = validateRef(ref, schema, forLocals);
-      if (error) {
-        errors.push(`Passage "${name}": ${error}`);
-      }
-    });
+    collectPassageRefs(
+      passage.content,
+      storeVarSet,
+      (ref) => {
+        const error = validateRef(ref, schema, forLocals);
+        if (error) {
+          errors.push(`Passage "${name}": ${error}`);
+        }
+      },
+      parametersOf,
+    );
   }
 
   return errors;

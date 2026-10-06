@@ -178,6 +178,13 @@ export function registerMacroMetadata(
   metadataRegistry.set(name, metadata);
 }
 
+/** The declared parameters of the macro `name`, if it declares any. */
+export function getMacroParameters(
+  name: string,
+): readonly ParameterDef[] | undefined {
+  return metadataRegistry.get(name)?.parameters;
+}
+
 export function getMacroRegistry(): MacroMetadata[] {
   return Array.from(metadataRegistry.values());
 }

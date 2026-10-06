@@ -34,6 +34,8 @@ defineMacro({
     const runBody = useDetachedBody();
 
     const perform = () => {
+      // A link that failed to resolve is an error, not a control
+      if (failure) return;
       runBody(children);
       if (passage) {
         useStoryStore.getState().navigate(passage);
@@ -51,6 +53,7 @@ defineMacro({
       authorId: ctx.id,
       label: display,
       target: passage ?? undefined,
+      disabled: failure ? true : undefined,
       perform,
     });
 
