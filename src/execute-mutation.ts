@@ -9,8 +9,18 @@ import {
 import { useStoryStore } from './store';
 import type { StoryState, VariableNamespaces } from './store';
 import { execute } from './expression';
-import { deepClone, deepEqual } from './class-registry';
-import { deleteByPath, getByPath, setByPath } from './utils/object-path';
+import {
+  applyChange,
+  deepClone,
+  deepEqual,
+  diffPaths,
+  hasOwn,
+  isApplied,
+  isMergeable,
+  mergeKeys,
+  type PathChange,
+} from './structural';
+import { getByPath } from './utils/object-path';
 import { asNamespace } from './utils/namespace';
 
 type NamespaceName = keyof VariableNamespaces;
@@ -20,11 +30,6 @@ const NAMESPACES: readonly NamespaceName[] = [
   'temporary',
   'transient',
 ];
-
-/** A write to one property path of a namespace, or its deletion. */
-type PathChange =
-  | { path: string[]; deleted: false; value: unknown }
-  | { path: string[]; deleted: true };
 
 /**
  * The state of one executing mutation. The code reads and writes `work`.
@@ -74,80 +79,6 @@ const cloneValue = <T>(value: T): T =>
  */
 export function frozenCopy<T>(value: T): T {
   return freeze(cloneValue(value), true);
-}
-
-/**
- * Objects merged property by property: plain objects and (registered)
- * class instances. Arrays, Map, Set, Date and RegExp are values that are
- * replaced as a whole, since their elements have no stable identity to
- * merge by (a shift moves every index).
- */
-export function isMergeable(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    !(value instanceof Map) &&
-    !(value instanceof Set) &&
-    !(value instanceof Date) &&
-    !(value instanceof RegExp)
-  );
-}
-
-const hasOwn = (obj: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(obj, key);
-
-/** Collect the property paths where `work` differs from `base`. */
-function diff(
-  base: Record<string, unknown>,
-  work: Record<string, unknown>,
-  path: string[],
-  changes: PathChange[],
-  ancestors: Set<object>,
-): void {
-  // Stop at cycles; shared (non-cyclic) references are visited per path.
-  if (ancestors.has(work)) return;
-  ancestors.add(work);
-  for (const key of Object.keys(work)) {
-    const b = base[key];
-    const w = work[key];
-    if (!hasOwn(base, key)) {
-      changes.push({ path: [...path, key], deleted: false, value: w });
-    } else if (Object.is(b, w)) {
-      // The same value (an untouched subtree of an Immer update)
-      continue;
-    } else if (
-      isMergeable(b) &&
-      isMergeable(w) &&
-      Object.getPrototypeOf(b) === Object.getPrototypeOf(w)
-    ) {
-      diff(b, w, [...path, key], changes, ancestors);
-    } else if (!deepEqual(b, w)) {
-      changes.push({ path: [...path, key], deleted: false, value: w });
-    }
-  }
-  for (const key of Object.keys(base)) {
-    if (!hasOwn(work, key))
-      changes.push({ path: [...path, key], deleted: true });
-  }
-  ancestors.delete(work);
-}
-
-/** Whether `ns` already holds what `change` would write. */
-function isApplied(ns: Record<string, unknown>, change: PathChange): boolean {
-  const parent = getByPath(ns, change.path.slice(0, -1));
-  if (parent === null || typeof parent !== 'object') return change.deleted;
-  const key = change.path[change.path.length - 1]!;
-  if (!hasOwn(parent, key)) return change.deleted;
-  return (
-    !change.deleted &&
-    deepEqual((parent as Record<string, unknown>)[key], change.value)
-  );
-}
-
-function applyChange(ns: Record<string, unknown>, change: PathChange): void {
-  if (change.deleted) deleteByPath(ns, change.path);
-  else setByPath(ns, change.path, change.value);
 }
 
 /**
@@ -381,11 +312,9 @@ function commitScopes(commits: readonly Commit[]): void {
   const all = commits.map(({ scope, keepRunning }) => ({
     scope,
     keepRunning,
-    changes: NAMESPACES.map((ns) => {
-      const list: PathChange[] = [];
-      diff(scope.base[ns], scope.work[ns], [], list, new Set());
-      return [ns, list] as const;
-    }),
+    changes: NAMESPACES.map(
+      (ns) => [ns, diffPaths(scope.base[ns], scope.work[ns])] as const,
+    ),
   }));
   const changed = all.filter(({ changes }) =>
     changes.some(([, list]) => list.length > 0),
@@ -450,16 +379,7 @@ const running = (): Commit[] =>
 function resync(scope: MutationScope): void {
   const state = useStoryStore.getState();
   for (const ns of NAMESPACES) {
-    const work = scope.work[ns];
-    const stored = state[ns];
-    for (const key of Object.keys(work)) {
-      if (!hasOwn(stored, key)) delete work[key];
-    }
-    for (const key of Object.keys(stored)) {
-      if (!hasOwn(work, key) || !deepEqual(work[key], stored[key])) {
-        work[key] = deepClone(stored[key]);
-      }
-    }
+    mergeKeys(scope.work[ns], scope.work[ns], state[ns]);
   }
   scope.base = cloneNamespaces(state);
 }
