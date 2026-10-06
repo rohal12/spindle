@@ -1,0 +1,3 @@
+# Scripts run by Bun import the markup grammar (src/markup/spindle.peggy),
+# which this plugin compiles on load (see scripts/peggy.ts).
+preload = ["./scripts/bun-preload.ts"]

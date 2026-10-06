@@ -835,11 +835,10 @@ describe('compiled story e2e', () => {
       expect(text).toContain('Adventurer / 100 / 5');
     });
 
-    it('renders escaped braces as literal text and errors on unknown macro', () => {
-      // \{is\} renders as literal text "{is}"
+    it('renders escaped braces as literal text', () => {
+      // \{is\} renders as literal text "{is}". (An unescaped {is} would be
+      // an unknown macro, which stops the story when it starts.)
       expect(text).toContain('{is} not a macro');
-      // unescaped {is} is an unknown macro and shows error
-      expect(text).toContain('unknown macro');
     });
 
     it('evaluates ternary in print expression', () => {

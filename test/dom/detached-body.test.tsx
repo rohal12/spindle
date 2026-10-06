@@ -8,12 +8,8 @@ import {
   registerWidget,
   clearWidgets,
 } from '../../src/widgets/widget-registry';
-import { tokenize } from '../../src/markup/tokenizer';
-import {
-  buildAST,
-  registerBlockMacro,
-  unregisterBlockMacro,
-} from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
+import { registerBlockMacro, unregisterBlockMacro } from '../../src/markup/ast';
 import { astContainsChildren } from '../../src/widgets/ast-scanner';
 import type { ASTNode } from '../../src/markup/ast';
 import { NobrContext } from '../../src/markup/render';
@@ -59,7 +55,7 @@ const blockWidgets: string[] = [];
 
 /** Register a widget from definition markup, mimicking boot-time logic. */
 function defineWidget(markup: string): void {
-  for (const node of buildAST(tokenize(markup))) {
+  for (const node of parseMarkup(markup)) {
     if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
       const parts = node.rawArgs.trim().split(/\s+/);
       const name = parts[0]!.replace(/["']/g, '');

@@ -26,8 +26,7 @@ import {
   type TextPiece,
   type TextVars,
 } from './markup-text';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import {
   registerWidget,
   clearWidgets,
@@ -471,11 +470,7 @@ describe('HTML attributes', () => {
 describe('markup in attribute values (#225)', () => {
   beforeAll(() => {
     for (const widget of TEXT_WIDGETS) {
-      registerWidget(
-        widget.name,
-        buildAST(tokenize(widget.body)),
-        widget.params,
-      );
+      registerWidget(widget.name, parseMarkup(widget.body), widget.params);
     }
   });
   afterAll(() => clearWidgets());

@@ -1,7 +1,6 @@
 import { h, render } from 'preact';
 import { useStoryStore, recordStoryInitState } from './store';
-import { tokenize } from './markup/tokenizer';
-import { buildAST } from './markup/ast';
+import { parseMarkup } from './markup/parse';
 import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
 import { emit } from './event-emitter';
@@ -35,8 +34,7 @@ export function executeStoryInit() {
 
   const storyInit = state.storyData.passages.get('StoryInit');
   if (storyInit) {
-    const tokens = tokenize(storyInit.content);
-    const ast = buildAST(tokens);
+    const ast = parseMarkup(storyInit.content);
 
     // Mount into a persistent hidden container. It stays mounted until the
     // next execution (restart) — this lets async effects (useEffect,

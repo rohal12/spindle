@@ -1,7 +1,6 @@
 import { createContext } from 'preact';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
-import { tokenize } from '../markup/tokenizer';
-import { buildAST } from '../markup/ast';
+import { parseMarkup } from '../markup/parse';
 import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
 import { emitFromRender } from '../event-emitter';
@@ -53,8 +52,7 @@ export function PassageDialog({
       return <div class="error">Dialog: no content available</div>;
     }
     try {
-      const tokens = tokenize(markup);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(markup);
       const nodes = renderNodes(ast, nobr ? { nobr: true } : undefined);
       return nobr ? (
         <NobrContext.Provider value={true}>{nodes}</NobrContext.Provider>

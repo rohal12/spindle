@@ -1,9 +1,23 @@
 import type { Passage } from './parser';
-import { tokenize, type Token } from './markup/tokenizer';
+import type { Token } from './markup/tokens';
+import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 import { lexJs, scanStringLiteral, type JsGoal } from './js-lexer';
 import { createNamespace, variableNameError } from './utils/namespace';
+
+/**
+ * The tokens of markup, or none if it is malformed: validateMarkup reports
+ * that, with its position.
+ */
+function tokensOf(text: string, textMode: boolean): Token[] {
+  try {
+    return tokenizeMarkup(text, { text: textMode });
+  } catch (err) {
+    if (err instanceof MarkupError) return [];
+    throw err;
+  }
+}
 
 export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
 
@@ -217,7 +231,7 @@ function scanInterpolations(
   storeVarMacros: ReadonlySet<string> = NO_STORE_VAR_MACROS,
 ): void {
   if (!text.includes('{')) return;
-  collectTokenRefs(text, tokenize(text, { text: true }), storeVarMacros, onRef);
+  collectTokenRefs(text, tokensOf(text, true), storeVarMacros, onRef);
 }
 
 /**
@@ -281,7 +295,7 @@ function collectPassageRefs(
   storeVarMacros: ReadonlySet<string>,
   onRef: RefCallback,
 ): void {
-  collectTokenRefs(content, tokenize(content), storeVarMacros, onRef);
+  collectTokenRefs(content, tokensOf(content, false), storeVarMacros, onRef);
 }
 
 /** Report the `$var` references in the tokens of `content`. */
@@ -313,7 +327,7 @@ function collectTokenRefs(
 
       if (token.name === 'do') {
         // A {do} body is JavaScript: scan its source text as code, however
-        // the markup tokenizer split it up.
+        // the markup tokens split it up.
         let close = t + 1;
         while (close < tokens.length) {
           const c = tokens[close]!;

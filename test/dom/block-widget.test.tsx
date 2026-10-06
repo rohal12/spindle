@@ -8,13 +8,9 @@ import {
   clearWidgets,
   isBlockWidget,
 } from '../../src/widgets/widget-registry';
-import { tokenize } from '../../src/markup/tokenizer';
-import {
-  buildAST,
-  registerBlockMacro,
-  unregisterBlockMacro,
-} from '../../src/markup/ast';
+import { registerBlockMacro, unregisterBlockMacro } from '../../src/markup/ast';
 import { astContainsChildren } from '../../src/widgets/ast-scanner';
+import { parseMarkup } from '../../src/markup/parse';
 import type { ASTNode } from '../../src/markup/ast';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
@@ -40,8 +36,7 @@ function makeStoryData(passages: PassageData[], startNode = 1): StoryData {
 
 /** Register a widget from definition markup, mimicking boot-time logic. */
 function defineWidget(markup: string): void {
-  const tokens = tokenize(markup);
-  const ast = buildAST(tokens);
+  const ast = parseMarkup(markup);
   for (const node of ast) {
     if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
       const parts = node.rawArgs.trim().split(/\s+/);

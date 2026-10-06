@@ -17,11 +17,10 @@ import { evaluate } from './expression';
 import {
   SCOPE_SIGILS,
   SIGIL_SCOPES,
-  tokenize,
   type VariableScope,
-} from './markup/tokenizer';
+} from './markup/tokens';
 import type { Sigil } from './js-lexer';
-import { buildAST } from './markup/ast';
+import { parseMarkup } from './markup/parse';
 import type { ASTNode, MacroNode, TextNode } from './markup/ast';
 import { getMacro, getMacroText, isSubMacro } from './registry';
 import type { MacroTextContext } from './registry';
@@ -76,7 +75,7 @@ export function parseText(template: string): ParsedText {
   let parsed = parseCache.get(template);
   if (parsed === undefined) {
     try {
-      parsed = { nodes: buildAST(tokenize(template, { text: true })) };
+      parsed = { nodes: parseMarkup(template, { text: true }) };
     } catch (error) {
       parsed = { error };
     }

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseStoryData } from '../../src/parser';
-import { tokenize } from '../../src/markup/tokenizer';
+import { tokenizeMarkup } from '../../src/markup/parse';
 
 function setDocumentHTML(html: string) {
   document.body.innerHTML = html;
@@ -165,9 +165,9 @@ describe('parseStoryData', () => {
       return parseStoryData().passages.get('Start')!.content;
     }
 
-    /** The attributes the passage tokenizer reads from the first tag. */
+    /** The attributes the passage parser reads from the first tag. */
     function attributesOf(content: string): Record<string, string> {
-      const tag = tokenize(content).find((t) => t.type === 'html');
+      const tag = tokenizeMarkup(content).find((t) => t.type === 'html');
       return tag?.type === 'html' ? tag.attributes : {};
     }
 

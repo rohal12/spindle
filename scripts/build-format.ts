@@ -3,6 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import preact from '@preact/preset-vite';
+import { peggyPlugin } from './peggy';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -79,18 +80,20 @@ copyFileSync(
 
 console.log('Copied tooling entry point to dist/pkg/');
 
-// Bundle the StoryVariables parser for the tooling entry point. It is plain
-// TypeScript with no Preact/DOM dependencies, so Node tooling can run it.
+// Bundle the StoryVariables parser and the markup validator for the tooling
+// entry point (src/tooling.ts). They are plain TypeScript with no
+// Preact/DOM dependencies, so Node tooling can run them.
 await build({
   configFile: false,
   logLevel: 'warn',
+  plugins: [peggyPlugin()],
   build: {
     outDir: pkgDir,
     emptyOutDir: false,
     target: 'es2020',
     minify: false,
     lib: {
-      entry: resolve(projectRoot, 'src/story-variables.ts'),
+      entry: resolve(projectRoot, 'src/tooling.ts'),
       formats: ['es'],
       fileName: () => 'story-variables.js',
     },
@@ -108,7 +111,7 @@ const RUNTIME_DEPS = /^(preact|zustand|immer|micromark)(\/|-|$)/;
 await build({
   configFile: false,
   logLevel: 'warn',
-  plugins: [preact()],
+  plugins: [preact(), peggyPlugin()],
   build: {
     outDir: pkgDir,
     emptyOutDir: false,

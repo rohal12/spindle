@@ -1,15 +1,15 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST, type ASTNode, type HtmlNode } from '../../src/markup/ast';
+import type { ASTNode, HtmlNode } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { renderNodes, NobrContext } from '../../src/markup/render';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 function parse(input: string): ASTNode[] {
-  return buildAST(tokenize(input));
+  return parseMarkup(input);
 }
 
 function makePassage(
@@ -292,8 +292,7 @@ describe('issue #61: deeply nested HTML with {include}', () => {
       useStoryStore.setState({ nobr: true });
 
       const container = document.createElement('div');
-      const tokens = tokenize(shellContent);
-      const ast = buildAST(tokens);
+      const ast = parseMarkup(shellContent);
 
       render(
         <NobrContext.Provider value={true}>
@@ -319,7 +318,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
     //   <span class="value">\n    +\n    0.95\n  </span>
     const markup = '<span class="value">\n+\n0.95\n</span>';
     const container = document.createElement('div');
-    const ast = buildAST(tokenize(markup));
+    const ast = parseMarkup(markup);
     render(<>{renderNodes(ast)}</>, container);
 
     // Must NOT contain a <ul> or <li> — that's the markdown list artifact
@@ -335,7 +334,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   it('does not interpret "-" inside <span> as a list marker', () => {
     const markup = '<span>\n- text\n</span>';
     const container = document.createElement('div');
-    const ast = buildAST(tokenize(markup));
+    const ast = parseMarkup(markup);
     render(<>{renderNodes(ast)}</>, container);
 
     expect(container.querySelector('ul')).toBeNull();
@@ -347,7 +346,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   it('does not interpret "#" inside <span> as a heading', () => {
     const markup = '<span>\n# not a heading\n</span>';
     const container = document.createElement('div');
-    const ast = buildAST(tokenize(markup));
+    const ast = parseMarkup(markup);
     render(<>{renderNodes(ast)}</>, container);
 
     expect(container.querySelector('h1')).toBeNull();
@@ -358,7 +357,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   it('still allows block-level markdown inside <div>', () => {
     const markup = '<div>\n- item one\n- item two\n</div>';
     const container = document.createElement('div');
-    const ast = buildAST(tokenize(markup));
+    const ast = parseMarkup(markup);
     render(<>{renderNodes(ast)}</>, container);
 
     // Block elements like <div> should still support markdown lists
@@ -369,7 +368,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   it('preserves inline markdown (bold, italic) inside <span>', () => {
     const markup = '<span>**bold** and *italic*</span>';
     const container = document.createElement('div');
-    const ast = buildAST(tokenize(markup));
+    const ast = parseMarkup(markup);
     render(<>{renderNodes(ast)}</>, container);
 
     expect(container.querySelector('strong')?.textContent).toBe('bold');
@@ -380,7 +379,7 @@ describe('inline HTML elements should not produce block-level markdown', () => {
   // #220: inline elements must not wrap their content in <p>
   function renderMarkup(markup: string): HTMLElement {
     const container = document.createElement('div');
-    render(<>{renderNodes(buildAST(tokenize(markup)))}</>, container);
+    render(<>{renderNodes(parseMarkup(markup))}</>, container);
     return container;
   }
 

@@ -90,6 +90,7 @@
     "js-yaml": "^4.1.1",
     "jscpd": "5.4.0",
     "lint-staged": "^16.4.0",
+    "peggy": "5.1.0",
     "playwright": "^1.58.2",
     "prettier": "^3.8.1",
     "typescript": "^6.0.2",

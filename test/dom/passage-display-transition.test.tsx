@@ -3,8 +3,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useStoryStore } from '../../src/store';
-import { tokenize } from '../../src/markup/tokenizer';
-import { buildAST } from '../../src/markup/ast';
+import { parseMarkup } from '../../src/markup/parse';
 import { renderNodes } from '../../src/markup/render';
 import { loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
@@ -38,8 +37,7 @@ function makeStoryData(passages: PassageData[], startNode = 1): StoryData {
 }
 
 function renderPassageMacro(container: HTMLElement): void {
-  const tokens = tokenize('{passage}');
-  const ast = buildAST(tokens);
+  const ast = parseMarkup('{passage}');
   act(() => {
     render(<>{renderNodes(ast)}</>, container);
   });

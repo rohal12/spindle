@@ -35,9 +35,9 @@ describe('error display with non-Error thrown values', () => {
 
   describe('Passage', () => {
     it('displays string error message when a string is thrown', async () => {
-      // Mock tokenize to throw a string
-      const tokenize = await import('../../src/markup/tokenizer');
-      const spy = vi.spyOn(tokenize, 'tokenize').mockImplementation(() => {
+      // Mock the parser to throw a string
+      const parse = await import('../../src/markup/parse');
+      const spy = vi.spyOn(parse, 'parseMarkup').mockImplementation(() => {
         throw 'raw string error';
       });
 
@@ -59,8 +59,8 @@ describe('error display with non-Error thrown values', () => {
 
   describe('PassageDialog', () => {
     it('displays string error message when a string is thrown', async () => {
-      const tokenize = await import('../../src/markup/tokenizer');
-      const spy = vi.spyOn(tokenize, 'tokenize').mockImplementation(() => {
+      const parse = await import('../../src/markup/parse');
+      const spy = vi.spyOn(parse, 'parseMarkup').mockImplementation(() => {
         throw 'dialog parse error';
       });
 

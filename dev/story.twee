@@ -719,7 +719,7 @@ Stance: {$stance}
 
 **Multiple variables in one line:** {$player.name} / {$player.hp} / {$player.strength}
 
-**Literal curly braces:** This \{is\} not a macro. This {is} a macro that throws an error
+**Literal curly braces:** This \{is\} not a macro.
 
 **Print with string containing special chars:**
 {print "10 > 5 ? 'yes' : 'no'"}

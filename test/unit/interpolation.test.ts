@@ -200,11 +200,16 @@ describe('interpolate — regex literals and comments', () => {
   });
 });
 
-describe('interpolate — unclosed template literals', () => {
-  // Same exponential scan as the tokenizer (see tokenizer.test.ts).
-  it('leaves nested unclosed template literals as text quickly', () => {
-    const template = '{$a`${'.repeat(60);
-    expect(interpolate(template, { a: 1 }, {}, {})).toBe(template);
+describe('interpolate — malformed markup', () => {
+  it('throws the markup error, with its line and column', () => {
+    expect(() => interpolate('Hi\n{$a + `x', { a: 1 }, {}, {})).toThrow(
+      expect.objectContaining({
+        name: 'MarkupError',
+        reason: 'Unclosed {$…: no } ends it',
+        line: 2,
+        column: 1,
+      }),
+    );
   });
 });
 

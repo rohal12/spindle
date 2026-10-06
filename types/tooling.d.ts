@@ -99,3 +99,45 @@ export declare function parseStoryVariables(
   content: string,
   sigil?: '$' | '%',
 ): Map<string, VariableSchema>;
+
+/** A passage to validate. */
+export interface MarkupPassage {
+  name: string;
+  content: string;
+  tags?: string[];
+  /**
+   * Passage attributes; `data-source-file` and `data-source-line` (the
+   * line of its `::` header) place errors in the source file.
+   */
+  metadata?: Record<string, string>;
+}
+
+/** An error in a passage's markup. */
+export interface MarkupDiagnostic {
+  passage: string;
+  /** 1-based line within the passage's content. */
+  line: number;
+  /** 1-based column (UTF-16 code units). */
+  column: number;
+  message: string;
+  /** The source file and line, when the passage says where it came from. */
+  file?: string;
+  fileLine?: number;
+}
+
+/**
+ * Validate the markup of a story's passages as Spindle does when the story
+ * starts: malformed markup (unclosed or mismatched macros, tags, links,
+ * braces and attribute values) and unknown macros, checked against the
+ * built-in macros, those registered with `defineMacro` and the widgets the
+ * passages define. Spindle refuses to start a story with any of these.
+ */
+export declare function validateMarkup(
+  passages: Iterable<MarkupPassage>,
+): MarkupDiagnostic[];
+
+/**
+ * A diagnostic as one line of text, as Spindle shows it:
+ * `Passage "Start", line 3, column 5 (story.twee:12): Unclosed {if}: …`.
+ */
+export declare function formatDiagnostic(diagnostic: MarkupDiagnostic): string;

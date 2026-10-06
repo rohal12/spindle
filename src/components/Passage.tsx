@@ -5,8 +5,8 @@ import {
   useRef,
   useState,
 } from 'preact/hooks';
-import { tokenize } from '../markup/tokenizer';
-import { buildAST, type ASTNode } from '../markup/ast';
+import { parseMarkup } from '../markup/parse';
+import type { ASTNode } from '../markup/ast';
 import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
@@ -29,7 +29,7 @@ const astCache = new WeakMap<
 function parsePassage(passage: PassageData): ASTNode[] {
   const cached = astCache.get(passage);
   if (cached && cached.content === passage.content) return cached.ast;
-  const ast = buildAST(tokenize(passage.content));
+  const ast = parseMarkup(passage.content);
   astCache.set(passage, { content: passage.content, ast });
   return ast;
 }
