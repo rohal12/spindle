@@ -139,6 +139,7 @@ export function validateMarkup(
   for (const passage of passages) {
     if (NOT_MARKUP.has(passage.name)) continue;
     if (passage.tags?.some((tag) => NOT_MARKUP_TAGS.includes(tag))) continue;
+    const reported = !options.only || options.only(passage);
     try {
       // The tokens first: they don't depend on which macros take a body
       const tokens = tokenizeMarkup(passage.content);
@@ -148,11 +149,12 @@ export function validateMarkup(
         const name = widgetName(token.rawArgs);
         if (name) widgets.add(name);
       }
+      if (!reported) continue;
       parseMarkup(passage.content, { hooks });
       parsed.push([passage, tokens]);
     } catch (err) {
       if (!(err instanceof MarkupError)) throw err;
-      if (!options.only || options.only(passage)) {
+      if (reported) {
         report(passage, err.offset, err.reason);
       }
     }
@@ -185,7 +187,6 @@ export function validateMarkup(
   };
 
   for (const [passage, tokens] of parsed) {
-    if (options.only && !options.only(passage)) continue;
     checkMacros(passage, tokens, 0, '');
     for (const token of tokens) {
       if (token.type !== 'html') continue;
