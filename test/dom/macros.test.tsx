@@ -58,6 +58,20 @@ describe('macro components', () => {
       expect(error).not.toBeNull();
       expect(error!.textContent).toMatch(/@foo/);
     });
+
+    it.each(['0', "''", 'null', 'undefined', 'false'])(
+      'shows an error when the expression throws %s',
+      (thrown) => {
+        const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        let el!: HTMLElement;
+        act(() => {
+          el = renderPassage(`{set $x = (() => { throw ${thrown} })()}`);
+        });
+        expect(el.querySelector('.error')).not.toBeNull();
+        expect(spy).toHaveBeenCalled();
+        spy.mockRestore();
+      },
+    );
   });
 
   describe('{$var} display', () => {
@@ -442,6 +456,101 @@ describe('macro components', () => {
       off();
       expect(useStoryStore.getState().variables.x).toBe(20);
       expect(writes).toEqual([10, 20]);
+    });
+
+    // #234: the first result must be applied even when it is undefined
+    describe('computed with an undefined result (#234)', () => {
+      const targets = [
+        {
+          label: 'story variable',
+          target: '$result',
+          seed: () => useStoryStore.getState().setVariable('result', 99),
+          content: (computed: string) =>
+            `${computed}<span class="result">{$result}</span>`,
+          read: () => useStoryStore.getState().variables.result,
+        },
+        {
+          label: 'temporary variable',
+          target: '_result',
+          seed: () => useStoryStore.getState().setTemporary('result', 99),
+          content: (computed: string) =>
+            `${computed}<span class="result">{_result}</span>`,
+          read: () => useStoryStore.getState().temporary.result,
+        },
+        {
+          label: 'local variable',
+          target: '@result',
+          seed: () => {},
+          content: (computed: string) =>
+            `{for @i of [1]}{set @result = 99}${computed}<span class="result">{@result}</span>{/for}`,
+          read: null,
+        },
+      ];
+
+      for (const { label, target, seed, content, read } of targets) {
+        it(`applies an initial undefined result to a ${label}`, () => {
+          useStoryStore.getState().setVariable('source', {});
+          seed();
+          let el!: HTMLElement;
+          act(() => {
+            el = renderPassage(
+              content(`{computed ${target} = $source.missing}`),
+            );
+          });
+          expect(el.querySelector('.result')!.textContent).toBe('');
+          if (read) expect(read()).toBeUndefined();
+        });
+
+        it(`tracks a ${label} from undefined to defined and back`, () => {
+          useStoryStore.getState().setVariable('source', {});
+          seed();
+          let el!: HTMLElement;
+          act(() => {
+            el = renderPassage(
+              content(`{computed ${target} = $source.missing}`),
+            );
+          });
+          const shown = () => el.querySelector('.result')!.textContent;
+          expect(shown()).toBe('');
+
+          act(() =>
+            useStoryStore.getState().setVariable('source', { missing: 5 }),
+          );
+          expect(shown()).toBe('5');
+          if (read) expect(read()).toBe(5);
+
+          act(() => useStoryStore.getState().setVariable('source', {}));
+          expect(shown()).toBe('');
+          if (read) expect(read()).toBeUndefined();
+        });
+
+        it(`applies undefined to a ${label} after a first evaluation that threw`, () => {
+          const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+          useStoryStore.getState().setVariable('source', {});
+          seed();
+          let el!: HTMLElement;
+          act(() => {
+            el = renderPassage(content(`{computed ${target} = $source.a.b}`));
+          });
+          // The failed evaluation leaves the target alone
+          expect(el.querySelector('.result')!.textContent).toBe('99');
+          expect(spy).toHaveBeenCalled();
+
+          act(() => useStoryStore.getState().setVariable('source', { a: {} }));
+          expect(el.querySelector('.result')!.textContent).toBe('');
+          if (read) expect(read()).toBeUndefined();
+          spy.mockRestore();
+        });
+      }
+
+      it('lets a later {set} read the undefined local it computed', () => {
+        act(() => {
+          renderPassage(
+            '{set $seen = "unset"}{for @i of [1]}{set @r = 99}{computed @r = $nothing}{set $seen = @r}{/for}',
+          );
+        });
+        expect(useStoryStore.getState().variables.seen).toBeUndefined();
+      });
     });
 
     it('computed @-target outside local scope logs error', () => {

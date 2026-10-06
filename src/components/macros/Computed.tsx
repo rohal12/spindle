@@ -7,6 +7,13 @@ import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { checkVariableName } from '../../utils/namespace';
 
+/**
+ * The previous output before the first successful evaluation. Distinct from
+ * every value an expression can produce, so the first result is always
+ * applied, even `undefined`; a first evaluation that throws leaves it unset.
+ */
+const UNSET: unique symbol = Symbol('unset');
+
 function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
   const trimmed = rawArgs.trim();
 
@@ -44,10 +51,11 @@ function parseComputedArgs(rawArgs: string): { target: string; expr: string } {
 /**
  * Evaluate `expr` against the current values — the store's state and the
  * enclosing locals scope's live values (`getLocals`) — and write the result
- * to the target if it changed. Reading live values rather than the render's
- * snapshot means the first computation sees a local a preceding {set} just
- * assigned (the scope's context value only catches up on its re-render), and
- * the first computation and later recomputations read the same source.
+ * to the target if it differs from the previous output (always, the first
+ * time). Reading live values rather than the render's snapshot means the
+ * first computation sees a local a preceding {set} just assigned (the scope's
+ * context value only catches up on its re-render), and the first computation
+ * and later recomputations read the same source.
  */
 function computeAndApply(
   expr: string,
@@ -114,7 +122,7 @@ defineMacro({
     const name = target.slice(1);
     const localsUpdate = isLocal ? ctx.update : null;
 
-    const prevOutput = ctx.hooks.useRef<unknown>(undefined);
+    const prevOutput = ctx.hooks.useRef<unknown>(UNSET);
 
     const ran = ctx.hooks.useRef(false);
     if (!ran.current) {

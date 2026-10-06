@@ -242,8 +242,13 @@ export function buildAST(tokens: Token[]): ASTNode[] {
         }
 
         // Handle branch macros (elseif/else, case/default, next)
-        if (BRANCH_PARENT[name]) {
-          const expectedParent = BRANCH_PARENT[name]!;
+        const expectedParent = Object.prototype.hasOwnProperty.call(
+          BRANCH_PARENT,
+          name,
+        )
+          ? BRANCH_PARENT[name]
+          : undefined;
+        if (expectedParent) {
           const topNode =
             stack.length > 0 ? stack[stack.length - 1]!.node : null;
           if (

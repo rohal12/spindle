@@ -621,6 +621,24 @@ describe('extended macro components', () => {
       render(<Passage passage={passages[1]!} />, document.createElement('div'));
     }
 
+    it('applies an undefined computed result to a widget parameter (#234)', () => {
+      defineWidgets(
+        '{widget "Show" @x}{computed @x = $source.missing}<span class="result">[{@x}]</span>{/widget}',
+      );
+      useStoryStore.getState().setVariable('source', {});
+      let el!: HTMLElement;
+      act(() => {
+        el = renderPassage('{Show 99}');
+      });
+      expect(el.querySelector('.result')!.textContent).toBe('[]');
+
+      act(() => useStoryStore.getState().setVariable('source', { missing: 5 }));
+      expect(el.querySelector('.result')!.textContent).toBe('[5]');
+
+      act(() => useStoryStore.getState().setVariable('source', {}));
+      expect(el.querySelector('.result')!.textContent).toBe('[]');
+    });
+
     it('binds missing arguments to undefined instead of outer locals (#206)', () => {
       defineWidgets('{widget "Greet" @name}NAME:{@name}{/widget}');
       const el = renderPassage('{for @name of ["OUTER"]}{Greet}{/for}');

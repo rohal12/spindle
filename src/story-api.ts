@@ -24,6 +24,7 @@ import { registerClass } from './class-registry';
 import { frozenCopy, getActiveMutationScope } from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { checkVariableName } from './utils/namespace';
+import { countOf } from './utils/counts';
 import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
@@ -358,7 +359,7 @@ function createStoryAPI(): StoryAPI {
 
     visited(name?: string): number {
       const state = useStoryStore.getState();
-      return state.visitCounts[name ?? state.currentPassage] ?? 0;
+      return countOf(state.visitCounts, name ?? state.currentPassage);
     },
 
     hasVisited(name?: string): boolean {
@@ -367,17 +368,17 @@ function createStoryAPI(): StoryAPI {
 
     hasVisitedAny(...names: string[]): boolean {
       const { visitCounts } = useStoryStore.getState();
-      return names.some((n) => (visitCounts[n] ?? 0) > 0);
+      return names.some((n) => countOf(visitCounts, n) > 0);
     },
 
     hasVisitedAll(...names: string[]): boolean {
       const { visitCounts } = useStoryStore.getState();
-      return names.every((n) => (visitCounts[n] ?? 0) > 0);
+      return names.every((n) => countOf(visitCounts, n) > 0);
     },
 
     rendered(name?: string): number {
       const state = useStoryStore.getState();
-      return state.renderCounts[name ?? state.currentPassage] ?? 0;
+      return countOf(state.renderCounts, name ?? state.currentPassage);
     },
 
     hasRendered(name?: string): boolean {
@@ -386,12 +387,12 @@ function createStoryAPI(): StoryAPI {
 
     hasRenderedAny(...names: string[]): boolean {
       const { renderCounts } = useStoryStore.getState();
-      return names.some((n) => (renderCounts[n] ?? 0) > 0);
+      return names.some((n) => countOf(renderCounts, n) > 0);
     },
 
     hasRenderedAll(...names: string[]): boolean {
       const { renderCounts } = useStoryStore.getState();
-      return names.every((n) => (renderCounts[n] ?? 0) > 0);
+      return names.every((n) => countOf(renderCounts, n) > 0);
     },
 
     currentPassage(): Passage | undefined {
