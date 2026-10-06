@@ -26,31 +26,19 @@ export interface CodeEnd {
 const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
 
 /**
- * Skip a '…' or "…" string literal opening at i: the index just past the
- * closing quote, or -1 if it is not closed on its line.
+ * Skip the literal opening at `i`: a '…' or "…" string, which must close on
+ * its line, or a `…` template, whose `${…}` parts are read as braces.
+ * Returns the index just past its closing quote or backtick, or -1.
  */
-function skipQuoted(input: string, i: number): number {
+function skipLiteral(input: string, i: number): number {
   const quote = input[i];
+  const template = quote === '`';
   for (let j = i + 1; j < input.length; ) {
     const c = input[j];
     if (c === '\\') j += 2;
     else if (c === quote) return j + 1;
-    else if (c === '\n') return -1;
-    else j++;
-  }
-  return -1;
-}
-
-/**
- * Index just past the backtick closing the template literal whose backtick
- * is at `i`, or -1. Its `${…}` parts are read as braces.
- */
-function skipTemplate(input: string, i: number): number {
-  for (let j = i + 1; j < input.length; ) {
-    const c = input[j];
-    if (c === '\\') j += 2;
-    else if (c === '`') return j + 1;
-    else if (c === '$' && input[j + 1] === '{') {
+    else if (!template && c === '\n') return -1;
+    else if (template && c === '$' && input[j + 1] === '{') {
       const close = lenientClose(input, j + 2);
       if (close === -1) return -1;
       j = close + 1;
@@ -95,13 +83,11 @@ function scanLenient(input: string, i: number): number {
       depth--;
       i++;
     } else if (
-      (c === '"' || c === "'") &&
-      !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!))
+      c === '`' ||
+      ((c === '"' || c === "'") &&
+        !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!)))
     ) {
-      const close = skipQuoted(input, i);
-      i = close === -1 ? i + 1 : close;
-    } else if (c === '`') {
-      const close = skipTemplate(input, i);
+      const close = skipLiteral(input, i);
       i = close === -1 ? i + 1 : close;
     } else {
       i++;
