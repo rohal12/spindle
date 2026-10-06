@@ -379,6 +379,7 @@ const running = (): Commit[] =>
 function resync(scope: MutationScope): void {
   const state = useStoryStore.getState();
   for (const ns of NAMESPACES) {
+    // Root by root: a root that differs is replaced with a copy of the store's
     mergeKeys(scope.work[ns], scope.work[ns], state[ns]);
   }
   scope.base = cloneNamespaces(state);
