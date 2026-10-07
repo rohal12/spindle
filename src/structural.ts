@@ -42,6 +42,12 @@ export interface DeepCloneOptions {
    * is the copy already made. The map is filled as values are copied.
    */
   seen?: Map<object, object>;
+  /**
+   * Called with each key a Map is given in the copy and the key it was copied
+   * from; the key it returns is the one the copy takes (for a store draft,
+   * which Immer does not finalize in a Map key).
+   */
+  mapKey?: (copy: object, original: object) => object;
 }
 
 type TypedArrayCtor = new (
@@ -133,7 +139,14 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
     if (val instanceof Map) {
       const copy = keep(obj, new Map());
       for (const [k, v] of val) {
-        copy.set(clone(k), clone(v));
+        const key = clone(k);
+        const settle = options.mapKey;
+        copy.set(
+          settle && isObjectValue(key) && isObjectValue(k)
+            ? settle(key, k)
+            : key,
+          clone(v),
+        );
       }
       return copy;
     }
@@ -533,6 +546,8 @@ export type PathChange =
       path: string[];
       deleted: false;
       value: unknown;
+      /** Set for an element an array gained beyond the length it had. */
+      appended?: true;
       /**
        * Set where the value is the same content as before and only which
        * object the path refers to changed (see aliasChanges), so a store
@@ -545,11 +560,13 @@ export type PathChange =
 /**
  * The property paths where `after` differs from `before`, two objects of
  * one class: objects that merge (see isMergeable) are compared property by
- * property, any other value as a whole.
+ * property, any other value as a whole; with `arrays`, arrays are compared
+ * by index too (see keyChanges).
  */
 export function diffPaths(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
+  arrays = false,
 ): PathChange[] {
   const changes: PathChange[] = [];
   const ancestors = new Set<object>();
@@ -561,7 +578,7 @@ export function diffPaths(
     // Stop at cycles; shared (non-cyclic) references are visited per path.
     if (ancestors.has(a)) return;
     ancestors.add(a);
-    for (const change of keyChanges(b, a, false)) {
+    for (const change of keyChanges(b, a, arrays)) {
       const at = [...path, change.key];
       if (change.kind === 'nested') {
         walk(change.before, change.after, at);
@@ -569,7 +586,14 @@ export function diffPaths(
         changes.push(
           change.kind === 'deleted'
             ? { path: at, deleted: true }
-            : { path: at, deleted: false, value: change.after },
+            : {
+                path: at,
+                deleted: false,
+                value: change.after,
+                ...(change.kind === 'added' && Array.isArray(a)
+                  ? { appended: true as const }
+                  : {}),
+              },
         );
       }
     }
@@ -592,35 +616,71 @@ export function underChange(
   return false;
 }
 
+/** The segment standing for the entry `index` of a Map or Set in a path. */
+const entryKey = (kind: 'k' | 'v' | 's', index: number): string =>
+  `\0${kind}${index}`;
+
 /**
  * Every path each object (or array, or other value) of `root` is at, the
  * first appearance first, in depth-first order. Plain objects and arrays are
  * entered, where first met only (an object held in an array is one object,
  * however it was reached); other values are leaves. A path at or below one
  * of `skip` is left out.
+ *
+ * With `entries`, the objects held in a Map or Set (as key, value or member)
+ * are placed too, after everything else: one met nowhere else is at the path
+ * of its Map or Set and the entry's segment (see entryKey), which is no path
+ * a value can be read at, so only to tell where an object is from.
  */
 function objectPaths(
   root: object,
   skip: ReadonlySet<string> = new Set(),
+  entries = false,
 ): Map<object, string[][]> {
   const all = new Map<object, string[][]>();
-  (function walk(node: Record<string, unknown>, path: string[]): void {
+  const collections: [Map<unknown, unknown> | Set<unknown>, string[]][] = [];
+  function place(value: object, at: string[]): void {
+    const known = all.get(value);
+    if (known) {
+      known.push(at);
+      return;
+    }
+    all.set(value, [at]);
+    if (isMergeable(value) || Array.isArray(value)) {
+      walk(value as Record<string, unknown>, at);
+    } else if (entries && (value instanceof Map || value instanceof Set)) {
+      collections.push([value, at]);
+    }
+  }
+  function walk(node: Record<string, unknown>, path: string[]): void {
     for (const key of Object.keys(node)) {
       const value = node[key];
       if (!isObjectValue(value)) continue;
       const at = [...path, key];
       if (skip.has(pathKey(at))) continue;
-      const known = all.get(value);
-      if (known) {
-        known.push(at);
-        continue;
-      }
-      all.set(value, [at]);
-      if (isMergeable(value) || Array.isArray(value)) {
-        walk(value as Record<string, unknown>, at);
-      }
+      place(value, at);
     }
-  })(root as Record<string, unknown>, []);
+  }
+  walk(root as Record<string, unknown>, []);
+  for (const [collection, path] of collections) {
+    let index = 0;
+    for (const entry of collection.entries()) {
+      const [k, v] = entry as [unknown, unknown];
+      const parts: [unknown, string][] =
+        collection instanceof Set
+          ? [[k, entryKey('s', index)]]
+          : [
+              [k, entryKey('k', index)],
+              [v, entryKey('v', index)],
+            ];
+      for (const [value, segment] of parts) {
+        if (isObjectValue(value) && !all.has(value)) {
+          place(value, [...path, segment]);
+        }
+      }
+      index++;
+    }
+  }
   return all;
 }
 
@@ -628,9 +688,13 @@ function objectPaths(
 function firstPaths(
   root: object,
   skip?: ReadonlySet<string>,
+  entries?: boolean,
 ): Map<object, string[]> {
   return new Map(
-    [...objectPaths(root, skip)].map(([object, paths]) => [object, paths[0]!]),
+    [...objectPaths(root, skip, entries)].map(([object, paths]) => [
+      object,
+      paths[0]!,
+    ]),
   );
 }
 
@@ -641,6 +705,35 @@ function firstPaths(
  */
 export function sharedPaths(root: object): string[][][] {
   return [...objectPaths(root).values()].filter((paths) => paths.length > 1);
+}
+
+/**
+ * Whether the Map or Set `y` holds, at the position of an entry of `x`, another
+ * object than `x` did (as to where its first appearance is, see aliasChanges):
+ * `$map.set("k", $a)` over an equal object. Entries are compared by position,
+ * and only when both hold as many; other differences are changes of content.
+ */
+function entryAliasChanged(
+  x: object,
+  y: object,
+  earlier: ReadonlyMap<object, string[]>,
+  later: ReadonlyMap<object, string[]>,
+): boolean {
+  const isSet = x instanceof Set && y instanceof Set;
+  if (!isSet && !(x instanceof Map && y instanceof Map)) return false;
+  if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) return false;
+  if (x.size !== y.size) return false;
+  const moved = (a: unknown, b: unknown): boolean =>
+    isObjectValue(a) &&
+    isObjectValue(b) &&
+    pathKey(earlier.get(a)!) !== pathKey(later.get(b)!);
+  const ys = [...(y as Map<unknown, unknown>).entries()];
+  let index = 0;
+  for (const [k, v] of (x as Map<unknown, unknown>).entries()) {
+    const [k2, v2] = ys[index++]!;
+    if (moved(k, k2) || (!isSet && moved(v, v2))) return true;
+  }
+  return false;
 }
 
 /**
@@ -655,8 +748,8 @@ export function aliasChanges(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
 ): PathChange[] {
-  const earlier = firstPaths(before);
-  const later = firstPaths(after);
+  const earlier = firstPaths(before, undefined, true);
+  const later = firstPaths(after, undefined, true);
   const changes: PathChange[] = [];
   (function walk(
     b: Record<string, unknown>,
@@ -674,6 +767,11 @@ export function aliasChanges(
       const k = pathKey(at);
       if (pathKey(wasAt) !== pathKey(isAt)) {
         changes.push({ path: at, deleted: false, value: y, alias: true });
+      } else if (
+        pathKey(isAt) === k &&
+        entryAliasChanged(x, y, earlier, later)
+      ) {
+        changes.push({ path: at, deleted: false, value: y, alias: true });
       }
       // Only paths that are first appearances are entered: elsewhere the
       // contents are those of the object met first.
@@ -688,6 +786,30 @@ export function aliasChanges(
     }
   })(before, after, []);
   return changes;
+}
+
+/**
+ * The changes from `before` to `after`, as paths below them: the property
+ * paths that differ (see diffPaths), and those that hold equal content but
+ * another object than they did (see aliasChanges), those first. Compared as
+ * one object, so an object that two of their keys share is one object,
+ * whichever of them it is reached through.
+ */
+export function changesBetween(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  arrays = false,
+): PathChange[] {
+  const written = diffPaths(before, after, arrays);
+  const keys = new Set(written.map((c) => pathKey(c.path)));
+  const aliases: PathChange[] = [];
+  for (const change of aliasChanges(before, after)) {
+    // Written whole by a change at it or above it
+    if (underChange(change.path, keys)) continue;
+    keys.add(pathKey(change.path));
+    aliases.push(change);
+  }
+  return [...aliases, ...written];
 }
 
 /**

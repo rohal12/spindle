@@ -18,7 +18,7 @@ import {
   renderInlineNodes,
 } from './markup/render';
 import type { ASTNode } from './markup/ast';
-import { executeMutation, readState } from './execute-mutation';
+import { executeMutation, mutateState, readState } from './execute-mutation';
 import { evaluate } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
@@ -228,8 +228,11 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       // In program order, also when mutation code performs the input
       ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = (value: unknown) => {
-        useStoryStore.setState((state) => {
-          setByPath(state.variables, segments, value, {
+        // The commit mutation code uses, which keeps the references among
+        // variables: a write to a draft copies only the path written, and
+        // other variables sharing the object would keep the old one.
+        mutateState((work, adopt) => {
+          setByPath(work.variables, segments, adopt(value), {
             createMissing: true,
           });
         });

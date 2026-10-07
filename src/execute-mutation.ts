@@ -10,11 +10,10 @@ import { useStoryStore } from './store';
 import type { StoryState, VariableNamespaces } from './store';
 import { execute } from './expression';
 import {
-  aliasChanges,
+  changesBetween,
   applyChange,
   deepClone,
   deepEqual,
-  diffPaths,
   existingObjects,
   isApplied,
   isMergeable,
@@ -22,7 +21,6 @@ import {
   mergeKeys,
   pathKey,
   sharedPaths,
-  underChange,
   type PathChange,
 } from './structural';
 import { getByPath, setByPath } from './utils/object-path';
@@ -96,7 +94,18 @@ function clonerFor(
   paths?: ReadonlyMap<object, string[]>,
 ): Cloner {
   const seen = paths ? existingObjects(paths, target) : new Map();
-  return (value) => deepClone(value, { keepUnregistered: true, seen });
+  // Immer does not finalize a draft held as a Map key, so an existing object
+  // met there is put in the draft as the object itself: its base while the
+  // code did not change it, which other references to it then agree with.
+  const mapKey = (copy: object, original: object): object => {
+    const path = paths?.get(original);
+    if (!path || !isDraft(copy)) return copy;
+    const plain = currentDraft(copy) as object;
+    setByPath(target as Record<string, unknown>, path, plain);
+    seen.set(original, plain);
+    return plain;
+  };
+  return (value) => deepClone(value, { keepUnregistered: true, seen, mapKey });
 }
 
 /** One cloner per target copy, made when first used. */
@@ -292,8 +301,10 @@ export function routeStoreUpdate<S extends VariableNamespaces>(
         )
       : [];
   });
-  // Each target takes its own copies, which share what the written values do
-  const cloners = clonersFor();
+  // Each target takes its own copies, which share what the written values do,
+  // and an object the code holds elsewhere stays that one (`Story.set('b', $a)`)
+  const held = locateObjects(namespacesOf(inner.work), changes);
+  const cloners = clonersFor(() => held);
   const owned = (change: PathChange, target: object): PathChange =>
     change.deleted
       ? change
@@ -369,6 +380,13 @@ function cloneNamespaces(from: VariableNamespaces): VariableNamespaces {
     transient: deepClone(from.transient, { seen }),
   };
 }
+
+/** The three variable namespaces of `state`, as an object to walk. */
+const namespacesOf = (state: VariableNamespaces): VariableNamespaces => ({
+  variables: state.variables,
+  temporary: state.temporary,
+  transient: state.transient,
+});
 
 /** A mutation to commit, and whether its code goes on running after. */
 interface Commit {
@@ -470,28 +488,16 @@ function commitScopes(commits: readonly Commit[]): void {
 
 /**
  * The changes of the code to the namespaces, as paths below them (`['variables',
- * 'a']`): the property paths that differ (see diffPaths), and those that hold
- * equal content but another object than they did (see aliasChanges), those
- * first. Compared as one object, so an object the namespaces share is one
- * object, whichever of them it is reached through.
+ * 'a']`; see changesBetween).
  */
-function changesOf(
+const changesOf = (
   base: VariableNamespaces,
   work: VariableNamespaces,
-): PathChange[] {
-  const before = base as unknown as Record<string, unknown>;
-  const after = work as unknown as Record<string, unknown>;
-  const written = diffPaths(before, after);
-  const keys = new Set(written.map((c) => pathKey(c.path)));
-  const aliases: PathChange[] = [];
-  for (const change of aliasChanges(before, after)) {
-    // Written whole by a change at it or above it
-    if (underChange(change.path, keys)) continue;
-    keys.add(pathKey(change.path));
-    aliases.push(change);
-  }
-  return [...aliases, ...written];
-}
+): PathChange[] =>
+  changesBetween(
+    base as unknown as Record<string, unknown>,
+    work as unknown as Record<string, unknown>,
+  );
 
 /** Every running mutation, to commit with its code going on. */
 const running = (): Commit[] =>
@@ -537,13 +543,23 @@ export function runWithCommittedMutations<T>(action: () => T): T {
  * between values are kept, which a store update made on a draft does not do.
  * Nothing is committed when `run` throws.
  */
-export function mutateState(run: (work: VariableNamespaces) => void): void {
+export function mutateState(
+  run: (work: VariableNamespaces, adopt: Cloner) => void,
+): void {
   // The writes of the code this runs inside come first, and stay even if
   // `run` throws
   commitScopes(running());
+  // Where the objects `run` may be handed are: in the state it continues from
+  const held = locateObjects(
+    namespacesOf(getActiveMutationScope() ?? useStoryStore.getState()),
+    [],
+  );
   const scope = startScope();
+  // Copies values into the working copy, an object it holds already staying
+  // that one, and what the values share staying shared
+  const adopt = clonerFor(scope.work, held);
   try {
-    run(scope.work);
+    run(scope.work, adopt);
   } finally {
     activeScopes.pop();
   }
