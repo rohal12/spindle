@@ -10,7 +10,11 @@ defineMacro({
       const state = useStoryStore.getState();
       const name = ctx.args.variable ?? '';
 
-      if (name.startsWith('$')) {
+      if (/^[$_%@][^.]*\./.test(name)) {
+        // A field of a variable: delete it as mutation code does, which
+        // resolves the path in every namespace
+        ctx.mutate(`delete ${name}`);
+      } else if (name.startsWith('$')) {
         state.deleteVariable(name.slice(1));
       } else if (name.startsWith('_')) {
         state.deleteTemporary(name.slice(1));

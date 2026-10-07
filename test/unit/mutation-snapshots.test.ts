@@ -4,7 +4,7 @@ import { decodeSavePayload } from '../../src/saves/save-manager';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
 import { installStoryAPI, type StoryAPI } from '../../src/story-api';
 import { executeMutation } from '../../src/execute-mutation';
-import { resetEmitter } from '../../src/event-emitter';
+import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
 import { getBackend, resetBackend } from '../../src/saves/storage';
 import {
   addTrigger,
@@ -56,6 +56,8 @@ describe('state snapshots taken by running mutation code', () => {
         hp: 100,
         flag: 0,
         obj: { a: 0, b: 0 },
+        x: { n: 1 },
+        y: { n: 1 },
       });
     await vi.waitFor(() =>
       expect(useStoryStore.getState().playthroughId).not.toBe(''),
@@ -187,5 +189,25 @@ describe('state snapshots taken by running mutation code', () => {
       obj: { a: 1, b: 0 },
     });
     expect(state().variables).toMatchObject({ hp: 6, obj: { a: 1, b: 2 } });
+  });
+
+  it('keeps an alias a hook made while the code was suspended', () => {
+    emitterOn('afternavigate', (to: unknown) => {
+      if (to === 'Room') Story.set('y', Story.get('x'));
+    });
+    run('Story.goto("Room"); $x.n = 2');
+    expect(state().variables.x).toBe(state().variables.y);
+    expect((state().variables.y as { n: number }).n).toBe(2);
+  });
+
+  it('keeps one object a hook wrote to two variables', () => {
+    emitterOn('afternavigate', (to: unknown) => {
+      if (to !== 'Room') return;
+      const shared = { n: 3 };
+      Story.set('x', shared);
+      Story.set('y', shared);
+    });
+    run('Story.goto("Room"); $hp = 1');
+    expect(state().variables.x).toBe(state().variables.y);
   });
 });

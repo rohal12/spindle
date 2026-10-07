@@ -765,28 +765,39 @@ function writeHookChange(
     const child = hasOwn(holder, key) ? holder[key] : undefined;
     const held = getByPath(after, path.slice(0, depth + 1));
     if (!mergesWith(child, held, true)) {
-      writeKey(holder, key, false, own(held));
+      writeKey(holder, key, own(held));
       return;
     }
     holder = child as Record<string, unknown>;
   }
   const key = path[depth]!;
-  if (change.deleted) writeKey(holder, key, true, undefined);
-  else writeKey(holder, key, false, own(change.value), change.appended);
+  if (change.deleted) writeKey(holder, key, undefined, change);
+  else writeKey(holder, key, own(change.value), change);
 }
 
 function writeKey(
   holder: Record<string, unknown>,
   key: string,
-  deleted: boolean,
   value: unknown,
-  appended?: boolean,
+  change?: PathChange,
 ): void {
+  const deleted = change?.deleted ?? false;
   if (Array.isArray(holder)) {
     const index = Number(key);
-    if (deleted) holder.length = Math.min(holder.length, index);
-    else if (appended) holder.push(value);
-    else if (index < holder.length) holder[index] = value;
+    if (deleted) {
+      // A hole stays where it was; anything else was cut off
+      if (change && 'hole' in change) delete holder[index];
+      else holder.length = Math.min(holder.length, index);
+    } else if (change && 'appended' in change) {
+      // After the holes it followed
+      holder.length += change.gap ?? 0;
+      holder.push(value);
+    } else if (key === 'length' && change) {
+      // Holes added at the end
+      holder.length += value as number;
+    } else if (index < holder.length) {
+      holder[index] = value;
+    }
   } else if (deleted) {
     delete holder[key];
   } else {
