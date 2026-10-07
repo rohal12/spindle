@@ -211,6 +211,26 @@ describe('the story-start code check', () => {
   });
 });
 
+describe('bracket-link labels', () => {
+  const check = (content: string) =>
+    validateStoryMarkup(
+      [
+        { name: 'Start', content },
+        { name: 'Next', content: '' },
+      ],
+      getMacroRegistry(),
+    ).map(formatDiagnostic);
+
+  it('checks the markup a label evaluates, as {link} does', () => {
+    expect(check('[[Gold: {print $gold +}->Next]]')).toHaveLength(1);
+    expect(check('{link "Gold: {print $gold +}" "Next"}{/link}')).toHaveLength(
+      1,
+    );
+    expect(check('[[{doesnotexist}->Next]]')).not.toEqual([]);
+    expect(check('[[Gold: {$gold}->Next]]')).toEqual([]);
+  });
+});
+
 describe('the story-start check of passage names', () => {
   const travel: MacroMetadata = {
     name: 'travel',

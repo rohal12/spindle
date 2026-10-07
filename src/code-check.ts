@@ -249,6 +249,15 @@ export function* codeAndText(
         macro: 'link',
         label: src.slice(token.start, token.end),
       };
+      // The label is markup too (the link renders as `{link}`)
+      if (token.display.includes('{')) {
+        yield {
+          kind: 'text',
+          text: token.display,
+          offset: locate(src, token.display, token.start),
+          where: 'In the label of a link: ',
+        };
+      }
     } else if (token.type === 'expression') {
       yield {
         kind: 'code',

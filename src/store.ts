@@ -1,4 +1,5 @@
 import { create } from './preact-store';
+import { randomUUID } from './utils/uuid';
 import { immer } from 'zustand/middleware/immer';
 import type { StateCreator } from 'zustand/vanilla';
 import {
@@ -595,7 +596,7 @@ function switchToPlaythrough(id: string, stored: Promise<unknown>): void {
 
 /** Move the running game to a new playthrough at once (see restart). */
 function switchToNewPlaythrough(ifid: string): void {
-  const id = crypto.randomUUID();
+  const id = randomUUID();
   const stored = startNewPlaythrough(ifid, id).catch((err) => {
     console.error('spindle: failed to start new playthrough', err);
   });
@@ -1484,7 +1485,7 @@ export const useStoryStore = create<StoryState>()(
       const ifid = storyData.ifid;
       const current = knownPlaythroughId();
       const established = playthroughSetup;
-      const replacementId = crypto.randomUUID();
+      const replacementId = randomUUID();
       const deletion = smDeletePlaythroughData(ifid, playthroughId, {
         current: current || established,
         id: replacementId,

@@ -120,6 +120,27 @@ describe('extended macro components', () => {
     });
   });
 
+  describe('{type}', () => {
+    it('reveals text that becomes nonempty after mounting', async () => {
+      useStoryStore.getState().setVariable('name', '');
+      const el = renderPassage('{type 1ms}{$name}{/type}');
+      const inner = () =>
+        el.querySelector('.macro-type-inner') as HTMLElement | null;
+      expect(inner()!.style.visibility).toBe('hidden');
+      await act(async () => {
+        useStoryStore.getState().setVariable('name', 'Hello');
+      });
+      for (let i = 0; i < 20; i++) {
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 10));
+        });
+      }
+      expect(inner()!.textContent).toBe('Hello');
+      expect(inner()!.style.visibility).toBe('visible');
+      expect(el.querySelector('.macro-type-done')).not.toBeNull();
+    });
+  });
+
   describe('{include}', () => {
     it('includes another passage inline', () => {
       const el = renderPassage('{include "Helper"}');

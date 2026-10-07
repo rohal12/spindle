@@ -333,6 +333,8 @@ function collectTokenRefs(
     const token = tokens[t]!;
     if (token.type === 'variable') {
       if (token.scope === 'variable' && token.name) onRef(token.name);
+    } else if (token.type === 'link') {
+      scanInterpolations(token.display, onRef);
     } else if (token.type === 'expression') {
       scanCode(token.expression, onRef);
     } else if (token.type === 'html') {
@@ -342,6 +344,9 @@ function collectTokenRefs(
       }
     } else if (token.type === 'macro' && !token.isClose) {
       scanArgs(token, parametersOf(token.name), onRef);
+      // Selectors (`{.{$cls} button}`) are interpolated when rendered
+      if (token.className) scanInterpolations(token.className, onRef);
+      if (token.id) scanInterpolations(token.id, onRef);
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
@@ -351,13 +356,19 @@ function collectTokenRefs(
         else if (!/^["'`]/.test(first)) scanCode(first, onRef);
       }
 
-      if (token.name === 'do') {
+      if (token.name.toLowerCase() === 'do') {
         // A {do} body is JavaScript: scan its source text as code, however
         // the markup tokens split it up.
         let close = t + 1;
         while (close < tokens.length) {
           const c = tokens[close]!;
-          if (c.type === 'macro' && c.isClose && c.name === 'do') break;
+          if (
+            c.type === 'macro' &&
+            c.isClose &&
+            c.name.toLowerCase() === 'do'
+          ) {
+            break;
+          }
           close++;
         }
         if (close < tokens.length) {

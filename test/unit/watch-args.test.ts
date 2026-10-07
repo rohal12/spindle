@@ -23,6 +23,19 @@ describe('parseWatchArgs', () => {
     });
   });
 
+  it('reads signed and fractional numeric options', () => {
+    expect(parseWatchArgs(`"a" priority -1`)?.options).toEqual({
+      priority: -1,
+    });
+    expect(parseWatchArgs(`"false" priority 1.5 once`)?.options).toEqual({
+      priority: 1.5,
+      once: true,
+    });
+    expect(parseWatchArgs(`"a" priority +2`)?.options).toEqual({
+      priority: 2,
+    });
+  });
+
   it('reads a condition with no options', () => {
     expect(parseWatchArgs(`'$x > 0'`)).toEqual({
       condition: '$x > 0',

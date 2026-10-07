@@ -15,12 +15,14 @@ defineMacro({
     const visibleCharsRef = useRef(0);
     visibleCharsRef.current = visibleChars;
 
+    // Measure after every render: reactive content can become nonempty (or
+    // change length) after mounting. Setting an equal count is a no-op.
     useEffect(() => {
       if (containerRef.current) {
         const text = containerRef.current.textContent || '';
         setTotalChars(text.length);
       }
-    }, []);
+    });
 
     // Typewriter interval
     useEffect(() => {
