@@ -138,18 +138,6 @@ export interface ParameterDef {
   parameters?: readonly ParameterDef[];
 }
 
-/** The error for the parameter `param` of `macro`: what is wrong, and the fix. */
-function parameterError(
-  macro: string,
-  param: ParameterDef,
-  problem: string,
-  fix: string,
-): Error {
-  return new Error(
-    `spindle: The parameter "${param.name}" of the macro {${macro}} ${problem}. ${fix}`,
-  );
-}
-
 /**
  * Throw if a parameter `macro` declares (or an option of one) has no type,
  * or one that isn't a ParameterType: arguments are read by their type, and
@@ -195,6 +183,18 @@ export function checkParameterTypes(
     }
     if (param.parameters) checkParameterTypes(macro, param.parameters);
   }
+}
+
+/** The error for the parameter `param` of `macro`: what is wrong, and the fix. */
+function parameterError(
+  macro: string,
+  param: ParameterDef,
+  problem: string,
+  fix: string,
+): Error {
+  return new Error(
+    `spindle: The parameter "${param.name}" of the macro {${macro}} ${problem}. ${fix}`,
+  );
 }
 
 type ArgValue<T, D> = T extends 'flag' | 'separator'

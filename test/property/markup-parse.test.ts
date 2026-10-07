@@ -5,7 +5,9 @@ import {
   MarkupError,
   parseMarkup,
   tokenizeMarkup,
+  tokenizeMarkupTolerant,
 } from '../../src/markup/parse';
+import { defaultCodeEnd } from '../../src/markup/code-end';
 import type { Token } from '../../src/markup/tokens';
 import { interpolateCode, interpolateText } from '../../src/interpolation';
 import {
@@ -234,6 +236,66 @@ describe('parse time', { timeout: LINEAR_TIMEOUT }, () => {
       () => parseMarkup(large),
     );
   });
+});
+
+describe('tolerant tokens (#265)', { timeout: LINEAR_TIMEOUT }, () => {
+  test.prop([passageArb], fcOptions)(
+    'are the strict tokens of well-formed markup, with no errors',
+    ({ src }) => {
+      expect(tokenizeMarkupTolerant(src)).toEqual({
+        tokens: tokenizeMarkup(src),
+        errors: [],
+      });
+    },
+    propTimeout(5),
+  );
+
+  test.prop([mutatedPassage], fcOptions)(
+    'tile malformed markup, with an error for each malformed tag',
+    (input) => {
+      const { tokens, errors } = tokenizeMarkupTolerant(input);
+      expectTokensTileInput(input, tokens);
+      for (const e of errors)
+        expect(e.offset).toBeLessThanOrEqual(input.length);
+    },
+    propTimeout(5),
+  );
+
+  /** How often tokenizing `src` asks where code ends. */
+  function codeEndCalls(src: string): number {
+    let calls = 0;
+    tokenizeMarkupTolerant(src, {
+      hooks: {
+        closeBrace: (...args) => {
+          calls++;
+          return defaultCodeEnd.closeBrace(...args);
+        },
+      },
+    });
+    return calls;
+  }
+
+  it('reads the code of each unclosed tag once', () => {
+    expect(codeEndCalls('text {if $x '.repeat(50) + '}')).toBe(50);
+    expect(codeEndCalls('x {$a '.repeat(50) + '{/if}')).toBe(51);
+  });
+
+  it('does not read code with no } after it to the end', () => {
+    expect(codeEndCalls('text {if $x '.repeat(50))).toBe(0);
+    expect(codeEndCalls('x {$a '.repeat(50))).toBe(0);
+  });
+
+  it.each([['text {if $x '], ['x {$a '], ['a [[b '], ['<a href="x ']])(
+    'stays about linear in the number of errors: %j repeated',
+    (unit) => {
+      const small = unit.repeat(100);
+      const large = unit.repeat(800);
+      expectAboutLinear(
+        () => tokenizeMarkupTolerant(small),
+        () => tokenizeMarkupTolerant(large),
+      );
+    },
+  );
 });
 
 describe('grammar round trip', () => {
