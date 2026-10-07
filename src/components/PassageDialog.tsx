@@ -5,6 +5,7 @@ import { renderNodes, NobrContext } from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
 import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
+import { registerOpenDialog } from '../triggers';
 import { errorMessage } from '../utils/error-message';
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
@@ -69,6 +70,9 @@ export function PassageDialog({
   // Focus into the dialog, trap Tab, Escape to close, restore focus on close.
   // Declared before the dialogrender effect so handlers can move focus.
   useModalFocus(panelRef, '.dialog-body', dismissible, stableOnClose);
+
+  // Be on the stack of displayed dialogs the Story dialog API works on.
+  useLayoutEffect(() => registerOpenDialog(stableOnClose), [stableOnClose]);
 
   // Signal that the dialog's DOM is committed (once per open).
   useLayoutEffect(() => {
