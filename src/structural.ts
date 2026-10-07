@@ -593,41 +593,23 @@ export function underChange(
 }
 
 /**
- * Where each object (or array, or other value) of `root` first appears, in
- * depth-first order. Plain objects and arrays are entered (an object held in
- * an array is one object, however it was reached); other values are leaves. A path at or below one of `skip` is left out.
+ * Every path each object (or array, or other value) of `root` is at, the
+ * first appearance first, in depth-first order. Plain objects and arrays are
+ * entered, where first met only (an object held in an array is one object,
+ * however it was reached); other values are leaves. A path at or below one
+ * of `skip` is left out.
  */
-function firstPaths(
-  root: Record<string, unknown>,
+function objectPaths(
+  root: object,
   skip: ReadonlySet<string> = new Set(),
-): Map<object, string[]> {
-  const found = new Map<object, string[]>();
-  (function walk(node: Record<string, unknown>, path: string[]): void {
-    for (const key of Object.keys(node)) {
-      const value = node[key];
-      if (!isObjectValue(value) || found.has(value)) continue;
-      const at = [...path, key];
-      if (skip.has(pathKey(at))) continue;
-      found.set(value, at);
-      if (isMergeable(value) || Array.isArray(value))
-        walk(value as Record<string, unknown>, at);
-    }
-  })(root, []);
-  return found;
-}
-
-/**
- * The objects `root` holds at more than one path (an object two variables
- * refer to, or one that refers to itself), with every path they are at,
- * parents before children. An object is entered where first met only.
- */
-export function sharedPaths(root: object): string[][][] {
+): Map<object, string[][]> {
   const all = new Map<object, string[][]>();
   (function walk(node: Record<string, unknown>, path: string[]): void {
     for (const key of Object.keys(node)) {
       const value = node[key];
       if (!isObjectValue(value)) continue;
       const at = [...path, key];
+      if (skip.has(pathKey(at))) continue;
       const known = all.get(value);
       if (known) {
         known.push(at);
@@ -639,7 +621,26 @@ export function sharedPaths(root: object): string[][][] {
       }
     }
   })(root as Record<string, unknown>, []);
-  return [...all.values()].filter((paths) => paths.length > 1);
+  return all;
+}
+
+/** Where each object of `root` first appears (see objectPaths). */
+function firstPaths(
+  root: object,
+  skip?: ReadonlySet<string>,
+): Map<object, string[]> {
+  return new Map(
+    [...objectPaths(root, skip)].map(([object, paths]) => [object, paths[0]!]),
+  );
+}
+
+/**
+ * The objects `root` holds at more than one path (an object two variables
+ * refer to, or one that refers to itself), with every path they are at,
+ * parents before children.
+ */
+export function sharedPaths(root: object): string[][][] {
+  return [...objectPaths(root).values()].filter((paths) => paths.length > 1);
 }
 
 /**
