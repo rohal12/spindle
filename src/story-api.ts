@@ -302,9 +302,10 @@ function createStoryAPI(): StoryAPI {
       // while mutation code runs ({do}, ctx.mutate, watcher run actions), it
       // follows the code's own pending writes (program order, #215): see
       // routeStoreUpdate.
-      if (!getActiveMutationScope() && entries.some(([k]) => k.includes('.'))) {
+      if (entries.some(([k]) => k.includes('.'))) {
         // A write below a variable goes through the commit mutation code
-        // uses: an update of a draft would give the written path new
+        // uses (nested in the running code, if any: it continues from the
+        // code's pending writes, and they are committed first): an update of a draft would give the written path new
         // objects and leave the other references to the old ones (#295).
         mutateState((work) => {
           for (const [k, v] of entries) setOne(work, k, v);

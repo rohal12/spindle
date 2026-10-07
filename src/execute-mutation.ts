@@ -538,6 +538,9 @@ export function runWithCommittedMutations<T>(action: () => T): T {
  * Nothing is committed when `run` throws.
  */
 export function mutateState(run: (work: VariableNamespaces) => void): void {
+  // The writes of the code this runs inside come first, and stay even if
+  // `run` throws
+  commitScopes(running());
   const scope = startScope();
   try {
     run(scope.work);

@@ -182,4 +182,17 @@ describe('Story.set below a variable (#295)', () => {
     expect(story().get('a.self.n')).toBe(2);
     expect(before.n).toBe(1);
   });
+
+  it('keeps aliases when called from mutation code', () => {
+    run(
+      '$a = $b; Story.set("a.n", 2); _same = Story.get("a") === Story.get("b")',
+    );
+    expect(vars().a).toBe(vars().b);
+    expect(vars().b.n).toBe(2);
+  });
+
+  it("follows the code's pending writes when called from mutation code", () => {
+    run('$a.m = 1; Story.set("a.n", 2); $a.k = 3');
+    expect(vars().a).toEqual({ m: 1, n: 2, k: 3 });
+  });
 });
