@@ -5,7 +5,12 @@ import {
   deserialize,
   serialize,
 } from '../../src/class-registry';
-import { deepClone, deepEqual } from '../../src/structural';
+import {
+  deepClone,
+  deepEqual,
+  deepEqualStrict,
+  shareEqual,
+} from '../../src/structural';
 import { fcOptions } from './config';
 import {
   Point,
@@ -153,6 +158,18 @@ describe('deepClone', () => {
   );
 });
 
+describe('deepClone with a shared seen map', () => {
+  test.prop([aliased, aliased], fcOptions)(
+    'copies values together with their references between them',
+    (a, b) => {
+      const seen = new Map<object, object>();
+      const pair = [a, b];
+      const copy = [deepClone(a, { seen }), deepClone(b, { seen })];
+      expect(sameShape(pair, copy)).toBe(true);
+    },
+  );
+});
+
 // --- deepEqual ---
 
 /** A copy of `value` with one small change somewhere (or none). */
@@ -234,4 +251,66 @@ describe('deepEqual', () => {
       );
     },
   );
+});
+
+// --- shareEqual ---
+
+describe('shareEqual', () => {
+  test.prop([aliased], fcOptions)(
+    'keeps the reference structure of the value, whatever it is next to',
+    (curr) => {
+      const prev = deepClone(curr);
+      // The same value with a change in its first object
+      const [first] = [...reachableObjects(prev)].filter(isKeyed);
+      if (first) (first as Record<string, unknown>).changed = 1;
+      const shared = shareEqual(prev, curr);
+      expect(deepEqualStrict(curr, shared)).toBe(true);
+      expect(sameShape(curr, shared)).toBe(true);
+    },
+  );
+
+  test.prop([aliased, aliased], fcOptions)(
+    'keeps it for unrelated values',
+    (prev, curr) => {
+      const shared = shareEqual(prev, curr);
+      expect(deepEqualStrict(curr, shared)).toBe(true);
+    },
+  );
+
+  test('keeps an alias whose parts are reused and new (#269)', () => {
+    const child = { x: 1 };
+    const prev = { a: { child: { x: 1 } }, b: { x: 2 } };
+    const curr = { a: { child }, b: child };
+    const shared = shareEqual(prev, curr);
+    expect(shared.a.child).toBe(shared.b);
+    expect(deepEqualStrict(curr, shared)).toBe(true);
+  });
+
+  test('keeps references from new parts into copied containers (#269)', () => {
+    const child = { x: 1 };
+    const prev = { a: { child: { x: 1 } } } as Record<string, unknown>;
+    const curr: Record<string, unknown> = { a: { child }, b: child };
+    (child as Record<string, unknown>).root = curr;
+    const shared = shareEqual(prev, curr) as typeof curr;
+    expect(deepEqualStrict(curr, shared)).toBe(true);
+    expect((shared.b as Record<string, unknown>).root).toBe(shared);
+    expect((shared.a as Record<string, unknown>).child).toBe(shared.b);
+  });
+
+  test('still reuses what is equal and unshared', () => {
+    const prev = { keep: { deep: [1, { y: 2 }] }, change: 1 };
+    const curr = { keep: { deep: [1, { y: 2 }] }, change: 2 };
+    const shared = shareEqual(prev, curr);
+    expect(shared).not.toBe(curr);
+    expect(shared.keep).toBe(prev.keep);
+    expect(shared.change).toBe(2);
+  });
+
+  test('does not make two objects of the value one', () => {
+    const prev = { a: { n: 1 }, shared: null as unknown };
+    prev.shared = prev.a;
+    const curr = { a: { n: 1 }, shared: { n: 1 } };
+    const shared = shareEqual(prev, curr);
+    expect(shared.a).not.toBe(shared.shared);
+  });
 });

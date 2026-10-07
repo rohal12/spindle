@@ -285,4 +285,35 @@ describe('automation runner', () => {
 
     expect(steps).toEqual([0, 1]);
   });
+
+  it('compares array and object variables by value (#276)', async () => {
+    const api = mockStoryAPI();
+    api.set({ items: [1, 2], obj: { a: { b: [1] } } });
+
+    const pass = await runAutomation(api, {
+      name: 'test',
+      steps: [
+        { set: { copy: { a: [1, 2] } } },
+        {
+          assert: {
+            variables: {
+              items: [1, 2],
+              obj: { a: { b: [1] } },
+              copy: { a: [1, 2] },
+            },
+          },
+        },
+      ],
+    });
+    expect(pass.success).toBe(true);
+
+    const fail = await runAutomation(api, {
+      name: 'test',
+      steps: [
+        { assert: { variables: { items: [1, 3], obj: { a: { b: [2] } } } } },
+      ],
+    });
+    expect(fail.success).toBe(false);
+    expect(fail.errors).toHaveLength(2);
+  });
 });

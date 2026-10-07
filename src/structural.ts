@@ -36,6 +36,12 @@ export interface DeepCloneOptions {
    * plain object, which would lose their prototype and identity.
    */
   keepUnregistered?: boolean;
+  /**
+   * The copies made so far, by original. Values copied with one map share
+   * their references: an object met again, in the same value or another,
+   * is the copy already made. The map is filled as values are copied.
+   */
+  seen?: Map<object, object>;
 }
 
 type TypedArrayCtor = new (
@@ -45,7 +51,7 @@ type TypedArrayCtor = new (
 ) => ArrayBufferView;
 
 export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
-  const seen = new Map<object, object>();
+  const seen = options.seen ?? new Map<object, object>();
 
   /** Record `copy` as the copy of `obj` before its contents are copied. */
   const keep = <C extends object>(obj: object, copy: C): C => {
@@ -53,10 +59,19 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
     return copy;
   };
 
-  /** Copy the own (enumerable) keys of `obj` into `copy`. */
+  /**
+   * Copy the own (enumerable) keys of `obj` into `copy`, symbol keys too: a
+   * save refuses them, which a copy must not hide.
+   */
   function copyKeys(obj: object, copy: object): object {
     for (const key of Object.keys(obj)) {
       setOwn(copy, key, clone((obj as Record<string, unknown>)[key]));
+    }
+    for (const sym of Object.getOwnPropertySymbols(obj)) {
+      if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) continue;
+      (copy as Record<symbol, unknown>)[sym] = clone(
+        (obj as Record<symbol, unknown>)[sym],
+      );
     }
     return copy;
   }
@@ -195,20 +210,25 @@ function loosePairs(): Pairs {
 /**
  * Pairs that also require the same reference structure: each object of one
  * value pairs with exactly one of the other, so shared references and
- * cycles are shared at the same places.
+ * cycles are shared at the same places. `ab` and `ba` hold the pairs (and
+ * may hold some already); those made are listed in `added`.
  */
-function strictPairs(): Pairs {
-  const ab = new Map<object, object>();
-  const ba = new Map<object, object>();
-  const pairs: Pairs = (a, b) => {
+function strictPairs(
+  ab = new Map<object, object>(),
+  ba = new Map<object, object>(),
+): Pairs & { added: [object, object][] } {
+  const added: [object, object][] = [];
+  const pairs = ((a, b) => {
     const known = ab.get(a);
     if (known !== undefined) return known === b;
     if (ba.has(b)) return false;
     ab.set(a, b);
     ba.set(b, a);
+    added.push([a, b]);
     return undefined;
-  };
+  }) as Pairs & { added: [object, object][] };
   pairs.strict = true;
+  pairs.added = added;
   return pairs;
 }
 
@@ -225,28 +245,55 @@ export function deepEqualStrict(a: unknown, b: unknown): boolean {
  * `prev` at the same place replaced by `prev`'s: the history moments of a
  * save then share what did not change between them, which a save stores
  * once. Containers on the way to a change are copied; neither value is
- * changed. Shared references and cycles within `curr` stay so.
+ * changed. The result has the reference structure of `curr`: what `curr`
+ * shares or cycles through stays so, and what it does not share stays
+ * apart, whichever parts are reused.
  */
 export function shareEqual<T>(prev: unknown, curr: T): T {
-  const done = new Map<object, unknown>();
-  function share(p: unknown, c: unknown): unknown {
-    if (p === c || !isObjectValue(c) || !isObjectValue(p)) return c;
-    if (done.has(c)) return done.get(c);
-    if (deepEqualStrict(p, c)) {
-      done.set(c, p);
-      return p;
+  if (!isObjectValue(prev) || !isObjectValue(curr)) return curr;
+  /** The object of the result standing for each object of `curr` met. */
+  const done = new Map<object, object>();
+  /** The object of `curr` each object of `prev` in the result stands for. */
+  const used = new Map<object, object>();
+
+  /** `value` for the result: copied, as far as it is not met already. */
+  const fresh = <V>(value: V): V =>
+    isObjectValue(value)
+      ? deepClone(value, { keepUnregistered: true, seen: done })
+      : value;
+
+  /**
+   * Whether `p` and `c` are equal and so can stand for each other, which
+   * needs each object in them to stand for one object only, in the whole
+   * result. Then every pair of objects they hold is placed in the result.
+   */
+  function reuse(p: object, c: object): boolean {
+    const pairs = strictPairs(used, done);
+    if (equal(p, c, pairs)) return true;
+    for (const [a, b] of pairs.added) {
+      used.delete(a);
+      done.delete(b);
     }
+    return false;
+  }
+
+  function share(p: unknown, c: unknown): unknown {
+    if (!isObjectValue(c)) return c;
+    const placed = done.get(c);
+    if (placed !== undefined) return placed;
+    if (!isObjectValue(p)) return fresh(c);
+    if (reuse(p, c)) return p;
     if (c instanceof Map && p instanceof Map) {
       const out = new Map();
       done.set(c, out);
-      for (const [k, v] of c) out.set(k, p.has(k) ? share(p.get(k), v) : v);
+      for (const [k, v] of c) out.set(fresh(k), share(p.get(k), v));
       return out;
     }
     if (Array.isArray(c) && Array.isArray(p)) {
       const out = new Array(c.length) as unknown[];
       done.set(c, out);
       for (let i = 0; i < c.length; i++) {
-        if (i in c) out[i] = i < p.length ? share(p[i], c[i]) : c[i];
+        if (i in c) out[i] = share(p[i], c[i]);
       }
       return out;
     }
@@ -255,12 +302,11 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
       done.set(c, out);
       const cr = c as Record<string, unknown>;
       for (const key of Object.keys(cr)) {
-        setOwn(out, key, hasOwn(p, key) ? share(p[key], cr[key]) : cr[key]);
+        setOwn(out, key, share(hasOwn(p, key) ? p[key] : undefined, cr[key]));
       }
       return out;
     }
-    done.set(c, c);
-    return c;
+    return fresh(c);
   }
   return share(prev, curr) as T;
 }

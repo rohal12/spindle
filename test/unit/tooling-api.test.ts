@@ -292,6 +292,13 @@ describe('tooling API: passage references', () => {
     ]);
   });
 
+  it('returns references in source order whatever the order of keywords (#277)', () => {
+    const src = '{watch "$x" dialog "B" goto "A"}';
+    const found = refs(src);
+    expect(found.map((r) => at(src, r))).toEqual(['"B"', '"A"']);
+    expect(found[0]!.start).toBeLessThan(found[1]!.start);
+  });
+
   it.each([
     ['an escaped name', '{watch "x" goto "H\\"all"}', '"H\\"all"', 'H"all'],
     [

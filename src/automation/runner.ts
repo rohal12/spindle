@@ -8,6 +8,7 @@ import type {
 import type { StoryAPI } from '../story-api';
 import type { StoryAction } from '../action-registry';
 import { errorMessage } from '../utils/error-message';
+import { deepEqual } from '../structural';
 
 export interface RunOptions {
   onStep?: (stepIndex: number, step: AutomationStep) => void;
@@ -88,7 +89,7 @@ async function executeStep(
     if (assert.variables) {
       for (const [key, expected] of Object.entries(assert.variables)) {
         const actual = story.get(key);
-        if (actual !== expected) {
+        if (!deepEqual(actual, expected)) {
           errors.push({
             step: index,
             message: `Variable "${key}": expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,

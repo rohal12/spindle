@@ -120,7 +120,10 @@ let lastNavigationVars: Namespace = createNamespace();
  * object) or deleted. A recorded value is a deep copy, so that changing a
  * live value in place (a class instance is not frozen) cannot change
  * history; instances of unregistered classes are kept, as the store keeps
- * them (a save then refuses them).
+ * them (a save then refuses them). The copies are made together, so what
+ * variables share (an object, a cycle) stays shared in them, and a variable
+ * left as it is that shares with a replaced one is recorded again, to share
+ * with its copy.
  */
 function computeVarPatches(
   prev: Record<string, unknown>,
@@ -132,13 +135,32 @@ function computeVarPatches(
     // whose inherited `constructor` is no variable
     if (!hasOwn(curr, key)) forward.push({ key, deleted: true });
   }
+  const seen = new Map<object, object>();
+  const record = (key: string) =>
+    forward.push({
+      key,
+      deleted: false,
+      value: deepClone(curr[key], { keepUnregistered: true, seen }),
+    });
+  const unchanged: string[] = [];
   for (const key of Object.keys(curr)) {
-    if (!hasOwn(prev, key) || !Object.is(prev[key], curr[key])) {
-      forward.push({
-        key,
-        deleted: false,
-        value: deepClone(curr[key], { keepUnregistered: true }),
-      });
+    if (!hasOwn(prev, key) || !Object.is(prev[key], curr[key])) record(key);
+    else if (typeof curr[key] === 'object' && curr[key] !== null) {
+      unchanged.push(key);
+    }
+  }
+  // Probe an unchanged variable with a copy of its own: it shares with a
+  // recorded one if the copy meets an object already copied
+  for (let found = seen.size > 0; found; ) {
+    found = false;
+    for (const key of unchanged) {
+      const probe = new Map<object, object>();
+      deepClone(curr[key], { keepUnregistered: true, seen: probe });
+      if (![...probe.keys()].some((object) => seen.has(object))) continue;
+      record(key);
+      unchanged.splice(unchanged.indexOf(key), 1);
+      found = true;
+      break;
     }
   }
   return { forward };

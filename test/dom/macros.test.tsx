@@ -789,6 +789,37 @@ describe('macro components', () => {
       expect(label).toBeNull();
     });
 
+    it('resolves markup in the label before reading it (#274)', async () => {
+      useStoryStore.getState().setVariable('hp', 75);
+      useStoryStore.getState().setVariable('maxHp', 100);
+      useStoryStore.getState().setVariable('unit', 'HP');
+      const el = document.createElement('div');
+      await act(async () => {
+        render(
+          <Passage
+            passage={makePassage(1, 'Test', '{meter $hp $maxHp "{$unit}"}')}
+          />,
+          el,
+        );
+      });
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '75 HP / 100 HP',
+      );
+      await act(async () => {
+        useStoryStore.getState().setVariable('unit', 'MP');
+      });
+      expect(el.querySelector('.macro-meter-label')!.textContent).toBe(
+        '75 MP / 100 MP',
+      );
+    });
+
+    it('resolves a label that is a markup macro to none (#274)', () => {
+      useStoryStore.getState().setVariable('hp', 75);
+      useStoryStore.getState().setVariable('maxHp', 100);
+      const el = renderPassage('{meter $hp $maxHp "{print \'none\'}"}');
+      expect(el.querySelector('.macro-meter-label')).toBeNull();
+    });
+
     it('"HP" label mode shows "75 HP / 100 HP"', () => {
       useStoryStore.getState().setVariable('hp', 75);
       useStoryStore.getState().setVariable('maxHp', 100);

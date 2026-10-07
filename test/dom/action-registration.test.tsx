@@ -63,6 +63,26 @@ describe('action registration', () => {
       expect(linkAction!.target).toBe('Forest');
     });
 
+    it('resolves markup in the label of both spellings (#273)', () => {
+      useStoryStore.getState().setVariable('hp', 75);
+      const el = renderPassage(
+        '{link "HP {$hp}" "Forest"}{/link} [[HP {$hp}->Cave]] {link "\\{x\\}" "Forest"}{/link}',
+      );
+      const labels = Array.from(el.querySelectorAll('a')).map(
+        (a) => a.textContent,
+      );
+      expect(labels).toEqual(['HP 75', 'HP 75', '{x}']);
+      expect(
+        getActions()
+          .filter((a) => a.type === 'link')
+          .map((a) => [a.label, a.target]),
+      ).toEqual([
+        ['HP 75', 'Forest'],
+        ['HP 75', 'Cave'],
+        ['{x}', 'Forest'],
+      ]);
+    });
+
     it('unregisters on unmount', () => {
       const container = document.createElement('div');
       const passage = makePassage(1, 'Test', '[[Forest]]');
