@@ -30,12 +30,34 @@ export type ParameterType =
   | 'separator'
   | 'options';
 
+/**
+ * What the value of a `string` or `text` argument holds, for the check at
+ * story start and for tooling:
+ * - `markup`: markup the macro renders (`{button}`'s label): its markup
+ *   is checked.
+ * - `text`: plain text the macro uses as written (`{checkbox}`'s label).
+ * - `passage`: a passage name (`{watch}`'s `goto`): the passage must exist.
+ * - `expression`, `statements`: code (`{watch}`'s condition and `run`): it
+ *   is checked as code, and its variable references against the schema.
+ *
+ * Without it, the argument of a macro with `interpolate` holds `markup`,
+ * any other `text`.
+ */
+export type StringHolds =
+  | 'markup'
+  | 'text'
+  | 'passage'
+  | 'expression'
+  | 'statements';
+
 export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
   /** How the argument is read: required, there is no default. */
   type: ParameterType;
+  /** What a `string` or `text` argument holds (see StringHolds). */
+  holds?: StringHolds;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
 }
@@ -285,6 +307,9 @@ export interface LinkToken extends TokenSpan, Selectors {
   type: 'link';
   display: string;
   target: string;
+  /** Where the target is written, from `targetStart` to `targetEnd`. */
+  targetStart: number;
+  targetEnd: number;
 }
 
 export interface MacroToken extends TokenSpan, Selectors {
@@ -465,8 +490,9 @@ export interface PassageReference {
  * The passages the markup of `source` names, in source order: `[[…]]` links,
  * the passage of `{goto}`, `{include}` and `{link}` (and of macros that
  * declare a `passage` argument), the `goto` and `dialog` actions of
- * `{watch}` and the body of `{dialog}`. Malformed tags are skipped, so
- * half-typed markup reads.
+ * `{watch}` (and the `string` and `text` arguments of macros that declare
+ * they hold a passage name) and the body of `{dialog}`. Malformed tags are
+ * skipped, so half-typed markup reads.
  */
 export declare function collectPassageReferences(
   source: string,

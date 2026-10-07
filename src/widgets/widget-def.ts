@@ -7,8 +7,8 @@ import type { MacroArgs } from '../registry';
 
 /** A {widget} definition's name, then its `@` parameters. */
 export const WIDGET_PARAMETERS = [
-  { name: 'name', type: 'text', required: true },
-  { name: 'parameters', type: 'text' },
+  { name: 'name', type: 'text', holds: 'text', required: true },
+  { name: 'parameters', type: 'text', holds: 'text' },
 ] as const;
 
 export interface WidgetDef {

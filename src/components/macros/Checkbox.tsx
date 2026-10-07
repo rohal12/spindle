@@ -4,7 +4,10 @@ import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 defineMacro({
   name: 'checkbox',
   storeVar: true,
-  parameters: [VARIABLE_PARAMETER, { name: 'label', type: 'text' }],
+  parameters: [
+    VARIABLE_PARAMETER,
+    { name: 'label', type: 'text', holds: 'text' },
+  ],
   render(_props, ctx) {
     const label = ctx.args.label ?? '';
 

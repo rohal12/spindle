@@ -11,8 +11,11 @@ import {
 } from './markup/validate';
 import { isBlockMacro } from './markup/ast';
 import { tokenizeMarkupTolerant } from './markup/parse';
-import { collectPassageReferences, type PassageReference } from './code-check';
-import { subMacroParameters } from './components/macros/option-utils';
+import {
+  collectPassageReferences,
+  parameterLookup,
+  type PassageReference,
+} from './code-check';
 import { blockWidgetNames } from './widgets/widget-def';
 import type { ParameterDef } from './registry';
 
@@ -71,8 +74,13 @@ export interface ToolingMacro {
   name: string;
   block: boolean;
   subMacros: string[];
-  /** Its declared parameters: their types tell which arguments are code. */
+  /**
+   * Its declared parameters: their types tell which arguments are code, and
+   * what a `string` or `text` argument holds (see ParameterDef.holds).
+   */
   parameters?: readonly ParameterDef[];
+  /** Whether it resolves markup: its strings hold markup by default. */
+  interpolate?: boolean;
 }
 
 /**
@@ -87,20 +95,19 @@ export function validateStoryMarkup(
   options: ValidateMarkupOptions = {},
 ): MarkupDiagnostic[] {
   const list = [...passages];
+  const all = [...macros];
   const known = new Set<string>();
-  const parameters = new Map<string, readonly ParameterDef[] | undefined>();
   const blocks = new Set(blockWidgetNames(list).map((n) => n.toLowerCase()));
-  for (const macro of macros) {
+  for (const macro of all) {
     const name = macro.name.toLowerCase();
     known.add(name);
-    parameters.set(name, macro.parameters);
     for (const sub of macro.subMacros) known.add(sub.toLowerCase());
     if (macro.block) blocks.add(name);
   }
   return validateMarkup(list, {
     isKnownMacro: (name) => known.has(name),
     macroNames: known,
-    parametersOf: (name) => parameters.get(name),
+    parametersOf: parameterLookup(all),
     isBlockMacro: (name) =>
       blocks.has(name.toLowerCase()) || isBlockMacro(name),
     checkPassageNames: options.checkPassageNames,
@@ -116,14 +123,6 @@ export function collectStoryPassageReferences(
   source: string,
   macros: Iterable<ToolingMacro>,
 ): PassageReference[] {
-  const parameters = new Map<string, readonly ParameterDef[] | undefined>();
-  for (const macro of macros) {
-    parameters.set(macro.name.toLowerCase(), macro.parameters);
-  }
   const { tokens } = tokenizeMarkupTolerant(source);
-  return collectPassageReferences(
-    source,
-    tokens,
-    (name) => parameters.get(name.toLowerCase()) ?? subMacroParameters(name),
-  );
+  return collectPassageReferences(source, tokens, parameterLookup(macros));
 }

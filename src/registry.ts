@@ -104,11 +104,36 @@ export const PARAMETER_TYPES = [
 
 export type ParameterType = (typeof PARAMETER_TYPES)[number];
 
+/**
+ * What the value of a `string` or `text` argument holds, for the check at
+ * story start and for tooling (see code-check.ts):
+ * - `markup`: markup the macro renders (`{button}`'s label): its markup
+ *   is checked.
+ * - `text`: plain text the macro uses as written (`{checkbox}`'s label).
+ * - `passage`: a passage name (`{watch}`'s `goto`): the passage must exist.
+ * - `expression`, `statements`: code (`{watch}`'s condition and `run`): it
+ *   is checked as code, and its variable references against the schema.
+ *
+ * Without it, the argument of a macro with `interpolate` holds `markup`,
+ * any other `text`.
+ */
+export const STRING_HOLDS = [
+  'markup',
+  'text',
+  'passage',
+  'expression',
+  'statements',
+] as const;
+
+export type StringHolds = (typeof STRING_HOLDS)[number];
+
 export interface ParameterDef {
   name: string;
   required?: boolean;
   description?: string;
   type: ParameterType;
+  /** What a `string` or `text` argument holds (see StringHolds). */
+  holds?: StringHolds;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
 }
@@ -116,28 +141,60 @@ export interface ParameterDef {
 /**
  * Throw if a parameter `macro` declares (or an option of one) has no type,
  * or one that isn't a ParameterType: arguments are read by their type, and
- * there is no default.
+ * there is no default. Throw too if it declares what it `holds` wrongly.
  */
 export function checkParameterTypes(
   macro: string,
   parameters: readonly ParameterDef[],
 ): void {
+  const holdsFix =
+    `Give a \`string\` or \`text\` parameter one of ${STRING_HOLDS.join(', ')} ` +
+    'to hold (see docs/custom-macros.md#what-a-string-holds).';
   for (const param of parameters) {
     const type: unknown = param.type;
     if (!PARAMETER_TYPES.includes(type as ParameterType)) {
-      const problem =
+      throw parameterError(
+        macro,
+        param,
         type === undefined
           ? 'has no type'
-          : `has the unknown type ${JSON.stringify(type)}`;
-      throw new Error(
-        `spindle: The parameter "${param.name}" of the macro {${macro}} ${problem}. ` +
-          `Give it one of the types ${PARAMETER_TYPES.join(', ')} ` +
+          : `has the unknown type ${JSON.stringify(type)}`,
+        `Give it one of the types ${PARAMETER_TYPES.join(', ')} ` +
           '(see docs/custom-macros.md#parameter-types), ' +
           'or declare no parameters and read props.rawArgs.',
       );
     }
+    const holds: unknown = param.holds;
+    if (holds !== undefined && type !== 'string' && type !== 'text') {
+      throw parameterError(
+        macro,
+        param,
+        `is of the type ${type}, which holds what it is`,
+        holdsFix,
+      );
+    }
+    if (holds !== undefined && !STRING_HOLDS.includes(holds as StringHolds)) {
+      throw parameterError(
+        macro,
+        param,
+        `holds the unknown ${JSON.stringify(holds)}`,
+        holdsFix,
+      );
+    }
     if (param.parameters) checkParameterTypes(macro, param.parameters);
   }
+}
+
+/** The error for the parameter `param` of `macro`: what is wrong, and the fix. */
+function parameterError(
+  macro: string,
+  param: ParameterDef,
+  problem: string,
+  fix: string,
+): Error {
+  return new Error(
+    `spindle: The parameter "${param.name}" of the macro {${macro}} ${problem}. ${fix}`,
+  );
 }
 
 type ArgValue<T, D> = T extends 'flag' | 'separator'

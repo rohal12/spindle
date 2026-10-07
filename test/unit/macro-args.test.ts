@@ -216,4 +216,18 @@ describe('parseMacroArgs: keyword options (#256)', () => {
   it('leaves out an omitted optional keyword', () => {
     expect(parseMacroArgs('"$x" once', params).options).toEqual({ once: true });
   });
+
+  it.each([[`goto"Hall"`], [`goto'Hall'`]])(
+    'reads a quoted value written directly after its keyword: `%s` (#263)',
+    (options) => {
+      expect(parseMacroArgs(`"$x" ${options} once`, params).options).toEqual({
+        goto: 'Hall',
+        once: true,
+      });
+    },
+  );
+
+  it('still needs whitespace before a number (#263)', () => {
+    expect(parseMacroArgs('"$x" priority5', params).options).toEqual({});
+  });
 });

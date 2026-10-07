@@ -32,16 +32,28 @@ const BRANCHING = new Set(['if', 'switch', 'timed']);
 const LINK_SEPARATORS = [['|', false], ['->', false], ['<-', true]];
 const NO_SELECTORS = {};
 
-function parseLink(inner) {
+/**
+ * A link's display text and target, from its text `inner` (at `at` in the
+ * input), with where the target is written.
+ */
+function parseLink(inner, at) {
+  /** The trimmed text from `start` to `end` of inner, and where it is. */
+  const part = (start, end) => {
+    const raw = inner.slice(start, end);
+    const value = raw.trim();
+    const from = at + start + (value ? raw.indexOf(value) : 0);
+    return { value, start: from, end: from + value.length };
+  };
   for (const [separator, targetFirst] of LINK_SEPARATORS) {
     const idx = inner.indexOf(separator);
     if (idx === -1) continue;
-    const before = inner.slice(0, idx).trim();
-    const after = inner.slice(idx + separator.length).trim();
-    return targetFirst ? { display: after, target: before } : { display: before, target: after };
+    const before = part(0, idx);
+    const after = part(idx + separator.length, inner.length);
+    const [display, target] = targetFirst ? [after, before] : [before, after];
+    return { display: display.value, target: target.value, targetStart: target.start, targetEnd: target.end };
   }
-  const trimmed = inner.trim();
-  return { display: trimmed, target: trimmed };
+  const whole = part(0, inner.length);
+  return { display: whole.value, target: whole.value, targetStart: whole.start, targetEnd: whole.end };
 }
 
 function quoteArg(value) {
@@ -106,7 +118,7 @@ function tokenOf(x) {
     case 'text':
       return { type: 'text', value: x.value, ...span };
     case 'link':
-      return withSelectors({ type: 'link', display: x.display, target: x.target, ...span }, x);
+      return withSelectors({ type: 'link', display: x.display, target: x.target, targetStart: x.targetStart, targetEnd: x.targetEnd, ...span }, x);
     case 'variable':
       return withSelectors({ type: 'variable', name: x.name, scope: x.scope, ...span }, x);
     case 'expression':
@@ -336,8 +348,8 @@ Literal
   / "[" { return lexeme('text', location(), { value: '[' }); }
 
 LinkLexeme
-  = &{ return !textMode; } "[[" s:Selectors inner:$LinkText "]]" {
-      return withSelectors(lexeme('link', location(), parseLink(inner)), s);
+  = &{ return !textMode; } "[[" s:Selectors at:Here inner:$LinkText "]]" {
+      return withSelectors(lexeme('link', location(), parseLink(inner, at)), s);
     }
   / &{ return !textMode; } "[[" { fail('Unclosed link: [[ without ]]', location()); }
 

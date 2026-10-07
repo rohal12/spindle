@@ -153,10 +153,24 @@ export function tokenizeMarkupTolerant(
 ): TolerantTokens {
   const tokens: Token[] = [];
   const errors: MarkupError[] = [];
+  // The code of a tag ends at a }: with none after it, the tag is unclosed
+  // without reading its code to the end of the source, which every
+  // unclosed tag would do again (#265).
+  const lastBrace = source.lastIndexOf('}');
+  const { closeBrace } = { ...defaultHooks, ...options.hooks };
   /** `text` shifted by `base`, tokenized: the tokens or the error. */
   const attempt = (text: string, base: number): Token[] | MarkupError => {
+    const hooks: Partial<MarkupHooks> = {
+      ...options.hooks,
+      closeBrace: (input, codeStart, lenientStart) =>
+        base + Math.min(codeStart, lenientStart) > lastBrace
+          ? -1
+          : closeBrace(input, codeStart, lenientStart),
+    };
     try {
-      return tokenizeMarkup(text, options).map((token) => shift(token, base));
+      return tokenizeMarkup(text, { ...options, hooks }).map((token) =>
+        shift(token, base),
+      );
     } catch (error) {
       if (!(error instanceof MarkupError)) throw error;
       return error;
@@ -199,7 +213,11 @@ export function tokenizeMarkupTolerant(
 
 /** `token` with its offsets moved `by` on. */
 function shift(token: Token, by: number): Token {
-  return by === 0
-    ? token
-    : { ...token, start: token.start + by, end: token.end + by };
+  if (by === 0) return token;
+  const moved = { ...token, start: token.start + by, end: token.end + by };
+  if (moved.type === 'link') {
+    moved.targetStart += by;
+    moved.targetEnd += by;
+  }
+  return moved;
 }

@@ -1123,6 +1123,25 @@ function regexEnd(src: string, start: number): number {
 }
 
 /**
+ * The value of `src` when it is exactly one `"…"` or `'…'` string literal,
+ * as JavaScript reads it (`"\u0048all"` is `Hall`, `"\1"` is U+0001 in
+ * the non-strict code passages run), otherwise `null`: other code, or a
+ * literal that is not well-formed (`"\u{110000}"`).
+ */
+export function stringLiteralValue(src: string): string | null {
+  if (src[0] !== '"' && src[0] !== "'") return null;
+  try {
+    const p = tokenizerAt(src, 0, 'expression');
+    p.nextToken();
+    return p.type === tt.string && p.end === src.length
+      ? (p.value as string)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Scan the `"…"` or `'…'` string literal opening at `start`. `end` is the
  * index just past its closing quote, or `src.length` when it is unterminated
  * (`closed` false). A backslash escapes the character after it, so a quote

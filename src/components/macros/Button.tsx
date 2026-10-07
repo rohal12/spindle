@@ -5,7 +5,9 @@ defineMacro({
   name: 'button',
   block: true,
   interpolate: true,
-  parameters: [{ name: 'label', type: 'text', required: true }],
+  parameters: [
+    { name: 'label', type: 'text', holds: 'markup', required: true },
+  ],
   render({ rawArgs, children = [] }, ctx) {
     const label = ctx.resolve?.(ctx.args.label ?? '') ?? rawArgs;
     const runBody = useDetachedBody();

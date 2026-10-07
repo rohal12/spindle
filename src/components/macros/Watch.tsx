@@ -5,15 +5,20 @@ defineMacro({
   name: 'watch',
   // {watch "condition" goto "X" dialog "X" run "X" name "X" priority N once}
   parameters: [
-    { name: 'condition', type: 'string', required: true },
+    {
+      name: 'condition',
+      type: 'string',
+      holds: 'expression',
+      required: true,
+    },
     {
       name: 'options',
       type: 'options',
       parameters: [
-        { name: 'goto', type: 'string' },
-        { name: 'dialog', type: 'string' },
-        { name: 'run', type: 'string' },
-        { name: 'name', type: 'string' },
+        { name: 'goto', type: 'string', holds: 'passage' },
+        { name: 'dialog', type: 'string', holds: 'passage' },
+        { name: 'run', type: 'string', holds: 'statements' },
+        { name: 'name', type: 'string', holds: 'text' },
         { name: 'priority', type: 'number' },
         { name: 'once', type: 'flag' },
       ],
@@ -41,7 +46,7 @@ defineMacro({
 
 defineMacro({
   name: 'unwatch',
-  parameters: [{ name: 'name', type: 'text', required: true }],
+  parameters: [{ name: 'name', type: 'text', holds: 'text', required: true }],
   render(_props, ctx) {
     const name = ctx.args.name ?? '';
 

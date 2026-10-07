@@ -6,8 +6,8 @@ defineMacro({
   storeVar: true,
   parameters: [
     VARIABLE_PARAMETER,
-    { name: 'value', type: 'text', required: true },
-    { name: 'label', type: 'text' },
+    { name: 'value', type: 'text', holds: 'text', required: true },
+    { name: 'label', type: 'text', holds: 'text' },
   ],
   render(_props, ctx) {
     const radioValue = ctx.args.value ?? '';

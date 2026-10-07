@@ -40,7 +40,7 @@ defineMacro({
   parameters: [
     { name: 'current', type: 'expression', required: true },
     { name: 'max', type: 'expression', required: true },
-    { name: 'label', type: 'string' },
+    { name: 'label', type: 'string', holds: 'markup' },
   ],
   render(_props, ctx) {
     try {

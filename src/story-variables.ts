@@ -9,7 +9,13 @@ import {
   scanStringLiteral,
   type JsGoal,
 } from './js-lexer';
-import { argPieces, parseOrError, withParseCache } from './code-check';
+import {
+  argPieces,
+  holdsCode,
+  parseOrError,
+  withParseCache,
+  type ParametersOf,
+} from './code-check';
 import { getMacroParameters, type ParameterDef } from './registry';
 import { NOT_MARKUP } from './markup/validate';
 import { createNamespace, variableNameError } from './utils/namespace';
@@ -334,20 +340,18 @@ function collectPassageRefs(
   );
 }
 
-/** The declared parameters of a macro, if it has any. */
-type ParametersOf = (macro: string) => readonly ParameterDef[] | undefined;
-
 /**
- * Report the references in the code that a macro's quoted arguments hold,
- * the condition and `run` action of `{watch}`: the argument scan sees only
- * the strings.
+ * Report the references in the code that a macro's quoted arguments hold
+ * (see ParameterDef.holds), the condition and `run` action of `{watch}`:
+ * the argument scan sees only the strings. Only the macros that declare
+ * code in a string have their arguments read.
  */
 function scanStringCode(
   token: Extract<Token, { type: 'macro' }>,
   params: readonly ParameterDef[] | undefined,
   onRef: RefCallback,
 ): void {
-  if (!params || !token.rawArgs) return;
+  if (!params || !token.rawArgs || !holdsCode(params)) return;
   for (const piece of argPieces(token.rawArgs, 0, params, token.name, '')) {
     if (piece.kind === 'code' && piece.inString) {
       scanCode(piece.code, onRef, piece.goal);

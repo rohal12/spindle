@@ -69,43 +69,6 @@ export function readWholeQuoted(src: string): string | null {
   return quoted && quoted.end === src.length ? quoted.value : null;
 }
 
-const JS_SIMPLE_ESCAPES: Record<string, string> = {
-  n: '\n',
-  t: '\t',
-  r: '\r',
-  b: '\b',
-  f: '\f',
-  v: '\v',
-  '0': '\0',
-};
-
-/** Undo every escape of a JavaScript string literal's body. */
-function decodeJsEscapes(body: string): string {
-  return body.replace(
-    /\\(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(\r\n|[\n\r\u2028\u2029])|([\s\S]))/g,
-    (_, braced, unicode, hex, lineBreak, other: string | undefined) => {
-      if (lineBreak !== undefined) return '';
-      const code = braced ?? unicode ?? hex;
-      if (code !== undefined) {
-        const point = parseInt(code, 16);
-        return point <= 0x10ffff ? String.fromCodePoint(point) : '';
-      }
-      return JS_SIMPLE_ESCAPES[other!] ?? other!;
-    },
-  );
-}
-
-/**
- * The value of `src` when it is exactly one `"…"` or `'…'` string, read as
- * the JavaScript literal it is (`"\u0048all"` is `Hall`), otherwise `null`.
- * `readWholeQuoted` keeps other escapes as written, for labels and code.
- */
-export function readWholeJsString(src: string): string | null {
-  const quoted = readQuoted(src, 0);
-  if (!quoted || quoted.end !== src.length) return null;
-  return decodeJsEscapes(src.slice(1, -1));
-}
-
 /**
  * Strip an optional quote from each end of an unquoted-or-loosely-quoted
  * argument (`"Red`, `Red'`), leaving at least one character. This is the
