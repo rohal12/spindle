@@ -57,7 +57,7 @@ function renderPassage(content: string, storyData?: StoryData): HTMLElement {
 }
 
 describe('extended macro components', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearActions();
     resetIdCounters();
     clearWidgets();
@@ -77,6 +77,12 @@ describe('extended macro components', () => {
       makePassage(8, 'inline', '**INCLUDED**'),
       makePassage(9, 'An inline example', '**Example**'),
     ]);
+    useStoryStore.getState().init(storyData);
+    // Earlier tests leave mounted components whose effects count renders:
+    // let them run, then start the counts afresh
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
     useStoryStore.getState().init(storyData);
   });
 
@@ -170,11 +176,23 @@ describe('extended macro components', () => {
       );
     });
 
-    it('tracks render count for included passage', () => {
-      renderPassage('{include "Helper"}');
-      expect(useStoryStore.getState().renderCounts['Helper']).toBeGreaterThan(
-        0,
-      );
+    it('tracks render count for included passage', async () => {
+      await act(async () => {
+        renderPassage('{include "Helper"}');
+      });
+      expect(useStoryStore.getState().renderCounts['Helper']).toBe(1);
+    });
+
+    it('does not count an included passage again on an unrelated update', async () => {
+      await act(async () => {
+        renderPassage('{include "Helper"}');
+      });
+      await act(async () => {
+        useStoryStore.getState().updateVariables((d) => {
+          d.variables.unrelated = 1;
+        });
+      });
+      expect(useStoryStore.getState().renderCounts['Helper']).toBe(1);
     });
 
     it('renders without markdown when inline flag is set', () => {

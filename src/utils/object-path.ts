@@ -9,10 +9,7 @@ import { atomicName } from './value-kinds';
  * reads as missing, as setByPath() treats it. Other inherited properties
  * (class getters, `size` of a Map) are read.
  */
-export function getByPath(
-  obj: Record<string, unknown>,
-  segments: readonly string[],
-): unknown {
+export function getByPath(obj: object, segments: readonly string[]): unknown {
   let current: unknown = obj;
   for (const seg of segments) {
     if (current == null || typeof current !== 'object') return undefined;
@@ -38,7 +35,8 @@ const builtinName = atomicName;
  */
 export function shallowCopy(value: object): Record<string, unknown> {
   const copy = Array.isArray(value)
-    ? []
+    ? // Keep the length: trailing holes are not among the keys
+      new Array<unknown>(value.length)
     : (Object.create(Object.getPrototypeOf(value) as object | null) as object);
   // Define rather than assign (Object.assign), so that a "__proto__" key
   // stays a key instead of replacing the copy's prototype

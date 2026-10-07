@@ -46,6 +46,28 @@ function makeTables(table: MakeTable): Tables {
   };
 }
 
+/**
+ * The meta keys a story owns, in one place: save-manager builds them,
+ * deleteMetaByIfid() matches them. A story's key is its prefix followed by
+ * its IFID, except a named slot's pointer, `slot.<name>.<IFID>`.
+ */
+export const META_PREFIXES = {
+  autosave: 'autosave.',
+  slot: 'slot.',
+  slotIndex: 'slotIndex.',
+  playthroughCount: 'playthroughCount.',
+  currentPlaythrough: 'currentPlaythroughId.',
+} as const;
+
+/** Whether the meta `key` belongs to the story `ifid` (and no other). */
+function isMetaKeyOf(key: string, ifid: string): boolean {
+  const { slot, ...others } = META_PREFIXES;
+  return (
+    Object.values(others).some((prefix) => key === prefix + ifid) ||
+    (key.startsWith(slot) && key.endsWith(`.${ifid}`))
+  );
+}
+
 function createBackend(
   type: StorageBackend['type'],
   { saves, playthroughs, meta }: Tables,
@@ -96,7 +118,8 @@ function createBackend(
     deleteMeta: (key) => meta.delete(key),
     deleteMetaByPrefix: (prefix) =>
       deleteMetaWhere((key) => key.startsWith(prefix)),
-    deleteMetaByIfid: (ifid) => deleteMetaWhere((key) => key.includes(ifid)),
+    deleteMetaByIfid: (ifid) =>
+      deleteMetaWhere((key) => isMetaKeyOf(key, ifid)),
     getAllMetaKeys: () => meta.keys(),
 
     destroy,

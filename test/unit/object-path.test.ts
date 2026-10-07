@@ -14,6 +14,18 @@ class Counter {
 
 type Rec = Record<string, unknown>;
 
+it('keeps the length of a sparse array copied below a class instance', () => {
+  class Box {
+    list: unknown[] = new Array(5);
+  }
+  const state = { box: new Box() } as Rec;
+  const next = produce(state, (d) => setByPath(d, ['box', 'list', '0'], 'x'));
+  const list = (next.box as Box).list;
+  expect(list.length).toBe(5);
+  expect(list[0]).toBe('x');
+  expect(1 in list).toBe(false);
+});
+
 // Counterexamples found by test/property/object-path.test.ts
 describe('object paths', () => {
   afterEach(() => {
