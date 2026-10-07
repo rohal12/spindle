@@ -368,6 +368,13 @@ describe('the story-start check: reported bugs', () => {
     expect(storyErrors({ Start: markup, '\\u0048all': 'x' })).toHaveLength(1);
   });
 
+  it('names the passage a legacy octal escape gives (#262)', () => {
+    expect(
+      storyErrors({ Start: '{goto "\\1"}', '\u0001': 'Arrived.' }),
+    ).toEqual([]);
+    expect(storyErrors({ Start: '{goto "\\1"}', '1': 'x' })).toHaveLength(1);
+  });
+
   it('does not throw for unknown prototype member macros (#253)', () => {
     expect(storyErrors({ Start: '{constructor x}' })).toEqual([
       expect.stringContaining('Unknown macro {constructor}'),

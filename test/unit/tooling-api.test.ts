@@ -221,6 +221,28 @@ describe('tooling API: passage targets', () => {
     });
   });
 
+  it.each([
+    ['a legacy octal escape', '"\\1"'],
+    ['\\0 before a digit', '"\\08"'],
+    ['\\u and \\x escapes', '"\\u0048\\x61ll"'],
+    ['a braced code point', '"\\u{1F600}"'],
+    ['a line continuation', '"Ha\\\nll"'],
+    ['single quotes', "'it\\'s'"],
+  ])('reads %s as JavaScript does (#262)', (_, literal) => {
+    expect(passageTarget(literal)).toEqual({
+      kind: 'name',
+      name: new Function(`return ${literal}`)(),
+    });
+  });
+
+  it.each([['"\\u{110000}"'], ['"\\x4"'], ['"a\nb"']])(
+    'reads the literal %s, which JavaScript rejects, as an expression (#262)',
+    (literal) => {
+      expect(() => new Function(`return ${literal}`)).toThrow(SyntaxError);
+      expect(passageTarget(literal).kind).toBe('expression');
+    },
+  );
+
   it('evaluates a name as the story does', () => {
     const state = {
       storyData: { passages: new Map([['Hall', {}]]) },
