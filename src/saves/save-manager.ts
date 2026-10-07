@@ -7,6 +7,7 @@ import type {
   SaveExport,
   StorageInfo,
 } from './types';
+import { randomUUID } from '../utils/uuid';
 import { checkSaveExport, estimatePayloadBytes } from './types';
 import {
   decodePayload,
@@ -130,7 +131,7 @@ export const startNewPlaythrough = queued(startNewPlaythroughNow);
 
 async function startNewPlaythroughNow(
   ifid: string,
-  id: string = crypto.randomUUID(),
+  id: string = randomUUID(),
 ): Promise<string> {
   const backend = await getBackend();
   const num = await nextPlaythroughNumber(ifid);
@@ -296,7 +297,7 @@ async function createSaveNow(
 ): Promise<SaveRecord> {
   const now = new Date().toISOString();
   const meta: SaveMeta = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     ifid,
     playthroughId,
     createdAt: now,
@@ -774,7 +775,7 @@ async function prepareImport(data: unknown, ifid: string): Promise<SaveRecord> {
 
   // Re-assign a new ID to avoid collisions
   const record = deepClone(data.save);
-  record.meta.id = crypto.randomUUID();
+  record.meta.id = randomUUID();
   record.meta.updatedAt = new Date().toISOString();
   // The save now belongs to this story: it is listed, loaded and cleared
   // with it, whatever its own metadata says

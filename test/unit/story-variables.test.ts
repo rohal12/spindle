@@ -121,6 +121,44 @@ describe('validatePassages', () => {
     expect(errors).toEqual([]);
   });
 
+  it.each([
+    '{DO}$typo = 1;{/DO}',
+    '{do}$typo = 1;{/DO}',
+    '{Do}$typo = 1;{/do}',
+  ])('scans a do body case-insensitively: %s', (content) => {
+    const schema = parseStoryVariables('$gold = 1');
+    const errors = validatePassages(makePassages(['Start', content]), schema);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/\$typo/);
+  });
+
+  it('catches undeclared variables in interpolated macro selectors', () => {
+    const schema = parseStoryVariables('$gold = 1');
+    for (const content of [
+      '{.{$typo} button "Go"}{/button}',
+      '{#{$typo} button "Go"}{/button}',
+    ]) {
+      const errors = validatePassages(makePassages(['Start', content]), schema);
+      expect(errors, content).toHaveLength(1);
+      expect(errors[0]).toMatch(/\$typo/);
+    }
+    expect(
+      validatePassages(
+        makePassages(['Start', '{.{$gold} button "Go"}{/button}']),
+        schema,
+      ),
+    ).toEqual([]);
+  });
+
+  it('catches undeclared variables in bracket-link labels', () => {
+    const schema = parseStoryVariables('$gold = 1');
+    const errors = (content: string) =>
+      validatePassages(makePassages(['Start', content], ['Next', '']), schema);
+    expect(errors('[[Gold: {$typo}->Next]]')).toHaveLength(1);
+    expect(errors('[[Next<-Gold: {$typo}]]')).toHaveLength(1);
+    expect(errors('[[Gold: {$gold}->Next]]')).toEqual([]);
+  });
+
   it('catches undeclared variable references', () => {
     const schema = parseStoryVariables('$health = 100');
     const passages = makePassages(

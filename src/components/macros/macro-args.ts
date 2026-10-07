@@ -108,7 +108,7 @@ function unset(param: ParameterDef): unknown {
 }
 
 const WORD_RE = /\w+/y;
-const DIGITS_RE = /\d+/y;
+const NUMBER_RE = /[-+]?(?:\d+\.?\d*|\.\d+)/y;
 const WORD_OR_PUNCT_RE = /\S+/y;
 
 /** Match the sticky regex `re` at `pos`, returning the matched text. */
@@ -119,7 +119,8 @@ function matchAt(re: RegExp, src: string, pos: number): string | null {
 
 /**
  * Read keyword options (`goto "X" priority 5 once`). A keyword takes the
- * quoted string (with or without whitespace before it) or digit run after
+ * quoted string (with or without whitespace before it) or number (signed,
+ * fractional) after
  * it as its value; keywords that aren't declared, and their values, are
  * skipped. A keyword of a `string` parameter must be followed by a quoted
  * string.
@@ -141,13 +142,13 @@ function readOptions(
     i += key.length;
 
     // A value is a quoted string, which may follow the keyword directly
-    // (`goto"Hall"`: a quote can't be part of one), or a digit run after
+    // (`goto"Hall"`: a quote can't be part of one), or a number after
     // whitespace.
     let val: string | undefined;
     let j = i;
     while (j < src.length && isWhitespace(src[j]!)) j++;
     const quoted = readQuoted(src, j);
-    const digits = quoted || j === i ? null : matchAt(DIGITS_RE, src, j);
+    const digits = quoted || j === i ? null : matchAt(NUMBER_RE, src, j);
     if (quoted) {
       val = quoted.value;
       i = quoted.end;

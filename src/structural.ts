@@ -334,9 +334,17 @@ function equalBuiltin(
 ): boolean | undefined {
   if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
   if (a instanceof RegExp) return String(a) === String(b);
-  if (ArrayBuffer.isView(a) || a instanceof ArrayBuffer) {
-    return equalBytes(a, b as ArrayBuffer);
+  if (ArrayBuffer.isView(a)) {
+    // A view is its place in its backing buffer, and the whole buffer (which
+    // other views can share): equal only if both match.
+    const v = b as ArrayBufferView;
+    return (
+      a.byteOffset === v.byteOffset &&
+      a.byteLength === v.byteLength &&
+      equal(a.buffer, v.buffer, assumed)
+    );
   }
+  if (a instanceof ArrayBuffer) return equalBytes(a, b as ArrayBuffer);
   if (a instanceof URL || a instanceof URLSearchParams) {
     return String(a) === String(b);
   }
@@ -521,7 +529,17 @@ export function keyChanges(
 
 /** A write to one property path of an object, or its deletion. */
 export type PathChange =
-  | { path: string[]; deleted: false; value: unknown }
+  | {
+      path: string[];
+      deleted: false;
+      value: unknown;
+      /**
+       * Set where the value is the same content as before and only which
+       * object the path refers to changed (see aliasChanges), so a store
+       * holding equal content there still takes the write.
+       */
+      alias?: true;
+    }
   | { path: string[]; deleted: true };
 
 /**
@@ -558,6 +576,130 @@ export function diffPaths(
     ancestors.delete(a);
   })(before, after, []);
   return changes;
+}
+
+export const pathKey = (path: readonly string[]): string =>
+  JSON.stringify(path);
+
+/** Whether `path`, or one of its ancestors, is one of `keys`. */
+export function underChange(
+  path: readonly string[],
+  keys: ReadonlySet<string>,
+): boolean {
+  for (let n = 1; n <= path.length; n++) {
+    if (keys.has(pathKey(path.slice(0, n)))) return true;
+  }
+  return false;
+}
+
+/**
+ * Where each object (or array, or other value) of `root` first appears, in
+ * depth-first order. Plain objects are entered; arrays and other values are
+ * leaves. A path at or below one of `skip` is left out.
+ */
+function firstPaths(
+  root: Record<string, unknown>,
+  skip: ReadonlySet<string> = new Set(),
+): Map<object, string[]> {
+  const found = new Map<object, string[]>();
+  (function walk(node: Record<string, unknown>, path: string[]): void {
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (!isObjectValue(value) || found.has(value)) continue;
+      const at = [...path, key];
+      if (skip.has(pathKey(at))) continue;
+      found.set(value, at);
+      if (isMergeable(value)) walk(value, at);
+    }
+  })(root, []);
+  return found;
+}
+
+/**
+ * The paths whose object is another one in the references of `after` than in
+ * `before`, as to where its first appearance is: `$a = $b` makes `a` another
+ * name for the object of `b` even where both hold equal content, and a
+ * `diffPaths` over the content finds nothing. Only paths both hold an object
+ * at are reported, parents before children; each is a write of the object
+ * `after` holds.
+ */
+export function aliasChanges(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): PathChange[] {
+  const earlier = firstPaths(before);
+  const later = firstPaths(after);
+  const changes: PathChange[] = [];
+  (function walk(
+    b: Record<string, unknown>,
+    a: Record<string, unknown>,
+    path: string[],
+  ): void {
+    for (const key of Object.keys(a)) {
+      if (!hasOwn(b, key)) continue;
+      const x = b[key];
+      const y = a[key];
+      if (!isObjectValue(x) || !isObjectValue(y)) continue;
+      const at = [...path, key];
+      const wasAt = earlier.get(x)!;
+      const isAt = later.get(y)!;
+      const k = pathKey(at);
+      if (pathKey(wasAt) !== pathKey(isAt)) {
+        changes.push({ path: at, deleted: false, value: y, alias: true });
+      }
+      // Only paths that are first appearances are entered: elsewhere the
+      // contents are those of the object met first.
+      if (
+        isMergeable(x) &&
+        mergesWith(x, y, false) &&
+        pathKey(isAt) === k &&
+        pathKey(wasAt) === k
+      ) {
+        walk(x, y as Record<string, unknown>, at);
+      }
+    }
+  })(before, after, []);
+  return changes;
+}
+
+/**
+ * Where the objects of `source` are, other than at or below the paths of
+ * `changes` (which write something new there), for `existingObjects`.
+ */
+export function locateObjects(
+  source: Record<string, unknown>,
+  changes: readonly PathChange[],
+): Map<object, string[]> {
+  return firstPaths(source, new Set(changes.map((c) => pathKey(c.path))));
+}
+
+/**
+ * A map for `deepClone`'s `seen`: an object of the source `paths` locate
+ * (see locateObjects) is copied as the object at the same path in `target`,
+ * so a value that refers to an object the store holds refers to it again
+ * after the copy, not to a copy of it. Objects are looked up in `target`
+ * when met, not up front.
+ */
+export function existingObjects(
+  paths: ReadonlyMap<object, string[]>,
+  target: Record<string, unknown>,
+): Map<object, object> {
+  return new (class extends Map<object, object> {
+    override has(obj: object): boolean {
+      if (super.has(obj)) return true;
+      const path = paths.get(obj);
+      if (!path) return false;
+      const found = getByPath(target, path);
+      const like =
+        isObjectValue(found) &&
+        (Array.isArray(found)
+          ? Array.isArray(obj)
+          : Object.getPrototypeOf(found) === Object.getPrototypeOf(obj));
+      if (!like) return false;
+      super.set(obj, found as object);
+      return true;
+    }
+  })();
 }
 
 /** Whether `target` already holds what `change` would write. */

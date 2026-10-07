@@ -305,15 +305,35 @@ export function registerDialogHost(callbacks: DialogHostCallbacks): () => void {
   };
 }
 
+/**
+ * The dialogs on display, bottom first, whoever opened them: the trigger
+ * host, `{dialog}` or a menubar button (each PassageDialog registers itself
+ * while mounted), as the function that closes each.
+ */
+const openDialogs: Array<() => void> = [];
+
+/** Register a displayed dialog; returns the function that unregisters it. */
+export function registerOpenDialog(close: () => void): () => void {
+  openDialogs.push(close);
+  return () => {
+    const i = openDialogs.lastIndexOf(close);
+    if (i >= 0) openDialogs.splice(i, 1);
+  };
+}
+
+/** Close the topmost dialog. */
 export function closeCurrentDialog(): void {
-  dialogHostCallbacks?.close();
+  const top = openDialogs[openDialogs.length - 1];
+  if (top) top();
+  else dialogHostCallbacks?.close();
 }
 
 export function closeAllOpenDialogs(): void {
   clearDialogQueue();
+  for (const close of [...openDialogs].reverse()) close();
   dialogHostCallbacks?.closeAll();
 }
 
 export function isDialogShowing(): boolean {
-  return dialogHostCallbacks?.isOpen() ?? false;
+  return openDialogs.length > 0 || (dialogHostCallbacks?.isOpen() ?? false);
 }

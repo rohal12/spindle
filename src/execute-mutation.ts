@@ -10,13 +10,18 @@ import { useStoryStore } from './store';
 import type { StoryState, VariableNamespaces } from './store';
 import { execute } from './expression';
 import {
+  aliasChanges,
   applyChange,
   deepClone,
   deepEqual,
   diffPaths,
+  existingObjects,
   isApplied,
   isMergeable,
+  locateObjects,
   mergeKeys,
+  pathKey,
+  underChange,
   type PathChange,
 } from './structural';
 import { getByPath } from './utils/object-path';
@@ -71,6 +76,39 @@ export function readState(): StoryState {
 const cloneValue = <T>(value: T): T =>
   deepClone(value, { keepUnregistered: true });
 
+/** Copies values for one target, so what they share they share there too. */
+type Cloner = <T>(value: T) => T;
+
+/**
+ * A cloner of values written into `target`. The references among the values
+ * it copies are kept (`$b = $a` writes one array twice: the two paths get
+ * one copy), and, given where the objects of the source are (see
+ * locateObjects), an object that is one the target holds already is that
+ * one, not a copy: `$a.self = $a` refers to the root of `a` in the store.
+ */
+function clonerFor(
+  target: Record<string, unknown>,
+  paths?: ReadonlyMap<object, string[]>,
+): Cloner {
+  const seen = paths ? existingObjects(paths, target) : new Map();
+  return (value) => deepClone(value, { keepUnregistered: true, seen });
+}
+
+/** One cloner per target copy, made when first used. */
+const clonersFor = (
+  paths?: (target: Record<string, unknown>) => ReadonlyMap<object, string[]>,
+) => {
+  const made = new Map<object, Cloner>();
+  return (target: Record<string, unknown>): Cloner => {
+    let cloner = made.get(target);
+    if (!cloner) {
+      cloner = clonerFor(target, paths?.(target));
+      made.set(target, cloner);
+    }
+    return cloner;
+  };
+};
+
 /**
  * A frozen copy of a value read from a working copy, matching what reads
  * from the (frozen) store return: writing to it fails instead of changing
@@ -94,6 +132,7 @@ function mirror(
   ns: NamespaceName,
   change: PathChange,
   scopes: readonly MutationScope[] = activeScopes,
+  cloner: (target: Record<string, unknown>) => Cloner = clonerOf,
 ): void {
   const root = change.path[0]!;
   for (const scope of scopes) {
@@ -103,7 +142,7 @@ function mirror(
           copy,
           change.deleted
             ? change
-            : { ...change, value: cloneValue(change.value) },
+            : { ...change, value: cloner(copy)(change.value) },
         );
       } catch {
         const stored = draft[ns][root];
@@ -118,6 +157,9 @@ function mirror(
     }
   }
 }
+
+/** A cloner of a copy of its own (no references shared with others). */
+const clonerOf = (target: Record<string, unknown>): Cloner => clonerFor(target);
 
 const NAMESPACE_KEYS: ReadonlySet<string> = new Set(NAMESPACES);
 
@@ -244,10 +286,19 @@ export function routeStoreUpdate<S extends VariableNamespaces>(
       own.length ? writtenPaths(view[ns], next[ns], own) : [],
     ] as const;
   });
-  const owned = (change: PathChange): PathChange =>
-    change.deleted ? change : { ...change, value: cloneValue(change.value) };
+  // Each target takes its own copies, which share what the written values do
+  const cloners = clonersFor();
+  const owned = (
+    change: PathChange,
+    target: Record<string, unknown>,
+  ): PathChange =>
+    change.deleted
+      ? change
+      : { ...change, value: cloners(target)(change.value) };
   for (const [ns, list] of changes) {
-    for (const change of list) applyChange(inner.work[ns], owned(change));
+    for (const change of list) {
+      applyChange(inner.work[ns], owned(change, inner.work[ns]));
+    }
   }
 
   return (draft) => {
@@ -266,7 +317,7 @@ export function routeStoreUpdate<S extends VariableNamespaces>(
       for (const change of list) {
         const root = change.path[0]!;
         try {
-          applyChange(namespaces[ns], owned(change));
+          applyChange(namespaces[ns], owned(change, namespaces[ns]));
         } catch {
           if (hasOwn(inner.work[ns], root)) {
             namespaces[ns][root] = cloneValue(inner.work[ns][root]);
@@ -274,7 +325,7 @@ export function routeStoreUpdate<S extends VariableNamespaces>(
             delete namespaces[ns][root];
           }
         }
-        mirror(namespaces, ns, change);
+        mirror(namespaces, ns, change, activeScopes, cloners);
       }
     }
   };
@@ -312,7 +363,7 @@ function commitScopes(commits: readonly Commit[]): void {
     scope,
     keepRunning,
     changes: NAMESPACES.map(
-      (ns) => [ns, diffPaths(scope.base[ns], scope.work[ns])] as const,
+      (ns) => [ns, changesOf(scope.base[ns], scope.work[ns])] as const,
     ),
   }));
   const changed = all.filter(({ changes }) =>
@@ -336,33 +387,82 @@ function commitScopes(commits: readonly Commit[]): void {
   }
 
   function commitRecipe(draft: VariableNamespaces): void {
-    all.forEach(({ scope, keepRunning, changes }, i) => {
-      const own = <T>(value: T): T => (keepRunning ? cloneValue(value) : value);
+    all.forEach(({ scope, changes }, i) => {
+      // The copies the store and the enclosing mutations take are their own,
+      // and keep the references of the values written (one object written
+      // at two paths is one object there) and to the objects they hold
+      // already (see clonerFor). The code's working copy stays its own.
+      const paths = new Map(
+        changes.map(([ns, list]) => [ns, locateObjects(scope.work[ns], list)]),
+      );
+      const own = new Map(
+        changes.map(([ns]) => [ns, clonerFor(draft[ns], paths.get(ns))]),
+      );
+      const enclosing = all.slice(0, i).map((c) => c.scope);
+      const enclosingCloners = new Map(
+        changes.map(([ns]) => [ns, clonersFor(() => paths.get(ns)!)]),
+      );
       for (const [ns, list] of changes) {
         const replaced = new Set<string>();
         for (const change of list) {
           const root = change.path[0]!;
-          // A changed path already holding the value keeps its reference
-          if (replaced.has(root) || isApplied(draft[ns], change)) continue;
+          if (replaced.has(root)) continue;
           try {
-            applyChange(
-              draft[ns],
-              change.deleted ? change : { ...change, value: own(change.value) },
-            );
+            if (change.deleted) {
+              if (!isApplied(draft[ns], change)) applyChange(draft[ns], change);
+              continue;
+            }
+            // A changed path already holding the value keeps its reference;
+            // an alias change is one of reference only: it holds when the
+            // very object is there.
+            const value = change.alias ? own.get(ns)!(change.value) : undefined;
+            if (
+              change.alias
+                ? Object.is(getByPath(draft[ns], change.path), value)
+                : isApplied(draft[ns], change)
+            ) {
+              continue;
+            }
+            applyChange(draft[ns], {
+              ...change,
+              value: change.alias ? value : own.get(ns)!(change.value),
+            });
           } catch {
             // An intermediate object the code wrote into is gone from the
             // store: the code's view of the whole root wins.
-            draft[ns][root] = own(scope.work[ns][root]);
+            draft[ns][root] = own.get(ns)!(scope.work[ns][root]);
             replaced.add(root);
           }
         }
         // Hand the changes to the mutations this one runs inside, before
         // watchers fired by this update run.
-        const enclosing = all.slice(0, i).map((c) => c.scope);
-        for (const change of list) mirror(draft, ns, change, enclosing);
+        for (const change of list) {
+          mirror(draft, ns, change, enclosing, enclosingCloners.get(ns)!);
+        }
       }
     });
   }
+}
+
+/**
+ * The changes of the code to a namespace: its property paths that differ
+ * (see diffPaths), and those that hold equal content but another object
+ * than they did (see aliasChanges), those first.
+ */
+function changesOf(
+  base: Record<string, unknown>,
+  work: Record<string, unknown>,
+): PathChange[] {
+  const written = diffPaths(base, work);
+  const keys = new Set(written.map((c) => pathKey(c.path)));
+  const aliases: PathChange[] = [];
+  for (const change of aliasChanges(base, work)) {
+    // Written whole by a change at it or above it
+    if (underChange(change.path, keys)) continue;
+    keys.add(pathKey(change.path));
+    aliases.push(change);
+  }
+  return [...aliases, ...written];
 }
 
 /** Every running mutation, to commit with its code going on. */
