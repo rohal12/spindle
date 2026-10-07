@@ -44,8 +44,16 @@ import {
   deletePlaythroughData as smDeletePlaythroughData,
 } from './saves/save-manager';
 
-import { deepClone, mergeKeys, mergesWith, shareEqual } from './structural';
-import { shallowCopy } from './utils/object-path';
+import {
+  changesBetween,
+  deepClone,
+  existingObjects,
+  locateObjects,
+  mergesWith,
+  shareEqual,
+  type PathChange,
+} from './structural';
+import { getByPath } from './utils/object-path';
 import { noPassageError, showRuntimeError } from './runtime-errors';
 import {
   snapshotPRNG,
@@ -708,11 +716,13 @@ function loadedEntryMoment(
  * the `beforesave` hooks) into the payload's snapshot of the saved moment. A
  * load restores that snapshot, the state on entering the passage, and runs
  * the passage again, so data a hook adds to a save would otherwise be lost
- * on load (#227). Only the property paths the hooks changed are written (into
- * copies of the objects on those paths, the rest staying shared): a
- * whole variable would bring along what the passage did to the rest of it,
- * which the passage then does again on load (#232). Only the payload's copy
- * changes: the live history keeps the recorded snapshot (#159).
+ * on load (#227). Only the property paths the hooks changed are written (see
+ * changesBetween): a whole variable would bring along what the passage did
+ * to the rest of it, which the passage then does again on load (#232). The
+ * references the hooks made stay: an object they put in two variables is one
+ * object in the snapshot, and one they made another variable refer to is the
+ * snapshot's own object of it (#302). Only the payload's copy changes: the
+ * live history keeps the recorded snapshot (#159).
  */
 function keepHookWrites(
   payload: SavePayload,
@@ -721,41 +731,67 @@ function keepHookWrites(
 ): void {
   const moment = payload.history[payload.historyIndex];
   if (!moment) return;
-  mergeHookWrites(moment.variables, before, after, new Set());
+  const changes = changesBetween(before, after, true);
+  if (changes.length === 0) return;
+  // A copy of its own, so the writes keep the snapshot's references (which
+  // the history shares with other moments) as they are
+  const work = deepClone(moment.variables);
+  const seen = existingObjects(locateObjects(after, changes), work);
+  const own = <T>(value: T): T => deepClone(value, { seen });
+  for (const change of changes) writeHookChange(work, after, change, own);
+  moment.variables = shareEqual(moment.variables, work);
 }
 
 /**
- * Apply the hooks' changes between `before` and `after`, two objects or two
- * arrays, to the snapshot's copy of them, `target` (see mergeKeys: array
- * elements merge by index). A changed value is merged key by key where the
- * snapshot holds the same kind of value. Where it lacks the key or holds
- * another kind (the passage created or replaced it), the hooks' whole value
- * is written.
+ * Write `change` (of the hooks, to `after`) into `work`. The value goes in at
+ * the first place `work` lacks the objects on the path of one of the kind
+ * `after` holds (the passage created or replaced it): there, the hooks' whole
+ * value of it is written. Into an array, elements removed from the end are
+ * removed at the same indices and elements added are appended; changes at
+ * indices the array lacks are dropped (it was resized, so its indices do not
+ * line up with the live ones).
  */
-function mergeHookWrites(
-  target: Record<string, unknown>,
-  before: Record<string, unknown>,
+function writeHookChange(
+  work: Record<string, unknown>,
   after: Record<string, unknown>,
-  ancestors: Set<object>,
+  change: PathChange,
+  own: <T>(value: T) => T,
 ): void {
-  ancestors.add(after);
-  mergeKeys(target, before, after, (key, b, a) => {
-    if (
-      !hasOwn(target, key) ||
-      !mergesWith(a, target[key], true) ||
-      // Stop at cycles: deepEqual() and deepClone() handle them
-      ancestors.has(a)
-    ) {
-      return false;
+  const { path } = change;
+  let holder: Record<string, unknown> = work;
+  let depth = 0;
+  for (; depth < path.length - 1; depth++) {
+    const key = path[depth]!;
+    const child = hasOwn(holder, key) ? holder[key] : undefined;
+    const held = getByPath(after, path.slice(0, depth + 1));
+    if (!mergesWith(child, held, true)) {
+      writeKey(holder, key, false, own(held));
+      return;
     }
-    // The snapshot's values are the history's own (immutable, see
-    // plainCopy): merge into a copy, made along the merged path only
-    const copy = shallowCopy(target[key] as object);
-    target[key] = copy;
-    mergeHookWrites(copy, b, a, ancestors);
-    return true;
-  });
-  ancestors.delete(after);
+    holder = child as Record<string, unknown>;
+  }
+  const key = path[depth]!;
+  if (change.deleted) writeKey(holder, key, true, undefined);
+  else writeKey(holder, key, false, own(change.value), change.appended);
+}
+
+function writeKey(
+  holder: Record<string, unknown>,
+  key: string,
+  deleted: boolean,
+  value: unknown,
+  appended?: boolean,
+): void {
+  if (Array.isArray(holder)) {
+    const index = Number(key);
+    if (deleted) holder.length = Math.min(holder.length, index);
+    else if (appended) holder.push(value);
+    else if (index < holder.length) holder[index] = value;
+  } else if (deleted) {
+    delete holder[key];
+  } else {
+    setOwn(holder, key, value);
+  }
 }
 
 /** Restore the PRNG from a snapshot, or reset it without one. */

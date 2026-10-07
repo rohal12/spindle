@@ -307,8 +307,8 @@ function createStoryAPI(): StoryAPI {
         // uses (nested in the running code, if any: it continues from the
         // code's pending writes, and they are committed first): an update of a draft would give the written path new
         // objects and leave the other references to the old ones (#295).
-        mutateState((work) => {
-          for (const [k, v] of entries) setOne(work, k, v);
+        mutateState((work, adopt) => {
+          for (const [k, v] of entries) setOne(work, k, adopt(v));
         });
         return;
       }

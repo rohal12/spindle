@@ -196,3 +196,54 @@ describe('Story.set below a variable (#295)', () => {
     expect(vars().a).toEqual({ m: 1, n: 2, k: 3 });
   });
 });
+
+describe('Story.set of an existing object (#303, #304)', () => {
+  beforeEach(() =>
+    init({ a: { n: 1 }, b: { n: 0 }, holder: { ref: { n: 0 } } }),
+  );
+
+  it('root Story.set in mutation code keeps the reference (#303)', () => {
+    run('Story.set("b", $a); $a.n = 2;');
+    expect(vars().b.n).toBe(2);
+    expect(vars().a).toBe(vars().b);
+  });
+
+  it('dot-path Story.set outside mutation code keeps it (#304)', () => {
+    (globalThis as any).Story.set('holder.ref', vars().a);
+    expect(vars().holder.ref).toBe(vars().a);
+    (globalThis as any).Story.set('a.n', 2);
+    expect(vars().holder.ref.n).toBe(2);
+  });
+
+  it('dot-path Story.set in mutation code keeps it (#304)', () => {
+    run('Story.set("holder.ref", $a); $a.n = 2;');
+    expect(vars().holder.ref).toBe(vars().a);
+    expect(vars().holder.ref.n).toBe(2);
+  });
+});
+
+describe('Map and Set entries (#306)', () => {
+  beforeEach(() =>
+    init({
+      a: { n: 1 },
+      map: new Map([['x', { n: 1 }]]),
+      set: new Set([{ n: 1 }]),
+      keyed: new Map([[{ n: 1 }, 'x']]),
+    }),
+  );
+
+  it('commits a Map value replaced by an equal object', () => {
+    run('$map.set("x", $a)');
+    expect(vars().map.get('x')).toBe(vars().a);
+  });
+
+  it('commits a Set member replaced by an equal object', () => {
+    run('$set.clear(); $set.add($a)');
+    expect(vars().set.has(vars().a)).toBe(true);
+  });
+
+  it('commits a Map key replaced by an equal object', () => {
+    run('$keyed.clear(); $keyed.set($a, "x")');
+    expect(vars().keyed.has(vars().a)).toBe(true);
+  });
+});
