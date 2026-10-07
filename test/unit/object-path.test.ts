@@ -80,6 +80,15 @@ describe('object paths', () => {
     expect(next.a).toBeInstanceOf(Counter);
   });
 
+  it('reads properties of string, number and boolean values', () => {
+    const state = { text: 'abcd', n: 5, flag: true, none: null };
+    expect(getByPath(state, ['text', 'length'])).toBe(4);
+    expect(getByPath(state, ['n', 'x'])).toBeUndefined();
+    expect(getByPath(state, ['flag', 'x'])).toBeUndefined();
+    expect(getByPath(state, ['none', 'length'])).toBeUndefined();
+    expect(getByPath(state, ['text', 'constructor'])).toBeUndefined();
+  });
+
   it('does not copy anything to delete an inherited property', () => {
     const state = freeze({ a: new Counter() }, true) as Rec;
     const next = produce(state, (d) => deleteByPath(d, ['a', 'constructor']));

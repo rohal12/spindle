@@ -43,11 +43,11 @@ export interface DeepCloneOptions {
    */
   seen?: Map<object, object>;
   /**
-   * Called with each key a Map is given in the copy and the key it was copied
-   * from; the key it returns is the one the copy takes (for a store draft,
-   * which Immer does not finalize in a Map key).
+   * Called with each Map key and Set member in the copy and the object it
+   * was copied from; the object it returns is the one the copy takes (for a
+   * store draft, which Immer does not finalize there).
    */
-  mapKey?: (copy: object, original: object) => object;
+  settle?: (copy: object, original: object) => object;
 }
 
 type TypedArrayCtor = new (
@@ -109,8 +109,9 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       const copy = keep(val, Object.create(Object.getPrototypeOf(val)));
       for (const key of [...ERROR_HIDDEN_KEYS, 'stack']) {
         if (hasOwn(val, key)) {
+          const held = (val as unknown as Record<string, unknown>)[key];
           Object.defineProperty(copy, key, {
-            value: clone((val as unknown as Record<string, unknown>)[key]),
+            value: settled(clone(held), held),
             writable: true,
             configurable: true,
           });
@@ -119,6 +120,13 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       return copyKeys(val, copy);
     }
     return undefined;
+  }
+
+  function settled(copy: unknown, original: unknown): unknown {
+    const settle = options.settle;
+    return settle && isObjectValue(copy) && isObjectValue(original)
+      ? settle(copy, original)
+      : copy;
   }
 
   function clone(val: unknown): unknown {
@@ -138,24 +146,13 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
 
     if (val instanceof Map) {
       const copy = keep(obj, new Map());
-      for (const [k, v] of val) {
-        const key = clone(k);
-        const settle = options.mapKey;
-        copy.set(
-          settle && isObjectValue(key) && isObjectValue(k)
-            ? settle(key, k)
-            : key,
-          clone(v),
-        );
-      }
+      for (const [k, v] of val) copy.set(settled(clone(k), k), clone(v));
       return copy;
     }
 
     if (val instanceof Set) {
       const copy = keep(obj, new Set());
-      for (const v of val) {
-        copy.add(clone(v));
-      }
+      for (const v of val) copy.add(settled(clone(v), v));
       return copy;
     }
 
@@ -476,8 +473,15 @@ export function mergesWith(
 
 /** How a value differs from an earlier version at one key. */
 export type KeyChange =
-  | { key: string; kind: 'added' | 'changed'; after: unknown }
-  | { key: string; kind: 'deleted' }
+  | {
+      key: string;
+      kind: 'added' | 'changed';
+      after: unknown;
+      /** Holes between this element an array gained and the one before. */
+      gap?: number;
+    }
+  | { key: string; kind: 'deleted'; hole?: true }
+  | { key: string; kind: 'holes'; after: number }
   | {
       key: string;
       kind: 'nested';
@@ -493,7 +497,9 @@ export type KeyChange =
  * is none either. Values that merge are reported as 'nested', to be
  * compared key by key; they may still be equal. With `arrays`, arrays
  * merge too: elements at the indices both hold are compared, and the
- * elements one has beyond the other's length are added or deleted.
+ * elements one has beyond the other's length are added or deleted. An
+ * index that holds no element (a hole) is no element, not an undefined one,
+ * and holes the length gained at the end are the change of `length`, by how many.
  */
 export function keyChanges(
   before: Record<string, unknown>,
@@ -519,13 +525,30 @@ export function keyChanges(
     const b = before as unknown as unknown[];
     const a = after as unknown[];
     for (let i = 0; i < Math.min(b.length, a.length); i++) {
-      compare(String(i), b[i], a[i]);
+      // A hole is no element: not the same as an undefined one
+      const key = String(i);
+      if (i in b && i in a) compare(key, b[i], a[i]);
+      else if (i in b) changes.push({ key, kind: 'deleted', hole: true });
+      else if (i in a) changes.push({ key, kind: 'added', after: a[i] });
     }
+    let next = b.length;
     for (let i = b.length; i < a.length; i++) {
-      changes.push({ key: String(i), kind: 'added', after: a[i] });
+      if (!(i in a)) continue;
+      const gap = i - next;
+      changes.push({
+        key: String(i),
+        kind: 'added',
+        after: a[i],
+        ...(gap ? { gap } : {}),
+      });
+      next = i + 1;
     }
     for (let i = a.length; i < b.length; i++) {
       changes.push({ key: String(i), kind: 'deleted' });
+    }
+    // Holes at the end are in no index, only in the length
+    if (a.length > next) {
+      changes.push({ key: 'length', kind: 'holes', after: a.length - next });
     }
     return changes;
   }
@@ -548,6 +571,8 @@ export type PathChange =
       value: unknown;
       /** Set for an element an array gained beyond the length it had. */
       appended?: true;
+      /** Holes an appended element follows (the array is sparse). */
+      gap?: number;
       /**
        * Set where the value is the same content as before and only which
        * object the path refers to changed (see aliasChanges), so a store
@@ -555,7 +580,12 @@ export type PathChange =
        */
       alias?: true;
     }
-  | { path: string[]; deleted: true };
+  | {
+      path: string[];
+      deleted: true;
+      /** Set for an element an array lost without shrinking: a hole. */
+      hole?: true;
+    };
 
 /**
  * The property paths where `after` differs from `before`, two objects of
@@ -570,14 +600,25 @@ export function diffPaths(
 ): PathChange[] {
   const changes: PathChange[] = [];
   const ancestors = new Set<object>();
+  // Pairs found equal, so a graph that shares objects is not walked once per
+  // path to them (exponentially many), and how often a walk met a cycle
+  const unchanged = new WeakMap<object, Set<object>>();
+  let cuts = 0;
   (function walk(
     b: Record<string, unknown>,
     a: Record<string, unknown>,
     path: string[],
   ): void {
-    // Stop at cycles; shared (non-cyclic) references are visited per path.
-    if (ancestors.has(a)) return;
+    // Stop at cycles; shared (non-cyclic) references that differ are visited
+    // per path, as each is a change there.
+    if (ancestors.has(a)) {
+      cuts++;
+      return;
+    }
+    if (unchanged.get(a)?.has(b)) return;
     ancestors.add(a);
+    const found = changes.length;
+    const cutsBefore = cuts;
     for (const change of keyChanges(b, a, arrays)) {
       const at = [...path, change.key];
       if (change.kind === 'nested') {
@@ -585,17 +626,32 @@ export function diffPaths(
       } else {
         changes.push(
           change.kind === 'deleted'
-            ? { path: at, deleted: true }
+            ? {
+                path: at,
+                deleted: true,
+                ...(change.hole ? { hole: true } : {}),
+              }
             : {
                 path: at,
                 deleted: false,
                 value: change.after,
-                ...(change.kind === 'added' && Array.isArray(a)
-                  ? { appended: true as const }
+                ...(change.kind === 'added' &&
+                Array.isArray(a) &&
+                Number(change.key) >= (b as unknown as unknown[]).length
+                  ? {
+                      appended: true as const,
+                      ...(change.gap ? { gap: change.gap } : {}),
+                    }
                   : {}),
               },
         );
       }
+    }
+    // A walk that met a cycle depends on the ancestors it was reached by
+    if (changes.length === found && cuts === cutsBefore) {
+      const seen = unchanged.get(a) ?? new Set<object>();
+      seen.add(b);
+      unchanged.set(a, seen);
     }
     ancestors.delete(a);
   })(before, after, []);
@@ -616,9 +672,83 @@ export function underChange(
   return false;
 }
 
-/** The segment standing for the entry `index` of a Map or Set in a path. */
-const entryKey = (kind: 'k' | 'v' | 's', index: number): string =>
+/**
+ * The segment standing for the entry `index` of a Map or Set in a path, or
+ * for the `cause` or `errors` of an Error ('c', 'e').
+ */
+const entryKey = (kind: 'k' | 'v' | 's' | 'c' | 'e', index: number): string =>
   `\0${kind}${index}`;
+
+export const isEntryKey = (segment: string): boolean =>
+  segment.startsWith('\0');
+
+/**
+ * What a Map, Set or Error holds in place of properties (keys and values,
+ * members, `cause` and `errors`), each with the segment standing for it in
+ * a path (see entryKey); undefined for any other value.
+ */
+function entryChildren(value: object): [string, unknown][] | undefined {
+  const children: [string, unknown][] = [];
+  if (value instanceof Map) {
+    let index = 0;
+    for (const [k, v] of value) {
+      children.push([entryKey('k', index), k], [entryKey('v', index), v]);
+      index++;
+    }
+  } else if (value instanceof Set) {
+    let index = 0;
+    for (const member of value) children.push([entryKey('s', index++), member]);
+  } else if (value instanceof Error) {
+    for (const key of ['cause', 'errors'] as const) {
+      if (hasOwn(value, key)) {
+        children.push([
+          entryKey(key === 'cause' ? 'c' : 'e', 0),
+          (value as any)[key],
+        ]);
+      }
+    }
+  } else {
+    return undefined;
+  }
+  return children;
+}
+
+/**
+ * The value at `path` below `root`, where a path may go through the entries
+ * of Maps, Sets and Errors (see objectPaths) as well as properties.
+ */
+export function getByEntryPath(root: object, path: readonly string[]): unknown {
+  let current: unknown = root;
+  let start = 0;
+  for (let i = 0; i < path.length; i++) {
+    if (!isEntryKey(path[i]!)) continue;
+    current = getByPath(current as object, path.slice(start, i));
+    if (!isObjectValue(current)) return undefined;
+    current = entryChildren(current)?.find(([at]) => at === path[i])?.[1];
+    start = i + 1;
+  }
+  return start === path.length
+    ? current
+    : getByPath(current as object, path.slice(start));
+}
+
+/**
+ * Write `value` at the path of an object a Map holds as a value (see
+ * objectPaths); other entries are not replaced, as a key or member cannot
+ * change without the entry moving. Returns whether it wrote.
+ */
+function setEntryValue(
+  root: object,
+  path: readonly string[],
+  value: unknown,
+): boolean {
+  const holder = getByEntryPath(root, path.slice(0, -1));
+  const match = /^\0v(\d+)$/.exec(path[path.length - 1]!);
+  if (!(holder instanceof Map) || !match) return false;
+  const key = [...holder.keys()][Number(match[1])];
+  holder.set(key, value);
+  return true;
+}
 
 /**
  * Every path each object (or array, or other value) of `root` is at, the
@@ -630,7 +760,8 @@ const entryKey = (kind: 'k' | 'v' | 's', index: number): string =>
  * With `entries`, the objects held in a Map or Set (as key, value or member)
  * are placed too, after everything else: one met nowhere else is at the path
  * of its Map or Set and the entry's segment (see entryKey), which is no path
- * a value can be read at, so only to tell where an object is from.
+ * a value can be read at (see getByEntryPath), so only to tell where an
+ * object is from; so are the `cause` and `errors` of an Error.
  */
 function objectPaths(
   root: object,
@@ -638,7 +769,7 @@ function objectPaths(
   entries = false,
 ): Map<object, string[][]> {
   const all = new Map<object, string[][]>();
-  const collections: [Map<unknown, unknown> | Set<unknown>, string[]][] = [];
+  const collections: [object, string[]][] = [];
   function place(value: object, at: string[]): void {
     const known = all.get(value);
     if (known) {
@@ -648,7 +779,7 @@ function objectPaths(
     all.set(value, [at]);
     if (isMergeable(value) || Array.isArray(value)) {
       walk(value as Record<string, unknown>, at);
-    } else if (entries && (value instanceof Map || value instanceof Set)) {
+    } else if (entries && entryChildren(value)) {
       collections.push([value, at]);
     }
   }
@@ -663,22 +794,8 @@ function objectPaths(
   }
   walk(root as Record<string, unknown>, []);
   for (const [collection, path] of collections) {
-    let index = 0;
-    for (const entry of collection.entries()) {
-      const [k, v] = entry as [unknown, unknown];
-      const parts: [unknown, string][] =
-        collection instanceof Set
-          ? [[k, entryKey('s', index)]]
-          : [
-              [k, entryKey('k', index)],
-              [v, entryKey('v', index)],
-            ];
-      for (const [value, segment] of parts) {
-        if (isObjectValue(value) && !all.has(value)) {
-          place(value, [...path, segment]);
-        }
-      }
-      index++;
+    for (const [segment, value] of entryChildren(collection)!) {
+      if (isObjectValue(value)) place(value, [...path, segment]);
     }
   }
   return all;
@@ -704,36 +821,55 @@ function firstPaths(
  * parents before children.
  */
 export function sharedPaths(root: object): string[][][] {
-  return [...objectPaths(root).values()].filter((paths) => paths.length > 1);
+  return [...objectPaths(root, undefined, true).values()].filter(
+    (paths) => paths.length > 1,
+  );
 }
 
 /**
- * Whether the Map or Set `y` holds, at the position of an entry of `x`, another
- * object than `x` did (as to where its first appearance is, see aliasChanges):
- * `$map.set("k", $a)` over an equal object. Entries are compared by position,
- * and only when both hold as many; other differences are changes of content.
+ * Whether `y`, which takes the place of `x` at `at` (the first appearance of
+ * both), holds an object elsewhere than `x` did, below an entry of a Map, Set
+ * or Error (see aliasChanges): `$map.set("k", $a)` over an equal object, or
+ * `$map.get("k").child = $a`. Entries are compared by position, and only
+ * where both hold as many; other differences are changes of content. Below
+ * an entry, objects that merge are compared key by key.
  */
-function entryAliasChanged(
+function aliasMoved(
   x: object,
   y: object,
+  at: string[],
   earlier: ReadonlyMap<object, string[]>,
   later: ReadonlyMap<object, string[]>,
 ): boolean {
-  const isSet = x instanceof Set && y instanceof Set;
-  if (!isSet && !(x instanceof Map && y instanceof Map)) return false;
-  if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) return false;
-  if (x.size !== y.size) return false;
-  const moved = (a: unknown, b: unknown): boolean =>
-    isObjectValue(a) &&
-    isObjectValue(b) &&
-    pathKey(earlier.get(a)!) !== pathKey(later.get(b)!);
-  const ys = [...(y as Map<unknown, unknown>).entries()];
-  let index = 0;
-  for (const [k, v] of (x as Map<unknown, unknown>).entries()) {
-    const [k2, v2] = ys[index++]!;
-    if (moved(k, k2) || (!isSet && moved(v, v2))) return true;
+  const pairs: [string, unknown, unknown][] = [];
+  const xs = entryChildren(x);
+  const ys = entryChildren(y);
+  if (xs && ys) {
+    if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) return false;
+    if (x instanceof Map || x instanceof Set) {
+      if (x.size !== (y as Map<unknown, unknown>).size) return false;
+    }
+    const held = new Map(ys);
+    for (const [segment, a] of xs) {
+      if (held.has(segment)) pairs.push([segment, a, held.get(segment)]);
+    }
+  } else if ((isMergeable(x) || Array.isArray(x)) && mergesWith(x, y, true)) {
+    for (const key of Object.keys(y)) {
+      if (hasOwn(x, key)) {
+        pairs.push([key, (x as any)[key], (y as any)[key]]);
+      }
+    }
   }
-  return false;
+  return pairs.some(([segment, a, b]) => {
+    if (!isObjectValue(a) || !isObjectValue(b)) return false;
+    const here = [...at, segment];
+    const isAt = later.get(b)!;
+    return (
+      pathKey(earlier.get(a)!) !== pathKey(isAt) ||
+      (pathKey(isAt) === pathKey(here) &&
+        aliasMoved(a, b, here, earlier, later))
+    );
+  });
 }
 
 /**
@@ -769,7 +905,8 @@ export function aliasChanges(
         changes.push({ path: at, deleted: false, value: y, alias: true });
       } else if (
         pathKey(isAt) === k &&
-        entryAliasChanged(x, y, earlier, later)
+        entryChildren(x) &&
+        aliasMoved(x, y, at, earlier, later)
       ) {
         changes.push({ path: at, deleted: false, value: y, alias: true });
       }
@@ -823,6 +960,7 @@ export function locateObjects(
   return firstPaths(
     source as Record<string, unknown>,
     new Set(changes.map((c) => pathKey(c.path))),
+    true,
   );
 }
 
@@ -842,7 +980,7 @@ export function existingObjects(
       if (super.has(obj)) return true;
       const path = paths.get(obj);
       if (!path) return false;
-      const found = getByPath(target, path);
+      const found = getByEntryPath(target, path);
       const like =
         isObjectValue(found) &&
         (Array.isArray(found)
@@ -867,50 +1005,22 @@ export function isApplied(target: object, change: PathChange): boolean {
   );
 }
 
+/**
+ * Make `path` below `root` hold `object` (an object that `sharedPaths` found
+ * at several paths): a property is written like setByPath() does, a Map's
+ * value replaced; an entry that is a key or member is left as it is.
+ */
+export function relinkPath(
+  root: Record<string, unknown>,
+  path: readonly string[],
+  object: object,
+): void {
+  if (path.some(isEntryKey)) setEntryValue(root, path, object);
+  else setByPath(root, path, object);
+}
+
 export function applyChange(target: object, change: PathChange): void {
   const root = target as Record<string, unknown>;
   if (change.deleted) deleteByPath(root, change.path);
   else setByPath(root, change.path, change.value);
-}
-
-/**
- * Write how `after` differs from `before` (see keyChanges; arrays merge by
- * index) into `target`, another version of the same object or array.
- * Values that changed are written whole, as deep copies; for values that
- * merge, `mergeNested` may merge them into `target` instead, returning
- * whether it did. Into an array, elements removed from the end are removed
- * at the same indices and elements added are appended, and changes at
- * indices `target` lacks are dropped: where `target` was resized, its
- * indices do not line up with `before`'s.
- */
-export function mergeKeys(
-  target: Record<string, unknown>,
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-  mergeNested?: (
-    key: string,
-    before: Record<string, unknown>,
-    after: Record<string, unknown>,
-  ) => boolean,
-): void {
-  const list = Array.isArray(target) ? (target as unknown[]) : undefined;
-  for (const change of keyChanges(before, after, true)) {
-    const { key } = change;
-    if (change.kind === 'deleted') {
-      if (list) list.length = Math.min(list.length, Number(key));
-      else delete target[key];
-    } else if (list && change.kind === 'added') {
-      list.push(deepClone(change.after));
-    } else if (list && Number(key) >= list.length) {
-      continue;
-    } else if (
-      change.kind !== 'nested' ||
-      !(
-        mergeNested?.(key, change.before, change.after) ||
-        deepEqual(change.before, change.after)
-      )
-    ) {
-      target[key] = deepClone(change.after);
-    }
-  }
 }

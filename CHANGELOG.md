@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Story.get("text.length")` reads properties of string, number and boolean values like direct access does. ([#316](https://github.com/rohal12/spindle/issues/316))
+- `{unset $obj.x}` (and `_`, `%`, `@` paths) deletes the field instead of silently deleting nothing. ([#315](https://github.com/rohal12/spindle/issues/315))
+- Diffing a state that shares objects (`{ left: g, right: g }` nested) no longer walks every path to them: the cost was exponential in the depth. ([#314](https://github.com/rohal12/spindle/issues/314))
+- `beforesave` hooks keep sparse arrays: holes, holes added at the end, and `undefined` elements written into holes survive a save and load. ([#313](https://github.com/rohal12/spindle/issues/313))
+- Mutation code resumed after navigation keeps the aliases and shared objects `afternavigate` hooks made. ([#312](https://github.com/rohal12/spindle/issues/312))
+- `{set @a = @b}` over equal local objects makes the two locals one object. ([#311](https://github.com/rohal12/spindle/issues/311))
+- Mutation code detects an object replaced by an equal one below a Map value, Set member or Error `cause` (`$m.get("x").child = $a`). ([#310](https://github.com/rohal12/spindle/issues/310))
+- An object that only Map and Set entries hold stays one object when copied between them (`$m2.set("x", $m1.get("x"))`). ([#309](https://github.com/rohal12/spindle/issues/309))
+- An object added to a Set (`$members.add($a)`) stays readable: the Set no longer keeps a revoked Immer draft. ([#308](https://github.com/rohal12/spindle/issues/308))
 - `clearGameData()` removes only the metadata the cleared story owns, not that of another story whose IFID or slot name contains its IFID. ([#300](https://github.com/rohal12/spindle/issues/300))
 - Mutation code keeps references through arrays and between namespaces: `$items[1] = $items[0]` aliases the elements, `$sel.link = $items[0]` refers to the element, and `%copy = $a` / `_copy = $a` share the object; a write below an aliased object keeps it one object. `Story.set("a.n", …)` keeps aliases and cycles. ([#295](https://github.com/rohal12/spindle/issues/295), [#297](https://github.com/rohal12/spindle/issues/297), [#298](https://github.com/rohal12/spindle/issues/298), [#299](https://github.com/rohal12/spindle/issues/299))
 - A sparse array below a registered class instance keeps its length when an element is written. ([#296](https://github.com/rohal12/spindle/issues/296))

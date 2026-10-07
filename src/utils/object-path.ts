@@ -7,13 +7,16 @@ import { atomicName } from './value-kinds';
  * Members of Object.prototype (`constructor`, `toString`, `__proto__`, ...)
  * are not story state: unless an object holds one as its own property, it
  * reads as missing, as setByPath() treats it. Other inherited properties
- * (class getters, `size` of a Map) are read.
+ * (class getters, `size` of a Map) are read, and so are those of a string,
+ * number or boolean (`length` of a string), as JavaScript boxes them.
  */
 export function getByPath(obj: object, segments: readonly string[]): unknown {
   let current: unknown = obj;
   for (const seg of segments) {
-    if (current == null || typeof current !== 'object') return undefined;
-    if (seg in Object.prototype && !hasOwn(current, seg)) return undefined;
+    if (current == null) return undefined;
+    if (seg in Object.prototype && !hasOwn(Object(current), seg)) {
+      return undefined;
+    }
     current = (current as Record<string, unknown>)[seg];
   }
   return current;

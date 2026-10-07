@@ -13,12 +13,13 @@ import {
   changesBetween,
   applyChange,
   deepClone,
-  deepEqual,
   existingObjects,
+  getByEntryPath,
+  isEntryKey,
   isApplied,
   isMergeable,
   locateObjects,
-  mergeKeys,
+  relinkPath,
   pathKey,
   sharedPaths,
   type PathChange,
@@ -94,18 +95,23 @@ function clonerFor(
   paths?: ReadonlyMap<object, string[]>,
 ): Cloner {
   const seen = paths ? existingObjects(paths, target) : new Map();
-  // Immer does not finalize a draft held as a Map key, so an existing object
-  // met there is put in the draft as the object itself: its base while the
-  // code did not change it, which other references to it then agree with.
-  const mapKey = (copy: object, original: object): object => {
+  // Immer does not finalize a draft held as a Map key or Set member, so an
+  // existing object met there is put in the draft as the object itself: its
+  // base while the code did not change it, which other references to it then
+  // agree with.
+  const settle = (copy: object, original: object): object => {
     const path = paths?.get(original);
     if (!path || !isDraft(copy)) return copy;
     const plain = currentDraft(copy) as object;
-    setByPath(target as Record<string, unknown>, path, plain);
+    // Where the object is in an entry of a Map or Set the path cannot be
+    // written (see getByEntryPath): that entry keeps its own
+    if (!path.some(isEntryKey)) {
+      setByPath(target as Record<string, unknown>, path, plain);
+    }
     seen.set(original, plain);
     return plain;
   };
-  return (value) => deepClone(value, { keepUnregistered: true, seen, mapKey });
+  return (value) => deepClone(value, { keepUnregistered: true, seen, settle });
 }
 
 /** One cloner per target copy, made when first used. */
@@ -358,10 +364,10 @@ function relink(
     const prefixes = [first!, ...others].map((p) => pathKey(p).slice(0, -1));
     if (!written.some((w) => prefixes.some((p) => w.startsWith(p)))) continue;
     try {
-      const object = getByPath(draft, first!);
+      const object = getByEntryPath(draft, first!);
       if (object === null || typeof object !== 'object') continue;
       for (const path of others)
-        setByPath(draft as unknown as Record<string, unknown>, path, object);
+        relinkPath(draft as unknown as Record<string, unknown>, path, object);
     } catch {
       // A path the store does not hold: the code's view is not the store's
     }
@@ -506,14 +512,31 @@ const running = (): Commit[] =>
 /**
  * Bring a suspended mutation's copies up to the store after an action
  * replaced or changed state under it (navigation clears temporaries, back
- * and restart replace variables). Roots that still match keep the objects
- * the code may hold.
+ * and restart replace variables). What the action changed (see
+ * changesBetween) is written into the code's working copy, which keeps the
+ * objects the code may hold where nothing changed, and the references among
+ * the values written, and to the objects it holds already, as a commit does.
  */
 function resync(scope: MutationScope): void {
   const state = useStoryStore.getState();
-  for (const ns of NAMESPACES) {
-    // Root by root: a root that differs is replaced with a copy of the store's
-    mergeKeys(scope.work[ns], scope.work[ns], state[ns]);
+  const now = namespacesOf(state);
+  const changes = changesBetween(
+    scope.base as unknown as Record<string, unknown>,
+    now as unknown as Record<string, unknown>,
+  );
+  const copy = clonerFor(scope.work, locateObjects(now, changes));
+  for (const change of changes) {
+    try {
+      applyChange(
+        scope.work,
+        change.deleted ? change : { ...change, value: copy(change.value) },
+      );
+    } catch {
+      // A path the working copy does not hold: replace its root instead
+      const [ns, root] = change.path as [NamespaceName, string];
+      if (hasOwn(now[ns], root)) scope.work[ns][root] = copy(now[ns][root]);
+      else delete scope.work[ns][root];
+    }
   }
   scope.base = cloneNamespaces(state);
 }
@@ -611,10 +634,25 @@ export function executeMutation(
   // came before its own
   commitScopes([...running(), { scope, keepRunning: false }]);
 
-  for (const key of Object.keys(localsClone)) {
-    if (!deepEqual(localsClone[key], mergedLocals[key])) {
-      scopeUpdate(key, localsClone[key]);
+  // Locals the code changed, as content or as the objects they refer to
+  // (`@a = @b` over an equal object), and the locals that share an object
+  // with one of those: the updater takes each one's value, so they must all
+  // be written for the scope to hold one object again
+  const changed = new Set(
+    changesBetween(mergedLocals, localsClone, true).map((c) => c.path[0]!),
+  );
+  for (const group of sharedPaths(localsClone)) {
+    if (group.some((path) => changed.has(path[0]!))) {
+      // Not a value kept by reference (an unregistered class instance)
+      for (const path of group) {
+        if (localsClone[path[0]!] !== mergedLocals[path[0]!]) {
+          changed.add(path[0]!);
+        }
+      }
     }
+  }
+  for (const key of Object.keys(localsClone)) {
+    if (changed.has(key)) scopeUpdate(key, localsClone[key]);
   }
 
   // Detect deleted locals

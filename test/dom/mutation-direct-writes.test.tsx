@@ -161,6 +161,21 @@ describe('direct store updates during mutation code', () => {
   });
 });
 
+describe('{unset} with a nested path', () => {
+  it('deletes the field in every namespace', () => {
+    state().init(makeStoryData(), { obj: { x: 1, y: 2 } }, {});
+    state().setTemporary('t', { x: 1, y: 2 });
+    state().setTransient('r', { x: 1, y: 2 });
+    renderMarkup(
+      '{unset $obj.x}{unset _t.x}{unset %r.x}{for @l of [{ x: 1, y: 2 }]}{unset @l.x}{set $local = Object.keys(@l)}{/for}',
+    );
+    expect(vars().obj).toEqual({ y: 2 });
+    expect(state().temporary.t).toEqual({ y: 2 });
+    expect(state().transient.r).toEqual({ y: 2 });
+    expect(vars().local).toEqual(['y']);
+  });
+});
+
 describe('macros reacting synchronously to mutation code', () => {
   const performAll = (type: string, value?: unknown) => {
     for (const action of window.Story.getActions()) {
@@ -222,5 +237,14 @@ describe('macros reacting synchronously to mutation code', () => {
     expect(state().currentPassage).toBe('Start');
     expect(state().temporary).toEqual({ n: 0 });
     expect(vars().m).toBe(2);
+  });
+});
+
+describe('local aliases (#311)', () => {
+  it('{set @a = @b} makes both names one object', () => {
+    const el = renderMarkup(
+      '{for @item of [0]}{set @a = { n: 1 }; @b = { n: 1 }}{set @a = @b}{set @a.n = 2}<p>{print @b.n}</p>{/for}',
+    );
+    expect(el.querySelector('p')?.textContent).toBe('2');
   });
 });

@@ -247,3 +247,88 @@ describe('Map and Set entries (#306)', () => {
     expect(vars().keyed.has(vars().a)).toBe(true);
   });
 });
+
+describe('Set members stay usable (#308)', () => {
+  beforeEach(() => init({ a: { n: 1 }, members: new Set(), count: 0 }));
+
+  it('reads an object added to a Set and runs later mutations', () => {
+    run('$members.add($a)');
+    expect([...vars().members][0].n).toBe(1);
+    expect([...vars().members][0]).toBe(vars().a);
+    run('$count += 1');
+    expect(vars().count).toBe(1);
+  });
+});
+
+describe('objects shared between collection entries (#309)', () => {
+  beforeEach(() =>
+    init({
+      map1: new Map([['x', { n: 1 }]]),
+      map2: new Map(),
+      set: new Set([{ n: 1 }]),
+    }),
+  );
+
+  it('keeps one object for a Map value copied into another Map', () => {
+    run('$map2.set("x", $map1.get("x"))');
+    expect(vars().map1.get('x')).toBe(vars().map2.get('x'));
+    run('$map1.get("x").n = 2');
+    expect(vars().map2.get('x').n).toBe(2);
+    expect(vars().map1.get('x')).toBe(vars().map2.get('x'));
+  });
+
+  it('keeps one object for a Set member copied into a Map', () => {
+    run('$map2.set("m", [...$set][0])');
+    expect(vars().map2.get('m')).toBe([...vars().set][0]);
+  });
+});
+
+describe('references nested in collection entries (#310)', () => {
+  beforeEach(() =>
+    init({
+      a: { n: 1 },
+      nested: new Map([['x', { child: { n: 1 } }]]),
+      members: new Set([{ child: { n: 1 } }]),
+      error: Object.assign(new Error('x'), { cause: { n: 1 } }),
+    }),
+  );
+
+  it('commits a Map value property replaced by an equal object', () => {
+    run('$nested.get("x").child = $a');
+    expect(vars().nested.get('x').child).toBe(vars().a);
+    run('$a.n = 5');
+    expect(vars().nested.get('x').child.n).toBe(5);
+  });
+
+  it('commits a Set member property replaced by an equal object', () => {
+    run('[...$members][0].child = $a');
+    expect([...vars().members][0].child).toBe(vars().a);
+  });
+
+  it('commits an Error cause replaced by an equal object', () => {
+    run('$error.cause = $a');
+    expect(vars().error.cause).toBe(vars().a);
+  });
+});
+
+describe('alias-only assignments between locals (#311)', () => {
+  beforeEach(() => init({}));
+
+  const runLocals = (code: string, locals: Record<string, unknown>) => {
+    const updates: Record<string, unknown> = {};
+    executeMutation(code, locals, (key, value) => {
+      updates[key] = value;
+    });
+    return updates;
+  };
+
+  it('makes two locals one object even where content is equal', () => {
+    const updates = runLocals('@a = @b', { a: { n: 1 }, b: { n: 1 } });
+    expect(updates.a).toBeDefined();
+    expect(updates.a).toBe(updates.b);
+  });
+
+  it('reports nothing when locals are untouched', () => {
+    expect(runLocals('$x = 1', { a: { n: 1 } })).toEqual({});
+  });
+});
