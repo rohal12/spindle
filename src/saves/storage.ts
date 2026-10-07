@@ -289,7 +289,16 @@ function createIDBBackend(): StorageBackend {
         }
       };
 
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // Let another tab delete or upgrade the database: close at once and
+        // reopen on the next use.
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
     });
 
@@ -361,6 +370,12 @@ function createIDBBackend(): StorageBackend {
       const req = indexedDB.deleteDatabase(IDB_DB_NAME);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
+      req.onblocked = () =>
+        reject(
+          new Error(
+            'Cannot clear the saved data: another tab or window of this site still has it open. Close the other tabs and try again.',
+          ),
+        );
     });
   });
 }

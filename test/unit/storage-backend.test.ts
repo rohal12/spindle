@@ -360,6 +360,33 @@ describe('indexeddb backend transactions (#271)', () => {
     resetBackend();
   });
 
+  it('closes its connection when another tab deletes the database (#284)', async () => {
+    const backend = await getBackend();
+    await backend.setMeta('k', 'v');
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase('spindle');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => reject(new Error('delete was blocked'));
+    });
+    // Reopens on the next use, to an empty database
+    expect(await backend.getMeta('k')).toBeUndefined();
+    await backend.setMeta('k', 'w');
+    expect(await backend.getMeta('k')).toBe('w');
+  });
+
+  it('reports a clear when another connection keeps the database open (#284)', async () => {
+    const backend = await getBackend();
+    await backend.setMeta('k', 'v');
+    const other = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('spindle');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await expect(backend.destroy()).rejects.toThrow(/another tab/);
+    other.close();
+  });
+
   it('rejects a write whose transaction aborts after the request succeeded', async () => {
     const backend = await getBackend();
     expect(backend.type).toBe('indexeddb');

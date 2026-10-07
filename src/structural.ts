@@ -334,9 +334,17 @@ function equalBuiltin(
 ): boolean | undefined {
   if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
   if (a instanceof RegExp) return String(a) === String(b);
-  if (ArrayBuffer.isView(a) || a instanceof ArrayBuffer) {
-    return equalBytes(a, b as ArrayBuffer);
+  if (ArrayBuffer.isView(a)) {
+    // A view is its place in its backing buffer, and the whole buffer (which
+    // other views can share): equal only if both match.
+    const v = b as ArrayBufferView;
+    return (
+      a.byteOffset === v.byteOffset &&
+      a.byteLength === v.byteLength &&
+      equal(a.buffer, v.buffer, assumed)
+    );
   }
+  if (a instanceof ArrayBuffer) return equalBytes(a, b as ArrayBuffer);
   if (a instanceof URL || a instanceof URLSearchParams) {
     return String(a) === String(b);
   }
