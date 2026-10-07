@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
 import { bootStory } from '../../src/headless';
+import { storyHtml } from './story-html';
 
 // A passage argument ({goto}, {include}) is a quoted string or an
 // expression, and every passage name written out (links, quoted passage
@@ -8,23 +9,6 @@ import { bootStory } from '../../src/headless';
 // story does not start otherwise. (One boot per file: quoted names and
 // expressions that work are covered by test/unit/code-check.test.ts and
 // the dev story.)
-function storyHtml(passages: Record<string, string>): string {
-  const data = Object.entries(passages)
-    .map(
-      ([name, content], i) =>
-        `<tw-passagedata pid="${i + 1}" name="${name}" tags="">${content}</tw-passagedata>`,
-    )
-    .join('\n');
-  return `<!doctype html>
-<html>
-  <body>
-    <tw-storydata name="Passage Names" startnode="1" ifid="PASSAGE-NAMES" format="spindle" format-version="0.0.0">
-      ${data}
-    </tw-storydata>
-  </body>
-</html>`;
-}
-
 describe('bootStory with passage names', () => {
   it('stops the story on an unquoted or missing passage name', async () => {
     const errors = [

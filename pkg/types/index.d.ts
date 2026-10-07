@@ -154,6 +154,26 @@ export type ParameterType =
   | 'options';
 
 /**
+ * What the value of a `string` or `text` argument holds, for the check at
+ * story start and for tooling:
+ * - `markup`: markup the macro renders (`{button}`'s label): its markup
+ *   is checked.
+ * - `text`: plain text the macro uses as written (`{checkbox}`'s label).
+ * - `passage`: a passage name (`{watch}`'s `goto`): the passage must exist.
+ * - `expression`, `statements`: code (`{watch}`'s condition and `run`): it
+ *   is checked as code, and its variable references against the schema.
+ *
+ * Without it, the argument of a macro with `interpolate` holds `markup`,
+ * any other `text`.
+ */
+export type StringHolds =
+  | 'markup'
+  | 'text'
+  | 'passage'
+  | 'expression'
+  | 'statements';
+
+/**
  * Typed parameter definition for macro tooling metadata.
  * Macro authors can provide these to help LSP servers, linters, and documentation generators.
  */
@@ -163,6 +183,8 @@ export interface ParameterDef {
   description?: string;
   /** How the argument is read: required, there is no default. */
   type: ParameterType;
+  /** What a `string` or `text` argument holds (see StringHolds). */
+  holds?: StringHolds;
   /** The options of an `options` parameter. */
   parameters?: readonly ParameterDef[];
 }

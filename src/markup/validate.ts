@@ -8,10 +8,13 @@
 import { lineColumn, MarkupError, parseMarkup, tokenizeMarkup } from './parse';
 import type { Token } from './tokens';
 import { parseWidgetDef } from '../widgets/widget-def';
-import { codeAndText, parseOrError, withParseCache } from '../code-check';
+import {
+  codeAndText,
+  parseOrError,
+  withParseCache,
+  type ParametersOf,
+} from '../code-check';
 import { CodeSyntaxError } from '../js-lexer';
-import type { ParameterDef } from '../registry';
-import { subMacroParameters } from '../components/macros/option-utils';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -59,12 +62,13 @@ export interface MarkupValidationOptions {
    */
   checkPassageNames?: boolean;
   /**
-   * The declared parameters of a macro, whose `expression` and `statements`
-   * arguments are checked as code and whose `text` and `string` arguments
-   * as markup (see code-check.ts). Without them only the code of `{$…}`,
-   * `{do}`, branch conditions and attributes is checked.
+   * The declared parameters of a macro (see parameterLookup in
+   * code-check.ts), whose `expression` and `statements` arguments are
+   * checked as code and whose `text` and `string` arguments as what they
+   * hold. Without them only the code of `{$…}`, `{do}`, branch conditions
+   * and attributes is checked.
    */
-  parametersOf?(name: string): readonly ParameterDef[] | undefined;
+  parametersOf?: ParametersOf;
 }
 
 /**
@@ -228,8 +232,7 @@ export function validateMarkup(
     }
   };
 
-  const parametersOf = (name: string) =>
-    options.parametersOf?.(name) ?? subMacroParameters(name);
+  const parametersOf: ParametersOf = options.parametersOf ?? (() => undefined);
 
   /**
    * Check `tokens`, the tokens of `src`, which starts at `base` in the

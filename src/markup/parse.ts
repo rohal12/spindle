@@ -199,7 +199,11 @@ export function tokenizeMarkupTolerant(
 
 /** `token` with its offsets moved `by` on. */
 function shift(token: Token, by: number): Token {
-  return by === 0
-    ? token
-    : { ...token, start: token.start + by, end: token.end + by };
+  if (by === 0) return token;
+  const moved = { ...token, start: token.start + by, end: token.end + by };
+  if (moved.type === 'link') {
+    moved.targetStart += by;
+    moved.targetEnd += by;
+  }
+  return moved;
 }

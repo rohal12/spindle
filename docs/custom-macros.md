@@ -412,14 +412,15 @@ You can add optional metadata to your macro definition to help LSP servers, lint
 {/do}
 ```
 
-| Property                   | Type       | Description                                    |
-| -------------------------- | ---------- | ---------------------------------------------- |
-| `description`              | `string?`  | Human-readable description shown in hover docs |
-| `parameters`               | `array?`   | Array of parameter definitions                 |
-| `parameters[].name`        | `string`   | Parameter name                                 |
-| `parameters[].required`    | `boolean?` | Whether the parameter is required              |
-| `parameters[].description` | `string?`  | Human-readable description of the parameter    |
-| `parameters[].type`        | `string`   | How the argument is read (see below): required |
+| Property                   | Type       | Description                                                                  |
+| -------------------------- | ---------- | ---------------------------------------------------------------------------- |
+| `description`              | `string?`  | Human-readable description shown in hover docs                               |
+| `parameters`               | `array?`   | Array of parameter definitions                                               |
+| `parameters[].name`        | `string`   | Parameter name                                                               |
+| `parameters[].required`    | `boolean?` | Whether the parameter is required                                            |
+| `parameters[].description` | `string?`  | Human-readable description of the parameter                                  |
+| `parameters[].type`        | `string`   | How the argument is read (see below): required                               |
+| `parameters[].holds`       | `string?`  | What a `string` or `text` argument holds (see [below](#what-a-string-holds)) |
 
 ### Parameter Types
 
@@ -453,6 +454,27 @@ parameters: [
 ```
 
 When the story starts, Spindle parses every `expression`, `statements` and `passage` argument of your macro wherever it is used, and stops the story on a syntax error, as it does for the built-in macros (see [Code in passages](variables.md#code-in-passages)). A `passage` argument must be a quoted string or an expression: an unquoted name (`{travel Kitchen}`) stops the story too, and a quoted name must be the name of a passage. Declare arguments that may hold text as `text` or `string`, so that they aren't read as code. Evaluate a `passage` argument with `ctx.evaluate()` (with `merged: true`).
+
+### What a String Holds
+
+A `string` or `text` argument can hold markup, plain text, a passage name or code. Say which with `holds`, so that the story-start check (and editor tooling) reads it as your macro does:
+
+| `holds`        | The argument is                                                    | Checked when the story starts                        |
+| -------------- | ------------------------------------------------------------------ | ---------------------------------------------------- |
+| `"markup"`     | Markup your macro resolves, e.g. with `ctx.resolve()` (a label)    | Its markup: unknown macros, malformed tags           |
+| `"text"`       | Text your macro uses as written (a placeholder, an option's value) | Nothing                                              |
+| `"passage"`    | A passage name (`{travel "Hall"}`)                                 | A passage of that name must exist                    |
+| `"expression"` | Code your macro evaluates, in quotes (`{when "$hp < 10"}`)         | Its syntax, and its variables against StoryVariables |
+| `"statements"` | Code your macro runs as statements, in quotes                      | Its syntax, and its variables against StoryVariables |
+
+Without `holds`, the argument holds `"markup"` if the macro has [`interpolate`](#interpolate--variable-references-in-classes-and-ids) and `"text"` otherwise. `Story.defineMacro()` throws for any other value, and for `holds` on a parameter that is not a `string` or `text`. The built-in macros declare theirs: `{watch}`'s condition holds an `expression`, its `goto` and `dialog` a `passage`, its `run` `statements` and its `name` `text`; `{button}`'s label holds `markup`, `{checkbox}`'s label `text`.
+
+```js
+parameters: [
+  { name: 'to', type: 'string', holds: 'passage', required: true },
+  { name: 'label', type: 'text', holds: 'markup' },
+];
+```
 
 This metadata is accessible at runtime via `Story.getMacroRegistry()` and from Node.js via the `@rohal12/spindle/tooling` entry point (`defineMacro`, `getMacroRegistry`; it also exports [`parseStoryVariables`](special-passages.md#checking-declarations-in-tests) and [`validateMarkup`](special-passages.md#checking-markup-in-tests), which checks passages against the macros registered there, and the [parsing rules](tooling.md) the runtime reads passages with). See [Story API — getMacroRegistry](story-api.md#story-getmacroregistry) for details.
 

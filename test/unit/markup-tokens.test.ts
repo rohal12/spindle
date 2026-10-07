@@ -23,6 +23,8 @@ describe('tokenizeMarkup', () => {
           type: 'link',
           display: 'Garden',
           target: 'Garden',
+          targetStart: 2,
+          targetEnd: 8,
           start: 0,
           end: 10,
         },
@@ -32,21 +34,45 @@ describe('tokenizeMarkup', () => {
     it('parses [[display|target]] pipe syntax', () => {
       const tokens = tokenizeMarkup('[[Go|Garden]]');
       expect(tokens).toEqual([
-        { type: 'link', display: 'Go', target: 'Garden', start: 0, end: 13 },
+        {
+          type: 'link',
+          display: 'Go',
+          target: 'Garden',
+          targetStart: 5,
+          targetEnd: 11,
+          start: 0,
+          end: 13,
+        },
       ]);
     });
 
     it('parses [[display->target]] arrow syntax', () => {
       const tokens = tokenizeMarkup('[[Go->Garden]]');
       expect(tokens).toEqual([
-        { type: 'link', display: 'Go', target: 'Garden', start: 0, end: 14 },
+        {
+          type: 'link',
+          display: 'Go',
+          target: 'Garden',
+          targetStart: 6,
+          targetEnd: 12,
+          start: 0,
+          end: 14,
+        },
       ]);
     });
 
     it('parses [[target<-display]] reverse arrow syntax', () => {
       const tokens = tokenizeMarkup('[[Garden<-Go]]');
       expect(tokens).toEqual([
-        { type: 'link', display: 'Go', target: 'Garden', start: 0, end: 14 },
+        {
+          type: 'link',
+          display: 'Go',
+          target: 'Garden',
+          targetStart: 2,
+          targetEnd: 8,
+          start: 0,
+          end: 14,
+        },
       ]);
     });
 
@@ -57,6 +83,8 @@ describe('tokenizeMarkup', () => {
           type: 'link',
           display: 'display',
           target: 'target',
+          targetStart: 16,
+          targetEnd: 22,
           start: 0,
           end: 26,
         },
@@ -76,6 +104,8 @@ describe('tokenizeMarkup', () => {
         type: 'link',
         display: 'Left',
         target: 'Left',
+        targetStart: 5,
+        targetEnd: 9,
         start: 3,
         end: 11,
       });
@@ -89,6 +119,8 @@ describe('tokenizeMarkup', () => {
         type: 'link',
         display: 'Right',
         target: 'Right',
+        targetStart: 17,
+        targetEnd: 22,
         start: 15,
         end: 24,
       });
@@ -590,6 +622,8 @@ describe('tokenizeMarkup', () => {
           display: 'a',
           target: 'a',
           className: 'a-{%a} a',
+          targetStart: 12,
+          targetEnd: 13,
           start: 0,
           end: 15,
         },
@@ -604,6 +638,8 @@ describe('tokenizeMarkup', () => {
           display: 'Go',
           target: 'Start',
           className: '{$cls}',
+          targetStart: 13,
+          targetEnd: 18,
           start: 0,
           end: 20,
         },
@@ -632,6 +668,8 @@ describe('tokenizeMarkup', () => {
           display: 'Open the door',
           target: 'Hallway',
           className: 'fancy',
+          targetStart: 23,
+          targetEnd: 30,
           start: 0,
           end: 32,
         },
@@ -646,6 +684,8 @@ describe('tokenizeMarkup', () => {
           display: 'Go',
           target: 'Start',
           className: 'fancy bold',
+          targetStart: 17,
+          targetEnd: 22,
           start: 0,
           end: 24,
         },
@@ -660,6 +700,8 @@ describe('tokenizeMarkup', () => {
           display: 'Garden',
           target: 'Garden',
           className: 'fancy',
+          targetStart: 9,
+          targetEnd: 15,
           start: 0,
           end: 17,
         },
@@ -756,6 +798,8 @@ describe('tokenizeMarkup', () => {
           display: 'Open the door',
           target: 'Hallway',
           id: 'door-link',
+          targetStart: 27,
+          targetEnd: 34,
           start: 0,
           end: 36,
         },
@@ -770,6 +814,8 @@ describe('tokenizeMarkup', () => {
           display: 'Garden',
           target: 'Garden',
           id: 'main-link',
+          targetStart: 13,
+          targetEnd: 19,
           start: 0,
           end: 21,
         },
@@ -847,6 +893,8 @@ describe('tokenizeMarkup', () => {
           target: 'Hallway',
           className: 'fancy',
           id: 'door',
+          targetStart: 17,
+          targetEnd: 24,
           start: 0,
           end: 26,
         },
@@ -862,6 +910,8 @@ describe('tokenizeMarkup', () => {
           target: 'Hallway',
           className: 'fancy',
           id: 'door',
+          targetStart: 17,
+          targetEnd: 24,
           start: 0,
           end: 26,
         },

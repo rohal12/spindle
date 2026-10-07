@@ -46,7 +46,10 @@ export function defineInputMacro(
   defineMacro({
     name,
     storeVar: true,
-    parameters: [VARIABLE_PARAMETER, { name: 'placeholder', type: 'string' }],
+    parameters: [
+      VARIABLE_PARAMETER,
+      { name: 'placeholder', type: 'string', holds: 'text' },
+    ],
     render(_props, ctx) {
       const placeholder = ctx.args.placeholder ?? '';
 

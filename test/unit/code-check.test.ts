@@ -5,11 +5,13 @@
 import { describe, it, expect } from 'vitest';
 import { formatDiagnostic, validateMarkup } from '../../src/markup/validate';
 import { validateStoryMarkup } from '../../src/tooling';
+import { holdsCode, parameterLookup } from '../../src/code-check';
 import {
   getMacro,
   getMacroRegistry,
   isSubMacro,
   type MacroMetadata,
+  type StringHolds,
 } from '../../src/registry';
 
 /**
@@ -21,9 +23,6 @@ function storyErrors(
   extra: MacroMetadata[] = [],
 ): string[] {
   const macros = [...getMacroRegistry(), ...extra];
-  const parameters = new Map(
-    macros.map((m) => [m.name.toLowerCase(), m.parameters]),
-  );
   const known = new Set(macros.map((m) => m.name.toLowerCase()));
   const list = Object.entries(passages).map(([name, content]) => ({
     name,
@@ -33,7 +32,7 @@ function storyErrors(
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || known.has(name),
     macroNames: known,
-    parametersOf: (name) => parameters.get(name),
+    parametersOf: parameterLookup(macros),
   }).map(formatDiagnostic);
 }
 
@@ -285,15 +284,18 @@ describe('the story-start check of passage names', () => {
     ['[[Cook|Kitchen]]', 1, 8, '[[Cook|Kitchen]]'],
     ['[[Cook->Kitchen]]', 1, 9, '[[Cook->Kitchen]]'],
     ['[[Kitchen<-Cook]]', 1, 3, '[[Kitchen<-Cook]]'],
+    ['[[Kitchen->Kitchen]]', 1, 12, '[[Kitchen->Kitchen]]'],
+    ['[[Kitchen|Kitchen]]', 1, 11, '[[Kitchen|Kitchen]]'],
+    ['[[Kitchen<-Kitchen]]', 1, 3, '[[Kitchen<-Kitchen]]'],
     ['[[.big#k Kitchen]]', 1, 10, '[[.big#k Kitchen]]'],
     ['{link "Cook" "Kitchen"}x{/link}', 1, 14, '{link "Cook" "Kitchen"}'],
     ['{dialog "Cook"}Kitchen{/dialog}', 1, 16, '{dialog "Cook"}'],
-    ["{dialog 'Cook'}\n 'Kitchen' \n{/dialog}", 2, 3, "{dialog 'Cook'}"],
-    ['{watch "$x" goto "Kitchen"}', 1, 19, '{watch "$x" goto "Kitchen"}'],
+    ["{dialog 'Cook'}\n 'Kitchen' \n{/dialog}", 2, 2, "{dialog 'Cook'}"],
+    ['{watch "$x" goto "Kitchen"}', 1, 18, '{watch "$x" goto "Kitchen"}'],
     [
       '{watch "$x" once dialog "Kitchen"}',
       1,
-      26,
+      25,
       '{watch "$x" once dialog "Kitchen"}',
     ],
   ])('rejects a missing passage in %s', (content, line, column, label) => {
@@ -345,6 +347,100 @@ describe('the story-start check of quoted arguments', () => {
 
   it('accepts an optional string left out at the end', () => {
     expect(errors('{meter $hp 100}{meter $hp 100 "HP"}')).toEqual([]);
+  });
+});
+
+describe('the story-start check: what a string holds (#264)', () => {
+  /** A custom macro {travel} whose quoted `to` holds `holds`. */
+  const travel = (holds?: StringHolds, interpolate?: boolean) => [
+    {
+      name: 'travel',
+      block: false,
+      subMacros: [],
+      source: 'user' as const,
+      interpolate,
+      parameters: [{ name: 'to', type: 'string' as const, holds }],
+    },
+  ];
+
+  it('looks up a passage name a custom macro declares', () => {
+    const extra = travel('passage');
+    expect(storyErrors({ Start: '{travel "Hall"}', Hall: 'x' }, extra)).toEqual(
+      [],
+    );
+    expect(storyErrors({ Start: '{travel "Hal"}', Hall: 'x' }, extra)).toEqual([
+      'Passage "Start", line 1, column 9: No passage named "Hal" in {travel "Hal"}. Did you mean "Hall"?',
+    ]);
+  });
+
+  it.each([
+    ['expression', '{travel "$a +"}', 'line 1, column 14'],
+    ['statements', '{travel "if ("}', 'line 1, column 14'],
+  ] as const)('checks the code a custom macro declares: %s', (holds, m, at) => {
+    expect(storyErrors({ Start: m }, travel(holds))).toEqual([
+      expect.stringContaining(`Passage "Start", ${at}: `),
+    ]);
+  });
+
+  it('checks markup by default only in macros with interpolate', () => {
+    const markup = '{travel "{literal}"}';
+    expect(storyErrors({ Start: markup }, travel())).toEqual([]);
+    expect(storyErrors({ Start: markup }, travel('text', true))).toEqual([]);
+    for (const extra of [travel(undefined, true), travel('markup')]) {
+      expect(storyErrors({ Start: markup }, extra)).toEqual([
+        expect.stringContaining('In the to of {travel}: Unknown macro'),
+      ]);
+    }
+  });
+});
+
+describe('parameterLookup (#267)', () => {
+  const lookup = parameterLookup([
+    {
+      name: 'Shout',
+      interpolate: true,
+      parameters: [
+        { name: 'what', type: 'text' },
+        { name: 'quietly', type: 'flag' },
+      ],
+    },
+    { name: 'plain' },
+  ]);
+
+  it('finds macros in any case, with what their strings hold', () => {
+    expect(lookup('SHOUT')).toEqual([
+      { name: 'what', type: 'text', holds: 'markup' },
+      { name: 'quietly', type: 'flag' },
+    ]);
+    expect(lookup('shout')).toBe(lookup('Shout'));
+    expect(lookup('plain')).toBeUndefined();
+    expect(lookup('nope')).toBeUndefined();
+  });
+
+  it('gives the parameters of the built-in sub-macros', () => {
+    expect(lookup('Option')).toEqual([
+      { name: 'value', type: 'string', holds: 'text', required: true },
+    ]);
+  });
+});
+
+describe('holdsCode (#266)', () => {
+  it('is true only for parameters (options too) that hold code', () => {
+    const watch = getMacroRegistry().find((m) => m.name === 'watch')!;
+    expect(holdsCode(watch.parameters!)).toBe(true);
+    expect(holdsCode([{ name: 'a', type: 'expression' }])).toBe(false);
+    expect(
+      holdsCode([
+        {
+          name: 'o',
+          type: 'options',
+          parameters: [{ name: 'r', type: 'string', holds: 'statements' }],
+        },
+      ]),
+    ).toBe(true);
+    for (const m of getMacroRegistry()) {
+      if (m.name !== 'watch') expect(holdsCode(m.parameters ?? [])).toBe(false);
+    }
   });
 });
 
@@ -403,6 +499,30 @@ describe('the story-start check: reported bugs', () => {
     ).toEqual([]);
     expect(storyErrors({ Start: '{button "{literal}"}{/button}' })).toEqual([
       expect.stringContaining('Unknown macro {literal}'),
+    ]);
+  });
+
+  it.each([
+    ['a {watch} goto', '{watch "1" goto "Hall {east}"}'],
+    ['a {watch} dialog', '{watch "1" dialog "Hall {east}"}'],
+    ['a {checkbox} label', '{checkbox $a "{literal}"}'],
+    ['a {radiobutton} label', '{radiobutton $b "a" "{literal}"}'],
+    ['a {radiobutton} value', '{radiobutton $b "{literal}"}'],
+    ['a {textbox} placeholder', '{textbox $c "{literal}"}'],
+    ['a {numberbox} placeholder', '{numberbox $c "{literal}"}'],
+    ['a {textarea} placeholder', '{textarea $c "{literal}"}'],
+  ])('keeps %s out of markup checks (#259)', (_, markup) => {
+    expect(storyErrors({ Start: markup, 'Hall {east}': 'x' })).toEqual([]);
+  });
+
+  it.each([
+    ['{button "{literal}"}{/button}', 'In the label of {button}'],
+    ['{dialog "{literal}"}Start{/dialog}', 'In the label of {dialog}'],
+    ['{link "{literal}" "Start"}{/link}', 'In the text of {link}'],
+    ['{meter $a 10 "{literal}"}', 'In the label of {meter}'],
+  ])('checks the markup in %s (#259)', (markup, where) => {
+    expect(storyErrors({ Start: markup })).toEqual([
+      expect.stringContaining(`${where}: Unknown macro {literal}`),
     ]);
   });
 

@@ -17,6 +17,7 @@ import {
   extractDefaults,
 } from './story-variables';
 import { getMacro, getMacroRegistry, isSubMacro } from './registry';
+import { parameterLookup } from './code-check';
 import { getWidget } from './widgets/widget-registry';
 import {
   formatDiagnostic,
@@ -71,14 +72,11 @@ function markupErrors(
   only: (passage: MarkupPassage) => boolean,
 ): string[] {
   const macros = getMacroRegistry();
-  const parameters = new Map(
-    macros.map((m) => [m.name.toLowerCase(), m.parameters]),
-  );
   return validateMarkup(storyData.passages.values(), {
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
     macroNames: macros.map((m) => m.name),
-    parametersOf: (name) => parameters.get(name),
+    parametersOf: parameterLookup(macros),
     only,
   }).map(formatDiagnostic);
 }

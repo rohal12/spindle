@@ -6,7 +6,7 @@ defineMacro({
   block: true,
   interpolate: true,
   parameters: [
-    { name: 'label', type: 'text', required: true },
+    { name: 'label', type: 'text', holds: 'markup', required: true },
     { name: 'noclose', type: 'flag' },
   ],
   render({ children = [] }, ctx) {

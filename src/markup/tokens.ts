@@ -58,6 +58,9 @@ export interface LinkToken extends Span, Selectors {
   type: 'link';
   display: string;
   target: string;
+  /** Where the target is written, from `targetStart` to `targetEnd`. */
+  targetStart: number;
+  targetEnd: number;
 }
 
 export interface MacroToken extends Span, Selectors {

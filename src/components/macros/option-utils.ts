@@ -16,7 +16,7 @@ export function parseVarArgs(rawArgs: string): {
 
 /** The parameters of an `{option}` sub-macro: its value. */
 const OPTION_PARAMETERS = [
-  { name: 'value', type: 'string', required: true },
+  { name: 'value', type: 'string', holds: 'text', required: true },
 ] as const;
 
 /** The parameters of the built-in sub-macros that take arguments. */

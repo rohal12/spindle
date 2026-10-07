@@ -286,10 +286,67 @@ describe('tooling API: passage references', () => {
       ['goto', { kind: 'name', name: 'Cellar' }, '"Cellar"'],
       ['include', { kind: 'expression', expression: '$room' }, '$room'],
       ['link', { kind: 'name', name: 'Attic' }, '"Attic"'],
-      ['watch', { kind: 'name', name: 'Roof' }, 'Roof'],
-      ['watch', { kind: 'name', name: 'Hint' }, 'Hint'],
+      ['watch', { kind: 'name', name: 'Roof' }, '"Roof"'],
+      ['watch', { kind: 'name', name: 'Hint' }, '"Hint"'],
       ['dialog', { kind: 'name', name: 'Basement' }, 'Basement'],
     ]);
+  });
+
+  it.each([
+    ['an escaped name', '{watch "x" goto "H\\"all"}', '"H\\"all"', 'H"all'],
+    [
+      'a name also in the condition',
+      '{watch "$x == \'a\'" goto "a"}',
+      '"a"',
+      'a',
+    ],
+    ['a name after the keyword', '{watch "x" goto"Hall"}', '"Hall"', 'Hall'],
+    ['a quoted {dialog} body', '{dialog "T"}"Hall"{/dialog}', '"Hall"', 'Hall'],
+    [
+      'a spaced {dialog} body',
+      "{dialog 'T'}\n 'Hall' \n{/dialog}",
+      "'Hall'",
+      'Hall',
+    ],
+    ['a {goto} name with spaces', '{goto   "Hall"  }', '"Hall"', 'Hall'],
+    ['a macro named as its argument', '{goto goto}', 'goto', undefined],
+  ])('spans %s as written, quotes included (#260)', (_, src, written, name) => {
+    const [ref, ...rest] = refs(src);
+    expect(rest).toEqual([]);
+    expect(at(src, ref!)).toBe(written);
+    expect(ref!.target).toEqual(
+      name === undefined
+        ? { kind: 'expression', expression: written }
+        : { kind: 'name', name },
+    );
+  });
+
+  it.each([
+    ['[[Hall->Hall]]', 8],
+    ['[[Hall|Hall]]', 7],
+    ['[[Hall<-Hall]]', 2],
+    ['[[ Hall | Hall ]]', 10],
+    ['[[.c#i Hall->Hall]]', 13],
+  ])(
+    'spans the target of %s, not a label with its text (#261)',
+    (src, start) => {
+      expect(refs(src)).toEqual([
+        {
+          macro: 'link',
+          target: { kind: 'name', name: 'Hall' },
+          start,
+          end: start + 4,
+        },
+      ]);
+    },
+  );
+
+  it('gives one reference per argument (#260)', () => {
+    const n = 2000;
+    const src = '{goto "Hall"} {include $room} [[Hall]] '.repeat(n);
+    const found = refs(src);
+    expect(found).toHaveLength(3 * n);
+    expect(new Set(found.map((r) => r.start)).size).toBe(3 * n);
   });
 
   it('reads half-typed markup', () => {

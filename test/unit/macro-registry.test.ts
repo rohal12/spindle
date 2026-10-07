@@ -220,6 +220,37 @@ describe('defineMacro stores metadata', () => {
     );
   });
 
+  it('throws for what a parameter holds declared wrongly (#264)', () => {
+    expect(() =>
+      defineMacro({
+        name: 'badholds',
+        // @ts-expect-error: not what a string holds
+        parameters: [{ name: 'to', type: 'string', holds: 'passsage' }],
+        render: () => null,
+      }),
+    ).toThrow(
+      'spindle: The parameter "to" of the macro {badholds} holds the unknown "passsage". ' +
+        'Give a `string` or `text` parameter one of markup, text, passage, ' +
+        'expression, statements to hold (see docs/custom-macros.md#what-a-string-holds).',
+    );
+    expect(() =>
+      defineMacro({
+        name: 'codeholds',
+        parameters: [{ name: 'x', type: 'expression', holds: 'text' }],
+        render: () => null,
+      }),
+    ).toThrow(
+      'The parameter "x" of the macro {codeholds} is of the type expression, which holds what it is.',
+    );
+    expect(() =>
+      defineMacro({
+        name: 'goodholds',
+        parameters: [{ name: 'to', type: 'text', holds: 'passage' }],
+        render: () => null,
+      }),
+    ).not.toThrow();
+  });
+
   it('accepts a macro that declares no parameters, which reads rawArgs', () => {
     expect(() =>
       defineMacro({ name: 'raw', render: (props) => props.rawArgs }),

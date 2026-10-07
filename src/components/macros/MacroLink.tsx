@@ -12,7 +12,7 @@ defineMacro({
   // {link "text" passage} or {link "text"}; the passage is a quoted name or
   // an expression, as in {goto}.
   parameters: [
-    { name: 'text', type: 'string', required: true },
+    { name: 'text', type: 'string', holds: 'markup', required: true },
     { name: 'passage', type: 'passage' },
   ],
   render({ children = [] }, ctx) {
