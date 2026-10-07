@@ -6,6 +6,7 @@ import {
   getBackend,
   resetBackend,
 } from '../../src/saves/storage';
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { decodePayload, encodePayload } from '../../src/saves/format';
 import { quickSave, hasQuickSave } from '../../src/saves/save-manager';
 import type {
@@ -345,5 +346,42 @@ describe('getBackend', () => {
     resetBackend();
     const fresh = getBackend();
     expect(await fresh).not.toBe(await pending);
+  });
+});
+
+describe('indexeddb backend transactions (#271)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    resetBackend();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetBackend();
+  });
+
+  it('rejects a write whose transaction aborts after the request succeeded', async () => {
+    const backend = await getBackend();
+    expect(backend.type).toBe('indexeddb');
+    await backend.setMeta('review-key', 'old');
+
+    const original = IDBObjectStore.prototype.put;
+    let inject = true;
+    IDBObjectStore.prototype.put = function (...args) {
+      const req = original.apply(this, args);
+      if (inject && this.name === 'meta') {
+        inject = false;
+        const tx = this.transaction;
+        req.addEventListener('success', () => tx.abort());
+      }
+      return req;
+    };
+    try {
+      await expect(backend.setMeta('review-key', 'new')).rejects.toBeDefined();
+      expect(await backend.getMeta('review-key')).toBe('old');
+      await expect(backend.setMeta('fresh', 'x')).resolves.toBeUndefined();
+    } finally {
+      IDBObjectStore.prototype.put = original;
+    }
   });
 });

@@ -383,7 +383,8 @@ describe('compiled story e2e', () => {
     });
 
     it('renders link macro', async () => {
-      const link = await page.$('a.macro-link');
+      // In this passage: the page's first link may be another passage's
+      const link = await page.$('[data-passage="Extra Macros"] a.macro-link');
       expect(link).not.toBeNull();
       expect(await link!.textContent()).toBe('Set flag');
     });

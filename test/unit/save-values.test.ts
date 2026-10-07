@@ -153,6 +153,57 @@ describe('values in saves', () => {
       expectWorld(Story.get('world'));
     });
 
+    it('between a reused and a new part of a variable (#269)', async () => {
+      Story.set('graph', { a: { child: { x: 1 } }, b: { x: 2 } });
+      const shared = { x: 1 };
+      Story.set('graph', { a: { child: shared }, b: shared });
+      Story.goto('Room');
+      await Story.waitForActions();
+      let graph = Story.get('graph') as any;
+      expect(graph.a.child).toBe(graph.b);
+      await Story.save('graph');
+      await Story.load('graph');
+      await Story.waitForActions();
+      graph = Story.get('graph') as any;
+      expect(graph.a.child).toBe(graph.b);
+    });
+
+    it('between variables, back and forward (#270)', async () => {
+      Story.set({ left: { x: 0 }, right: { x: 0 } });
+      Story.goto('Room');
+      await Story.waitForActions();
+      const shared = { x: 1 };
+      Story.set({ left: shared, right: shared });
+      Story.goto('Hall');
+      await Story.waitForActions();
+      expect(Story.get('left')).toBe(Story.get('right'));
+      Story.back();
+      await Story.waitForActions();
+      Story.forward();
+      await Story.waitForActions();
+      expect(Story.get('left')).toBe(Story.get('right'));
+      await Story.save('s');
+      Story.set({ left: null, right: null });
+      await Story.load('s');
+      await Story.waitForActions();
+      expect(Story.get('left')).toBe(Story.get('right'));
+    });
+
+    it('between a changed and an unchanged variable (#270)', async () => {
+      const shared = { x: 0 };
+      Story.set({ kept: { inner: shared }, moved: 1 });
+      Story.goto('Room');
+      await Story.waitForActions();
+      Story.set('moved', shared);
+      Story.goto('Hall');
+      await Story.waitForActions();
+      Story.back();
+      await Story.waitForActions();
+      Story.forward();
+      await Story.waitForActions();
+      expect(Story.get('moved')).toBe((Story.get('kept') as any).inner);
+    });
+
     it('in an exported and imported save, through JSON text', async () => {
       Story.set('party', party());
       Story.goto('Room');

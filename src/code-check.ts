@@ -435,7 +435,8 @@ export function* argPieces(
       }
     }
   }
-  yield* visit(params, values);
+  // Options are visited in metadata order, which is not the order written
+  yield* [...visit(params, values)].sort((a, b) => a.offset - b.offset);
 }
 
 /**

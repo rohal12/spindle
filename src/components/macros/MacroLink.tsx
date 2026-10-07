@@ -16,7 +16,8 @@ defineMacro({
     { name: 'passage', type: 'passage' },
   ],
   render({ children = [] }, ctx) {
-    const display = ctx.args.text ?? '';
+    // The label is markup: resolved once, for the element and its action
+    const display = ctx.resolve?.(ctx.args.text ?? '') ?? '';
     let passage: string | null = null;
     // Boxed: anything can be thrown, including null and other falsy values
     let failure: { error: unknown } | undefined;

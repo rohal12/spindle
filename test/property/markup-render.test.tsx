@@ -595,8 +595,8 @@ describe('escaped braces (docs/markup.md "Escaped Braces")', () => {
 
 describe('Twine links', () => {
   /**
-   * Passage names without separators, brackets or a selector prefix. Link
-   * text is literal, so `{$x}` and `&amp;` show as written.
+   * Passage names without separators, brackets or a selector prefix. A
+   * name is literal, so `{$x}` and `&amp;` show as written.
    */
   const name = fc
     .string({
@@ -607,12 +607,18 @@ describe('Twine links', () => {
     .map((s) => s.trim())
     .filter((s) => s !== '' && !/^[.#]/.test(s));
 
+  /** Link text is markup (#273): text without braces shows as written. */
+  const text = name.filter((s) => !/[{}]/.test(s));
+
   test.prop(
-    [fc.constantFrom('plain', 'pipe', 'arrow', 'reverse'), name, name],
+    [fc.constantFrom('plain', 'pipe', 'arrow', 'reverse'), text, name],
     domOptions,
   )(
     'show the display text and navigate to the target',
-    (form, display, target) => {
+    (form, display, target0) => {
+      let target = target0;
+      // A plain link's name is its text too
+      if (form === 'plain') target = display;
       const src =
         form === 'plain'
           ? `[[${target}]]`

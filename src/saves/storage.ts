@@ -315,7 +315,20 @@ function createIDBBackend(): StorageBackend {
       make: (store: IDBObjectStore) => IDBRequest<R>,
     ): Promise<R> => {
       const db = await openDB();
-      return idbReq(make(db.transaction(name, mode).objectStore(name)));
+      const tx = db.transaction(name, mode);
+      const result = idbReq(make(tx.objectStore(name)));
+      // A request can succeed and its transaction still roll back, so a
+      // write is done only when the transaction completes.
+      if (mode === 'readonly') return result;
+      const committed = new Promise<void>((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () =>
+          reject(
+            tx.error ?? new DOMException('Transaction aborted', 'AbortError'),
+          );
+      });
+      const [value] = await Promise.all([result, committed]);
+      return value;
     };
 
     return {

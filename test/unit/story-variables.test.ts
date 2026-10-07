@@ -223,6 +223,31 @@ describe('validatePassages', () => {
     expect(errors).toEqual([]);
   });
 
+  it('does not exempt $name for a same-named @name loop local (#275)', () => {
+    const schema = parseStoryVariables('$x = ""');
+    const errorsOf = (content: string) =>
+      validatePassages(
+        makePassages(['StoryVariables', '$x = ""'], ['Start', content]),
+        schema,
+      );
+    expect(errorsOf('{for @item of [1]}{$item}{/for}')).toEqual([
+      'Passage "Start": Undeclared variable: $item',
+    ]);
+    expect(errorsOf('{for @item of [1]}{/for}{$item}')).toHaveLength(1);
+    expect(errorsOf('{for @item of [1]}{@item}{/for}')).toEqual([]);
+
+    const typed = parseStoryVariables('$item = 1');
+    const bad = validatePassages(
+      makePassages(
+        ['StoryVariables', '$item = 1'],
+        ['Start', '{for @item of [1]}{$item.badField}{/for}'],
+      ),
+      typed,
+    );
+    expect(bad).toHaveLength(1);
+    expect(bad[0]).toMatch(/Cannot access field.*badField/);
+  });
+
   it('validates deeply nested object field access', () => {
     const schema = parseStoryVariables(
       '$game = { player: { stats: { hp: 50 } } }',
@@ -395,6 +420,25 @@ describe('validatePassages: code in watch strings (#257)', () => {
 
   it('accepts declared names', () => {
     expect(errorsFor('{watch "$x > 0" run "$x = 1"}')).toEqual([]);
+  });
+
+  it('does not read literal strings as markup (#272)', () => {
+    for (const content of [
+      '{textbox $x "{$price}"}',
+      '{checkbox $x "{$price}"}',
+      '{watch "$x" goto "{$price}"}',
+      '{do}_s = "{$price}"{/do}{_s}',
+      '{print "{$price}"}',
+    ]) {
+      expect(errorsFor(content), content).toEqual([]);
+    }
+  });
+
+  it('still reads markup strings and widget arguments (#272)', () => {
+    expect(errorsFor('{button "{$price}"}{/button}')).toHaveLength(1);
+    expect(errorsFor('{link "{$price}" "A"}{/link}')).toHaveLength(1);
+    expect(errorsFor('{textbox "$missing"}')).toHaveLength(1);
+    expect(errorsFor('{print $missing}')).toHaveLength(1);
   });
 
   it('keeps literal $name text in other strings', () => {

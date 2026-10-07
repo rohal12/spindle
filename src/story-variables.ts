@@ -11,7 +11,6 @@ import {
 } from './js-lexer';
 import {
   argPieces,
-  holdsCode,
   parseOrError,
   withParseCache,
   type ParametersOf,
@@ -53,7 +52,6 @@ function declarationRegex(sigil: string): RegExp {
 const VAR_PATH_RE = /\$(\w+(?:\.\w+)*)/y;
 /** Quoted first argument of an input macro naming a story variable. */
 const QUOTED_VAR_ARG_RE = /^["']\$(\w+(?:\.\w+)*)["']?$/;
-const FOR_LOCAL_RE = /\{for\s+@(\w+)(?:\s*,\s*@(\w+))?\s+of\b/g;
 
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
@@ -132,38 +130,18 @@ export function parseStoryVariables(
 }
 
 /**
- * Extract for-loop local variable names from passage content.
- * `{for @item of ...}` → "item"
- * `{for @index, @item of ...}` → "index", "item"
- */
-function extractForLocals(content: string): Set<string> {
-  const locals = new Set<string>();
-  let match: RegExpExecArray | null;
-  FOR_LOCAL_RE.lastIndex = 0;
-  while ((match = FOR_LOCAL_RE.exec(content)) !== null) {
-    locals.add(match[1]!);
-    if (match[2]) locals.add(match[2]!);
-  }
-  return locals;
-}
-
-/**
  * Validate a single variable reference path (e.g. "player.health") against
  * the schema. Returns an error message or null if valid.
  */
 function validateRef(
   ref: string,
   schema: Map<string, VariableSchema>,
-  forLocals: Set<string>,
 ): string | null {
   const parts = ref.split('.');
   const rootName = parts[0]!;
 
   const nameError = variableNameError(rootName, '$' + rootName);
   if (nameError) return nameError;
-
-  // Skip for-loop locals
-  if (forLocals.has(rootName)) return null;
 
   const rootSchema = schema.get(rootName);
   if (!rootSchema) {
@@ -252,8 +230,9 @@ function scanInterpolations(
  * Report `$var` references in JavaScript code, lexed as the expression
  * engine lexes it (`lexJs`): references in code, but none inside string or
  * regex literals or comments, nor property names (`a.$b`, `{ $b: 1 }`).
- * The text of string and template literals is scanned for the markup that
- * labels evaluate (`{$…}`); the `${…}` parts of template literals are code.
+ * The text of string and template literals is not scanned: a string in code
+ * is literal text unless a macro argument that holds markup is read as such
+ * (see scanArgs); the `${…}` parts of template literals are code.
  */
 function scanCode(
   code: string,
@@ -270,7 +249,6 @@ function scanCode(
     VAR_PATH_RE.lastIndex = ref.start;
     onRef(VAR_PATH_RE.exec(code)![1]!);
   }
-  for (const text of parsed.strings) scanInterpolations(text, onRef);
 }
 
 /** `scanCode` for code acorn can't parse: lexed leniently. */
@@ -279,8 +257,6 @@ function scanCodeLeniently(
   onRef: RefCallback,
   goal: JsGoal,
 ): void {
-  /** Open template literals: their text so far, null in an interpolation. */
-  const templates: { nesting: number; text: string | null }[] = [];
   lexJs(
     code,
     {
@@ -289,32 +265,11 @@ function scanCodeLeniently(
         VAR_PATH_RE.lastIndex = index;
         onRef(VAR_PATH_RE.exec(code)![1]!);
       },
-      literal(text, _index, nesting) {
-        const template = templates[templates.length - 1];
-        if (template?.nesting === nesting) {
-          if (template.text === null) {
-            // The `}` ending an interpolation: back to the template's text
-            template.text = '';
-          } else if (text === '`' || text === '${') {
-            scanInterpolations(template.text, onRef);
-            if (text === '`') templates.pop();
-            else template.text = null;
-          } else {
-            template.text += text;
-          }
-        } else if (text === '`') {
-          templates.push({ nesting, text: '' });
-        } else if (text[0] === '"' || text[0] === "'") {
-          const { closed } = scanStringLiteral(text, 0);
-          scanInterpolations(text.slice(1, closed ? -1 : undefined), onRef);
-        }
-        // Regex literals and comments hold no references
-      },
+      // Strings, regex literals and comments hold no references
+      literal() {},
     },
     goal,
   );
-  // An unterminated template literal's text
-  for (const t of templates) if (t.text) scanInterpolations(t.text, onRef);
 }
 
 /**
@@ -341,22 +296,29 @@ function collectPassageRefs(
 }
 
 /**
- * Report the references in the code that a macro's quoted arguments hold
- * (see ParameterDef.holds), the condition and `run` action of `{watch}`:
- * the argument scan sees only the strings. Only the macros that declare
- * code in a string have their arguments read.
+ * Report the references in the arguments of a macro by what its parameters
+ * say each holds (see ParameterDef.holds): code is scanned as code and
+ * markup as markup, but literal text (a placeholder, a passage name) holds
+ * none. A macro without declared parameters, or arguments that do not
+ * parse, are scanned as code.
  */
-function scanStringCode(
+function scanArgs(
   token: Extract<Token, { type: 'macro' }>,
   params: readonly ParameterDef[] | undefined,
   onRef: RefCallback,
 ): void {
-  if (!params || !token.rawArgs || !holdsCode(params)) return;
-  for (const piece of argPieces(token.rawArgs, 0, params, token.name, '')) {
-    if (piece.kind === 'code' && piece.inString) {
-      scanCode(piece.code, onRef, piece.goal);
+  if (!token.rawArgs) return;
+  if (params) {
+    const pieces = [...argPieces(token.rawArgs, 0, params, token.name, '')];
+    if (!pieces.some((piece) => piece.kind === 'argument-error')) {
+      for (const piece of pieces) {
+        if (piece.kind === 'code') scanCode(piece.code, onRef, piece.goal);
+        else if (piece.kind === 'text') scanInterpolations(piece.text, onRef);
+      }
+      return;
     }
   }
+  scanCode(token.rawArgs, onRef);
 }
 
 /** Report the `$var` references in the tokens of `content`. */
@@ -379,13 +341,14 @@ function collectTokenRefs(
         else scanInterpolations(value, onRef, storeVarMacros);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanCode(token.rawArgs, onRef);
-      scanStringCode(token, parametersOf(token.name), onRef);
+      scanArgs(token, parametersOf(token.name), onRef);
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
         const quoted = QUOTED_VAR_ARG_RE.exec(first);
         if (quoted) onRef(quoted[1]!);
+        // Unquoted, the variable is an argument of no declared role
+        else if (!/^["'`]/.test(first)) scanCode(first, onRef);
       }
 
       if (token.name === 'do') {
@@ -430,12 +393,11 @@ export function validatePassages(
     // Don't validate the declarations or the SaveTitle code themselves
     if (NOT_MARKUP.has(name)) continue;
 
-    const forLocals = extractForLocals(passage.content);
     collectPassageRefs(
       passage.content,
       storeVarSet,
       (ref) => {
-        const error = validateRef(ref, schema, forLocals);
+        const error = validateRef(ref, schema);
         if (error) {
           errors.push(`Passage "${name}": ${error}`);
         }

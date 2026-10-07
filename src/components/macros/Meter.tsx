@@ -44,7 +44,11 @@ defineMacro({
   ],
   render(_props, ctx) {
     try {
-      const { currentExpr, maxExpr, labelMode } = meterArgs(ctx.args);
+      const { currentExpr, maxExpr, labelMode } = meterArgs({
+        ...ctx.args,
+        // The label is markup: resolved before reading none, % or a unit
+        label: ctx.resolve?.(ctx.args.label),
+      });
       const current = Number(ctx.evaluate!(currentExpr));
       const max = Number(ctx.evaluate!(maxExpr));
       const pct =
