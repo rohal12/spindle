@@ -18,11 +18,11 @@ import { parseDelay } from '../../utils/parse-delay';
 import type { MacroArgs, ParameterDef } from '../../registry';
 import type { StoryState } from '../../store';
 import { noPassageError } from '../../runtime-errors';
+import { stringLiteralValue } from '../../js-lexer';
 import {
   endsWithOperator,
   isWhitespace,
   readQuoted,
-  readWholeJsString,
   readWholeQuoted,
   stripLooseQuotes,
   topLevelIndices,
@@ -103,7 +103,8 @@ function matchAt(re: RegExp, src: string, pos: number): string | null {
 
 /**
  * Read keyword options (`goto "X" priority 5 once`). A keyword takes the
- * quoted string or digit run after it as its value; keywords that aren't
+ * quoted string (with or without whitespace before it) or digit run after
+ * it as its value; keywords that aren't
  * declared, and their values, are skipped. A keyword of a `string` parameter
  * must be followed by a quoted string.
  */
@@ -122,26 +123,25 @@ function readOptions(
     }
     i += key.length;
 
-    // A value is a quoted string or a digit run, after whitespace.
+    // A value is a quoted string, which may follow the keyword directly
+    // (`goto"Hall"`: a quote can't be part of one), or a digit run after
+    // whitespace.
     let val: string | undefined;
-    let quoted: ReturnType<typeof readQuoted> = null;
     let j = i;
     while (j < src.length && isWhitespace(src[j]!)) j++;
-    if (j > i) {
-      quoted = readQuoted(src, j);
-      const digits = quoted ? null : matchAt(DIGITS_RE, src, j);
-      if (quoted) {
-        val = quoted.value;
-        i = quoted.end;
-      } else if (digits) {
-        val = digits;
-        i = j + digits.length;
-      }
+    const quoted = readQuoted(src, j);
+    const digits = quoted || j === i ? null : matchAt(DIGITS_RE, src, j);
+    if (quoted) {
+      val = quoted.value;
+      i = quoted.end;
+    } else if (digits) {
+      val = digits;
+      i = j + digits.length;
     }
 
     const param = params.find((p) => p.name === key);
     // A keyword that takes a string was given anything else, or nothing
-    if (param?.type === 'string' && (!quoted || val === undefined)) {
+    if (param?.type === 'string' && !quoted) {
       throw new MacroArgumentError(
         param,
         matchAt(WORD_OR_PUNCT_RE, src, j) ?? '',
@@ -308,13 +308,14 @@ export type PassageTarget =
 
 /**
  * Read a `passage` argument as written (`{goto "Hall"}`, `{goto $room}`): a
- * quoted string is the name its JavaScript literal has (`"\u0048all"` is
- * `Hall`), anything else an expression, whose value is the name when it
+ * string literal is the name JavaScript reads from it (`"\u0048all"` is
+ * `Hall`), anything else (a literal that is not well-formed too) an
+ * expression, whose value is the name when it
  * runs (see evaluatePassageName).
  */
 export function passageTarget(arg: string): PassageTarget {
   const expression = arg.trim();
-  const name = readWholeJsString(expression);
+  const name = stringLiteralValue(expression);
   return name === null
     ? { kind: 'expression', expression }
     : { kind: 'name', name };
