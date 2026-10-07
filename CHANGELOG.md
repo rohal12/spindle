@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `clearGameData()` removes only the metadata the cleared story owns, not that of another story whose IFID or slot name contains its IFID. ([#300](https://github.com/rohal12/spindle/issues/300))
+- Mutation code keeps references through arrays and between namespaces: `$items[1] = $items[0]` aliases the elements, `$sel.link = $items[0]` refers to the element, and `%copy = $a` / `_copy = $a` share the object; a write below an aliased object keeps it one object. `Story.set("a.n", …)` keeps aliases and cycles. ([#295](https://github.com/rohal12/spindle/issues/295), [#297](https://github.com/rohal12/spindle/issues/297), [#298](https://github.com/rohal12/spindle/issues/298), [#299](https://github.com/rohal12/spindle/issues/299))
+- A sparse array below a registered class instance keeps its length when an element is written. ([#296](https://github.com/rohal12/spindle/issues/296))
+- `{include}` counts a render of the included passage when it mounts or changes, not on every re-render. ([#294](https://github.com/rohal12/spindle/issues/294))
 - Numeric keyword options are read signed and fractional (`{watch "$f" run "…" priority -1}`, `priority 1.5`) instead of as an unsigned digit run. ([#291](https://github.com/rohal12/spindle/issues/291))
 - `{type}` reveals text that becomes nonempty after mounting; it is measured after every render. ([#290](https://github.com/rohal12/spindle/issues/290))
 - The story-start variable check covers interpolated macro selectors (`{.{$typo} button "Go"}`), `{do}` blocks in any letter case, and bracket-link labels; the markup check covers bracket-link labels too. ([#287](https://github.com/rohal12/spindle/issues/287), [#288](https://github.com/rohal12/spindle/issues/288), [#289](https://github.com/rohal12/spindle/issues/289))

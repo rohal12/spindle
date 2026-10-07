@@ -38,6 +38,13 @@ defineMacro({
       [passage],
     );
 
+    // Count the inclusion when its content mounts or the passage changes,
+    // not on every render (an unrelated variable update re-renders it)
+    const included = !failure && !!passage;
+    ctx.hooks.useEffect(() => {
+      if (included) useStoryStore.getState().trackRender(passageName);
+    }, [included, passageName]);
+
     if (!storyData) return null;
     if (failure) {
       return (
@@ -48,8 +55,6 @@ defineMacro({
       );
     }
     if (!passage || !ast) return null;
-
-    useStoryStore.getState().trackRender(passageName);
 
     const nobr = passage.tags.includes('nobr');
     const content = inline

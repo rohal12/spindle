@@ -594,8 +594,8 @@ export function underChange(
 
 /**
  * Where each object (or array, or other value) of `root` first appears, in
- * depth-first order. Plain objects are entered; arrays and other values are
- * leaves. A path at or below one of `skip` is left out.
+ * depth-first order. Plain objects and arrays are entered (an object held in
+ * an array is one object, however it was reached); other values are leaves. A path at or below one of `skip` is left out.
  */
 function firstPaths(
   root: Record<string, unknown>,
@@ -609,10 +609,37 @@ function firstPaths(
       const at = [...path, key];
       if (skip.has(pathKey(at))) continue;
       found.set(value, at);
-      if (isMergeable(value)) walk(value, at);
+      if (isMergeable(value) || Array.isArray(value))
+        walk(value as Record<string, unknown>, at);
     }
   })(root, []);
   return found;
+}
+
+/**
+ * The objects `root` holds at more than one path (an object two variables
+ * refer to, or one that refers to itself), with every path they are at,
+ * parents before children. An object is entered where first met only.
+ */
+export function sharedPaths(root: object): string[][][] {
+  const all = new Map<object, string[][]>();
+  (function walk(node: Record<string, unknown>, path: string[]): void {
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (!isObjectValue(value)) continue;
+      const at = [...path, key];
+      const known = all.get(value);
+      if (known) {
+        known.push(at);
+        continue;
+      }
+      all.set(value, [at]);
+      if (isMergeable(value) || Array.isArray(value)) {
+        walk(value as Record<string, unknown>, at);
+      }
+    }
+  })(root as Record<string, unknown>, []);
+  return [...all.values()].filter((paths) => paths.length > 1);
 }
 
 /**
@@ -650,12 +677,12 @@ export function aliasChanges(
       // Only paths that are first appearances are entered: elsewhere the
       // contents are those of the object met first.
       if (
-        isMergeable(x) &&
-        mergesWith(x, y, false) &&
+        (isMergeable(x) || Array.isArray(x)) &&
+        mergesWith(x, y, true) &&
         pathKey(isAt) === k &&
         pathKey(wasAt) === k
       ) {
-        walk(x, y as Record<string, unknown>, at);
+        walk(x as Record<string, unknown>, y as Record<string, unknown>, at);
       }
     }
   })(before, after, []);
@@ -667,10 +694,13 @@ export function aliasChanges(
  * `changes` (which write something new there), for `existingObjects`.
  */
 export function locateObjects(
-  source: Record<string, unknown>,
+  source: object,
   changes: readonly PathChange[],
 ): Map<object, string[]> {
-  return firstPaths(source, new Set(changes.map((c) => pathKey(c.path))));
+  return firstPaths(
+    source as Record<string, unknown>,
+    new Set(changes.map((c) => pathKey(c.path))),
+  );
 }
 
 /**
@@ -682,7 +712,7 @@ export function locateObjects(
  */
 export function existingObjects(
   paths: ReadonlyMap<object, string[]>,
-  target: Record<string, unknown>,
+  target: object,
 ): Map<object, object> {
   return new (class extends Map<object, object> {
     override has(obj: object): boolean {
@@ -703,10 +733,7 @@ export function existingObjects(
 }
 
 /** Whether `target` already holds what `change` would write. */
-export function isApplied(
-  target: Record<string, unknown>,
-  change: PathChange,
-): boolean {
+export function isApplied(target: object, change: PathChange): boolean {
   const parent = getByPath(target, change.path.slice(0, -1));
   if (parent === null || typeof parent !== 'object') return change.deleted;
   const key = change.path[change.path.length - 1]!;
@@ -717,12 +744,10 @@ export function isApplied(
   );
 }
 
-export function applyChange(
-  target: Record<string, unknown>,
-  change: PathChange,
-): void {
-  if (change.deleted) deleteByPath(target, change.path);
-  else setByPath(target, change.path, change.value);
+export function applyChange(target: object, change: PathChange): void {
+  const root = target as Record<string, unknown>;
+  if (change.deleted) deleteByPath(root, change.path);
+  else setByPath(root, change.path, change.value);
 }
 
 /**

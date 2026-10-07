@@ -270,6 +270,25 @@ function runBackendSuite(
         expect(await backend.getMeta(otherKey)).toBe('value3');
       });
 
+      it('deleteMetaByIfid keeps other stories whose keys merely contain the IFID', async () => {
+        const id = `S-${Date.now()}`;
+        const keep = [
+          `autosave.OTHER-${id}`,
+          `autosave.${id}-OTHER`,
+          `slot.${id}.OTHER`,
+          `slotIndex.${id}x`,
+        ];
+        await backend.setMeta(`autosave.${id}`, 'a');
+        await backend.setMeta(`slotIndex.${id}`, ['n']);
+        for (const key of keep) await backend.setMeta(key, 'kept');
+
+        await backend.deleteMetaByIfid(id);
+
+        expect(await backend.getMeta(`autosave.${id}`)).toBeUndefined();
+        expect(await backend.getMeta(`slotIndex.${id}`)).toBeUndefined();
+        for (const key of keep) expect(await backend.getMeta(key)).toBe('kept');
+      });
+
       it('getAllMetaKeys returns all stored keys', async () => {
         // Use a fresh backend to avoid pollution from other tests
         const freshBackend = createBackend();

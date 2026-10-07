@@ -21,7 +21,11 @@ import {
 } from './saves/save-manager';
 import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
-import { frozenCopy, getActiveMutationScope } from './execute-mutation';
+import {
+  frozenCopy,
+  getActiveMutationScope,
+  mutateState,
+} from './execute-mutation';
 import { getByPath, setByPath } from './utils/object-path';
 import { changedNames, checkVariableName, ownValue } from './utils/namespace';
 import { historyQueries } from './expression';
@@ -298,6 +302,15 @@ function createStoryAPI(): StoryAPI {
       // while mutation code runs ({do}, ctx.mutate, watcher run actions), it
       // follows the code's own pending writes (program order, #215): see
       // routeStoreUpdate.
+      if (!getActiveMutationScope() && entries.some(([k]) => k.includes('.'))) {
+        // A write below a variable goes through the commit mutation code
+        // uses: an update of a draft would give the written path new
+        // objects and leave the other references to the old ones (#295).
+        mutateState((work) => {
+          for (const [k, v] of entries) setOne(work, k, v);
+        });
+        return;
+      }
       useStoryStore.getState().updateVariables((draft) => {
         for (const [k, v] of entries) setOne(draft, k, v);
       });

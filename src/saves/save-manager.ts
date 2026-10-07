@@ -15,7 +15,7 @@ import {
   IncompatibleSaveError,
   SAVE_FORMAT_VERSION,
 } from './format';
-import { getBackend, resetBackend } from './storage';
+import { getBackend, resetBackend, META_PREFIXES } from './storage';
 import { deepClone } from '../structural';
 import { emit } from '../event-emitter';
 import { withoutDraws } from '../prng';
@@ -152,7 +152,7 @@ async function startNewPlaythroughNow(
 const PLAYTHROUGH_LABEL = /^Playthrough (\d+)$/;
 
 function playthroughCountKey(ifid: string): string {
-  return `playthroughCount.${ifid}`;
+  return `${META_PREFIXES.playthroughCount}${ifid}`;
 }
 
 /**
@@ -173,7 +173,7 @@ async function nextPlaythroughNumber(ifid: string): Promise<number> {
 }
 
 function currentPlaythroughKey(ifid: string): string {
-  return `currentPlaythroughId.${ifid}`;
+  return `${META_PREFIXES.currentPlaythrough}${ifid}`;
 }
 
 export function getCurrentPlaythroughId(
@@ -476,9 +476,9 @@ export const getSavesGrouped = queued(async function getSavesGroupedNow(
 
 // --- Quick Save / Slot Save ---
 
-const AUTOSAVE_KEY_PREFIX = 'autosave.';
-const SLOT_KEY_PREFIX = 'slot.';
-const SLOT_INDEX_KEY_PREFIX = 'slotIndex.';
+const AUTOSAVE_KEY_PREFIX = META_PREFIXES.autosave;
+const SLOT_KEY_PREFIX = META_PREFIXES.slot;
+const SLOT_INDEX_KEY_PREFIX = META_PREFIXES.slotIndex;
 
 /**
  * Whether `slot` names a slot. The default (autosave) slot is addressed by
