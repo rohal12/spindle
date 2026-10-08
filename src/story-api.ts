@@ -23,6 +23,7 @@ import { getBackendType } from './saves/storage';
 import { registerClass } from './class-registry';
 import {
   frozenCopy,
+  readOnlyValue,
   getActiveMutationScope,
   mutateState,
 } from './execute-mutation';
@@ -286,7 +287,7 @@ function createStoryAPI(): StoryAPI {
       const value = key.includes('.')
         ? getByPath(namespace, key.split('.'))
         : ownValue(namespace, key);
-      return scope ? frozenCopy(value) : value;
+      return scope ? frozenCopy(value) : readOnlyValue(value);
     },
 
     set(nameOrVars: string | Record<string, unknown>, value?: unknown): void {

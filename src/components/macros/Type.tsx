@@ -49,17 +49,21 @@ defineMacro({
     const containerRef = useRef<HTMLSpanElement>(null);
     const innerRef = useRef<HTMLSpanElement>(null);
     const [clip, setClip] = useState<string | undefined>();
-    const [totalChars, setTotalChars] = useState(0);
+    // Null until the content has been measured: zero characters is then a
+    // result (nothing to animate), not a pending measurement.
+    const [measured, setMeasured] = useState<number | null>(null);
+    const totalChars = measured ?? 0;
     const [visibleChars, setVisibleChars] = useState(0);
     const visibleCharsRef = useRef(0);
     visibleCharsRef.current = visibleChars;
 
     // Measure after every render: reactive content can become nonempty (or
-    // change length) after mounting. Setting an equal count is a no-op.
-    useEffect(() => {
+    // change length) after mounting. Setting an equal count is a no-op. A
+    // layout effect, so grown text is not painted in full before it is typed.
+    useLayoutEffect(() => {
       if (containerRef.current) {
         const text = containerRef.current.textContent || '';
-        setTotalChars(text.length);
+        setMeasured(text.length);
       }
     });
 
@@ -81,7 +85,8 @@ defineMacro({
       return () => clearInterval(timer);
     }, [totalChars, speed]);
 
-    const done = visibleChars >= totalChars && totalChars > 0;
+    // Empty text can still become reactive text later, which restarts typing
+    const done = measured !== null && visibleChars >= totalChars;
 
     // Clip to the characters revealed so far, as laid out: remeasured when
     // the count changes and when the width the text wraps in does.
@@ -117,7 +122,7 @@ defineMacro({
           class="macro-type-inner"
           style={{
             display: 'inline',
-            visibility: totalChars === 0 ? 'hidden' : 'visible',
+            visibility: measured === null ? 'hidden' : 'visible',
             clipPath: clip,
           }}
         >

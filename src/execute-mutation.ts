@@ -138,6 +138,29 @@ export function frozenCopy<T>(value: T): T {
   return freeze(cloneValue(value), true);
 }
 
+/** Whether `value` and everything it holds is frozen. */
+function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
+  if (typeof value !== 'object' || value === null || seen.has(value)) {
+    return true;
+  }
+  if (!Object.isFrozen(value)) return false;
+  seen.add(value);
+  return Reflect.ownKeys(value).every((key) => {
+    const desc = Object.getOwnPropertyDescriptor(value, key);
+    return !desc || !('value' in desc) || deeplyFrozen(desc.value, seen);
+  });
+}
+
+/**
+ * A value read from the store, made safe to hand out: the store holds plain
+ * values frozen, but not registered class instances, whose methods could
+ * change the recorded history through the live object. Such a value is
+ * returned as a frozen copy, like a read inside mutation code.
+ */
+export function readOnlyValue<T>(value: T): T {
+  return deeplyFrozen(value) ? value : frozenCopy(value);
+}
+
 /**
  * Apply a write that reached the store while mutations execute to their
  * `work` and `base` copies (see MutationScope), so the code sees it and

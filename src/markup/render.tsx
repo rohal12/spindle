@@ -52,7 +52,7 @@ export const InlineContext = createContext(false);
 /**
  * True while rendering inside an element whose content is not markdown: SVG
  * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
- * and `<textarea>`, whose text (indentation, `#`, `*`, ...) is literal.
+ * `<textarea>` and `<style>`, whose text (indentation, `#`, `*`, ...) is literal.
  * Macro and widget bodies read it so their content stays literal too.
  */
 export const RawTextContext = createContext(false);
@@ -66,7 +66,7 @@ const SvgContext = createContext(false);
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 /** Elements whose content is literal text, not markdown. */
-const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea']);
+const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style']);
 export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
 
 /**
@@ -392,6 +392,7 @@ const INLINE_ELEMENTS = new Set([
   'span',
   'strong',
   'sub',
+  'summary',
   'sup',
   'time',
   'u',
@@ -632,6 +633,15 @@ function resolveAttributeValue(
   return result.text;
 }
 
+/** The index of the summary element opening `nodes`, or -1 when none does. */
+function leadingSummaryIndex(nodes: ASTNode[]): number {
+  const at = nodes.findIndex((n) => n.type !== 'text' || n.value.trim() !== '');
+  const first = nodes[at];
+  return first?.type === 'html' && first.tag.toLowerCase() === 'summary'
+    ? at
+    : -1;
+}
+
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const scope = useTextScope();
   const { nobr, locals, raw: inRaw, inline: parentInline } = useRenderOptions();
@@ -658,7 +668,22 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     if (inRaw || isRawRoot) {
       children = renderInlineNodes(node.children);
     } else {
-      children = renderNodes(node.children, { nobr, locals, inline: isInline });
+      // A details element's summary stays its direct child: it is rendered
+      // apart from the markdown of the rest of the content.
+      const summaryAt =
+        tag === 'details' ? leadingSummaryIndex(node.children) : -1;
+      const body = (nodes: ASTNode[]) =>
+        renderNodes(nodes, { nobr, locals, inline: isInline });
+      children =
+        summaryAt === -1 ? (
+          body(node.children)
+        ) : (
+          <>
+            {body(node.children.slice(0, summaryAt))}
+            {renderSingleNode(node.children[summaryAt]!)}
+            {body(node.children.slice(summaryAt + 1))}
+          </>
+        );
       if (isInline !== parentInline) {
         children = (
           <InlineContext.Provider value={isInline}>

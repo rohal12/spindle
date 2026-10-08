@@ -39,7 +39,7 @@ function assignmentArgs(
 /**
  * Evaluate `expr` against the current values — the store's state and the
  * enclosing locals scope's live values (`getLocals`) — and write the result
- * to the target if it differs from the previous output (always, the first
+ * to the target if it differs from the previous output or the target's value (always, the first
  * time). Reading live values rather than the render's snapshot means the
  * first computation sees a local a preceding {set} just assigned (the scope's
  * context value only catches up on its re-render), and the first computation
@@ -58,9 +58,17 @@ function computeAndApply(
   // Before evaluating: the expression may navigate away from this passage
   const location = currentSourceLocation();
   let newValue: unknown;
+  let current: unknown = prevRef.current;
   try {
     // In program order, also when mutation code sets this off
     const { variables, temporary, transient } = readState();
+    // The target's current value: it can have been removed or replaced since
+    // the previous output (a navigation resets the temporary namespace, which
+    // a persistent {computed} survives), and the unchanged result then needs
+    // to be written again.
+    if (!isLocal) {
+      current = (isTemp ? temporary : variables)[name];
+    }
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
     logMacroError(`computed ${rawArgs}`, err, location);
@@ -68,7 +76,10 @@ function computeAndApply(
   }
 
   // Strict: a change of only the aliases inside the result is a change
-  if (!deepEqualStrict(prevRef.current, newValue)) {
+  if (
+    !deepEqualStrict(prevRef.current, newValue) ||
+    !deepEqualStrict(current, newValue)
+  ) {
     prevRef.current = newValue;
     if (isLocal) {
       try {

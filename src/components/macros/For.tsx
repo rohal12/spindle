@@ -3,9 +3,10 @@ import { LocalsValuesContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
-import { controlEditVersion } from '../../utils/control-edits';
+import { controlEditVersion, editedItem } from '../../utils/control-edits';
 import type { ASTNode } from '../../markup/ast';
 import { checkVariableName } from '../../utils/namespace';
+import { readState } from '../../execute-mutation';
 import { LocalsScope } from './locals-scope';
 
 /**
@@ -131,13 +132,15 @@ defineMacro({
     // macros run again for the new item (#45) -- unless the change is a
     // reader editing the item through a control: remounting would drop the
     // control's focus after the first keystroke.
-    const edited = controlEditVersion() !== keys.edits;
+    const since = keys.edits;
+    const { variables } = readState();
     keys.edits = controlEditVersion();
     const generations = list.map((item, i) => {
       const contents = stableKey(item);
       if (
         keys.generations[i] === undefined ||
-        (contents !== keys.contents[i] && !edited)
+        (contents !== keys.contents[i] &&
+          !editedItem(since, variables, list, item, i))
       ) {
         keys.generations[i] = keys.next++;
       }
