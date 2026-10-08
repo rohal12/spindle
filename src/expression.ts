@@ -123,32 +123,22 @@ export function historyQueries(
 }
 
 let cachedFns: ExpressionFns | null = null;
-let cachedVisitCounts: Counts | null = null;
-let cachedRenderCounts: Counts | null = null;
 
+/**
+ * The functions compiled code calls. The history queries read the counters
+ * when called, not when the functions were built: mutation code that
+ * navigates (`Story.goto()`) goes on with the counters of the new state,
+ * as the Story API does.
+ */
 export function buildExpressionFns() {
-  const state = useStoryStore.getState();
-  const { visitCounts, renderCounts } = state;
-
-  if (
-    cachedFns &&
-    cachedVisitCounts === visitCounts &&
-    cachedRenderCounts === renderCounts
-  ) {
-    return cachedFns;
-  }
-
-  cachedFns = {
+  cachedFns ??= {
     ...historyQueries(
-      () => visitCounts,
-      () => renderCounts,
+      () => useStoryStore.getState().visitCounts,
+      () => useStoryStore.getState().renderCounts,
     ),
     random,
     randomInt,
   };
-  cachedVisitCounts = visitCounts;
-  cachedRenderCounts = renderCounts;
-
   return cachedFns;
 }
 
@@ -221,8 +211,6 @@ export function clearExpressionCache(): void {
   fnCache.clear();
   clearTransformCache();
   cachedFns = null;
-  cachedVisitCounts = null;
-  cachedRenderCounts = null;
 }
 
 export function evaluateWithState(expr: string, state: StoryState): unknown {

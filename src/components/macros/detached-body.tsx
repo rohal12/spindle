@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useContext } from 'preact/hooks';
+import { useContext, useEffect, useRef } from 'preact/hooks';
 import {
   renderNodes,
   LocalsUpdateContext,
@@ -19,7 +19,10 @@ import { DialogCloseContext } from '../PassageDialog';
  * Return a function that runs a macro body once, outside the passage tree:
  * it renders `children` into a detached node, so the body's macros ({set},
  * {if}, {goto}, ...) fire their side effects through the normal Preact
- * pipeline, then unmounts it. Used by {button} and {link} on click.
+ * pipeline. Used by {button} and {link} on click. The body stays mounted
+ * until the owning macro unmounts (its passage changes, say), so work it
+ * starts in an effect, such as the timer of a {timed} or {repeat}, can
+ * finish; the passage leaving cancels it.
  *
  * A detached render starts with no contexts, so the hook captures the ones
  * the owning macro sees and provides them again: the locals scope (read
@@ -40,6 +43,16 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
   const widgetChildren = useContext(WidgetChildrenContext);
   const repeat = useContext(RepeatContext);
   const closeDialog = useContext(DialogCloseContext);
+
+  const mounted = useRef<HTMLElement[]>([]);
+  useEffect(
+    () => () => {
+      for (const container of mounted.current.splice(0)) {
+        render(null, container);
+      }
+    },
+    [],
+  );
 
   const run = (children: ASTNode[]) => {
     const locals = liveLocalsView(updater.getValues);
@@ -62,7 +75,7 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
       </LocalsUpdateContext.Provider>,
       container,
     );
-    render(null, container);
+    mounted.current.push(container);
   };
   return (children) => runWithCommittedMutations(() => run(children));
 }

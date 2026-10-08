@@ -36,7 +36,14 @@ export function parseWidgetDef(rawArgs: string): WidgetDef {
   return widgetDef(parseMacroArgs(rawArgs, WIDGET_PARAMETERS));
 }
 
-const BLOCK_WIDGET = /\{widget\s+["']?(\w+)["']?[^}]*\}([\s\S]*?)\{\/widget\}/g;
+/**
+ * A definition: its arguments (read like a {widget} macro's, see
+ * parseWidgetDef) and its body. Macro names are not case-sensitive.
+ */
+const WIDGET_DEFINITION = /\{widget\s+([^}]*)\}([\s\S]*?)\{\/widget\}/gi;
+
+/** `{@children}`, also with selectors such as `{.highlight @children}`. */
+const CHILDREN_PLACEHOLDER = /\{[^{}]*@children\s*\}/;
 
 /**
  * The names of the block widgets (those whose body renders `{@children}`)
@@ -52,8 +59,13 @@ export function blockWidgetNames(
     if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
       continue;
     }
-    for (const match of passage.content.matchAll(BLOCK_WIDGET)) {
-      if (/\{@children\}/.test(match[2]!)) names.push(match[1]!);
+    for (const match of passage.content.matchAll(WIDGET_DEFINITION)) {
+      if (!CHILDREN_PLACEHOLDER.test(match[2]!)) continue;
+      try {
+        names.push(parseWidgetDef(match[1]!).name);
+      } catch {
+        // The {widget} macro reports a definition it cannot read
+      }
     }
   }
   return names;

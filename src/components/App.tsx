@@ -5,6 +5,7 @@ import { NobrContext } from '../markup/render';
 import { StoryInterface } from './StoryInterface';
 import { TriggerDialogHost } from './TriggerDialogHost';
 import { RuntimeErrors } from './RuntimeErrors';
+import { quickLoad, quickSave } from '../quick-actions';
 
 export function App() {
   const { storyData, currentPassage, nobr } = useStoryFields(
@@ -15,14 +16,13 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const { quickSaveKey, quickLoadKey, save, load } =
-        useStoryStore.getState();
+      const { quickSaveKey, quickLoadKey } = useStoryStore.getState();
       if (quickSaveKey !== null && e.key === quickSaveKey) {
         e.preventDefault();
-        save();
+        quickSave();
       } else if (quickLoadKey !== null && e.key === quickLoadKey) {
         e.preventDefault();
-        load();
+        quickLoad();
       }
     };
     document.addEventListener('keydown', onKeyDown);

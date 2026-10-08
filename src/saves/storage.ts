@@ -410,8 +410,10 @@ function createIDBBackend(): StorageBackend {
 let _backend: StorageBackend | null = null;
 
 async function detectBackend(): Promise<StorageBackend> {
-  if (typeof indexedDB !== 'undefined') {
-    try {
+  // Even looking up a storage API can throw (a sandboxed frame without
+  // allow-same-origin denies the localStorage property), hence the try.
+  try {
+    if (typeof indexedDB !== 'undefined') {
       await new Promise<void>((resolve, reject) => {
         const req = indexedDB.open('__spindle_probe__', 1);
         req.onsuccess = () => {
@@ -422,21 +424,21 @@ async function detectBackend(): Promise<StorageBackend> {
         req.onerror = () => reject(req.error);
       });
       return createIDBBackend();
-    } catch {
-      // fall through
     }
+  } catch {
+    // fall through
   }
 
-  if (typeof localStorage !== 'undefined') {
-    try {
+  try {
+    if (typeof localStorage !== 'undefined') {
       const probeKey = '__spindle_probe__';
       localStorage.setItem(probeKey, '1');
       const val = localStorage.getItem(probeKey);
       localStorage.removeItem(probeKey);
       if (val === '1') return createLocalStorageBackend();
-    } catch {
-      // fall through
     }
+  } catch {
+    // fall through
   }
 
   return createMemoryBackend();

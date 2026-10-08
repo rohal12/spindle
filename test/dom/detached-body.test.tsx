@@ -181,4 +181,17 @@ describe('detached {button}/{link} bodies', () => {
     });
     expect(useStoryStore.getState().variables.n).toBe(n);
   });
+
+  it('keeps a {timed} in a {button} body alive until it runs', () => {
+    vi.useFakeTimers();
+    const el = renderPassage(
+      '{button "Start"}{timed 50ms}{set $late = 1}{/timed}{/button}',
+    );
+    act(() => (el.querySelector('button') as HTMLElement).click());
+    expect(useStoryStore.getState().variables.late).toBeUndefined();
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(useStoryStore.getState().variables.late).toBe(1);
+  });
 });

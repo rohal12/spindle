@@ -422,7 +422,7 @@ Register a class so its instances can be cloned, saved, and restored with their 
 | `constructor` | `Function` | The class constructor                         |
 
 ```
-{do
+{do}
   class Player {
     constructor(data) { Object.assign(this, data); }
     damage(amount) { this.hp = Math.max(0, this.hp - amount); }
@@ -430,7 +430,7 @@ Register a class so its instances can be cloned, saved, and restored with their 
   }
   Story.registerClass('Player', Player);
   $player = new Player($player);
-}
+{/do}
 ```
 
 See [Using Classes](variables.md#using-classes) for full details.

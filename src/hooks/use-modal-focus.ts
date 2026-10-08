@@ -13,9 +13,23 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+/**
+ * Whether CSS leaves `el` in the tab sequence: not `visibility: hidden`
+ * (inherited, so the computed value covers ancestors) and not inside a
+ * `display: none` element.
+ */
+function isRendered(el: HTMLElement): boolean {
+  const { visibility } = getComputedStyle(el);
+  if (visibility === 'hidden' || visibility === 'collapse') return false;
+  for (let e: HTMLElement | null = el; e; e = e.parentElement) {
+    if (getComputedStyle(e).display === 'none') return false;
+  }
+  return true;
+}
+
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.hidden && !el.closest('[hidden], [inert]'),
+    (el) => !el.hidden && !el.closest('[hidden], [inert]') && isRendered(el),
   );
 }
 

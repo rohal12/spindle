@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `visited()`, `hasVisited()`, `rendered()` and their any/all forms in mutation code read the counters after a `Story.goto()` earlier in the same block, as the `Story` methods do.
+- Escape cancels a save rename without saving it or closing the Saves dialog.
+- A `{timed}` or `{repeat}` inside a `{button}` or targetless `{link}` runs its delayed body; the clicked body stays mounted until its owner unmounts.
+- With reduced motion preferred, the JavaScript transition delays shrink with the CSS animations, so the next passage appears at once.
+- Save-backend detection falls back to memory when browser storage access throws (a sandboxed iframe without `allow-same-origin`).
+- Block widgets defined in `[widget]` passages with hyphenated names, other letter case or `{@children}` with selectors are known as block macros at startup.
+- The modal focus trap ignores CSS-hidden controls (the Saves dialog's file input).
+- The Settings dialog's close button no longer covers the first control.
+- QuickSave and QuickLoad failures from the built-in buttons and hotkeys show a banner; a session-storage write failure shows the reload-recovery warning.
+- The class examples in the docs use `{do}...{/do}`.
 - A next-transition set in author JavaScript or StoryInit is kept for the first navigation, not used up by the initial render.
 - Boot checks variable references again after StoryInit, so an undeclared variable in the markup of a macro StoryInit defines is rejected.
 - Assigning a typed array or DataView onto another variable's buffer keeps the buffer shared when the mutation commits.
