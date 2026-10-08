@@ -40,7 +40,6 @@ import {
   exportSlotSave,
   importSlotSave,
   saveSession,
-  saveSessionPlaythrough,
   clearSession,
   clearGameData as smClearGameData,
   clearAllData as smClearAllData,
@@ -570,13 +569,10 @@ export function resolvePlaythroughId(): Promise<string> {
 }
 
 function setPlaythroughId(id: string): void {
-  const { playthroughId, storyData } = useStoryStore.getState();
-  if (playthroughId === id) return;
+  if (useStoryStore.getState().playthroughId === id) return;
   useStoryStore.setState((state) => {
     state.playthroughId = id;
   });
-  // A refresh of this tab continues this playthrough (#356)
-  if (id && storyData) saveSessionPlaythrough(storyData.ifid, id);
 }
 
 /**

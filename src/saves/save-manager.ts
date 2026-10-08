@@ -147,6 +147,7 @@ async function startNewPlaythroughNow(
     await backend.setMeta(playthroughCountKey(ifid), num);
   });
   await backend.setMeta(currentPlaythroughKey(ifid), id);
+  saveSessionPlaythrough(ifid, id);
   return id;
 }
 
@@ -202,6 +203,7 @@ async function adoptPlaythroughNow(ifid: string, id: string): Promise<void> {
   if ((await backend.getMeta<string>(key)) !== id) {
     await backend.setMeta(key, id);
   }
+  saveSessionPlaythrough(ifid, id);
 }
 
 /**
@@ -242,6 +244,7 @@ export function establishPlaythrough(
       ? own
       : ((await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
         (await startNewPlaythroughNow(ifid)));
+    saveSessionPlaythrough(ifid, id);
     return { id, knownSaves: await populateKnownSavesNow(ifid) };
   });
 }
@@ -811,11 +814,13 @@ export function clearSession(ifid: string): void {
 /**
  * The playthrough this tab's game is in, kept with its session: the shared
  * current playthrough (a stored meta value) can be changed by another tab.
- * Under the session prefix, so clearing all data clears it.
+ * Written where this tab's storage operations set the current playthrough,
+ * so it follows them in call order. Under the session prefix, so clearing
+ * all data clears it.
  */
 const SESSION_PLAYTHROUGH_PREFIX = `${SESSION_KEY_PREFIX}playthrough.`;
 
-export function saveSessionPlaythrough(ifid: string, id: string): void {
+function saveSessionPlaythrough(ifid: string, id: string): void {
   try {
     sessionStorage.setItem(`${SESSION_PLAYTHROUGH_PREFIX}${ifid}`, id);
   } catch {
