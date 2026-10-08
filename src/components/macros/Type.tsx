@@ -58,9 +58,8 @@ defineMacro({
     visibleCharsRef.current = visibleChars;
 
     // Measure after every render: reactive content can become nonempty (or
-    // change length) after mounting. Setting an equal count is a no-op. A
-    // layout effect, so grown text is not painted in full before it is typed.
-    useLayoutEffect(() => {
+    // change length) after mounting. Setting an equal count is a no-op.
+    useEffect(() => {
       if (containerRef.current) {
         const text = containerRef.current.textContent || '';
         setMeasured(text.length);

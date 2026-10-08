@@ -143,6 +143,9 @@ function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   if (typeof value !== 'object' || value === null || seen.has(value)) {
     return true;
   }
+  // Leaves a freeze cannot lock (typed array elements) and that a copy would
+  // detach from what they share (a buffer): handed out as they are
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return true;
   if (!Object.isFrozen(value)) return false;
   seen.add(value);
   return Reflect.ownKeys(value).every((key) => {

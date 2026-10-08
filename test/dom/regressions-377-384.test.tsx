@@ -96,16 +96,12 @@ describe('{computed} target restored after a namespace reset (#379)', () => {
   it('writes an unchanged result again once the temporary is gone', () => {
     renderPassage('{computed _double = $value * 2}');
     expect(useStoryStore.getState().temporary.double).toBe(10);
+    // What a navigation does to the temporary namespace
     act(() => {
       useStoryStore.setState((s) => {
         delete s.temporary.double;
+        s.navigationId++;
       });
-    });
-    act(() => {
-      useStoryStore.getState().setVariable('value', 5);
-    });
-    act(() => {
-      useStoryStore.getState().setVariable('value', 5);
     });
     expect(useStoryStore.getState().temporary.double).toBe(10);
   });
