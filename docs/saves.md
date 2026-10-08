@@ -7,7 +7,7 @@ Spindle stores saves in the browser's IndexedDB, organized by playthroughs.
 Spindle automatically saves the current game state to the browser's session storage on every navigation. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same history, and the variables as they were when the player entered the current passage (see [What a Load Restores](#what-a-load-restores)).
 
 - Session state persists across page refreshes within the same tab.
-- A refresh continues in the [current playthrough](#playthroughs), so later saves are grouped as before it.
+- A refresh continues in the tab's own [playthrough](#playthroughs), so later saves are grouped as before it, even if another tab has since restarted the game.
 - Closing the tab or browser clears the session — the next visit starts fresh.
 - Restarting the story (via `{restart}` or `Story.restart()`) clears the session.
 
