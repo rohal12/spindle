@@ -39,7 +39,11 @@ function storageKey(): string {
 }
 
 function persist(): void {
-  localStorage.setItem(storageKey(), JSON.stringify(values));
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(values));
+  } catch {
+    // storage unavailable or full: the setting holds for this session only
+  }
 }
 
 function loadFromStorage(): void {

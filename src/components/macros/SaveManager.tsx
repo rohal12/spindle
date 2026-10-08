@@ -56,6 +56,7 @@ export function SaveManagerContent() {
   } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const renameCancelled = useRef(false);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -191,6 +192,7 @@ export function SaveManagerContent() {
   };
 
   const handleRenameStart = (save: SaveRecord) => {
+    renameCancelled.current = false;
     setRenamingId(save.meta.id);
     setRenameValue(save.meta.title);
   };
@@ -209,7 +211,18 @@ export function SaveManagerContent() {
 
   const handleRenameKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') handleRenameConfirm();
-    else if (e.key === 'Escape') setRenamingId(null);
+    else if (e.key === 'Escape') {
+      // Cancel the edit only: the dialog stays open, and the blur that
+      // follows removing the input must not confirm it
+      e.preventDefault();
+      e.stopPropagation();
+      renameCancelled.current = true;
+      setRenamingId(null);
+    }
+  };
+
+  const handleRenameBlur = () => {
+    if (!renameCancelled.current) handleRenameConfirm();
   };
 
   const handleExport = async (saveId: string) => {
@@ -350,7 +363,7 @@ export function SaveManagerContent() {
                                 )
                               }
                               onKeyDown={handleRenameKeyDown}
-                              onBlur={handleRenameConfirm}
+                              onBlur={handleRenameBlur}
                             />
                           ) : (
                             <div class="save-slot-title">{save.meta.title}</div>

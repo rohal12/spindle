@@ -80,6 +80,18 @@ function cleanupSnapshots(containerEl: Element | null): void {
   }
 }
 
+/**
+ * `config` for players who prefer reduced motion: the CSS shortens the
+ * animations (see styles.css), so the waits that follow them shrink too,
+ * leaving no empty passage area before the next passage.
+ */
+function reduceMotion(config: ResolvedTransition): ResolvedTransition {
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return config;
+  }
+  return { ...config, duration: Math.min(config.duration, 10), pause: 0 };
+}
+
 defineMacro({
   name: 'passage',
   interpolate: true,
@@ -173,10 +185,8 @@ defineMacro({
       }
 
       // Resolve transition from tags → nextTransition → store default → built-in
-      const config = resolveTransition(
-        targetPassage.tags,
-        next,
-        transitionConfig,
+      const config = reduceMotion(
+        resolveTransition(targetPassage.tags, next, transitionConfig),
       );
 
       resolvedTypeRef.current = config.type;

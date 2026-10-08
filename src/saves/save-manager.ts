@@ -713,14 +713,22 @@ const SESSION_KEY_PREFIX = 'spindle.session.';
  * encodePayload). Throws, like a save, when the state holds a value a save
  * cannot (a function, an instance of an unregistered class, a unique
  * symbol); the session then keeps its previous copy.
+ *
+ * A storage that is unavailable or full is returned, not thrown: the session
+ * keeps its previous copy then too, but the story can go on, so the caller
+ * decides how to tell the player.
  */
-export function saveSession(ifid: string, payload: SavePayload): void {
+export function saveSession(
+  ifid: string,
+  payload: SavePayload,
+): { error: unknown } | undefined {
   const text = JSON.stringify(encodePayload(payload));
   try {
     sessionStorage.setItem(`${SESSION_KEY_PREFIX}${ifid}`, text);
-  } catch {
-    // sessionStorage unavailable or full — silently ignore
+  } catch (error) {
+    return { error };
   }
+  return undefined;
 }
 
 /**
@@ -889,13 +897,15 @@ async function clearAllDataNow(): Promise<void> {
   resetBackend();
 
   // Clear all Spindle session keys from sessionStorage
-  if (typeof sessionStorage !== 'undefined') {
+  try {
     const toRemove: string[] = [];
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
       if (key?.startsWith('spindle.session.')) toRemove.push(key);
     }
     for (const key of toRemove) sessionStorage.removeItem(key);
+  } catch {
+    // no sessionStorage (or access denied): nothing to clear
   }
 }
 

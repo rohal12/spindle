@@ -133,7 +133,7 @@ For more complex game objects, you can use JavaScript classes with methods and g
 $player = { name: "Hero", hp: 100, maxHp: 100 }
 
 :: StoryInit
-{do
+{do}
   class Player {
     constructor(data) { Object.assign(this, data); }
     damage(amount) { this.hp = Math.max(0, this.hp - amount); }
@@ -142,14 +142,14 @@ $player = { name: "Hero", hp: 100, maxHp: 100 }
   }
   Story.registerClass('Player', Player);
   $player = new Player($player);
-}
+{/do}
 ```
 
 Then use methods and getters in your passages:
 
 ```
 :: Combat
-{do $player.damage(15)}
+{do}$player.damage(15){/do}
 
 {if $player.isDead}
   You have fallen...

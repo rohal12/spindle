@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
 import { settings } from '../../settings';
+import { quickLoad, quickSave } from '../../quick-actions';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
 import type { ActionType } from '../../action-registry';
@@ -110,8 +111,11 @@ defineMenubarAction({
   label: 'QuickSave',
   actionType: 'save',
   setup: () => {
-    const { save, quickSaveKey } = useStoryFields('save', 'quickSaveKey');
-    return { perform: save, title: hotkeyTitle('Quick Save', quickSaveKey) };
+    const { quickSaveKey } = useStoryFields('quickSaveKey');
+    return {
+      perform: quickSave,
+      title: hotkeyTitle('Quick Save', quickSaveKey),
+    };
   },
 });
 
@@ -122,14 +126,13 @@ defineMenubarAction({
   confirm: 'Load saved game? Current progress will be lost.',
   setup: () => {
     // knownSaves: re-render when the saves change, as hasSave() reads them
-    const { load, hasSave, quickLoadKey } = useStoryFields(
-      'load',
+    const { hasSave, quickLoadKey } = useStoryFields(
       'hasSave',
       'quickLoadKey',
       'knownSaves',
     );
     return {
-      perform: () => load(),
+      perform: quickLoad,
       disabled: !hasSave(),
       title: hotkeyTitle('Quick Load', quickLoadKey),
     };

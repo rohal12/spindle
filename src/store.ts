@@ -259,7 +259,7 @@ let sessionMoments: SaveHistoryMoment[] = [];
  * Write the game to the session: the whole payload, encoded in one piece
  * on every navigation.
  */
-function persistSession(get: () => StoryState): void {
+function persistSession(get: () => StoryState): { error: unknown } | undefined {
   const {
     storyData,
     currentPassage,
@@ -269,7 +269,7 @@ function persistSession(get: () => StoryState): void {
     visitCounts,
     renderCounts,
   } = get();
-  if (!storyData) return;
+  if (!storyData) return undefined;
 
   // Trim cache when history shrank (navigate() drops discarded forward
   // moments itself, since a replacement branch may keep the same length)
@@ -294,7 +294,7 @@ function persistSession(get: () => StoryState): void {
     }
   }
 
-  saveSession(storyData.ifid, {
+  return saveSession(storyData.ifid, {
     passage: currentPassage,
     variables,
     history: sessionMoments,
@@ -324,7 +324,11 @@ const NAVIGATION_ERROR_CONTEXT = 'The story could not go to another passage:';
 function persistSessionThen(get: () => StoryState, after?: () => void): void {
   let failure: { error: unknown } | undefined;
   try {
-    persistSession(get);
+    const storageFailure = persistSession(get);
+    // The story goes on, but a reload would go back to the last copy
+    if (storageFailure) {
+      showRuntimeError(SESSION_ERROR_CONTEXT, storageFailure.error);
+    }
   } catch (error) {
     failure = { error };
     // The player sees it too: a reload would go back to the last moment

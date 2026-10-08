@@ -261,6 +261,11 @@ tw-storydata {
   max-width: 400px;
 }
 
+/* Keep the first control clear of the close button above it */
+.dialog-settings .dialog-body {
+  padding-top: 2.25em;
+}
+
 .dialog-close {
   position: absolute;
   top: 0.75em;
