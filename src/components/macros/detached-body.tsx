@@ -16,6 +16,8 @@ import { runWithCommittedMutations } from '../../execute-mutation';
 import { RepeatContext } from './Repeat';
 import { DialogCloseContext } from '../PassageDialog';
 
+const frozenAlways = () => true;
+
 /**
  * Return a function that runs a macro body once, outside the passage tree:
  * it renders `children` into a detached node, so the body's macros ({set},
@@ -60,7 +62,7 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
     const locals = liveLocalsView(updater.getValues);
     const container = document.createElement('div');
     render(
-      <FrozenStateContext.Provider value={true}>
+      <FrozenStateContext.Provider value={frozenAlways}>
         <LocalsUpdateContext.Provider value={updater}>
           <LocalsValuesContext.Provider value={locals}>
             <NobrContext.Provider value={nobr}>

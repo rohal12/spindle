@@ -504,3 +504,43 @@ describe('PassageDisplay remounts on every navigation', () => {
     },
   );
 });
+
+describe('outgoing passage (#352)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not execute against the destination navigation state', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([
+          makePassage(
+            1,
+            'Start',
+            '{set _step = 1}{if _step === undefined}{goto "Wrong"}{/if}{if currentPassage() === "Next"}{set $hits = 1}{/if}',
+          ),
+          makePassage(2, 'Next', 'Next passage'),
+          makePassage(3, 'Wrong', 'Wrong passage'),
+        ]),
+      );
+    renderPassageMacro(container);
+    act(() => useStoryStore.getState().navigate('Next'));
+    expect(useStoryStore.getState().currentPassage).toBe('Next');
+    expect(useStoryStore.getState().variables.hits).toBeUndefined();
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(useStoryStore.getState().currentPassage).toBe('Next');
+    expect(container.textContent).toContain('Next passage');
+    act(() => {
+      render(null, container);
+    });
+    document.body.removeChild(container);
+  });
+});

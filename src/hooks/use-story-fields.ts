@@ -4,11 +4,16 @@ import { shallow } from 'zustand/vanilla/shallow';
 import { useStoryStore, type StoryState } from '../store';
 
 /**
- * Provided by the owner of a click body (see useDetachedBody): its components
- * keep the state they first rendered with, so a branch skipped at click time
- * cannot run on a later state change.
+ * Tells the components below when to keep the state they last rendered with,
+ * given the store's current state: an owner (a click body, see
+ * useDetachedBody; a passage on its way out, see PassageDisplay) provides it
+ * so that a branch skipped earlier cannot run against later state (#351,
+ * #352). It runs inside the store's own notification, before the owner could
+ * re-render, which is why it is a predicate and not a flag.
  */
-export const FrozenStateContext = createContext(false);
+export const FrozenStateContext = createContext<
+  ((state: StoryState) => boolean) | null
+>(null);
 
 /**
  * Story state fields `keys`, re-rendering when any of them changes (as one
@@ -21,7 +26,7 @@ export function useStoryFields<K extends keyof StoryState>(
   const prev = useRef<Pick<StoryState, K>>();
   const freeze = useContext(FrozenStateContext);
   return useStoryStore((s) => {
-    if (freeze && prev.current) return prev.current;
+    if (prev.current && freeze?.(s)) return prev.current;
     const next = {} as Pick<StoryState, K>;
     for (const key of keys) next[key] = s[key];
     return shallow(prev.current, next) ? prev.current! : (prev.current = next);
