@@ -305,23 +305,23 @@ Lines and columns count from 1 within the passage's text. The `(file:line)` part
 
 These are errors:
 
-| Mistake                                                      | Example                            |
-| ------------------------------------------------------------ | ---------------------------------- |
-| A block macro without its closing tag                        | `{if $x}yes`                       |
-| A closing tag for another macro or element                   | `{if $x}{for @i of $l}{/if}{/for}` |
-| A closing tag with nothing to close                          | `text{/if}`                        |
-| A branch outside its macro                                   | `{for @i of $l}{else}{/for}`       |
-| A closing tag with arguments or selectors                    | `{/if $x}`, `{.c /if}`             |
-| An unknown macro                                             | `{sett $x = 1}`                    |
-| A macro, variable or expression without its `}`              | `{print $name`, `{$hp`, `{(1 + 2`  |
-| A link without its `]]`                                      | `[[North`                          |
-| An HTML element without its closing tag, or misnested        | `<div>text`, `<b><i>x</b></i>`     |
-| A tag without its `>`, or with something no attribute can be | `<span class="x" {$hp}</span>`     |
-| An attribute value without its closing quote                 | `<img src="a.png alt="map">`       |
-| Any of these inside an attribute value or a quoted label     | `<b title="{if $x}hi">`            |
-| Code that is not valid JavaScript                            | `{print $a +}`, `{do}if (x {{/do}` |
-| An unquoted passage name                                     | `{goto Kitchen}`, `{include A B}`  |
-| A link or passage name that names no passage                 | `[[Kichen]]`, `{goto "Kichen"}`    |
+| Mistake                                                      | Example                                             |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| A block macro without its closing tag                        | `{if $x}yes`                                        |
+| A closing tag for another macro or element                   | `{if $x}{for @i of $l}{/if}{/for}`                  |
+| A closing tag with nothing to close                          | `text{/if}`                                         |
+| A branch outside its macro                                   | `{for @i of $l}{else}{/for}`                        |
+| A closing tag with arguments or selectors                    | `{/if $x}`, `{.c /if}`                              |
+| An unknown macro                                             | `{sett $x = 1}`                                     |
+| A macro, variable or expression without its `}`              | `{print $name`, `{$hp`, `{(1 + 2`                   |
+| A link without its `]]`                                      | `[[North`                                           |
+| An HTML element without its closing tag, or misnested        | `<div>text`, `<b><i>x</b></i>`                      |
+| A tag without its `>`, or with something no attribute can be | `<span class="x" {$hp}</span>`                      |
+| An attribute value without its closing quote                 | `<img src="a.png alt="map">`                        |
+| Any of these inside an attribute value or a quoted label     | `<b title="{if $x}hi">`                             |
+| Code that is not valid JavaScript                            | `{print $a +}`, <code v-pre>{do}if (x {{/do}</code> |
+| An unquoted passage name                                     | `{goto Kitchen}`, `{include A B}`                   |
+| A link or passage name that names no passage                 | `[[Kichen]]`, `{goto "Kichen"}`                     |
 
 Errors in code name what is wrong and the open bracket that is likely missing its closer: see [Code in passages](variables.md#code-in-passages).
 

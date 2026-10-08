@@ -674,17 +674,20 @@ export function underChange(
 
 /**
  * The segment standing for the entry `index` of a Map or Set in a path, or
- * for the `cause` or `errors` of an Error ('c', 'e').
+ * for the `cause` or `errors` of an Error ('c', 'e'), or for the buffer a
+ * typed array or DataView views ('b').
  */
-const entryKey = (kind: 'k' | 'v' | 's' | 'c' | 'e', index: number): string =>
-  `\0${kind}${index}`;
+const entryKey = (
+  kind: 'k' | 'v' | 's' | 'c' | 'e' | 'b',
+  index: number,
+): string => `\0${kind}${index}`;
 
 export const isEntryKey = (segment: string): boolean =>
   segment.startsWith('\0');
 
 /**
- * What a Map, Set or Error holds in place of properties (keys and values,
- * members, `cause` and `errors`), each with the segment standing for it in
+ * What a Map, Set, Error or view holds in place of properties (keys and
+ * values, members, `cause` and `errors`, the buffer), each with the segment standing for it in
  * a path (see entryKey); undefined for any other value.
  */
 function entryChildren(value: object): [string, unknown][] | undefined {
@@ -707,6 +710,9 @@ function entryChildren(value: object): [string, unknown][] | undefined {
         ]);
       }
     }
+  } else if (ArrayBuffer.isView(value)) {
+    // Views of one buffer share it, which an alias of the buffer changes
+    children.push([entryKey('b', 0), value.buffer]);
   } else {
     return undefined;
   }

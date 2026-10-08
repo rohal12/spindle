@@ -1,7 +1,7 @@
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
 import { readState } from '../../execute-mutation';
-import { deepEqual } from '../../structural';
+import { deepEqualStrict } from '../../structural';
 import { defineMacro } from '../../define-macro';
 import { MacroError, logMacroError } from './MacroError';
 import { currentSourceLocation } from '../../utils/source-location';
@@ -67,7 +67,8 @@ function computeAndApply(
     return;
   }
 
-  if (!deepEqual(prevRef.current, newValue)) {
+  // Strict: a change of only the aliases inside the result is a change
+  if (!deepEqualStrict(prevRef.current, newValue)) {
     prevRef.current = newValue;
     if (isLocal) {
       try {

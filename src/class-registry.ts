@@ -111,10 +111,21 @@ const defineData = (target: object, key: string, value: unknown): void => {
 };
 
 /**
+ * A reducer extracts string keys, so devalue never sees the symbol keys of
+ * the original object: refuse them here, as it does for a plain object.
+ */
+function refuseSymbolKeys(value: object): void {
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new TypeError('spindle: Cannot save an object with symbol keys');
+  }
+}
+
+/**
  * Own enumerable keys of `value`, as a plain object; for an error also its
  * message, cause and (AggregateError) errors, which are not enumerable.
  */
 function ownData(value: object): Record<string, unknown> {
+  refuseSymbolKeys(value);
   const data: Record<string, unknown> = {};
   if (value instanceof Error) {
     for (const key of ERROR_HIDDEN_KEYS) {
@@ -163,6 +174,7 @@ function reducers(): Record<string, (value: unknown) => unknown> {
       }
       const keys = Object.keys(v);
       if (!keys.some(isEscapedOneCharKey)) return false;
+      refuseSymbolKeys(v);
       if (keys.includes('__proto__')) {
         throw new TypeError(
           'spindle: Cannot save a property named "__proto__"',

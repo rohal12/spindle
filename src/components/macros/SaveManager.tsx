@@ -127,9 +127,8 @@ export function SaveManagerContent() {
     const playthrough = resolvePlaythroughId();
     try {
       await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
-        const ptId = await playthrough;
-        if (!ptId) throw new Error('No playthrough');
-        return createSave(ifid, ptId, payload);
+        // Queued now, in call order with other storage operations
+        return createSave(ifid, playthrough, payload);
       });
       showStatus('Save created');
       await refresh();
@@ -143,8 +142,7 @@ export function SaveManagerContent() {
     try {
       await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
         // Only the current playthrough's saves offer "Save Here"
-        const ptId = (await playthrough) || undefined;
-        if (!(await overwriteSave(saveId, payload, undefined, ptId))) {
+        if (!(await overwriteSave(saveId, payload, undefined, playthrough))) {
           throw new Error('Save not found');
         }
       });

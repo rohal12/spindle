@@ -381,9 +381,9 @@ function relink(
 function cloneNamespaces(from: VariableNamespaces): VariableNamespaces {
   const seen = new Map<object, object>();
   return {
-    variables: deepClone(from.variables, { seen }),
-    temporary: deepClone(from.temporary, { seen }),
-    transient: deepClone(from.transient, { seen }),
+    variables: deepClone(from.variables, { keepUnregistered: true, seen }),
+    temporary: deepClone(from.temporary, { keepUnregistered: true, seen }),
+    transient: deepClone(from.transient, { keepUnregistered: true, seen }),
   };
 }
 

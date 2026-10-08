@@ -63,6 +63,21 @@ function stopWithErrors(errors: string[]): never {
 }
 
 /**
+ * The undeclared variables the passages refer to, with the macros known now:
+ * the input macros that bind a variable (registered by author JS or
+ * StoryInit) and the roles of their parameters decide what is a reference.
+ */
+function variableErrors(
+  storyData: StoryData,
+  schema: Parameters<typeof validatePassages>[1],
+): string[] {
+  const storeVarMacros = getMacroRegistry()
+    .filter((m) => m.storeVar)
+    .map((m) => m.name);
+  return validatePassages(storyData.passages, schema, storeVarMacros);
+}
+
+/**
  * The markup errors (malformed markup, unknown macros, syntax errors in
  * code) of the passages for which `only` holds, with the macros and widgets
  * known now.
@@ -134,10 +149,6 @@ export function boot() {
   }
 
   const schema = parseStoryVariables(storyVarsPassage.content);
-  // Include input macros registered by author JS, which ran above.
-  const storeVarMacros = getMacroRegistry()
-    .filter((m) => m.storeVar)
-    .map((m) => m.name);
   // Pass 1: Register the block widgets as block macros BEFORE any passage
   // is parsed (validation and StoryInit included), so that passages
   // invoking block widgets and widget bodies using other block widgets
@@ -146,7 +157,7 @@ export function boot() {
     registerBlockMacro(name);
   }
 
-  const errors = validatePassages(storyData.passages, schema, storeVarMacros);
+  const errors = variableErrors(storyData, schema);
   // StoryInit's markup must be valid before it runs; the other passages are
   // validated once it has run, as it may define macros (see below).
   errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));
@@ -186,8 +197,12 @@ export function boot() {
   // storyinit after all state is settled (defaults + StoryInit + session)
   initializeStory(loadSession(storyData.ifid));
 
-  // Every other passage's markup, now that StoryInit may have defined macros
-  const markup = markupErrors(storyData, (p) => p.name !== 'StoryInit');
+  // Every other passage's markup, now that StoryInit may have defined macros;
+  // so are the variable references, which macros' parameters decide
+  const markup = [
+    ...variableErrors(storyData, schema),
+    ...markupErrors(storyData, (p) => p.name !== 'StoryInit'),
+  ];
   if (markup.length > 0) stopWithErrors(markup);
 
   // Pass 2: Full parse and register widgets from passages tagged "widget"

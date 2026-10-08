@@ -1245,6 +1245,29 @@ describe('save-manager', () => {
     });
   });
 
+  describe('a playthrough passed as a promise', () => {
+    it('queues the save at the call, before a clear issued after it (#320)', async () => {
+      const ifid = 'promise-order-' + Date.now();
+      const ptId = await startNewPlaythrough(ifid);
+      const playthrough = new Promise<string>((resolve) =>
+        setTimeout(() => resolve(ptId), 5),
+      );
+
+      const created = createSave(ifid, playthrough, makePayload());
+      const cleared = clearGameData(ifid);
+      await Promise.all([created, cleared]);
+
+      expect((await getStorageInfo(ifid)).saveCount).toBe(0);
+    });
+
+    it('rejects a save whose playthrough resolves to nothing', async () => {
+      const ifid = 'promise-empty-' + Date.now();
+      await expect(
+        createSave(ifid, Promise.resolve(''), makePayload()),
+      ).rejects.toThrow('No playthrough');
+    });
+  });
+
   describe('deletePlaythroughData', () => {
     it('removes saves and playthrough for a specific playthrough', async () => {
       const ifid = 'delpt-test-' + Date.now();
