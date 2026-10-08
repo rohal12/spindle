@@ -180,6 +180,42 @@ describe('lexJs', () => {
     expect(literals('function () {} / 2 / "x"')).toEqual(['"x"']);
   });
 
+  it('reads a function or class after the : of a conditional as an expression (#367)', () => {
+    for (const expr of [
+      'class {}',
+      'class A {}',
+      'function () {}',
+      'function* () {}',
+      'async function () {}',
+    ]) {
+      expect(literals(`p ? 1 : ${expr} / 2 / "x"`, 'statements')).toEqual([
+        '"x"',
+      ]);
+    }
+    expect(
+      literals('p\n, 0//\n?//\np : class//\n{}\n/""', 'statements'),
+    ).toEqual(['//', '//', '//', '""']);
+    expect(literals('a ? b : c ? d : class {} / 2 / "x"')).toEqual(['"x"']);
+  });
+
+  it('reads an async function expression as an operand (#367)', () => {
+    expect(
+      literals('x = async function () {} / 2 / "x"', 'statements'),
+    ).toEqual(['"x"']);
+  });
+
+  it('still reads a regex after a function or class statement (#367)', () => {
+    expect(literals('class A {}\n/a"/.test(s)', 'statements')).toEqual([
+      '/a"/',
+    ]);
+    expect(
+      literals('async function f() {}\n/a"/.test(s)', 'statements'),
+    ).toEqual(['/a"/']);
+    expect(
+      literals('p ? 1 : 2;\nfunction f() {}\n/a"/.test(s)', 'statements'),
+    ).toEqual(['/a"/']);
+  });
+
   it('reads characters no JavaScript has as code, and goes on after them', () => {
     expect(pieces('a # "b" \\')).toEqual([
       ['code', 'a # ', 0],

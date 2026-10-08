@@ -7,6 +7,8 @@ import { splitArgs } from './arg-utils';
 import { createNamespace } from '../../utils/namespace';
 import { useRenderOptions } from '../../hooks/use-render-options';
 import { LocalsScope } from './locals-scope';
+import { useInterpolate } from '../../hooks/use-interpolate';
+import { wrapContent } from './display';
 
 export { splitArgs };
 
@@ -20,17 +22,14 @@ interface WidgetInvocationProps {
 }
 
 export function WidgetInvocation(props: WidgetInvocationProps) {
-  const { className, id } = props;
-  const content = <WidgetContent {...props} />;
-  // Invocation selectors (`{.badge#hero Stats}`) need an element to land on.
-  if (!className && !id) return content;
-  return (
-    <span
-      class={className}
-      id={id}
-    >
-      {content}
-    </span>
+  const resolve = useInterpolate();
+  // Invocation selectors (`{.badge#hero Stats}`) need an element to land on;
+  // dynamic ones (`{.{$theme} Stats}`) follow the state like a built-in
+  // macro's.
+  return wrapContent(
+    resolve(props.className),
+    resolve(props.id),
+    <WidgetContent {...props} />,
   );
 }
 
@@ -39,8 +38,6 @@ function WidgetContent({
   params,
   rawArgs,
   invocationChildren,
-  className,
-  id,
 }: WidgetInvocationProps) {
   const renderOptions = useRenderOptions();
   const parentValues = renderOptions.locals;

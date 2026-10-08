@@ -524,23 +524,41 @@ function useDirectAttributes(
   return direct.length > 0 ? elementRef : undefined;
 }
 
+const decodedText = new Map<string, string>();
 const decodedAttributeText = new Map<string, string>();
 
 /**
- * Decode character references (`&amp;`, `&#123;`) in attribute text the way
- * the HTML parser decodes an attribute value, by letting it parse one.
+ * Decode character references (`&amp;`, `&#123;`) in `text` the way the HTML
+ * parser decodes them, by letting it parse them: in an attribute value, or
+ * else in element text.
  */
-function decodeAttributeText(text: string): string {
+function decodeReferences(
+  text: string,
+  cache: Map<string, string>,
+  parse: (text: string) => string | null,
+): string {
   if (!text.includes('&')) return text;
-  let decoded = decodedAttributeText.get(text);
+  let decoded = cache.get(text);
   if (decoded === undefined) {
-    const html = `<i title="${text.replace(/"/g, '&quot;')}"></i>`;
-    decoded =
-      (parseHtmlInert(html).firstChild as Element).getAttribute('title') ??
-      text;
-    decodedAttributeText.set(text, decoded);
+    decoded = parse(text) ?? text;
+    cache.set(text, decoded);
   }
   return decoded;
+}
+
+function decodeAttributeText(text: string): string {
+  return decodeReferences(text, decodedAttributeText, (t) => {
+    const html = `<i title="${t.replace(/"/g, '&quot;')}"></i>`;
+    return (parseHtmlInert(html).firstChild as Element).getAttribute('title');
+  });
+}
+
+/** Literal text outside markdown (preformatted and SVG elements). */
+function decodeText(text: string): string {
+  return decodeReferences(text, decodedText, (t) => {
+    const html = `<i>${t.replace(/</g, '&lt;')}</i>`;
+    return parseHtmlInert(html).firstChild!.textContent;
+  });
 }
 
 /** A `{` and a sigil starting a reference, in a code attribute. */
@@ -725,7 +743,8 @@ function renderMacro(node: MacroNode, key: string) {
  * Render a non-text AST node to a Preact element.
  */
 function renderSingleNode(node: ASTNode): preact.ComponentChildren {
-  if (node.type === 'text') return node.value;
+  // Authored text outside markdown still has its character references decoded
+  if (node.type === 'text') return decodeText(node.value);
   const key = nodeKey(node);
   switch (node.type) {
     case 'variable':

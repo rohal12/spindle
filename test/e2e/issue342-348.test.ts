@@ -2,7 +2,8 @@
  * E2E tests that need a real browser layout or a page refresh:
  * - #348: {type} reveals wrapped text in reading order;
  * - #342: a session or save of a passage the updated story lacks is not
- *   restored.
+ *   restored;
+ * - #363: a dialog's focus trap skips controls a disabled fieldset disables.
  *
  * Compiles its own stories with the built format (global setup builds it).
  */
@@ -37,6 +38,14 @@ const LONG =
 const stories: Record<string, string> = {
   type: `${header}:: Start
 {type 150ms}${LONG}{/type}
+`,
+  locked: `${header}:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+<fieldset disabled>
+  <input id="locked" value="Unavailable">
+</fieldset>
 `,
   v1: `${header}:: Start
 [[Old]]
@@ -158,5 +167,33 @@ describe('a story updated since the session was made (#342)', () => {
     expect(rejected).toBe(true);
     expect(await inPage('Story.passage')).toBe('Start');
     expect(await text()).not.toContain('not found');
+  });
+});
+
+describe('a dialog with a disabled fieldset (#363)', () => {
+  const activeIsClose = () =>
+    page.evaluate(() =>
+      document.activeElement?.classList.contains('dialog-close'),
+    );
+
+  it('keeps focus on the only enabled control', async () => {
+    served = 'locked';
+    await page.goto(baseUrl);
+    await page.click('button:has-text("Open")');
+    await page.waitForSelector('.dialog-panel');
+    // Initial focus is inside the dialog, not on the opener behind it
+    expect(
+      await page.evaluate(() =>
+        document
+          .querySelector('.dialog-panel')!
+          .contains(document.activeElement),
+      ),
+    ).toBe(true);
+
+    await page.focus('.dialog-close');
+    await page.keyboard.press('Tab');
+    expect(await activeIsClose()).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(await activeIsClose()).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from 'preact';
+import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import { connectTriggersToStore, resetTriggers } from '../../src/triggers';
@@ -148,5 +149,31 @@ describe('{watch}', () => {
     );
     store().setVariable('x', 1);
     expect(store().variables.count).toBe(0);
+  });
+
+  it('rechecks hasRendered() when an {include} bumps the render count (#362)', () => {
+    store().init(
+      makeStoryData([
+        makePassage(1, 'Start', 'Start'),
+        makePassage(2, 'Hint', 'Hint text'),
+      ]),
+      { x: 0, count: 0 },
+    );
+    visit(
+      makePassage(
+        3,
+        'Room',
+        `{watch "hasRendered('Hint')" run "$count += 1" once}`,
+      ),
+    );
+    expect(store().variables.count).toBe(0);
+    const container = document.createElement('div');
+    act(() => {
+      render(
+        <Passage passage={makePassage(4, 'Other', '{include "Hint"}')} />,
+        container,
+      );
+    });
+    expect(store().variables.count).toBe(1);
   });
 });

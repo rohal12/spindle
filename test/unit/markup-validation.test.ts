@@ -285,3 +285,24 @@ describe('validateStoryMarkup (tooling)', () => {
     expect(messages({ checkPassageNames: false })).toEqual(['B']);
   });
 });
+
+describe('HTML comments (#360)', () => {
+  it.each([
+    ['an unclosed tag', 'Hello<!-- <div> -->world'],
+    ['an unknown macro', 'Hello<!-- {sett $x = 1} -->world'],
+    ['a stray closer', 'Hello<!-- {/if} -->world'],
+    ['an empty comment', 'Hello<!---->world'],
+  ])('ignores %s inside a comment', (_label, content) => {
+    expect(validate(content)).toEqual([]);
+  });
+
+  it('still reports markup after the comment', () => {
+    expect(validate('<!-- ok --><div>')).toHaveLength(1);
+  });
+
+  it('keeps the comment as text', () => {
+    expect(parseMarkup('a<!-- <div> -->b')).toEqual([
+      { type: 'text', value: 'a<!-- <div> -->b' },
+    ]);
+  });
+});

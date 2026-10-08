@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `/` after a `function` or `class` expression following a conditional's `:` (`a ? b : class {} / 2`) or `async function () {}` is a division, not a regex start (#367).
+- `{case}` and `{default}` keep their CSS selectors on the branch shown (#366).
+- A widget invocation's dynamic selectors (`{.{$theme} Badge}`) resolve and follow the state (#365).
+- The Saves dialog's playthrough headings are buttons with `aria-expanded`, operable with the keyboard (#364).
+- A dialog's focus trap skips controls a disabled `<fieldset>` disables (#363).
+- A `{watch}` using `hasRendered()` or `rendered()` runs when an `{include}` bumps the count (#362).
+- Character references in `<pre>`, `<textarea>` and SVG text are decoded (#361).
+- An HTML comment's contents are not markup: tags and variables in it are neither validated nor rendered (#360).
 - A widget invocation with CSS selectors (`{.badge#hero Stats}`) puts the class and ID on a wrapper element (#358).
 - A rejected slot load (a save whose passage the story no longer has) leaves the game in its current playthrough (#357).
 - A refreshed tab continues its own playthrough, not the one another tab made current since (#356).

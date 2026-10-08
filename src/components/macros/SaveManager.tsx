@@ -345,12 +345,15 @@ export function SaveManagerContent() {
                 class="playthrough-group"
                 key={group.playthrough.id}
               >
-                <div
+                <button
+                  type="button"
                   class="playthrough-header"
+                  aria-expanded={!isCollapsed}
                   onClick={() => toggleCollapse(group.playthrough.id)}
                 >
                   <span
                     class={`playthrough-chevron ${isCollapsed ? '' : 'open'}`}
+                    aria-hidden="true"
                   >
                     ▶
                   </span>
@@ -361,7 +364,7 @@ export function SaveManagerContent() {
                   <span class="playthrough-date">
                     {formatDate(group.playthrough.createdAt)}
                   </span>
-                </div>
+                </button>
 
                 {!isCollapsed && (
                   <div class="playthrough-saves">

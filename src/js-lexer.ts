@@ -128,7 +128,7 @@ const OPERAND_ENDS: ReadonlySet<TokenType> = new Set([
  * whether a `{` opens a block or an object literal, which decides whether a
  * `/` after its `}` opens a regex and a `%` a transient: after the `:` of a
  * conditional it opens an object literal (`a ? b : {} / 2`), not a block as
- * after a label; after a block's `}` it opens another block (`{}{} %n = 1`),
+ * after a label, and a `function` or `class` there is an expression; after a block's `}` it opens another block (`{}{} %n = 1`),
  * and so it does on a new line after a statement (`p⏎{} %n = 1`).
  */
 const SigilParser = class extends (Parser as unknown as Base) {
@@ -146,6 +146,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
   closedBlock = false;
   /** The value of the token before the one being finished. */
   prevValue: unknown;
+  /** The type of the token before the last one. */
+  typeBeforeLast: TokenType = tt.eof;
   /** Look ahead after a `%name` starting a line (off in look-aheads). */
   lookahead = true;
   /**
@@ -222,6 +224,21 @@ const SigilParser = class extends (Parser as unknown as Base) {
         (prevType === tt.dot || prevType === tt.questionDot)) ||
       ((type === tt._function || type === tt._class) &&
         notABody(self.input, self.pos));
+    // acorn takes a `function` or `class` for a statement's (whose `}` a
+    // regex may follow) after the `:` of a conditional, and `async function`
+    // always. Both are expressions where an operand is (`a ? b : class {} / 2`,
+    // `x = async function () {} / 2`): read them as after what comes before.
+    if (!property && (type === tt._function || type === tt._class)) {
+      const afterAsync =
+        type === tt._function &&
+        prevType === tt.name &&
+        this.prevValue === 'async' &&
+        !this.breakHere;
+      const before = afterAsync ? this.typeBeforeLast : prevType;
+      self.type =
+        before === tt.colon && this.colonEndsTernary ? tt.parenL : before;
+    }
+    this.typeBeforeLast = prevType;
     // @ts-expect-error acorn internals
     super.finishToken(property ? tt.name : type, value);
     // A variable named `of` (`const of of list`): acorn takes it for the

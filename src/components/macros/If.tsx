@@ -1,8 +1,7 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import type { Branch } from '../../markup/ast';
-import { selectBranch } from './branches';
-import { wrapContent } from './display';
+import { selectBranch, renderBranch } from './branches';
 
 /**
  * The {if}/{elseif}/{else} branch whose condition holds, else the {else}
@@ -37,11 +36,7 @@ defineMacro({
       );
     }
     if (!branch) return null;
-    return wrapContent(
-      ctx.resolve!(branch.className),
-      ctx.resolve!(branch.id),
-      ctx.renderNodes(branch.children),
-    );
+    return renderBranch(branch, ctx);
   },
   text({ branches = [] }, ctx) {
     const branch = selectIfBranch(branches, ctx.evaluate);

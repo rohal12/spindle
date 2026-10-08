@@ -251,7 +251,7 @@ export function checkTriggersOnNavigation(): void {
 
 /**
  * Re-evaluate watchers whenever a namespace their conditions can read
- * ($variables, _temporary, %transient) changes. Navigation is left to the
+ * ($variables, _temporary, %transient) or the render counts change. Navigation is left to the
  * store: navigate() checks watchers once the new moment is complete
  * (checkTriggersOnNavigation), while history traversal and loads
  * reinitialize watcher state instead of firing.
@@ -269,7 +269,9 @@ export function connectTriggersToStore(): () => void {
     if (
       state.variables === before.variables &&
       state.temporary === before.temporary &&
-      state.transient === before.transient
+      state.transient === before.transient &&
+      // hasRendered() / rendered() read the counts an {include} bumps
+      state.renderCounts === before.renderCounts
     ) {
       return;
     }

@@ -233,6 +233,7 @@ Content
 Item
   = TextRun
   / Escape
+  / Comment
   / LinkLexeme
   / HtmlElement
   / VoidCloser
@@ -291,6 +292,7 @@ Tokens
 TokenItem
   = TextRun
   / Escape
+  / Comment
   / LinkLexeme
   / &{ return !textMode; } tag:HtmlOpen { return tag; }
   / &{ return !textMode; } tag:HtmlClose { return VOID_TAGS.has(tag.lower) ? null : tag; }
@@ -316,6 +318,15 @@ Here
 
 TextRun
   = value:$[^\\{[<]+ { return lexeme('text', location(), { value }); }
+
+/**
+ * A closed HTML comment, opaque: its tags and macros are not markup, and
+ * rendering drops it. (An unclosed `<!--` is ordinary text.)
+ */
+Comment
+  = value:$("<!--" (">" / "->" / (!"-->" .)* "-->")) {
+      return lexeme('text', location(), { value });
+    }
 
 /**
  * A backslash run. Before a brace, an odd run escapes it; in text mode the
