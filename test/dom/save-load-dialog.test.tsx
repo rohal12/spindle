@@ -15,7 +15,7 @@ import {
   populateKnownSaves,
   renameSave,
 } from '../../src/saves/save-manager';
-import { getBackend } from '../../src/saves/storage';
+import { getBackend, getBackendType } from '../../src/saves/storage';
 import { on as emitterOn } from '../../src/event-emitter';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
@@ -242,6 +242,19 @@ describe('SaveManagerContent', () => {
     const toolbar = container.querySelector('.saves-toolbar');
     expect(toolbar).not.toBeNull();
     expect(toolbar!.textContent).toContain('Import');
+  });
+
+  it('warns that saves are temporary only when they are held in memory', async () => {
+    renderSaveManager(container, onClose);
+    await flush();
+
+    const notice = container.querySelector('.saves-notice');
+    if (getBackendType() === 'memory') {
+      expect(notice).not.toBeNull();
+      expect(notice!.textContent).toContain('Export');
+    } else {
+      expect(notice).toBeNull();
+    }
   });
 
   it('shows playthrough header with label', async () => {

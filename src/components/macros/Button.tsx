@@ -26,6 +26,7 @@ defineMacro({
 
     return (
       <button
+        type="button"
         id={ctx.id}
         class={ctx.cls}
         onClick={handleClick}

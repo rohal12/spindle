@@ -49,7 +49,7 @@ export function useRunOnce(macro: string, rawArgs: string, effect: () => void) {
       effect();
     } catch (error) {
       failure.current = { error };
-      logMacroError(`${macro} ${rawArgs}`, error, location);
+      logMacroError(`${macro} ${rawArgs}`.trim(), error, location);
     }
   }
 

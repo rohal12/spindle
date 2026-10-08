@@ -21,6 +21,7 @@ import {
   saveWithHooks,
   type PlaythroughGroup,
 } from '../../saves/save-manager';
+import { getBackendType } from '../../saves/storage';
 import { DialogCloseContext } from '../PassageDialog';
 import { defineMacro } from '../../define-macro';
 import { errorMessage } from '../../utils/error-message';
@@ -71,10 +72,15 @@ export function SaveManagerContent() {
       'loadFromPayload',
     );
   const ifid = storyData?.ifid ?? '';
+  // Saves held in memory only (no browser storage is available) are lost
+  // when the page is reloaded or closed: told to the player, who can export
+  const [temporary, setTemporary] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!ifid) return;
     const data = await getSavesGrouped(ifid);
+    // After the read: the storage in use is known by now
+    setTemporary(getBackendType() === 'memory');
     setGroups(data);
     setLoading(false);
   }, [ifid]);
@@ -131,7 +137,7 @@ export function SaveManagerContent() {
         // Queued now, in call order with other storage operations
         return createSave(ifid, playthrough, payload);
       });
-      showStatus('Save created');
+      showStatus(temporary ? 'Save created (temporary)' : 'Save created');
       await refresh();
     } catch {
       showStatus('Failed to create save', 'error');
@@ -276,12 +282,14 @@ export function SaveManagerContent() {
         <div class="saves-header-left">
           <div class="saves-mode-toggle">
             <button
+              type="button"
               class={mode === 'save' ? 'active' : ''}
               onClick={() => setMode('save')}
             >
               Save
             </button>
             <button
+              type="button"
               class={mode === 'load' ? 'active' : ''}
               onClick={() => setMode('load')}
             >
@@ -291,8 +299,19 @@ export function SaveManagerContent() {
         </div>
       </div>
 
+      {temporary && (
+        <div
+          class="saves-notice"
+          role="status"
+        >
+          Saves can not be kept in this browser: they are lost when the page is
+          reloaded or closed. Export a save to keep it.
+        </div>
+      )}
+
       <div class="saves-toolbar">
         <button
+          type="button"
           class="saves-toolbar-button"
           onClick={handleImport}
         >
@@ -376,6 +395,7 @@ export function SaveManagerContent() {
                         <div class="save-slot-actions">
                           {mode === 'save' ? (
                             <button
+                              type="button"
                               class="save-slot-action primary"
                               onClick={() => handleOverwrite(save.meta.id)}
                             >
@@ -383,6 +403,7 @@ export function SaveManagerContent() {
                             </button>
                           ) : (
                             <button
+                              type="button"
                               class="save-slot-action primary"
                               onClick={() => handleLoad(save)}
                             >
@@ -390,18 +411,21 @@ export function SaveManagerContent() {
                             </button>
                           )}
                           <button
+                            type="button"
                             class="save-slot-action"
                             onClick={() => handleRenameStart(save)}
                           >
                             Rename
                           </button>
                           <button
+                            type="button"
                             class="save-slot-action"
                             onClick={() => handleExport(save.meta.id)}
                           >
                             Export
                           </button>
                           <button
+                            type="button"
                             class="save-slot-action danger"
                             onClick={() => handleDelete(save.meta.id)}
                           >
@@ -413,6 +437,7 @@ export function SaveManagerContent() {
 
                     {mode === 'save' && isCurrentPt && (
                       <button
+                        type="button"
                         class="save-slot-new"
                         onClick={handleNewSave}
                       >
@@ -432,6 +457,7 @@ export function SaveManagerContent() {
             <div class="playthrough-group">
               <div class="playthrough-saves">
                 <button
+                  type="button"
                   class="save-slot-new"
                   onClick={handleNewSave}
                 >

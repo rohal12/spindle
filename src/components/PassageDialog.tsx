@@ -83,9 +83,9 @@ export function PassageDialog({
 
   const handleBackdrop = (e: MouseEvent) => {
     if (!dismissible) return;
-    if ((e.target as HTMLElement).classList.contains('dialog-overlay')) {
-      stableOnClose();
-    }
+    // Only a click on this overlay itself: a nested dialog's backdrop click
+    // bubbles through the outer overlay, whose target is not its own.
+    if (e.target === e.currentTarget) stableOnClose();
   };
 
   const cls = panelClass ? `dialog-panel ${panelClass}` : 'dialog-panel';
@@ -105,6 +105,7 @@ export function PassageDialog({
         >
           {showCloseButton && (
             <button
+              type="button"
               class="dialog-close"
               aria-label="Close"
               onClick={stableOnClose}

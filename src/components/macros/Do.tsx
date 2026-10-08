@@ -1,5 +1,5 @@
 import { defineMacro } from '../../define-macro';
-import { logMacroError } from './MacroError';
+import { useRunOnce } from './MacroError';
 
 defineMacro({
   name: 'do',
@@ -8,16 +8,8 @@ defineMacro({
     // The parser keeps the body verbatim as a single text node
     const code = ctx.collectText(children);
 
-    ctx.hooks.useLayoutEffect(() => {
-      // Before the code runs: it may navigate away from this passage
-      const location = ctx.sourceLocation();
-      try {
-        ctx.mutate(code);
-      } catch (err) {
-        logMacroError('do', err, location);
-      }
-    }, []);
-
-    return null;
+    // During the first render, like {set}: the macros after it in the
+    // passage run later and see its writes (a layout effect ran after them).
+    return useRunOnce('do', '', () => ctx.mutate(code));
   },
 });

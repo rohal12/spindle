@@ -134,17 +134,18 @@ async function startNewPlaythroughNow(
   id: string = randomUUID(),
 ): Promise<string> {
   const backend = await getBackend();
-  const num = await nextPlaythroughNumber(ifid);
-
-  const record: PlaythroughRecord = {
-    id,
-    ifid,
-    createdAt: new Date().toISOString(),
-    label: `Playthrough ${num}`,
-  };
-
-  await backend.putPlaythrough(record);
-  await backend.setMeta(playthroughCountKey(ifid), num);
+  // Taking the next number is a read-modify-write other tabs do too
+  await withTabLock(`spindle-playthrough-count:${ifid}`, async () => {
+    const num = await nextPlaythroughNumber(ifid);
+    const record: PlaythroughRecord = {
+      id,
+      ifid,
+      createdAt: new Date().toISOString(),
+      label: `Playthrough ${num}`,
+    };
+    await backend.putPlaythrough(record);
+    await backend.setMeta(playthroughCountKey(ifid), num);
+  });
   await backend.setMeta(currentPlaythroughKey(ifid), id);
   return id;
 }
@@ -503,15 +504,51 @@ function slotMetaKey(ifid: string, slot?: string): string {
 
 const slotIndexKey = (ifid: string) => `${SLOT_INDEX_KEY_PREFIX}${ifid}`;
 
-/** Read-modify-write the per-story slot index. */
+/**
+ * Run `op` holding the browser's lock `name`, so other tabs of the story
+ * (the operation queue only orders this document's operations) wait for it.
+ * Runs `op` without a lock where the browser offers none (or refuses it, as
+ * in a sandboxed frame, which has no other tabs sharing its storage).
+ */
+async function withTabLock<T>(name: string, op: () => Promise<T>): Promise<T> {
+  let locks: LockManager | undefined;
+  try {
+    locks = navigator.locks;
+  } catch {
+    // Access refused: no lock
+  }
+  if (!locks) return op();
+  let started = false;
+  try {
+    return await locks.request(name, () => {
+      started = true;
+      return op();
+    });
+  } catch (err) {
+    // Only a failure to take the lock falls back; op's own errors are its
+    if (started) throw err;
+    return op();
+  }
+}
+
+/**
+ * Read-modify-write the per-story slot index. Under a lock shared by the
+ * story's tabs: two tabs adding a slot at once would both read the old index
+ * and the later write would drop the other's slot.
+ */
 async function updateSlotIndex(
   ifid: string,
   update: (slots: string[]) => string[],
 ): Promise<void> {
   const backend = await getBackend();
-  const existing = (await backend.getMeta<string[]>(slotIndexKey(ifid))) ?? [];
-  const updated = update(existing);
-  if (updated !== existing) await backend.setMeta(slotIndexKey(ifid), updated);
+  await withTabLock(`spindle-slot-index:${ifid}`, async () => {
+    const existing =
+      (await backend.getMeta<string[]>(slotIndexKey(ifid))) ?? [];
+    const updated = update(existing);
+    if (updated !== existing) {
+      await backend.setMeta(slotIndexKey(ifid), updated);
+    }
+  });
 }
 
 /** Every slot: the default one (undefined), then those in the slot index. */

@@ -51,7 +51,9 @@ export function clearRegistry(): void {
 //   with its message, cause, errors and own enumerable keys (not its stack);
 // - `S`: a symbol from the global registry (Symbol.for);
 // - `K`: a plain object holding a one-character key that JSON escapes (see
-//   GUARD_V8_KEYS).
+//   GUARD_V8_KEYS);
+// - `R`: a RegExp whose lastIndex is not zero (the scanning cursor of a
+//   global or sticky pattern), with its source, flags and lastIndex.
 //
 // Everything else is refused when saving, with the path to the value:
 // functions, unique symbols, symbol keys, instances of unregistered classes,
@@ -61,6 +63,7 @@ const CLASS_PREFIX = 'c:';
 const ERROR_PREFIX = 'E:';
 const SYMBOL_TAG = 'S';
 const KEYS_TAG = 'K';
+const REGEXP_TAG = 'R';
 
 /**
  * Work around Chromium issue 521080746 (V8 in Chrome/Chromium 14x-153+,
@@ -167,6 +170,9 @@ function reducers(): Record<string, (value: unknown) => unknown> {
     const key = Symbol.keyFor(v);
     return key !== undefined && [key];
   };
+  out[REGEXP_TAG] = (v) =>
+    v instanceof RegExp &&
+    v.lastIndex !== 0 && [v.source, v.flags, v.lastIndex];
   if (GUARD_V8_KEYS) {
     out[KEYS_TAG] = (v) => {
       if (!isObject(v) || Object.getPrototypeOf(v) !== Object.prototype) {
@@ -264,6 +270,21 @@ function reviverFor(key: string | symbol) {
     };
   }
   if (key === KEYS_TAG) return reviveKeyed;
+  if (key === REGEXP_TAG) {
+    return (data: unknown) => {
+      if (
+        !Array.isArray(data) ||
+        typeof data[0] !== 'string' ||
+        typeof data[1] !== 'string' ||
+        !Number.isSafeInteger(data[2])
+      ) {
+        throw new TypeError('spindle: Malformed regular expression');
+      }
+      const re = new RegExp(data[0], data[1]);
+      re.lastIndex = data[2] as number;
+      return re;
+    };
+  }
   if (key.startsWith(CLASS_PREFIX)) {
     return reviveClass(key.slice(CLASS_PREFIX.length));
   }

@@ -571,6 +571,15 @@ tw-storydata {
   background: rgba(100, 181, 246, 0.05);
 }
 
+.saves-notice {
+  padding: 0.5em 1.25em;
+  font-size: 0.8em;
+  color: #ffb74d;
+  border-bottom: 1px solid rgba(255, 183, 77, 0.3);
+  background: rgba(255, 183, 77, 0.08);
+  flex-shrink: 0;
+}
+
 .saves-status {
   padding: 0.5em 1.25em;
   font-size: 0.8em;

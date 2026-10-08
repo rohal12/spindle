@@ -63,6 +63,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
       return (
         <>
           <button
+            type="button"
             id={ctx.id}
             class={cls}
             onClick={perform}

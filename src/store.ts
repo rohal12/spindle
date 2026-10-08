@@ -22,6 +22,8 @@ import { emit } from './event-emitter';
 import {
   resetTriggers,
   checkTriggersOnNavigation,
+  restoreMacroWatchers,
+  savedMacroWatchers,
   reinitTriggerState,
 } from './triggers';
 import {
@@ -302,6 +304,7 @@ function persistSession(get: () => StoryState): { error: unknown } | undefined {
     visitCounts,
     renderCounts,
     prng: snapshotPRNG(),
+    watchers: savedMacroWatchers(),
   });
 }
 
@@ -945,6 +948,21 @@ export interface StoryState {
   consumeNextTransition: () => TransitionConfig | null;
   deferRender: () => void;
   clearDeferredRender: () => void;
+}
+
+/**
+ * The first passage of `payload` (its current passage, then its history)
+ * that `storyData` does not have, as when the story was updated since the
+ * save; undefined if the story has them all (or is not loaded).
+ */
+export function missingPassage(
+  storyData: StoryData | null | undefined,
+  payload: SavePayload,
+): string | undefined {
+  if (!storyData) return undefined;
+  return [payload.passage, ...payload.history.map((m) => m.passage)].find(
+    (name) => !storyData.passages.has(name),
+  );
 }
 
 const NAMESPACE_KEYS = ['variables', 'temporary', 'transient'] as const;
@@ -1601,6 +1619,7 @@ export const useStoryStore = create<StoryState>()(
         visitCounts: { ...visitCounts },
         renderCounts: { ...renderCounts },
         prng: snapshotPRNG(),
+        watchers: savedMacroWatchers(),
       };
     },
 
@@ -1618,11 +1637,20 @@ export const useStoryStore = create<StoryState>()(
       slot?: string,
       playthroughId?: string,
     ) => {
-      const replacement = slotLoadApplying ?? ++stateReplacementsIssued;
+      const applying = slotLoadApplying;
       slotLoadApplying = null;
+      const replacement = applying ?? ++stateReplacementsIssued;
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
         return;
+      }
+      // Before anything is replaced: an incompatible payload leaves the
+      // running game as it is
+      const missing = missingPassage(get().storyData, payload);
+      if (missing !== undefined) {
+        throw new Error(
+          `The save refers to the passage "${missing}", which this version of the story does not have`,
+        );
       }
       latestStateApplied = replacement;
 
@@ -1684,7 +1712,10 @@ export const useStoryStore = create<StoryState>()(
         state.transient = createNamespace(deepClone(get().transientDefaults));
       });
 
-      // Loaded state is not a change watchers react to
+      // The watchers of the loaded game (a payload without any, from an
+      // older version, leaves the registered ones), then: loaded state is
+      // not a change watchers react to
+      if (payload.watchers) restoreMacroWatchers(payload.watchers);
       reinitTriggerState();
 
       // The next navigate() diffs from the snapshot recorded for the current

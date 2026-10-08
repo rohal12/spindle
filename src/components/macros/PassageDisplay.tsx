@@ -8,7 +8,7 @@ import { resolveTransition, type ResolvedTransition } from '../../transition';
 /**
  * Create a snapshot clone of a .passage element for outgoing transitions.
  * - Strips `id` attributes from the clone tree
- * - Disables interaction (pointer-events, user-select)
+ * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
  * - Pauses/mutes any <audio>/<video>
  * - Adds `.passage-snapshot` class and `data-transition` attribute
  */
@@ -28,6 +28,10 @@ function createSnapshot(
   // Disable interaction
   clone.style.pointerEvents = 'none';
   clone.style.userSelect = 'none';
+  // Visual only: out of the tab order and the accessibility tree, and its
+  // controls (copied with their inline handlers) can not be activated
+  clone.setAttribute('inert', '');
+  clone.setAttribute('aria-hidden', 'true');
 
   // Pause/mute media
   const mediaEls = clone.querySelectorAll('audio, video');

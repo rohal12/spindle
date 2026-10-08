@@ -195,7 +195,7 @@ const nearCopy = fc
     } else if (node instanceof Date) {
       node.setTime(mode < 5 ? node.getTime() + 1 : NaN);
     } else if (node instanceof RegExp) {
-      node.lastIndex += 1; // not part of a RegExp's value
+      node.lastIndex += 1; // the scanning cursor is part of a RegExp's value
     } else if (mode === 9) {
       Object.setPrototypeOf(node, pick % 2 ? Point.prototype : null);
     } else {

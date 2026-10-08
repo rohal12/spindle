@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+  addMacroTrigger,
   addTrigger,
+  savedMacroWatchers,
+  removeTrigger,
   checkTriggers,
   connectTriggersToStore,
   resetTriggers,
@@ -462,5 +465,60 @@ describe('triggers dialog queue', () => {
       checkTriggers();
       expect(cb).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('macro watchers across a restored session', () => {
+  const store = () => useStoryStore.getState();
+
+  beforeEach(() => {
+    resetTriggers();
+    sessionStorage.clear();
+    store().init(
+      makeStoryData([
+        makePassage(1, 'Start', 'Start'),
+        makePassage(2, 'Next', 'Next'),
+      ]),
+      { n: 0, hits: 0 },
+    );
+  });
+
+  afterEach(() => resetTriggers());
+
+  it('keeps the watchers of earlier passages in saves and the session', () => {
+    addMacroTrigger('$n > 0', { run: '$hits += 1', name: 'w' });
+    store().navigate('Next');
+    const expected = [
+      { condition: '$n > 0', options: { run: '$hits += 1', name: 'w' } },
+    ];
+    expect(loadSession('test')!.watchers).toEqual(expected);
+    expect(store().getSavePayload().watchers).toEqual(expected);
+  });
+
+  it('registers them again when the session is loaded', () => {
+    addMacroTrigger('$n > 0', { run: '$hits += 1', name: 'w' });
+    store().navigate('Next');
+    const payload = store().getSavePayload();
+
+    resetTriggers(); // a fresh page: no watchers
+    store().loadFromPayload(payload);
+    expect(savedMacroWatchers()).toEqual(payload.watchers);
+
+    const disconnect = connectTriggersToStore();
+    store().setVariable('n', 1);
+    disconnect();
+    expect(store().variables.hits).toBe(1);
+  });
+
+  it('does not bring back a watcher that was removed', () => {
+    addMacroTrigger('$n > 0', { run: '$hits += 1', name: 'w' });
+    removeTrigger('w');
+    store().navigate('Next');
+    const payload = store().getSavePayload();
+    expect(payload.watchers).toEqual([]);
+
+    addMacroTrigger('$n > 0', { run: '$hits += 1', name: 'w' });
+    store().loadFromPayload(payload);
+    expect(savedMacroWatchers()).toEqual([]);
   });
 });

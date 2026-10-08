@@ -85,7 +85,9 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
   function cloneBuiltin(val: object): object | undefined {
     if (val instanceof Date) return keep(val, new Date(val.getTime()));
     if (val instanceof RegExp) {
-      return keep(val, new RegExp(val.source, val.flags));
+      const copy = new RegExp(val.source, val.flags);
+      copy.lastIndex = val.lastIndex; // the scanning cursor of g/y patterns
+      return keep(val, copy);
     }
     if (val instanceof ArrayBuffer) return keep(val, val.slice(0));
     if (ArrayBuffer.isView(val)) {
@@ -343,7 +345,9 @@ function equalBuiltin(
   assumed: Pairs,
 ): boolean | undefined {
   if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
-  if (a instanceof RegExp) return String(a) === String(b);
+  if (a instanceof RegExp) {
+    return String(a) === String(b) && a.lastIndex === (b as RegExp).lastIndex;
+  }
   if (ArrayBuffer.isView(a)) {
     // A view is its place in its backing buffer, and the whole buffer (which
     // other views can share): equal only if both match.

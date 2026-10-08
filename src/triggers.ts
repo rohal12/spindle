@@ -115,6 +115,36 @@ export function addMacroTrigger(
   registerTrigger(condition, options, macroKey);
 }
 
+/** A {watch} macro's watcher as a save and the session hold it. */
+export interface SavedWatcher {
+  condition: string;
+  options: WatchOptions;
+}
+
+/**
+ * The {watch} macro watchers now registered, for a save or the session:
+ * watchers outlive the passage that declared them, so a game restored
+ * where it stopped needs the ones its earlier passages registered (and
+ * not the ones {unwatch} or `once` removed).
+ */
+export function savedMacroWatchers(): SavedWatcher[] {
+  return triggers
+    .filter((t) => t.macroKey !== undefined && t.options)
+    .map((t) => ({ condition: t.condition, options: { ...t.options } }));
+}
+
+/**
+ * Make the {watch} macro watchers those of a loaded game: the ones of
+ * `watchers` replace the registered ones (watchers added by Story.watch
+ * code stay). The passage shown mounts its own {watch} macros again.
+ */
+export function restoreMacroWatchers(watchers: readonly SavedWatcher[]): void {
+  triggers = triggers.filter((t) => t.macroKey === undefined);
+  for (const { condition, options } of watchers) {
+    addMacroTrigger(condition, options);
+  }
+}
+
 export function removeTrigger(name: string): void {
   triggers = triggers.filter((t) => t.name !== name);
 }
