@@ -10,6 +10,7 @@ import {
   useMemo,
 } from 'preact/hooks';
 import { useInterpolate } from './hooks/use-interpolate';
+import { noteControlEdit } from './utils/control-edits';
 import { useMergedLocals } from './hooks/use-merged-locals';
 import { useRenderOptions } from './hooks/use-render-options';
 import {
@@ -228,6 +229,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       // In program order, also when mutation code performs the input
       ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = (value: unknown) => {
+        noteControlEdit();
         // The commit mutation code uses, which keeps the references among
         // variables: a write to a draft copies only the path written, and
         // other variables sharing the object would keep the old one.

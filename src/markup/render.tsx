@@ -348,7 +348,11 @@ function convertDomNode(
   return null;
 }
 
-/** Inline elements where block-level markdown (lists, headings) is invalid. */
+/**
+ * Elements whose content is phrasing content only, so block-level markdown
+ * (lists, headings, paragraphs) is invalid in them: inline elements, and
+ * block elements such as headings and buttons that only take inline children.
+ */
 const INLINE_ELEMENTS = new Set([
   'a',
   'abbr',
@@ -356,17 +360,27 @@ const INLINE_ELEMENTS = new Set([
   'bdi',
   'bdo',
   'br',
+  'button',
   'cite',
   'code',
   'data',
   'dfn',
   'em',
   'i',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
   'kbd',
   'label',
+  'legend',
   'mark',
   'meter',
+  'option',
   'output',
+  'p',
   'progress',
   'q',
   'rp',

@@ -36,7 +36,16 @@ export function setSaveTitlePassage(content: string): void {
   saveTitlePassageContent = content;
 }
 
+/**
+ * The title of a save. The SaveTitle passage and title generators may draw
+ * random numbers; like the save hooks they must not advance the story's PRNG
+ * (see withoutDraws()).
+ */
 function generateTitle(payload: SavePayload): string {
+  return withoutDraws(() => generateTitleNow(payload));
+}
+
+function generateTitleNow(payload: SavePayload): string {
   // SaveTitle passage takes precedence
   if (saveTitlePassageContent) {
     try {

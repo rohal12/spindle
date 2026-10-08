@@ -93,8 +93,6 @@ defineMacro({
     { name: 'expression', type: 'expression', required: true },
   ],
   render({ rawArgs }, ctx) {
-    const [mergedVars, mergedTemps, mergedLocals, mergedTrans] = ctx.merged!;
-
     let target: string;
     let expr: string;
     try {
@@ -133,13 +131,9 @@ defineMacro({
     }
 
     // The merged values only decide when to recompute; computeAndApply reads
-    // the current ones.
-    ctx.hooks.useLayoutEffect(compute, [
-      mergedVars,
-      mergedTemps,
-      mergedLocals,
-      mergedTrans,
-    ]);
+    // the current ones. The tuple is renewed with them and with the render
+    // counts, which rendered() / hasRendered() read.
+    ctx.hooks.useLayoutEffect(compute, [ctx.merged]);
 
     return null;
   },

@@ -10,7 +10,7 @@ const FOCUSABLE = [
   'textarea:not([disabled])',
   'iframe',
   '[contenteditable="true"]',
-  '[tabindex]:not([tabindex="-1"])',
+  '[tabindex]',
 ].join(',');
 
 /**
@@ -27,15 +27,57 @@ function isRendered(el: HTMLElement): boolean {
   return true;
 }
 
+/** The `tabindex` of `el` as an integer, or null when absent or invalid. */
+function tabIndexAttr(el: HTMLElement): number | null {
+  const raw = el.getAttribute('tabindex');
+  if (raw === null || !/^\s*[+-]?\d+\s*$/.test(raw)) return null;
+  return parseInt(raw, 10);
+}
+
+/**
+ * Whether the tab key can reach `el`: a negative tabindex only allows
+ * scripted focus, and of a radio group the browser tabs to the checked
+ * member only (the first one when none is checked).
+ */
+function isTabStop(el: HTMLElement): boolean {
+  const tabIndex = tabIndexAttr(el);
+  if (tabIndex !== null && tabIndex < 0) return false;
+  if (el instanceof HTMLInputElement && el.type === 'radio' && el.name) {
+    const group = Array.from(
+      (
+        el.form ?? (el.getRootNode() as ParentNode)
+      ).querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+    ).filter((r) => r.name === el.name && r.form === el.form && !r.disabled);
+    const stop = group.find((r) => r.checked) ?? group[0];
+    return el === stop;
+  }
+  return true;
+}
+
+/**
+ * The elements of `root` in the order Tab visits them: positive tabindexes
+ * first, ascending, then the others in document order.
+ */
 function focusables(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+  const stops = Array.from(
+    root.querySelectorAll<HTMLElement>(FOCUSABLE),
+  ).filter(
     (el) =>
       !el.hidden &&
       !el.closest('[hidden], [inert]') &&
       // Also covers controls disabled by a <fieldset disabled> ancestor
       !el.matches(':disabled') &&
-      isRendered(el),
+      isRendered(el) &&
+      isTabStop(el),
   );
+  const positive = (el: HTMLElement) => Math.max(tabIndexAttr(el) ?? 0, 0);
+  // Array.prototype.sort is stable: equal tabindexes keep document order
+  return [
+    ...stops
+      .filter((el) => positive(el) > 0)
+      .sort((a, b) => positive(a) - positive(b)),
+    ...stops.filter((el) => positive(el) === 0),
+  ];
 }
 
 interface ModalEntry {

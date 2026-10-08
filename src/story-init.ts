@@ -1,6 +1,7 @@
 import { h, render } from 'preact';
 import { useStoryStore, recordStoryInitState, missingPassage } from './store';
 import { parseMarkup } from './markup/parse';
+import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
 import { emit } from './event-emitter';
@@ -35,6 +36,9 @@ export function executeStoryInit() {
   const storyInit = state.storyData.passages.get('StoryInit');
   if (storyInit) {
     const ast = parseMarkup(storyInit.content);
+    // Its own widgets are usable from the passage itself: the macros render
+    // before the {widget} definitions' effects run.
+    registerWidgetDefinitions(ast, 'StoryInit');
 
     // Mount into a persistent hidden container. It stays mounted until the
     // next execution (restart) — this lets async effects (useEffect,
