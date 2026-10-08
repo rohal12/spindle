@@ -1,4 +1,10 @@
-import { useRef, useEffect, useCallback, useState } from 'preact/hooks';
+import {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useState,
+} from 'preact/hooks';
 import { useStoryStore, type StoryState } from '../../store';
 import {
   useStoryFields,
@@ -274,6 +280,22 @@ defineMacro({
       timeoutsRef.current = [t1];
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [navigationId]);
+
+    // A new passage opens at its beginning, not where the previous one was
+    // scrolled to (#354). The page keeps its position on first display
+    // (a refresh restores it) and when the beginning is already in view.
+    const shownId = displayedPassage && !renderDeferred ? displayed.id : null;
+    const lastShownId = useRef(shownId);
+    useLayoutEffect(() => {
+      if (shownId === null) return; // between passages of a transition
+      const previous = lastShownId.current;
+      lastShownId.current = shownId;
+      if (previous === null || previous === shownId) return;
+      const el = containerRef.current?.querySelector('.passage');
+      if (el && el.getBoundingClientRect().top < 0) {
+        el.scrollIntoView?.({ block: 'start' });
+      }
+    }, [shownId]);
 
     // When render is deferred, show StoryLoading passage or nothing
     const effectivePassage = renderDeferred

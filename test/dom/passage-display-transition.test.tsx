@@ -544,3 +544,37 @@ describe('outgoing passage (#352)', () => {
     document.body.removeChild(container);
   });
 });
+
+describe('scroll on navigation (#354)', () => {
+  it('brings the beginning of the new passage into view', () => {
+    vi.useFakeTimers();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([
+          makePassage(1, 'Start', 'Start'),
+          makePassage(2, 'Next', 'Next'),
+        ]),
+      );
+    renderPassageMacro(container);
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function () {
+      scrolled.push(this);
+    };
+    Element.prototype.getBoundingClientRect = () => ({ top: -2000 }) as DOMRect;
+    act(() => useStoryStore.getState().navigate('Next'));
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(scrolled.map((e) => e.getAttribute('data-passage'))).toEqual([
+      'Next',
+    ]);
+    act(() => {
+      render(null, container);
+    });
+    document.body.removeChild(container);
+    vi.useRealTimers();
+  });
+});
