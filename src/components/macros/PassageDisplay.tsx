@@ -131,9 +131,6 @@ defineMacro({
       const store = useStoryStore.getState();
       const { history, historyIndex, transitionConfig } = store;
 
-      // Always consume the next transition (one-shot), regardless of what we do
-      const next = store.consumeNextTransition();
-
       // Determine if this is a first load, restart, or save-load
       const prevLen = prevHistoryLenRef.current;
       prevHistoryLenRef.current = history.length;
@@ -151,6 +148,10 @@ defineMacro({
       if (navigationId === displayed.id) {
         return;
       }
+
+      // One-shot, used up by the first navigation, whatever we do with it
+      // (not by the initial render, which no navigation caused)
+      const next = store.consumeNextTransition();
 
       // Cancel any in-progress transition
       cancelTransition();

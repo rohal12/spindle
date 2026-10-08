@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A next-transition set in author JavaScript or StoryInit is kept for the first navigation, not used up by the initial render.
+- Boot checks variable references again after StoryInit, so an undeclared variable in the markup of a macro StoryInit defines is rejected.
+- Assigning a typed array or DataView onto another variable's buffer keeps the buffer shared when the mutation commits.
+- `{computed}` updates its variable when only the aliases inside its result change.
+- Saves refuse symbol keys on class instances, errors and objects with escaped keys, as they do on plain objects.
+- Unregistered transient and temporary objects keep their prototype inside `{set}`, `{do}` and watcher code.
+- The save dialog's New Save and Save Here take their place in the storage queue at the click, so a clear issued after them removes them.
+- `Story.setNobr()` after boot no longer remounts the passage and runs its mount-only macros again.
+- The documentation builds again: an unclosed `{{` example in `markup.md` no longer breaks VitePress.
 - `Story.get("text.length")` reads properties of string, number and boolean values like direct access does. ([#316](https://github.com/rohal12/spindle/issues/316))
 - `{unset $obj.x}` (and `_`, `%`, `@` paths) deletes the field instead of silently deleting nothing. ([#315](https://github.com/rohal12/spindle/issues/315))
 - Diffing a state that shares objects (`{ left: g, right: g }` nested) no longer walks every path to them: the cost was exponential in the depth. ([#314](https://github.com/rohal12/spindle/issues/314))

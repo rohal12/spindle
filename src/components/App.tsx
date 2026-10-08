@@ -41,9 +41,7 @@ export function App() {
     </>
   );
 
-  return nobr ? (
-    <NobrContext.Provider value={true}>{content}</NobrContext.Provider>
-  ) : (
-    content
-  );
+  // One provider whatever `nobr` is: a changing tree shape would remount the
+  // passage and run its mount-only macros again
+  return <NobrContext.Provider value={nobr}>{content}</NobrContext.Provider>;
 }

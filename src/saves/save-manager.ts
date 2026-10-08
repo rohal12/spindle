@@ -291,10 +291,12 @@ export const createSave = queued(createSaveNow);
 
 async function createSaveNow(
   ifid: string,
-  playthroughId: string,
+  playthroughPromise: string | PromiseLike<string>,
   payload: SavePayload,
   custom: Record<string, unknown> = {},
 ): Promise<SaveRecord> {
+  const playthroughId = await playthroughPromise;
+  if (!playthroughId) throw new Error('No playthrough');
   const now = new Date().toISOString();
   const meta: SaveMeta = {
     id: randomUUID(),
@@ -313,6 +315,10 @@ async function createSaveNow(
 }
 
 /**
+ * A playthrough passed as a promise (see resolvePlaythroughId) is awaited
+ * inside the operation, so the call takes its place in the order of
+ * operations when it is made.
+ *
  * Replace the payload of an existing save, keeping its ID and `createdAt`.
  * Pass the current `playthroughId` when the new payload comes from the
  * running game: the save then holds that playthrough's state, so it is
@@ -333,8 +339,9 @@ async function overwriteSaveNow(
   saveId: string,
   payload: SavePayload,
   custom?: Record<string, unknown>,
-  playthroughId?: string,
+  playthroughPromise?: string | PromiseLike<string>,
 ): Promise<SaveRecord | undefined> {
+  const playthroughId = await playthroughPromise;
   const backend = await getBackend();
   const existing = await backend.getSave(saveId);
   if (!existing) return undefined;

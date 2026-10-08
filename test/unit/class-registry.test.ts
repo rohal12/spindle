@@ -654,3 +654,20 @@ describe('class-registry', () => {
     });
   });
 });
+
+describe('symbol keys (#322)', () => {
+  it('are refused on class instances, errors and escaped-key objects', () => {
+    class C {
+      n = 1;
+    }
+    registerClass('SymbolKeyC', C);
+    const symbol = Symbol.for('x');
+    for (const value of [
+      Object.assign(new C(), { [symbol]: 42 }),
+      Object.assign(new Error('e'), { [symbol]: 42 }),
+      { '\n': 1, [symbol]: 42 },
+    ]) {
+      expect(() => serialize(value)).toThrow(/symbol keys/);
+    }
+  });
+});
