@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Generating a save title (the `SaveTitle` passage or a title generator) no longer advances the seeded random sequence (#375).
+- Native `<button>` labels, headings and paragraphs render their content without block markdown, so a label starting with `+` or `-` is not turned into a list (#374).
+- A dialog's Tab trap follows the browser's real tab stops: the checked member of a radio group, no controls with a negative `tabindex`, positive `tabindex` order (#373).
+- `{computed}` expressions using `rendered()` / `hasRendered()` update when an included passage mounts (#372).
+- Widgets that declare no parameters get their own local scope (#371).
+- Widgets from `[widget]` passages, and those `StoryInit` defines at its top level, can be invoked from `StoryInit` on the first launch (#370).
+- Typing into a control inside a `{for}` iteration no longer remounts the iteration and drops the focus (#369).
 - A `/` after a `function` or `class` expression following a conditional's `:` (`a ? b : class {} / 2`) or `async function () {}` is a division, not a regex start (#367).
 - `{case}` and `{default}` keep their CSS selectors on the branch shown (#366).
 - A widget invocation's dynamic selectors (`{.{$theme} Badge}`) resolve and follow the state (#365).

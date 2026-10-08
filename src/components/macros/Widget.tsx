@@ -1,6 +1,4 @@
-import { registerWidget } from '../../widgets/widget-registry';
-import { astContainsChildren } from '../../widgets/ast-scanner';
-import { registerBlockMacro, type ASTNode } from '../../markup/ast';
+import { registerWidgetDef } from '../../widgets/register-widget-def';
 import { defineMacro } from '../../define-macro';
 import { checkVariableName } from '../../utils/namespace';
 import { MacroError } from './MacroError';
@@ -9,22 +7,6 @@ import {
   widgetDef,
   type WidgetDef,
 } from '../../widgets/widget-def';
-
-/**
- * Register the widget a definition declares, with its body. Widgets whose
- * body renders {@children} take a closing tag, so they are registered as
- * block macros too: passages parsed later nest their content. A parameter
- * that no namespace can hold throws (see registerWidget), registering
- * nothing.
- */
-export function registerWidgetDef(
-  { name, params }: WidgetDef,
-  body: ASTNode[],
-): void {
-  const isBlock = astContainsChildren(body);
-  registerWidget(name, body, params, isBlock);
-  if (isBlock) registerBlockMacro(name);
-}
 
 defineMacro({
   name: 'widget',

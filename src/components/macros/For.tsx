@@ -3,6 +3,7 @@ import { LocalsValuesContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
+import { controlEditVersion } from '../../utils/control-edits';
 import type { ASTNode } from '../../markup/ast';
 import { checkVariableName } from '../../utils/namespace';
 import { LocalsScope } from './locals-scope';
@@ -76,6 +77,14 @@ function ForIteration({
   );
 }
 
+/** What {for} remembers of its iterations between renders. */
+interface IterationKeys {
+  contents: string[];
+  generations: number[];
+  next: number;
+  edits: number;
+}
+
 defineMacro({
   name: 'for',
   block: true,
@@ -88,6 +97,12 @@ defineMacro({
   ],
   render({ rawArgs, children = [] }, ctx) {
     const parentValues = useContext(LocalsValuesContext);
+    const keys = ctx.hooks.useRef<IterationKeys>({
+      contents: [],
+      generations: [],
+      next: 0,
+      edits: controlEditVersion(),
+    }).current;
 
     let loop: ReturnType<typeof loopArgs>;
     let list: unknown[];
@@ -112,9 +127,27 @@ defineMacro({
     }
 
     const { itemVar, indexVar } = loop;
+    // An iteration is remounted when its item's contents change, so mount-only
+    // macros run again for the new item (#45) -- unless the change is a
+    // reader editing the item through a control: remounting would drop the
+    // control's focus after the first keystroke.
+    const edited = controlEditVersion() !== keys.edits;
+    keys.edits = controlEditVersion();
+    const generations = list.map((item, i) => {
+      const contents = stableKey(item);
+      if (
+        keys.generations[i] === undefined ||
+        (contents !== keys.contents[i] && !edited)
+      ) {
+        keys.generations[i] = keys.next++;
+      }
+      keys.contents[i] = contents;
+      return keys.generations[i]!;
+    });
+    keys.contents.length = keys.generations.length = list.length;
     const content = list.map((item, i) => (
       <ForIteration
-        key={`${i}-${stableKey(item)}`}
+        key={`${i}-${generations[i]}`}
         parentValues={parentValues}
         itemVar={itemVar}
         itemValue={item}

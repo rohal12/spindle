@@ -27,7 +27,7 @@ import {
 import { blockWidgetNames, parseWidgetDef } from './widgets/widget-def';
 import { parseMarkup } from './markup/parse';
 import { registerBlockMacro } from './markup/ast';
-import { registerWidgetDef } from './components/macros/Widget';
+import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import './macros/register-builtins';
@@ -193,6 +193,14 @@ export function boot() {
   // Enter runtime phase — handlers registered from here on are cleaned on restart
   enterRuntimePhase();
 
+  // Pass 2: Full parse and register widgets from passages tagged "widget",
+  // before StoryInit runs so that it can invoke them
+  for (const [, passage] of storyData.passages) {
+    if (passage.tags.includes('widget')) {
+      registerWidgetDefinitions(parseMarkup(passage.content), passage.name);
+    }
+  }
+
   // Run StoryInit, restore the session if the page was refreshed, and fire
   // storyinit after all state is settled (defaults + StoryInit + session)
   initializeStory(loadSession(storyData.ifid));
@@ -204,27 +212,6 @@ export function boot() {
     ...markupErrors(storyData, (p) => p.name !== 'StoryInit'),
   ];
   if (markup.length > 0) stopWithErrors(markup);
-
-  // Pass 2: Full parse and register widgets from passages tagged "widget"
-  for (const [, passage] of storyData.passages) {
-    if (passage.tags.includes('widget')) {
-      const widgetAST = parseMarkup(passage.content);
-      for (const node of widgetAST) {
-        if (node.type === 'macro' && node.name === 'widget' && node.rawArgs) {
-          // Read and registered as the {widget} macro does
-          const def = parseWidgetDef(node.rawArgs);
-          try {
-            registerWidgetDef(def, node.children as ASTNode[]);
-          } catch (err) {
-            // As the {widget} macro refuses it: the others still register
-            console.error(
-              `spindle: widget "${def.name}" in passage "${passage.name}" was not registered: ${errorMessage(err)}`,
-            );
-          }
-        }
-      }
-    }
-  }
 
   // Reset action ID counters on every navigation (the passage remounts even
   // when its name is unchanged). Controls that stay mounted, e.g. in

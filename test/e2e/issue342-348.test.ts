@@ -47,6 +47,22 @@ const stories: Record<string, string> = {
   <input id="locked" value="Unavailable">
 </fieldset>
 `,
+  radios: `${header}:: StoryVariables
+$choice = "a"
+
+:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+{radiobutton $choice "a" "A"}
+{radiobutton $choice "b" "B"}
+`,
+  skipped: `${header}:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+<button id="first">First</button><button tabindex="-1">Skip</button>
+`,
   v1: `${header}:: Start
 [[Old]]
 
@@ -72,7 +88,10 @@ beforeAll(async () => {
   dir = mkdtempSync(resolve(tmpdir(), 'spindle-e2e-'));
   for (const [name, twee] of Object.entries(stories)) {
     const src = resolve(dir, `${name}.twee`);
-    writeFileSync(src, twee + footer);
+    writeFileSync(
+      src,
+      twee.includes(':: StoryVariables') ? twee : twee + footer,
+    );
     await compileToFile({
       sources: [src],
       outFile: resolve(dir, `${name}.html`),
@@ -195,5 +214,39 @@ describe('a dialog with a disabled fieldset (#363)', () => {
     expect(await activeIsClose()).toBe(true);
     await page.keyboard.press('Shift+Tab');
     expect(await activeIsClose()).toBe(true);
+  });
+});
+
+describe('a dialog trap follows the real tab stops (#373)', () => {
+  const insidePanel = () =>
+    page.evaluate(() =>
+      document.querySelector('.dialog-panel')!.contains(document.activeElement),
+    );
+  const open = async (story: string) => {
+    served = story;
+    await page.goto(baseUrl);
+    await page.click('button:has-text("Open")');
+    await page.waitForSelector('.dialog-panel');
+  };
+
+  it('wraps from the checked radio of a group', async () => {
+    await open('radios');
+    expect(
+      await page.evaluate(() => {
+        const el = document.activeElement as HTMLInputElement;
+        return el.type === 'radio' && el.checked;
+      }),
+    ).toBe(true);
+    await page.keyboard.press('Tab');
+    expect(await insidePanel()).toBe(true);
+    await page.keyboard.press('Shift+Tab');
+    expect(await insidePanel()).toBe(true);
+  });
+
+  it('ignores controls with a negative tabindex', async () => {
+    await open('skipped');
+    await page.focus('#first');
+    await page.keyboard.press('Tab');
+    expect(await insidePanel()).toBe(true);
   });
 });
