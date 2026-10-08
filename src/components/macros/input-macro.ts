@@ -59,14 +59,29 @@ export function defineInputMacro(
         perform: (v) => ctx.setValue!(toValue(v)),
       });
 
+      // What the reader last typed. A number input reports an unfinished
+      // number ("-", "2e") as an empty value, so the text is kept for as
+      // long as it still converts to the variable's value, instead of being
+      // replaced by that value on every keystroke (#353).
+      const typed = ctx.hooks.useRef<string | null>(null);
+      const shown =
+        typed.current !== null &&
+        toValue(typed.current) === ctx.value &&
+        type === 'number'
+          ? typed.current
+          : display(ctx.value);
+
       return h(type ? 'input' : 'textarea', {
         type,
         id: ctx.id,
         class: ctx.cls,
-        value: display(ctx.value),
+        value: shown,
         placeholder,
-        onInput: (e: Event) =>
-          ctx.setValue!(toValue((e.target as HTMLInputElement).value)),
+        onInput: (e: Event) => {
+          const text = (e.target as HTMLInputElement).value;
+          typed.current = text;
+          ctx.setValue!(toValue(text));
+        },
       });
     },
   });

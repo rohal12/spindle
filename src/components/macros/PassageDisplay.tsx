@@ -1,6 +1,15 @@
-import { useRef, useEffect, useCallback, useState } from 'preact/hooks';
-import { useStoryStore } from '../../store';
-import { useStoryFields } from '../../hooks/use-story-fields';
+import {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useState,
+} from 'preact/hooks';
+import { useStoryStore, type StoryState } from '../../store';
+import {
+  useStoryFields,
+  FrozenStateContext,
+} from '../../hooks/use-story-fields';
 import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
@@ -125,6 +134,13 @@ defineMacro({
 
     // Track previous history length to detect restart/load
     const prevHistoryLenRef = useRef(0);
+
+    const displayedId = displayed.id;
+    const isOutgoing = useCallback(
+      (state: StoryState) => state.navigationId !== displayedId,
+      [displayedId],
+    );
+    const lastElement = useRef<preact.VNode | null>(null);
 
     // Container ref for snapshot insertion
     const containerRef = useRef<HTMLDivElement>(null);
@@ -265,6 +281,22 @@ defineMacro({
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [navigationId]);
 
+    // A new passage opens at its beginning, not where the previous one was
+    // scrolled to (#354). The page keeps its position on first display
+    // (a refresh restores it) and when the beginning is already in view.
+    const shownId = displayedPassage && !renderDeferred ? displayed.id : null;
+    const lastShownId = useRef(shownId);
+    useLayoutEffect(() => {
+      if (shownId === null) return; // between passages of a transition
+      const previous = lastShownId.current;
+      lastShownId.current = shownId;
+      if (previous === null || previous === shownId) return;
+      const el = containerRef.current?.querySelector('.passage');
+      if (el && el.getBoundingClientRect().top < 0) {
+        el.scrollIntoView?.({ block: 'start' });
+      }
+    }, [shownId]);
+
     // When render is deferred, show StoryLoading passage or nothing
     const effectivePassage = renderDeferred
       ? (storyData?.passages.get('StoryLoading') ?? null)
@@ -281,6 +313,23 @@ defineMacro({
     }
 
     const readyPassage = storyData?.passages.get('PassageReady');
+
+    // Between a navigation and the commit of its passage, the old passage is
+    // still mounted. It must not execute against the destination's state, so
+    // it keeps the element and the state it last rendered with (#352).
+    const outgoing = !renderDeferred && displayed.id !== navigationId;
+    const passageElement =
+      outgoing && lastElement.current
+        ? lastElement.current
+        : effectivePassage && (
+            <Passage
+              passage={effectivePassage}
+              key={renderDeferred ? 'loading' : `nav-${displayed.id}`}
+              dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
+              navigationId={renderDeferred ? undefined : displayed.id}
+            />
+          );
+    lastElement.current = passageElement || null;
 
     return (
       <div
@@ -299,13 +348,10 @@ defineMacro({
           class="passage-container"
           ref={containerRef}
         >
-          {effectivePassage && (
-            <Passage
-              passage={effectivePassage}
-              key={renderDeferred ? 'loading' : `nav-${displayed.id}`}
-              dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
-              navigationId={renderDeferred ? undefined : displayed.id}
-            />
+          {passageElement && (
+            <FrozenStateContext.Provider value={isOutgoing}>
+              {passageElement}
+            </FrozenStateContext.Provider>
           )}
         </div>
       </div>

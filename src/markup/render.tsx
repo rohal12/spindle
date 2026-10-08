@@ -679,14 +679,21 @@ function nodeKey(node: ASTNode): string {
 function renderMacro(node: MacroNode, key: string) {
   if (isSubMacro(node.name)) return null;
 
+  // What an invocation passes on to a widget and to a built-in macro alike
+  const invocation = {
+    rawArgs: node.rawArgs,
+    className: node.className,
+    id: node.id,
+  };
+
   const widget = getWidget(node.name);
   if (widget) {
     return (
       <WidgetInvocation
         key={key}
+        {...invocation}
         body={widget.body}
         params={widget.params}
-        rawArgs={node.rawArgs}
         invocationChildren={node.children}
       />
     );
@@ -697,9 +704,7 @@ function renderMacro(node: MacroNode, key: string) {
     return (
       <Component
         key={key}
-        rawArgs={node.rawArgs}
-        className={node.className}
-        id={node.id}
+        {...invocation}
         children={node.children}
         branches={node.branches}
       />

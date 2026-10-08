@@ -194,4 +194,43 @@ describe('detached {button}/{link} bodies', () => {
     });
     expect(useStoryStore.getState().variables.late).toBe(1);
   });
+
+  it('does not re-run a skipped branch when the state changes later (#351)', () => {
+    const el = renderPassage(
+      '{button "Check"}{if $n > 10}{set $hits += 1}{/if}{/button}{button "Up"}{set $n = 20}{/button}',
+    );
+    useStoryStore.setState({ variables: { n: 10, hits: 0 } });
+    const [check, up] = Array.from(el.querySelectorAll('button'));
+    act(() => (check as HTMLElement).click());
+    act(() => (up as HTMLElement).click());
+    expect(useStoryStore.getState().variables.hits).toBe(0);
+  });
+
+  it('toggles once per click (#351)', () => {
+    const el = renderPassage(
+      '{button "T"}{if $active}{set $active = false}{else}{set $active = true}{/if}{/button}',
+    );
+    useStoryStore.setState({ variables: { active: false } });
+    act(() => (el.querySelector('button') as HTMLElement).click());
+    expect(useStoryStore.getState().variables.active).toBe(true);
+  });
+
+  it('applies invocation selectors to a widget (#358)', () => {
+    defineWidget('{widget "Stats"}Stats content{/widget}');
+    const el = renderPassage('{.badge#hero Stats}');
+    const target = el.querySelector('#hero');
+    expect(target?.classList.contains('badge')).toBe(true);
+    expect(target?.textContent).toContain('Stats content');
+  });
+
+  it('updates rendered() consumers when an include mounts (#355)', () => {
+    const data = makeStoryData([
+      makePassage(1, 'Start', ''),
+      makePassage(2, 'Info', 'Count: {print rendered("Info")}'),
+    ]);
+    useStoryStore.setState({ storyData: data });
+    const el = renderPassage('{include "Info"}Outer: {print rendered("Info")}');
+    expect(el.textContent).toContain('Count: 1');
+    expect(el.textContent).toContain('Outer: 1');
+  });
 });

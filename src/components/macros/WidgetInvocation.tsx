@@ -15,13 +15,32 @@ interface WidgetInvocationProps {
   params: string[];
   rawArgs?: string;
   invocationChildren?: ASTNode[];
+  className?: string;
+  id?: string;
 }
 
-export function WidgetInvocation({
+export function WidgetInvocation(props: WidgetInvocationProps) {
+  const { className, id } = props;
+  const content = <WidgetContent {...props} />;
+  // Invocation selectors (`{.badge#hero Stats}`) need an element to land on.
+  if (!className && !id) return content;
+  return (
+    <span
+      class={className}
+      id={id}
+    >
+      {content}
+    </span>
+  );
+}
+
+function WidgetContent({
   body,
   params,
   rawArgs,
   invocationChildren,
+  className,
+  id,
 }: WidgetInvocationProps) {
   const renderOptions = useRenderOptions();
   const parentValues = renderOptions.locals;

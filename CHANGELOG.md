@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A widget invocation with CSS selectors (`{.badge#hero Stats}`) puts the class and ID on a wrapper element (#358).
+- A rejected slot load (a save whose passage the story no longer has) leaves the game in its current playthrough (#357).
+- A refreshed tab continues its own playthrough, not the one another tab made current since (#356).
+- `rendered()` and `hasRendered()` in an included passage and its surroundings update when the `{include}` mounts (#355).
+- A new passage opens at its beginning after navigation, instead of at the previous passage's scroll position (#354).
+- `{numberbox}` keeps unfinished input such as `-` or `2e` while the player types (#353).
+- The passage being left no longer runs its macros against the destination's state: it keeps the state it last rendered with (#352).
+- A `{button}` or `{link}` body decides once per click; branches skipped at click time do not run on later state changes (#351).
 - A global or sticky RegExp keeps its `lastIndex` through mutations, saves and the session, and a `lastIndex` change counts as a change (#349).
 - `{type}` reveals its text in reading order across wrapped lines (#348).
 - The Saves dialog tells the player when saves are held in memory only and are lost on reload (#347).

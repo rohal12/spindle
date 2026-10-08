@@ -965,6 +965,19 @@ export function missingPassage(
   );
 }
 
+/** Throw if `payload` refers to a passage `storyData` does not have. */
+function assertPassagesExist(
+  storyData: StoryData | null | undefined,
+  payload: SavePayload,
+): void {
+  const missing = missingPassage(storyData, payload);
+  if (missing !== undefined) {
+    throw new Error(
+      `The save refers to the passage "${missing}", which this version of the story does not have`,
+    );
+  }
+}
+
 const NAMESPACE_KEYS = ['variables', 'temporary', 'transient'] as const;
 
 type StoryRecipe = (draft: Draft<StoryState>) => void;
@@ -1449,7 +1462,9 @@ export const useStoryStore = create<StoryState>()(
       // the game on, as usual). An empty slot leaves the playthrough as it
       // is.
       const previous = resolvePlaythroughId();
-      const read = loadSlotSave(storyData.ifid, slot);
+      const read = loadSlotSave(storyData.ifid, slot, (payload) =>
+        assertPassagesExist(storyData, payload),
+      );
       const switched = switchToLookedUpPlaythrough(
         Promise.all([previous, read.catch(() => undefined)]).then(
           ([prev, loaded]) => loaded?.playthroughId || prev,
@@ -1646,12 +1661,7 @@ export const useStoryStore = create<StoryState>()(
       }
       // Before anything is replaced: an incompatible payload leaves the
       // running game as it is
-      const missing = missingPassage(get().storyData, payload);
-      if (missing !== undefined) {
-        throw new Error(
-          `The save refers to the passage "${missing}", which this version of the story does not have`,
-        );
-      }
+      assertPassagesExist(get().storyData, payload);
       latestStateApplied = replacement;
 
       emit('beforeload', slot);

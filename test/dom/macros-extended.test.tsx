@@ -613,6 +613,31 @@ describe('extended macro components', () => {
       const actions = getActions();
       expect(actions.some((a) => a.type === 'numberbox')).toBe(true);
     });
+
+    it('keeps unfinished numeric input while the reader types (#353)', () => {
+      useStoryStore.getState().setVariable('n', 10);
+      const el = renderPassage('{numberbox $n}');
+      const input = el.querySelector('input') as HTMLInputElement;
+      const type = (text: string) => {
+        act(() => {
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+      };
+      // A browser reports a lone "-" as an empty value
+      type('');
+      expect(useStoryStore.getState().variables.n).toBe(0);
+      expect(input.value).toBe('');
+      type('-5');
+      expect(useStoryStore.getState().variables.n).toBe(-5);
+      expect(input.value).toBe('-5');
+      type('2e3');
+      expect(useStoryStore.getState().variables.n).toBe(2000);
+      expect(input.value).toBe('2e3');
+      // An outside change replaces the text
+      act(() => useStoryStore.getState().setVariable('n', 7));
+      expect(input.value).toBe('7');
+    });
   });
 
   describe('{textarea}', () => {
