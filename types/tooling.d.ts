@@ -100,7 +100,13 @@ export declare function defineMacro(config: MacroDefinition): void;
 export declare function getMacroRegistry(): MacroMetadata[];
 
 /** Variable type inferred from a StoryVariables/StoryTransients default value. */
-export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
+export type VarType =
+  | 'number'
+  | 'string'
+  | 'boolean'
+  | 'array'
+  | 'object'
+  | 'null';
 
 /** Inferred shape of a declared variable (or one of its object fields). */
 export interface FieldSchema {

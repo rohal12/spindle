@@ -5,7 +5,7 @@ import { deepEqualStrict } from '../../structural';
 import { defineMacro } from '../../define-macro';
 import { MacroError, logMacroError } from './MacroError';
 import { currentSourceLocation } from '../../utils/source-location';
-import { checkVariableName } from '../../utils/namespace';
+import { checkVariableName, ownValue } from '../../utils/namespace';
 
 /**
  * The previous output before the first successful evaluation. Distinct from
@@ -39,7 +39,7 @@ function assignmentArgs(
 /**
  * Evaluate `expr` against the current values — the store's state and the
  * enclosing locals scope's live values (`getLocals`) — and write the result
- * to the target if it differs from the previous output (always, the first
+ * to the target if it differs from the previous output or the target's value (always, the first
  * time). Reading live values rather than the render's snapshot means the
  * first computation sees a local a preceding {set} just assigned (the scope's
  * context value only catches up on its re-render), and the first computation
@@ -53,22 +53,39 @@ function computeAndApply(
   getLocals: () => Record<string, unknown>,
   rawArgs: string,
   prevRef: { current: unknown },
+  lastNavigation: { current: number },
   localsUpdate: ((key: string, value: unknown) => void) | null,
 ): void {
   // Before evaluating: the expression may navigate away from this passage
   const location = currentSourceLocation();
   let newValue: unknown;
+  let current: unknown = prevRef.current;
+  let navigated = false;
+  const { navigationId } = useStoryStore.getState();
   try {
     // In program order, also when mutation code sets this off
     const { variables, temporary, transient } = readState();
+    // A navigation (or restored session) resets the temporary namespace,
+    // which a persistent {computed} survives: the target is then gone though
+    // the result is unchanged, and is written again. Between navigations a
+    // target the story removed or set itself stays as it is.
+    if (!isLocal) {
+      current = ownValue(isTemp ? temporary : variables, name);
+      navigated = navigationId !== lastNavigation.current;
+    }
     newValue = evaluate(expr, variables, temporary, getLocals(), transient);
   } catch (err) {
     logMacroError(`computed ${rawArgs}`, err, location);
     return;
   }
 
+  lastNavigation.current = navigationId;
+
   // Strict: a change of only the aliases inside the result is a change
-  if (!deepEqualStrict(prevRef.current, newValue)) {
+  if (
+    !deepEqualStrict(prevRef.current, newValue) ||
+    (navigated && !deepEqualStrict(current, newValue))
+  ) {
     prevRef.current = newValue;
     if (isLocal) {
       try {
@@ -111,6 +128,8 @@ defineMacro({
     const localsUpdate = isLocal ? ctx.update : null;
 
     const prevOutput = ctx.hooks.useRef<unknown>(UNSET);
+    // The navigation the target was last checked in
+    const lastNavigation = ctx.hooks.useRef(-1);
 
     const compute = () =>
       computeAndApply(
@@ -121,6 +140,7 @@ defineMacro({
         ctx.getValues,
         rawArgs,
         prevOutput,
+        lastNavigation,
         localsUpdate,
       );
 

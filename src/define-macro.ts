@@ -229,7 +229,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       // In program order, also when mutation code performs the input
       ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = (value: unknown) => {
-        noteControlEdit();
+        noteControlEdit(segments);
         // The commit mutation code uses, which keeps the references among
         // variables: a write to a draft copies only the path written, and
         // other variables sharing the object would keep the old one.

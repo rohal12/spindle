@@ -33,8 +33,11 @@ function makeStoryData(): StoryData {
   };
 }
 
+const mounted: HTMLElement[] = [];
+
 function renderMarkup(markup: string): HTMLElement {
   const container = document.createElement('div');
+  mounted.push(container);
   act(() => {
     render(<>{renderNodes(parseMarkup(markup))}</>, container);
   });
@@ -50,6 +53,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A mounted {computed} would keep writing its target into later tests
+  act(() => {
+    for (const container of mounted.splice(0)) render(null, container);
+  });
   clearWidgets();
   vi.restoreAllMocks();
 });

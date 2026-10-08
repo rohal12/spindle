@@ -101,7 +101,7 @@ describe('@rohal12/spindle/tooling', async () => {
   });
 
   it('parseStoryVariables rejects unsupported values', () => {
-    expect(() => tooling.parseStoryVariables('$x = null')).toThrow(
+    expect(() => tooling.parseStoryVariables('$x = undefined')).toThrow(
       /Unsupported type/,
     );
   });

@@ -32,7 +32,13 @@ function tokensOf(text: string, textMode: boolean): Token[] {
   }
 }
 
-export type VarType = 'number' | 'string' | 'boolean' | 'array' | 'object';
+export type VarType =
+  | 'number'
+  | 'string'
+  | 'boolean'
+  | 'array'
+  | 'object'
+  | 'null';
 
 export interface FieldSchema {
   type: VarType;
@@ -66,7 +72,9 @@ function inferSchema(value: unknown): FieldSchema {
   if (Array.isArray(value)) {
     return { type: 'array' };
   }
-  if (value !== null && typeof value === 'object') {
+  // A default of null means "nothing yet"; the value may later be anything
+  if (value === null) return { type: 'null' };
+  if (typeof value === 'object') {
     const fields = new Map<string, FieldSchema>();
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       fields.set(key, inferSchema(val));
@@ -156,6 +164,8 @@ function validateRef(
     // Arrays have built-in methods/properties (push, find, length, etc.)
     // so any field access on an array is allowed.
     if (current.type === 'array') return null;
+    // A null default may later hold a value of any shape
+    if (current.type === 'null') return null;
 
     // Primitives expose their wrapper's built-ins (length, toUpperCase,
     // toFixed, etc.). Keep validating past properties of primitive type.

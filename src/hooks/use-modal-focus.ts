@@ -9,7 +9,8 @@ const FOCUSABLE = [
   'select:not([disabled])',
   'textarea:not([disabled])',
   'iframe',
-  '[contenteditable="true"]',
+  'summary',
+  '[contenteditable]',
   '[tabindex]',
 ].join(',');
 
@@ -42,6 +43,25 @@ function tabIndexAttr(el: HTMLElement): number | null {
 function isTabStop(el: HTMLElement): boolean {
   const tabIndex = tabIndexAttr(el);
   if (tabIndex !== null && tabIndex < 0) return false;
+  // Only an editing host takes focus, not `contenteditable="false"` or
+  // content nested in a host
+  if (
+    el.hasAttribute('contenteditable') &&
+    !el.matches('a[href], button, input, select, textarea, iframe, summary') &&
+    (!el.isContentEditable || el.parentElement?.isContentEditable)
+  ) {
+    return false;
+  }
+  // Only a details element's first summary child is its toggle
+  if (el.localName === 'summary') {
+    const details = el.parentElement;
+    if (
+      details?.localName !== 'details' ||
+      Array.from(details.children).find((c) => c.localName === 'summary') !== el
+    ) {
+      return tabIndex !== null;
+    }
+  }
   if (el instanceof HTMLInputElement && el.type === 'radio' && el.name) {
     const group = Array.from(
       (
