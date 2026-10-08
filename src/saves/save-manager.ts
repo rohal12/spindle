@@ -231,9 +231,17 @@ export function establishPlaythrough(
 ): Promise<{ id: string; knownSaves: Record<string, true> }> {
   return inOrder(async () => {
     const backend = await getBackend();
-    const id =
-      (await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
-      (await startNewPlaythroughNow(ifid));
+    // A tab that restores its session continues the session's playthrough;
+    // the shared current one is the default for a visit with no session,
+    // and may belong to what another tab has done since (#356).
+    const own = loadSessionPlaythrough(ifid);
+    const ownExists =
+      own !== undefined &&
+      (await backend.getPlaythroughsByIfid(ifid)).some((p) => p.id === own);
+    const id = ownExists
+      ? own
+      : ((await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
+        (await startNewPlaythroughNow(ifid)));
     return { id, knownSaves: await populateKnownSavesNow(ifid) };
   });
 }
@@ -673,15 +681,20 @@ export const loadQuickSave = readingSlot(livePayload);
  * (see adoptPlaythrough) in the same operation: operations issued after the
  * load take effect in the loaded playthrough. Resolves to the live payload
  * and its playthrough, or undefined if the slot is empty.
+ *
+ * `check` is run on the payload first: when it throws, the load rejects and
+ * the game stays in its playthrough (#357).
  */
 export function loadSlotSave(
   ifid: string,
   slot?: string,
+  check?: (payload: SavePayload) => void,
 ): Promise<{ payload: SavePayload; playthroughId: string } | undefined> {
   return inOrder(async () => {
     const record = await slotRecord(ifid, slot);
     if (!record) return undefined;
     const payload = decodePayload(record.payload);
+    check?.(payload);
     const { playthroughId } = record.meta;
     if (playthroughId) await adoptPlaythroughNow(ifid, playthroughId);
     return { payload, playthroughId };
@@ -792,6 +805,32 @@ export function clearSession(ifid: string): void {
     sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${ifid}`);
   } catch {
     // ignore
+  }
+}
+
+/**
+ * The playthrough this tab's game is in, kept with its session: the shared
+ * current playthrough (a stored meta value) can be changed by another tab.
+ * Under the session prefix, so clearing all data clears it.
+ */
+const SESSION_PLAYTHROUGH_PREFIX = `${SESSION_KEY_PREFIX}playthrough.`;
+
+export function saveSessionPlaythrough(ifid: string, id: string): void {
+  try {
+    sessionStorage.setItem(`${SESSION_PLAYTHROUGH_PREFIX}${ifid}`, id);
+  } catch {
+    // the session cannot be stored: a reload takes the shared playthrough
+  }
+}
+
+function loadSessionPlaythrough(ifid: string): string | undefined {
+  try {
+    return (
+      sessionStorage.getItem(`${SESSION_PLAYTHROUGH_PREFIX}${ifid}`) ||
+      undefined
+    );
+  } catch {
+    return undefined;
   }
 }
 

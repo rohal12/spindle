@@ -427,4 +427,52 @@ describe('loading a save switches to its playthrough', () => {
         .hp,
     ).toBe(5);
   });
+
+  it('a rejected load keeps the current playthrough (#357)', async () => {
+    const [, second] = await saveThenRestart('a');
+    // The story is updated: the saved passage is gone
+    const passages = [makePassage(1, 'Start', 'Hello')];
+    useStoryStore.setState({
+      storyData: {
+        ...makeStoryData(ifid),
+        passages: new Map(passages.map((p) => [p.name, p])),
+        passagesById: new Map(passages.map((p) => [p.pid, p])),
+      },
+    });
+
+    await Story.load('a').catch(() => undefined);
+    expect(state().loadError).toContain('does not have');
+    expect(state().playthroughId).toBe(second);
+    await Story.save('after');
+    expect((await groupOf(second))![2]).toEqual(['after']);
+  });
+
+  it('a refresh stays in the tab’s own playthrough (#356)', async () => {
+    const first = state().playthroughId;
+    Story.goto('Room');
+    await Story.save('first');
+    const tabA = new Map(
+      Array.from({ length: sessionStorage.length }, (_, i) => {
+        const key = sessionStorage.key(i)!;
+        return [key, sessionStorage.getItem(key)!] as const;
+      }),
+    );
+
+    // Another tab restarts the game: the shared current playthrough moves on
+    sessionStorage.clear();
+    Story.restart();
+    await resolvePlaythroughId();
+    const second = state().playthroughId;
+    expect(second).not.toBe(first);
+
+    // Tab A refreshes
+    sessionStorage.clear();
+    for (const [key, value] of tabA) sessionStorage.setItem(key, value);
+    refresh();
+    await resolvePlaythroughId();
+    expect(Story.passage).toBe('Room');
+    expect(state().playthroughId).toBe(first);
+    await Story.save('afterreload');
+    expect((await groupOf(first))![2]).toEqual(['afterreload', 'first']);
+  });
 });
