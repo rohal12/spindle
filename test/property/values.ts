@@ -71,7 +71,7 @@ const isObj = (v: unknown): v is object => typeof v === 'object' && v !== null;
  * Structural equality, written independently of class-registry's
  * deepEqual: same prototype at every node, Object.is on primitives (so
  * NaN equals NaN and -0 differs from 0), Date by time value (invalid dates
- * are equal), RegExp by source and flags, Map and Set entries in insertion
+ * are equal), RegExp by source, flags and lastIndex, Map and Set entries in insertion
  * order, arrays by length and index (a hole differs from an undefined
  * element: deepClone and saves keep holes) and objects by
  * their own enumerable keys. Cycles are compared coinductively.
@@ -90,7 +90,12 @@ export function structEq(
 
   if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
   if (a instanceof RegExp) {
-    return a.source === (b as RegExp).source && a.flags === (b as RegExp).flags;
+    const re = b as RegExp;
+    return (
+      a.source === re.source &&
+      a.flags === re.flags &&
+      a.lastIndex === re.lastIndex
+    );
   }
   if (a instanceof Map) {
     const ea = [...a];

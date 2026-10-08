@@ -49,7 +49,7 @@ function keyOf(val: unknown, ancestors: object[]): string {
   if (depth !== -1) return `<cycle ${ancestors.length - depth}>`;
 
   if (val instanceof Date) return `Date(${val.getTime()})`;
-  if (val instanceof RegExp) return `RegExp(${String(val)})`;
+  if (val instanceof RegExp) return `RegExp(${String(val)}@${val.lastIndex})`;
 
   ancestors.push(obj);
   try {

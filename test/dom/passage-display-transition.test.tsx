@@ -489,7 +489,11 @@ describe('PassageDisplay remounts on every navigation', () => {
         useStoryStore.getState().navigate('A');
       });
       if (type !== 'fade') {
-        expect(container.querySelector('.passage-snapshot')).not.toBeNull();
+        const snapshot = container.querySelector('.passage-snapshot');
+        expect(snapshot).not.toBeNull();
+        // Visual only: not focusable, not in the accessibility tree
+        expect(snapshot!.hasAttribute('inert')).toBe(true);
+        expect(snapshot!.getAttribute('aria-hidden')).toBe('true');
       }
       settle();
       expect(container.querySelector('.passage-snapshot')).toBeNull();

@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A global or sticky RegExp keeps its `lastIndex` through mutations, saves and the session, and a `lastIndex` change counts as a change (#349).
+- `{type}` reveals its text in reading order across wrapped lines (#348).
+- The Saves dialog tells the player when saves are held in memory only and are lost on reload (#347).
+- Built-in buttons are `type="button"`, so they do not submit an enclosing HTML form (#346).
+- Outgoing passage snapshots are `inert` and `aria-hidden` during transitions (#345).
+- Clicking the backdrop of a nested dialog closes only that dialog (#344).
+- `{do}` runs in passage order with `{set}` (#343).
+- A save or session whose passages no longer exist is rejected (load) or dropped (refresh) before the game state is replaced (#342).
+- `{watch}` watchers are kept in saves and the session, so they survive a refresh (#341).
+- The named save-slot index and playthrough numbering are updated under a Web Lock, so two tabs do not drop each other's slots (#340).
 - `visited()`, `hasVisited()`, `rendered()` and their any/all forms in mutation code read the counters after a `Story.goto()` earlier in the same block, as the `Story` methods do.
 - Escape cancels a save rename without saving it or closing the Saves dialog.
 - A `{timed}` or `{repeat}` inside a `{button}` or targetless `{link}` runs its delayed body; the clicked body stays mounted until its owner unmounts.

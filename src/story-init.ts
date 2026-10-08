@@ -1,5 +1,5 @@
 import { h, render } from 'preact';
-import { useStoryStore, recordStoryInitState } from './store';
+import { useStoryStore, recordStoryInitState, missingPassage } from './store';
 import { parseMarkup } from './markup/parse';
 import { renderNodes } from './markup/render';
 import { setSaveTitlePassage } from './saves/save-manager';
@@ -70,6 +70,18 @@ export function executeStoryInit() {
  */
 export function initializeStory(session?: SavePayload): void {
   executeStoryInit();
+
+  // A session that refers to a passage the story no longer has (it was
+  // updated since) is dropped: the game starts from the beginning
+  const missing = session
+    ? missingPassage(useStoryStore.getState().storyData, session)
+    : undefined;
+  if (missing !== undefined) {
+    console.warn(
+      `spindle: discarding the saved session: the story no longer has the passage "${missing}"`,
+    );
+    session = undefined;
+  }
 
   if (session) {
     useStoryStore.getState().loadFromPayload(session);

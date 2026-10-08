@@ -1,4 +1,5 @@
 import type { PRNGSnapshot } from '../prng';
+import type { SavedWatcher } from '../triggers';
 import { hasOwn } from '../utils/namespace';
 import {
   checkFormatVersion,
@@ -25,6 +26,8 @@ export interface SavePayload {
   visitCounts?: Record<string, number>;
   renderCounts?: Record<string, number>;
   prng?: PRNGSnapshot | null;
+  /** The {watch} macro watchers registered (absent in older saves). */
+  watchers?: SavedWatcher[];
 }
 
 export interface SaveMeta {

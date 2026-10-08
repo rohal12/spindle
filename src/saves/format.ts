@@ -135,6 +135,14 @@ const isMoment = (value: unknown): boolean =>
   typeof value.timestamp === 'number' &&
   isOptionalPRNGSnapshot(value.prng);
 
+const isWatchers = (value: unknown): boolean =>
+  value === undefined ||
+  (Array.isArray(value) &&
+    Array.from(value).every(
+      (w) =>
+        isRecord(w) && typeof w.condition === 'string' && isRecord(w.options),
+    ));
+
 const isCountsMap = (value: unknown): boolean =>
   value === undefined ||
   (value instanceof Map &&
@@ -166,7 +174,8 @@ function isPayload(value: unknown): value is Record<string, unknown> {
   return (
     isCountsMap(value.visitCounts) &&
     isCountsMap(value.renderCounts) &&
-    isOptionalPRNGSnapshot(value.prng)
+    isOptionalPRNGSnapshot(value.prng) &&
+    isWatchers(value.watchers)
   );
 }
 

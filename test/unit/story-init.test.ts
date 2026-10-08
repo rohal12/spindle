@@ -404,3 +404,41 @@ describe('storyinit handler changes in the start moment', () => {
     expect(snapshots()).toEqual([{ gold: 5 }]);
   });
 });
+
+describe('a story updated since the session or save was made', () => {
+  const store = () => useStoryStore.getState();
+  const oldPayload = () => ({
+    passage: 'Old',
+    variables: {},
+    history: [{ passage: 'Old', variables: {}, timestamp: 1 }],
+    historyIndex: 0,
+  });
+
+  beforeEach(() => {
+    _resetRuntimePhase();
+    sessionStorage.clear();
+    resetPRNG();
+    store().init(makeStoryData([makePassage(1, 'Start', 'Hello')]));
+  });
+
+  it('starts from the beginning instead of restoring a removed passage', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    initializeStory(oldPayload());
+    expect(store().currentPassage).toBe('Start');
+    expect(warn.mock.calls.flat().join()).toContain('"Old"');
+    warn.mockRestore();
+  });
+
+  it('rejects loading a save of a removed passage and keeps the game', () => {
+    store().setVariable('hp', 5);
+    expect(() => store().loadFromPayload(oldPayload())).toThrow(/"Old"/);
+    expect(store().currentPassage).toBe('Start');
+    expect(store().variables.hp).toBe(5);
+  });
+
+  it('rejects a save whose history refers to a removed passage', () => {
+    const payload = oldPayload();
+    payload.passage = 'Start';
+    expect(() => store().loadFromPayload(payload)).toThrow(/"Old"/);
+  });
+});
