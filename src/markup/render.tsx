@@ -681,7 +681,6 @@ function renderMacro(node: MacroNode, key: string) {
 
   // What an invocation passes on to a widget and to a built-in macro alike
   const invocation = {
-    key,
     rawArgs: node.rawArgs,
     className: node.className,
     id: node.id,
@@ -691,6 +690,7 @@ function renderMacro(node: MacroNode, key: string) {
   if (widget) {
     return (
       <WidgetInvocation
+        key={key}
         {...invocation}
         body={widget.body}
         params={widget.params}
@@ -703,6 +703,7 @@ function renderMacro(node: MacroNode, key: string) {
   if (Component) {
     return (
       <Component
+        key={key}
         {...invocation}
         children={node.children}
         branches={node.branches}
