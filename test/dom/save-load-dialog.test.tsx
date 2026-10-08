@@ -270,6 +270,27 @@ describe('SaveManagerContent', () => {
     expect(header!.textContent).toContain('(current)');
   });
 
+  it('exposes the playthrough header as a disclosure button (#364)', async () => {
+    const ptId = useStoryStore.getState().playthroughId;
+    await createSave(IFID, ptId, makePayload());
+
+    renderSaveManager(container, onClose);
+    await flush();
+
+    const header = container.querySelector<HTMLButtonElement>(
+      '.playthrough-header',
+    )!;
+    expect(header.tagName).toBe('BUTTON');
+    expect(header.getAttribute('aria-expanded')).toBe('true');
+    await act(() => header.click());
+    await flush();
+    expect(
+      container
+        .querySelector('.playthrough-header')!
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
   it('collapse toggle hides save slots', async () => {
     const ptId = useStoryStore.getState().playthroughId;
     await createSave(IFID, ptId, makePayload());

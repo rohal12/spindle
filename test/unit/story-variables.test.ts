@@ -498,3 +498,21 @@ describe('validatePassages: SaveTitle is JavaScript (#251)', () => {
     ).toEqual([]);
   });
 });
+
+describe('validatePassages with HTML comments (#360)', () => {
+  const errorsFor = (content: string) =>
+    validatePassages(
+      makePassages(['StoryVariables', '$health = 100'], ['Start', content]),
+      parseStoryVariables('$health = 100'),
+    );
+
+  it('ignores a variable that only a comment mentions', () => {
+    expect(errorsFor('Hello<!-- {$removed} -->world')).toEqual([]);
+  });
+
+  it('still reports one after the comment', () => {
+    expect(errorsFor('<!-- {$a} -->{$removed}')).toEqual([
+      'Passage "Start": Undeclared variable: $removed',
+    ]);
+  });
+});

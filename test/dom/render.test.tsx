@@ -68,6 +68,21 @@ describe('renderNodes', () => {
       expect(pre.querySelector('p, h1, ul')).toBeNull();
     });
 
+    it('decodes character references in <pre>, <textarea> and SVG text (#361)', () => {
+      const el = renderMarkup(
+        '<pre>&lt;script&gt; &amp; &#65;</pre><textarea>&lt;b&gt; &amp;</textarea><svg><text>&amp;</text></svg>',
+      );
+      expect(el.querySelector('pre')!.textContent).toBe('<script> & A');
+      expect(el.querySelector('textarea')!.value).toBe('<b> &');
+      expect(el.querySelector('text')!.textContent).toBe('&');
+    });
+
+    it('does not decode a variable twice in <pre> (#361)', () => {
+      useStoryStore.getState().setVariable('s', '&amp; <b>');
+      const el = renderMarkup('<pre>&amp; {$s}</pre>');
+      expect(el.querySelector('pre')!.textContent).toBe('& &amp; <b>');
+    });
+
     it('keeps nested element and variable content literal in <pre>', () => {
       useStoryStore.getState().setVariable('n', 3);
       const el = renderMarkup('<pre><b>x:</b>\n    {$n} * 2\n# end</pre>');

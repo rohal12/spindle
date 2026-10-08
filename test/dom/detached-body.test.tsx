@@ -223,6 +223,29 @@ describe('detached {button}/{link} bodies', () => {
     expect(target?.textContent).toContain('Stats content');
   });
 
+  it('resolves dynamic invocation selectors on a widget (#365)', () => {
+    defineWidget('{widget "Badge"}Badge{/widget}');
+    const el = renderPassage('{.{$theme}#{$theme} Badge}');
+    act(() => useStoryStore.setState({ variables: { theme: 'red' } }));
+    expect(el.querySelector('#red.red')).not.toBeNull();
+    act(() => useStoryStore.setState({ variables: { theme: 'blue' } }));
+    expect(el.querySelector('#blue.blue')).not.toBeNull();
+    expect(el.querySelector('#red')).toBeNull();
+  });
+
+  it('keeps the selectors of the selected switch branch (#366)', () => {
+    const el = renderPassage(
+      '{switch $x}{.highlight#selected case 1}Selected{.fallback#other default}Other{/switch}',
+    );
+    act(() => useStoryStore.setState({ variables: { x: 1 } }));
+    expect(el.querySelector('#selected.highlight')?.textContent).toBe(
+      'Selected',
+    );
+    act(() => useStoryStore.setState({ variables: { x: 2 } }));
+    expect(el.querySelector('#other.fallback')?.textContent).toBe('Other');
+    expect(el.querySelector('#selected')).toBeNull();
+  });
+
   it('updates rendered() consumers when an include mounts (#355)', () => {
     const data = makeStoryData([
       makePassage(1, 'Start', ''),

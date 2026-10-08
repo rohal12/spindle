@@ -1,7 +1,7 @@
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import type { Branch } from '../../markup/ast';
-import { selectBranch } from './branches';
+import { selectBranch, renderBranch } from './branches';
 
 /**
  * The first {case} branch whose value equals `value`, else the {default}
@@ -20,6 +20,7 @@ defineMacro({
   name: 'switch',
   subMacros: ['case', 'default'],
   parameters: [{ name: 'expression', type: 'expression', required: true }],
+  interpolate: true,
   merged: true,
   render({ rawArgs, branches = [] }, ctx) {
     let switchValue: unknown;
@@ -46,7 +47,8 @@ defineMacro({
       );
     }
 
-    return branch && <>{ctx.renderNodes(branch.children)}</>;
+    if (!branch) return null;
+    return renderBranch(branch, ctx);
   },
   text({ rawArgs, branches = [] }, ctx) {
     const branch = selectCase(ctx.evaluate(rawArgs), branches, ctx.evaluate);

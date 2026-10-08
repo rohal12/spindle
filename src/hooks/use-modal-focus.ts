@@ -29,7 +29,12 @@ function isRendered(el: HTMLElement): boolean {
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.hidden && !el.closest('[hidden], [inert]') && isRendered(el),
+    (el) =>
+      !el.hidden &&
+      !el.closest('[hidden], [inert]') &&
+      // Also covers controls disabled by a <fieldset disabled> ancestor
+      !el.matches(':disabled') &&
+      isRendered(el),
   );
 }
 
