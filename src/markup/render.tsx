@@ -688,6 +688,8 @@ function renderMacro(node: MacroNode, key: string) {
         params={widget.params}
         rawArgs={node.rawArgs}
         invocationChildren={node.children}
+        className={node.className}
+        id={node.id}
       />
     );
   }

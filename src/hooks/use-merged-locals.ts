@@ -12,14 +12,17 @@ export function useMergedLocals(): readonly [
   Record<string, unknown>,
   Record<string, unknown>,
 ] {
-  const { variables, temporary, transient } = useStoryFields(
+  // renderCounts is read by rendered()/hasRendered() inside expressions, so
+  // it re-renders them (and renews the tuple) when an inclusion mounts.
+  const { variables, temporary, transient, renderCounts } = useStoryFields(
     'variables',
     'temporary',
     'transient',
+    'renderCounts',
   );
   const localsValues = useContext(LocalsValuesContext);
 
   return useMemo(() => {
     return [variables, temporary, localsValues, transient] as const;
-  }, [variables, temporary, localsValues, transient]);
+  }, [variables, temporary, localsValues, transient, renderCounts]);
 }

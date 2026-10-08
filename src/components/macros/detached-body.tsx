@@ -10,6 +10,7 @@ import {
 } from '../../markup/render';
 import type { ASTNode } from '../../markup/ast';
 import { useRenderOptions } from '../../hooks/use-render-options';
+import { FrozenStateContext } from '../../hooks/use-story-fields';
 import { liveLocalsView } from '../../utils/live-locals';
 import { runWithCommittedMutations } from '../../execute-mutation';
 import { RepeatContext } from './Repeat';
@@ -19,7 +20,8 @@ import { DialogCloseContext } from '../PassageDialog';
  * Return a function that runs a macro body once, outside the passage tree:
  * it renders `children` into a detached node, so the body's macros ({set},
  * {if}, {goto}, ...) fire their side effects through the normal Preact
- * pipeline. Used by {button} and {link} on click. The body stays mounted
+ * pipeline. Used by {button} and {link} on click. The body's state is frozen
+ * once it has rendered, so it runs once per click. It stays mounted
  * until the owning macro unmounts (its passage changes, say), so work it
  * starts in an effect, such as the timer of a {timed} or {repeat}, can
  * finish; the passage leaving cancels it.
@@ -58,21 +60,23 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
     const locals = liveLocalsView(updater.getValues);
     const container = document.createElement('div');
     render(
-      <LocalsUpdateContext.Provider value={updater}>
-        <LocalsValuesContext.Provider value={locals}>
-          <NobrContext.Provider value={nobr}>
-            <InlineContext.Provider value={inline}>
-              <WidgetChildrenContext.Provider value={widgetChildren}>
-                <RepeatContext.Provider value={repeat}>
-                  <DialogCloseContext.Provider value={closeDialog}>
-                    {renderNodes(children, { nobr, inline, locals })}
-                  </DialogCloseContext.Provider>
-                </RepeatContext.Provider>
-              </WidgetChildrenContext.Provider>
-            </InlineContext.Provider>
-          </NobrContext.Provider>
-        </LocalsValuesContext.Provider>
-      </LocalsUpdateContext.Provider>,
+      <FrozenStateContext.Provider value={true}>
+        <LocalsUpdateContext.Provider value={updater}>
+          <LocalsValuesContext.Provider value={locals}>
+            <NobrContext.Provider value={nobr}>
+              <InlineContext.Provider value={inline}>
+                <WidgetChildrenContext.Provider value={widgetChildren}>
+                  <RepeatContext.Provider value={repeat}>
+                    <DialogCloseContext.Provider value={closeDialog}>
+                      {renderNodes(children, { nobr, inline, locals })}
+                    </DialogCloseContext.Provider>
+                  </RepeatContext.Provider>
+                </WidgetChildrenContext.Provider>
+              </InlineContext.Provider>
+            </NobrContext.Provider>
+          </LocalsValuesContext.Provider>
+        </LocalsUpdateContext.Provider>
+      </FrozenStateContext.Provider>,
       container,
     );
     mounted.current.push(container);
