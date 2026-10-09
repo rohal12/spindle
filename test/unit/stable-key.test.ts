@@ -151,9 +151,81 @@ describe('stableKey', () => {
     expect(stableKey(obj)).not.toBe(stableKey(other));
   });
 
-  it('serializes shared (non-cyclic) references in full', () => {
+  it('keys a shared object once, then by where it was first met (#406)', () => {
     const shared = { x: 1 };
-    expect(stableKey([shared, shared])).toBe(JSON.stringify([shared, shared]));
+    const key = stableKey([shared, shared]);
+    expect(key).toBe('[{"x":1},<ref 1>]');
+    expect(key).not.toBe(stableKey([shared, { x: 1 }]));
+    const copy = { x: 1 };
+    expect(stableKey([copy, copy])).toBe(key);
+  });
+
+  it('grows with the objects of a shared graph, not its paths (#406)', () => {
+    let node: object = { text: 'leaf' };
+    for (let i = 0; i < 18; i++) node = { left: node, right: node };
+    const key = stableKey([node]);
+    expect(key.length).toBeLessThan(1000);
+
+    let other: object = { text: 'leaf' };
+    for (let i = 0; i < 18; i++) other = { left: other, right: other };
+    expect(stableKey([other])).toBe(key);
+    let changed: object = { text: 'leaf!' };
+    for (let i = 0; i < 18; i++) changed = { left: changed, right: changed };
+    expect(stableKey([changed])).not.toBe(key);
+  });
+
+  it('includes the class and own fields of a registered Array subclass (#407)', () => {
+    class Bag extends Array<unknown> {
+      constructor(public label: string) {
+        super();
+      }
+    }
+    registerClass('Bag', Bag);
+    const bag = (label: string) => new Bag(label);
+    expect(stableKey(bag('Old'))).not.toBe(stableKey(bag('New')));
+    expect(stableKey(bag('Old'))).toBe(stableKey(bag('Old')));
+    expect(stableKey(bag('Old'))).not.toBe(stableKey([]));
+    const filled = bag('x');
+    filled.push(1);
+    expect(stableKey(filled)).toBe('Class("Bag")[1]{"label":"x"}');
+  });
+
+  it('includes the class and own fields of registered Map, Set, Date and RegExp subclasses (#407)', () => {
+    class Inventory extends Map<string, number> {
+      constructor(public label: string) {
+        super();
+      }
+    }
+    class Tags extends Set<string> {
+      constructor(public label: string) {
+        super();
+      }
+    }
+    class GameDate extends Date {
+      constructor(public era: string) {
+        super(0);
+      }
+    }
+    class Pattern extends RegExp {
+      constructor(public label: string) {
+        super('a', 'g');
+      }
+    }
+    registerClass('Inventory', Inventory);
+    registerClass('Tags', Tags);
+    registerClass('GameDate', GameDate);
+    registerClass('Pattern', Pattern);
+    for (const make of [
+      (l: string) => new Inventory(l),
+      (l: string) => new Tags(l),
+      (l: string) => new GameDate(l),
+      (l: string) => new Pattern(l),
+    ]) {
+      expect(stableKey(make('a'))).toBe(stableKey(make('a')));
+      expect(stableKey(make('a'))).not.toBe(stableKey(make('b')));
+    }
+    expect(stableKey(new Inventory('a'))).not.toBe(stableKey(new Map()));
+    expect(stableKey(new GameDate('a'))).not.toBe(stableKey(new Date(0)));
   });
 
   it('does not throw when a getter throws', () => {
