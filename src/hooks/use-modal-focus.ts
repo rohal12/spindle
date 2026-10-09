@@ -246,17 +246,19 @@ export function useModalFocus(
     // Key events inside an embedded document never reach this one (#425).
     // Escape closes the dialog from there too; Tab moves on natively within
     // the frame and is taken over at its first and last controls.
-    const frameCleanups = new Map<HTMLIFrameElement, () => void>();
+    const controller = new AbortController();
+    const { signal } = controller;
+    const frameDocs = new Map<HTMLIFrameElement, Document>();
     const attachFrame = (frame: HTMLIFrameElement) => {
-      frameCleanups.get(frame)?.();
-      frameCleanups.delete(frame);
       let doc: Document | null = null;
       try {
         doc = frame.contentDocument;
       } catch {
         // Not accessible
       }
-      if (!doc) return;
+      // Already listening to this document
+      if (!doc || frameDocs.get(frame) === doc) return;
+      frameDocs.set(frame, doc);
       const onFrameKeyDown = (e: KeyboardEvent) => {
         if (!top()) return;
         if (e.key !== 'Tab') return onKeyDown(e);
@@ -270,10 +272,7 @@ export function useModalFocus(
           moveFocus(frame, e.shiftKey);
         }
       };
-      doc.addEventListener('keydown', onFrameKeyDown);
-      frameCleanups.set(frame, () =>
-        doc!.removeEventListener('keydown', onFrameKeyDown),
-      );
+      doc.addEventListener('keydown', onFrameKeyDown, { signal });
     };
     const attachFrames = () => {
       panel.querySelectorAll('iframe').forEach(attachFrame);
@@ -282,7 +281,7 @@ export function useModalFocus(
     const onLoad = (e: Event) => {
       if (e.target instanceof HTMLIFrameElement) attachFrame(e.target);
     };
-    panel.addEventListener('load', onLoad, true);
+    panel.addEventListener('load', onLoad, { capture: true, signal });
     const frames = new MutationObserver(attachFrames);
     frames.observe(panel, { childList: true, subtree: true });
     attachFrames();
@@ -298,15 +297,11 @@ export function useModalFocus(
       moveFocus(null, false);
     };
 
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('keydown', onKeyDown, { signal });
+    document.addEventListener('focusin', onFocusIn, { signal });
     return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('focusin', onFocusIn);
-      panel.removeEventListener('load', onLoad, true);
+      controller.abort();
       frames.disconnect();
-      frameCleanups.forEach((cleanup) => cleanup());
-      frameCleanups.clear();
     };
   }, [dismissible, onClose]);
 }
