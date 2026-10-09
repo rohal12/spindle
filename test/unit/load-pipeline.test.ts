@@ -687,12 +687,13 @@ describe('load pipeline', () => {
   describe('beforeload saves belong to the game being left (#416)', () => {
     it('keeps the backup in the playthrough left by a slot load', async () => {
       await saveTo('first');
-      const first = (await Story.exportSave('first')).save.meta.playthroughId;
+      const first = (await Story.exportSave('first'))!.save.meta.playthroughId;
 
       Story.restart();
       await Story.waitForActions();
       await saveTo('second');
-      const second = (await Story.exportSave('second')).save.meta.playthroughId;
+      const second = (await Story.exportSave('second'))!.save.meta
+        .playthroughId;
       expect(second).not.toBe(first);
 
       let backup: Promise<unknown> | undefined;
@@ -701,12 +702,12 @@ describe('load pipeline', () => {
       });
       await loadFrom('first');
       await backup;
-      const saved = (await Story.exportSave('backup')).save;
+      const saved = (await Story.exportSave('backup'))!.save;
       expect(saved.meta.playthroughId).toBe(second);
 
       // Saves issued after the load belong to the loaded playthrough
       await saveTo('after');
-      expect((await Story.exportSave('after')).save.meta.playthroughId).toBe(
+      expect((await Story.exportSave('after'))!.save.meta.playthroughId).toBe(
         first,
       );
     });

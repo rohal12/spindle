@@ -253,8 +253,8 @@ describe('stableKey', () => {
       ['Error class', new Error('x'), new TypeError('x')],
       [
         'Error cause',
-        new Error('x', { cause: 1 }),
-        new Error('x', { cause: 2 }),
+        Object.assign(new Error('x'), { cause: 1 }),
+        Object.assign(new Error('x'), { cause: 2 }),
       ],
       [
         'ArrayBuffer',
