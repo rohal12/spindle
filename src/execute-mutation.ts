@@ -144,9 +144,10 @@ function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   if (typeof value !== 'object' || value === null || seen.has(value)) {
     return true;
   }
-  // Leaves a freeze cannot lock (typed array elements) and that a copy would
-  // detach from what they share (a buffer): handed out as they are
-  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return true;
+  // A freeze cannot lock the bytes of a typed array, DataView or buffer, and
+  // a write to them would change the store's recorded history (#429): a value
+  // holding one is handed out as a copy, which keeps the buffers it shares
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return false;
   if (!Object.isFrozen(value)) return false;
   seen.add(value);
   // What a Map or Set holds is not in its properties (#388)
