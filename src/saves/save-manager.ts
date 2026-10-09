@@ -384,6 +384,8 @@ async function overwriteSaveNow(
     payload,
   );
   await backend.putSave(updated);
+  // The saves listed elsewhere (open dialogs) are out of date (#428)
+  announceSlots(updated.meta.ifid);
   return updated;
 }
 
@@ -400,6 +402,9 @@ export const decodeSavePayload = (payload: SaveRecord['payload']) =>
   decodePayload(payload);
 
 export const loadSave = readingSave(livePayload);
+
+/** The stored record of a save, as it is now. */
+export const getSaveRecord = readingSave((record) => record);
 
 /**
  * Delete a save record. If the default slot or a named slot holds it, that
@@ -656,8 +661,14 @@ function getSlotsChannel(): BroadcastChannel | null {
   return slotsChannel;
 }
 
+/** Watchers that also want this tab's own changes (see watchSlotChanges). */
+const thisTabWatchers = new Set<{ ifid: string; onChange: () => void }>();
+
 /** Tell the story's other tabs that its slots changed. */
 function announceSlots(ifid: string): void {
+  for (const watcher of [...thisTabWatchers]) {
+    if (ifid === ALL_STORIES || watcher.ifid === ifid) watcher.onChange();
+  }
   try {
     getSlotsChannel()?.postMessage(ifid);
   } catch {
@@ -667,13 +678,16 @@ function announceSlots(ifid: string): void {
 
 /**
  * Call `onChange` when another tab may have filled or emptied the story's
- * slots: when it says so, and when this tab is shown again. Returns the
- * function that stops it.
+ * slots: when it says so, and when this tab is shown again. With `thisTab`,
+ * also when this tab changes them. Returns the function that stops it.
  */
 export function watchSlotChanges(
   ifid: string,
   onChange: () => void,
+  thisTab = false,
 ): () => void {
+  const watcher = { ifid, onChange };
+  if (thisTab) thisTabWatchers.add(watcher);
   const channel = getSlotsChannel();
   const onMessage = (event: MessageEvent) => {
     if (event.data === ifid || event.data === ALL_STORIES) onChange();
@@ -685,6 +699,7 @@ export function watchSlotChanges(
   channel?.addEventListener('message', onMessage);
   doc?.addEventListener('visibilitychange', onShown);
   return () => {
+    thisTabWatchers.delete(watcher);
     channel?.removeEventListener('message', onMessage);
     doc?.removeEventListener('visibilitychange', onShown);
   };
