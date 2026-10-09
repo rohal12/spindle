@@ -1,7 +1,7 @@
 import type { ASTNode } from '../markup/ast';
 import type { Token } from '../markup/tokens';
 import { codeAndText, parameterLookup, type ParametersOf } from '../code-check';
-import { parseText } from '../interpolation';
+import { parseMarkup } from '../markup/parse';
 import { getMacroRegistry } from '../registry';
 
 /** The declared parameters of the macros registered so far. */
@@ -17,10 +17,14 @@ function textContainsChildren(
   parametersOf: ParametersOf,
 ): boolean {
   if (!text.includes('{')) return false;
-  const parsed = parseText(text);
-  return (
-    !('error' in parsed) && astContainsChildren(parsed.nodes, parametersOf)
-  );
+  let nodes: ASTNode[];
+  try {
+    nodes = parseMarkup(text, { text: true });
+  } catch {
+    // The renderer reports the markup that does not parse
+    return false;
+  }
+  return astContainsChildren(nodes, parametersOf);
 }
 
 /**
