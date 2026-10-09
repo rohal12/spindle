@@ -5,7 +5,12 @@ import {
   useRef,
   useContext,
 } from 'preact/hooks';
-import { useStoryStore, resolvePlaythroughId } from '../../store';
+import {
+  useStoryStore,
+  resolvePlaythroughId,
+  issueStateReplacement,
+  isStateReplacementSuperseded,
+} from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
 import { isSaveExport, type SaveRecord } from '../../saves/types';
 import {
@@ -169,10 +174,14 @@ export function SaveManagerContent() {
   };
 
   const handleLoad = async (save: SaveRecord) => {
+    // Ordered with restarts and other loads by the click, not by the read
+    const replacement = issueStateReplacement();
     try {
       // The record as stored now: the listed one may have been overwritten
       // since the list was read (#428). One deleted since is loaded as listed.
       const current = (await getSaveRecord(save.meta.id)) ?? save;
+      // A restart or load issued since the click wins (#434)
+      if (isStateReplacementSuperseded(replacement)) return;
       // Stored records hold serialized variables; the store expects live
       // ones. The game moves to the save's playthrough.
       loadFromPayload(
@@ -215,10 +224,12 @@ export function SaveManagerContent() {
   };
 
   const handleRenameConfirm = async () => {
-    if (!renamingId || !renameValue.trim()) return;
+    const id = renamingId;
+    if (!id || !renameValue.trim()) return;
     try {
-      await renameSave(renamingId, renameValue.trim());
-      setRenamingId(null);
+      await renameSave(id, renameValue.trim());
+      // Only this edit is over: another save may be in the editor since (#438)
+      setRenamingId((current) => (current === id ? null : current));
       showStatus('Save renamed');
       await refresh();
     } catch {

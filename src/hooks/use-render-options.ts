@@ -4,6 +4,7 @@ import {
   LocalsValuesContext,
   NobrContext,
   RawTextContext,
+  StructuralContext,
 } from '../markup/render';
 
 /**
@@ -15,12 +16,14 @@ export function useRenderOptions(): {
   nobr: boolean;
   inline: boolean;
   raw: boolean;
+  structural: boolean;
   locals: Record<string, unknown>;
 } {
   return {
     nobr: useContext(NobrContext),
     inline: useContext(InlineContext),
     raw: useContext(RawTextContext),
+    structural: useContext(StructuralContext),
     locals: useContext(LocalsValuesContext),
   };
 }

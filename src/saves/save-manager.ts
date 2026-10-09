@@ -88,6 +88,9 @@ export async function initSaveSystem(): Promise<void> {
 
 // --- Operation order ---
 
+/** The browser lock every storage operation holds, across tabs. */
+const OPERATION_LOCK = 'spindle-saves';
+
 /** Tail of the queue every storage operation runs through. */
 let operationQueue: Promise<unknown> = Promise.resolve();
 
@@ -105,7 +108,9 @@ let operationQueue: Promise<unknown> = Promise.resolve();
  * must never wait for another operation queued after it.
  */
 function inOrder<T>(op: () => Promise<T>): Promise<T> {
-  const run = operationQueue.then(op);
+  // Under a lock shared by the tabs too: another tab deleting a save between
+  // an overwrite's read and write would leave the slot empty (#435)
+  const run = operationQueue.then(() => withTabLock(OPERATION_LOCK, op));
   operationQueue = run.catch(() => {});
   return run;
 }

@@ -53,6 +53,13 @@ export const InterfaceContext = createContext(false);
  */
 export const InlineContext = createContext(false);
 /**
+ * True while rendering the content of a structural HTML element (see
+ * STRUCTURAL_ELEMENTS) whose own children are all elements: macro and widget
+ * bodies read it so the elements they produce (the rows of a `{for}`) stay
+ * its direct children (#436). An element resets it for its own content.
+ */
+export const StructuralContext = createContext(false);
+/**
  * True while rendering inside an element whose content is not markdown: SVG
  * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
  * `<textarea>` and `<style>`, whose text (indentation, `#`, `*`, ...) is literal.
@@ -684,7 +691,13 @@ function leadingSummaryIndex(nodes: ASTNode[]): number {
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const scope = useTextScope();
-  const { nobr, locals, raw: inRaw, inline: parentInline } = useRenderOptions();
+  const {
+    nobr,
+    locals,
+    raw: inRaw,
+    inline: parentInline,
+    structural: parentStructural,
+  } = useRenderOptions();
   const inSvg = useContext(SvgContext);
   const tag = node.tag.toLowerCase();
   const isSvgRoot = tag === 'svg';
@@ -704,6 +717,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   // inline containers. The inline flag reaches nested macro/widget bodies via
   // InlineContext; a block element nested inside resets it.
   let children: preact.ComponentChildren = undefined;
+  let structural = false;
   if (node.children.length > 0) {
     if (inRaw || isRawRoot) {
       children = renderInlineNodes(node.children);
@@ -714,7 +728,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
         tag === 'details' ? leadingSummaryIndex(node.children) : -1;
       const body = (nodes: ASTNode[]) =>
         renderNodes(nodes, { nobr, locals, inline: isInline });
-      const structural =
+      structural =
         STRUCTURAL_ELEMENTS.has(tag) &&
         node.children.every((n) => n.type !== 'text' || n.value.trim() === '');
       children = structural ? (
@@ -735,6 +749,13 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
           <InlineContext.Provider value={isInline}>
             {children}
           </InlineContext.Provider>
+        );
+      }
+      if (structural !== parentStructural) {
+        children = (
+          <StructuralContext.Provider value={structural}>
+            {children}
+          </StructuralContext.Provider>
         );
       }
     }
@@ -986,10 +1007,20 @@ export function renderNodes(
     inline?: boolean;
     /** Literal content (see RawTextContext): no markdown processing. */
     raw?: boolean;
+    /** Content of a structural element (see StructuralContext). */
+    structural?: boolean;
   },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
   if (options?.raw) return renderInlineNodes(nodes);
+  // Only elements and macros between the children of a table, a list...:
+  // paragraphs would pull the elements they produce out of it (#436)
+  if (
+    options?.structural &&
+    nodes.every((n) => n.type !== 'text' || n.value.trim() === '')
+  ) {
+    return nodes.filter((n) => n.type !== 'text').map(renderSingleNode);
+  }
 
   // Skip the markdown pipeline when text nodes contain only whitespace.
   // This eliminates ~97 redundant micromark + innerHTML calls per render

@@ -6,6 +6,7 @@ import {
   LocalsValuesContext,
   NobrContext,
   InlineContext,
+  StructuralContext,
   WidgetChildrenContext,
 } from '../../markup/render';
 import type { ASTNode } from '../../markup/ast';
@@ -51,7 +52,7 @@ const frozenAlways = () => true;
  */
 export function useDetachedBody(): (children: ASTNode[]) => void {
   const updater = useContext(LocalsUpdateContext);
-  const { nobr, inline } = useRenderOptions();
+  const { nobr, inline, structural } = useRenderOptions();
   const widgetChildren = useContext(WidgetChildrenContext);
   const repeat = useContext(RepeatContext);
   const closeDialog = useContext(DialogCloseContext);
@@ -85,17 +86,24 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
           <LocalsValuesContext.Provider value={locals}>
             <NobrContext.Provider value={nobr}>
               <InlineContext.Provider value={inline}>
-                <WidgetChildrenContext.Provider value={widgetChildren}>
-                  <RepeatContext.Provider value={repeat}>
-                    <DialogCloseContext.Provider value={closeDialog}>
-                      <ItemEditContext.Provider value={inIteration}>
-                        <OutgoingContext.Provider value={hasLeft}>
-                          {renderNodes(children, { nobr, inline, locals })}
-                        </OutgoingContext.Provider>
-                      </ItemEditContext.Provider>
-                    </DialogCloseContext.Provider>
-                  </RepeatContext.Provider>
-                </WidgetChildrenContext.Provider>
+                <StructuralContext.Provider value={structural}>
+                  <WidgetChildrenContext.Provider value={widgetChildren}>
+                    <RepeatContext.Provider value={repeat}>
+                      <DialogCloseContext.Provider value={closeDialog}>
+                        <ItemEditContext.Provider value={inIteration}>
+                          <OutgoingContext.Provider value={hasLeft}>
+                            {renderNodes(children, {
+                              nobr,
+                              inline,
+                              structural,
+                              locals,
+                            })}
+                          </OutgoingContext.Provider>
+                        </ItemEditContext.Provider>
+                      </DialogCloseContext.Provider>
+                    </RepeatContext.Provider>
+                  </WidgetChildrenContext.Provider>
+                </StructuralContext.Provider>
               </InlineContext.Provider>
             </NobrContext.Provider>
           </LocalsValuesContext.Provider>

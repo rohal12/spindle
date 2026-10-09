@@ -772,6 +772,26 @@ describe('SaveManagerContent', () => {
       expect(useStoryStore.getState().variables.data).toBe(1);
     });
 
+    it('does not load over a restart issued while the record is read (#434)', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      const payload = makePayload();
+      payload.variables = { data: 1 };
+      await createSave(IFID, ptId, payload);
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const loadBtn = [
+        ...container.querySelectorAll('.save-slot-action.primary'),
+      ].find((b) => b.textContent === 'Load') as HTMLElement;
+      await act(async () => {
+        loadBtn.click();
+        useStoryStore.getState().restart();
+      });
+      await flush();
+      expect(useStoryStore.getState().variables.data).not.toBe(1);
+    });
+
     it('loads the stored record even before the list catches up', async () => {
       const ptId = useStoryStore.getState().playthroughId;
       const record = await createSave(IFID, ptId, makePayload());
@@ -1029,6 +1049,38 @@ describe('SaveManagerContent', () => {
       const status = container.querySelector('.saves-status');
       expect(status).not.toBeNull();
       expect(status!.textContent).toContain('Save renamed');
+    });
+
+    it('keeps the editor of a second save open when the first rename finishes (#438)', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      await createSave(IFID, ptId, makePayload());
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const renameBtns = () =>
+        [...container.querySelectorAll('.save-slot-action')].filter(
+          (b) => b.textContent === 'Rename',
+        ) as HTMLElement[];
+      await act(() => renameBtns()[0]!.click());
+      await flush();
+      const input = container.querySelector(
+        '.save-rename-input',
+      ) as HTMLInputElement;
+      input.value = 'First renamed';
+      await act(() => {
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      });
+      // Clicking the second Rename blurs the first editor
+      const second = renameBtns()[1]!;
+      await act(() => {
+        input.dispatchEvent(new FocusEvent('blur'));
+        second.click();
+      });
+      await flush();
+
+      expect(container.querySelectorAll('.save-rename-input').length).toBe(1);
     });
 
     it('pressing Escape cancels rename', async () => {

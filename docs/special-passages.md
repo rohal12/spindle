@@ -1,6 +1,6 @@
 # Special Passages
 
-Spindle recognizes several passage names with special behavior. These are optional — your story works without them — but they provide important customization points.
+Spindle recognizes several passage names with special behavior. `StoryVariables` is required in every story: without it the story does not start and shows a validation error. A story with no variables still needs it, as an empty passage. The others are optional — your story works without them — but they provide important customization points.
 
 ## `StoryInit`
 
@@ -20,11 +20,17 @@ Runs once when the story first loads and again on every restart. Use it to set u
 
 Any macro works in `StoryInit` — all macros execute through the normal rendering pipeline, but the passage content is never displayed to the player.
 
-If a `StoryVariables` passage exists, its defaults are applied _before_ `StoryInit` runs, so `StoryInit` can override or build on those defaults.
+The defaults declared in `StoryVariables` are applied _before_ `StoryInit` runs, so `StoryInit` can override or build on those defaults.
 
 ## `StoryVariables`
 
-Declares all story variables with their default values. Each line must follow `$name = expression`:
+Required. Declares all story variables with their default values. Each line must follow `$name = expression`. A story without variables still needs the passage; leave it empty:
+
+```
+:: StoryVariables
+```
+
+With variables:
 
 ```
 :: StoryVariables
@@ -34,7 +40,7 @@ $inventory = ["sword", "torch"]
 $character = { strength: 5, dexterity: 5, intelligence: 5 }
 ```
 
-When this passage exists, Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
+Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
 
 See [Variables](variables.md) for details.
 
