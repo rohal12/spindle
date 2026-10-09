@@ -255,9 +255,9 @@ export function useModalFocus(
       e.preventDefault();
       moveFocus(active, e.shiftKey);
     };
-    // The browser has moved focus by the time the key is released
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') steppingMedia = null;
+    // Clicking elsewhere ends the stepping through the controls
+    const onPointerDown = () => {
+      steppingMedia = null;
     };
 
     // Key events inside an embedded document never reach this one (#425).
@@ -322,7 +322,22 @@ export function useModalFocus(
     };
 
     document.addEventListener('keydown', onKeyDown, { signal });
-    document.addEventListener('keyup', onKeyUp, { signal });
+    document.addEventListener('pointerdown', onPointerDown, {
+      capture: true,
+      signal,
+    });
+    // Focus that leaves the media element for nothing (past its last control,
+    // with no tab stop after it in the document) sends no focusin: the
+    // modal's next control takes it at once.
+    const onFocusOut = (e: FocusEvent) => {
+      const pending = steppingMedia;
+      if (!pending || e.target !== pending.el || e.relatedTarget || !top()) {
+        return;
+      }
+      steppingMedia = null;
+      moveFocus(pending.el, pending.backwards);
+    };
+    document.addEventListener('focusout', onFocusOut, { signal });
     document.addEventListener('focusin', onFocusIn, { signal });
     return () => {
       controller.abort();

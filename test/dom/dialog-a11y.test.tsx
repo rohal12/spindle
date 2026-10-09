@@ -183,7 +183,6 @@ describe('dialog accessibility', () => {
       const stepping = press('Tab');
       expect(stepping.defaultPrevented).toBe(false);
       expect(document.activeElement).toBe(byId('audio'));
-      document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab' }));
 
       // From its last control the browser leaves the element, here out of
       // the dialog: focus goes on to the modal's next control instead
@@ -198,6 +197,16 @@ describe('dialog accessibility', () => {
     } finally {
       outside.remove();
     }
+  });
+
+  it('takes focus that leaves a media element for nothing (#444)', () => {
+    act(() => window.Story.openDialog('Media'));
+    byId('audio').focus();
+    press('Tab');
+    act(() => {
+      byId('audio').blur();
+    });
+    expect(document.activeElement).toBe(byId('after'));
   });
 
   it('closes on Escape pressed inside an embedded document (#425)', () => {
