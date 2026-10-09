@@ -165,8 +165,12 @@ export function useModalFocus(
     openModals.push(entry);
 
     const body = panel.querySelector<HTMLElement>(bodySelector) ?? panel;
+    // An autofocus element that can't take focus (hidden, disabled, inert)
+    // must not shadow the eligible controls (#426).
     const initial =
-      panel.querySelector<HTMLElement>('[autofocus]') ??
+      Array.from(panel.querySelectorAll<HTMLElement>('[autofocus]')).find(
+        isAvailable,
+      ) ??
       focusables(body)[0] ??
       panel;
     initial.focus();
@@ -187,8 +191,44 @@ export function useModalFocus(
     const panel = panelRef.current;
     if (!panel) return;
 
+    const top = () => openModals[openModals.length - 1]?.panel === panel;
+
+    /**
+     * Move focus to the next (or previous) modal control from `from`. The
+     * order is computed here, never left to the browser: its positive-tabindex
+     * sequence spans the whole document and would lead out of the modal
+     * (#424). `from` may be an element of an embedded document, whose frame
+     * element then stands in for it.
+     */
+    const moveFocus = (from: Element | null, backwards: boolean) => {
+      const items = focusables(panel);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) {
+        panel.focus();
+        return;
+      }
+      const at = from ? items.indexOf(from as HTMLElement) : -1;
+      let next: HTMLElement | undefined;
+      if (at !== -1) {
+        next = items[at + (backwards ? -1 : 1)];
+      } else if (from && from !== panel && panel.contains(from)) {
+        // Inside the panel but not a tab stop: continue from its position
+        const after = (el: HTMLElement) =>
+          !!(
+            from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
+          );
+        next = backwards
+          ? items.filter((el) => !after(el)).pop()
+          : items.find(after);
+      } else {
+        next = backwards ? last : first;
+      }
+      (next ?? (backwards ? last : first)).focus();
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (openModals[openModals.length - 1]?.panel !== panel) return;
+      if (!top()) return;
 
       if (e.key === 'Escape') {
         if (!dismissible) return;
@@ -199,25 +239,69 @@ export function useModalFocus(
       }
 
       if (e.key !== 'Tab') return;
-      const items = focusables(panel);
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement;
-      // The panel itself (tabindex=-1) counts as outside the tab sequence.
-      const inside = active !== panel && panel.contains(active);
-      if (!first || !last) {
-        e.preventDefault();
-        panel.focus();
-      } else if (e.shiftKey && (active === first || !inside)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (active === last || !inside)) {
-        e.preventDefault();
-        first.focus();
-      }
+      e.preventDefault();
+      moveFocus(document.activeElement, e.shiftKey);
     };
 
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    // Key events inside an embedded document never reach this one (#425).
+    // Escape closes the dialog from there too; Tab moves on natively within
+    // the frame and is taken over at its first and last controls.
+    const controller = new AbortController();
+    const { signal } = controller;
+    const frameDocs = new Map<HTMLIFrameElement, Document>();
+    const attachFrame = (frame: HTMLIFrameElement) => {
+      let doc: Document | null = null;
+      try {
+        doc = frame.contentDocument;
+      } catch {
+        // Not accessible
+      }
+      // Already listening to this document
+      if (!doc || frameDocs.get(frame) === doc) return;
+      frameDocs.set(frame, doc);
+      const onFrameKeyDown = (e: KeyboardEvent) => {
+        if (!top()) return;
+        if (e.key !== 'Tab') return onKeyDown(e);
+        const inner = Array.from(
+          doc!.querySelectorAll<HTMLElement>(FOCUSABLE),
+        ).filter((el) => isAvailable(el) && isTabStop(el));
+        const active = doc!.activeElement;
+        const edge = e.shiftKey ? inner[0] : inner[inner.length - 1];
+        if (!edge || active === edge || active === doc!.body) {
+          e.preventDefault();
+          moveFocus(frame, e.shiftKey);
+        }
+      };
+      doc.addEventListener('keydown', onFrameKeyDown, { signal });
+    };
+    const attachFrames = () => {
+      panel.querySelectorAll('iframe').forEach(attachFrame);
+    };
+    // load doesn't bubble; a frame's document is replaced when it navigates
+    const onLoad = (e: Event) => {
+      if (e.target instanceof HTMLIFrameElement) attachFrame(e.target);
+    };
+    panel.addEventListener('load', onLoad, { capture: true, signal });
+    const frames = new MutationObserver(attachFrames);
+    frames.observe(panel, { childList: true, subtree: true });
+    attachFrames();
+
+    // Focus that lands outside the dialog anyway, e.g. leaving a frame whose
+    // document can't be reached, is brought back in.
+    const onFocusIn = (e: FocusEvent) => {
+      const target = e.target;
+      if (!top() || !(target instanceof Node) || panel.contains(target)) return;
+      if (target === document.body || target === document.documentElement) {
+        return;
+      }
+      moveFocus(null, false);
+    };
+
+    document.addEventListener('keydown', onKeyDown, { signal });
+    document.addEventListener('focusin', onFocusIn, { signal });
+    return () => {
+      controller.abort();
+      frames.disconnect();
+    };
   }, [dismissible, onClose]);
 }
