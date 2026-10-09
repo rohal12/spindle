@@ -1,5 +1,14 @@
+import { hasOwn } from './namespace';
 import { registeredClassName } from '../class-registry';
-import { extraKeys, mapEntries, setMembers } from './value-kinds';
+import {
+  ERROR_HIDDEN_KEYS,
+  extraKeys,
+  isBoxed,
+  isTemporal,
+  mapEntries,
+  setMembers,
+  toStringTag,
+} from './value-kinds';
 
 /**
  * Content-derived string key for a value, used to remount components when
@@ -11,8 +20,11 @@ import { extraKeys, mapEntries, setMembers } from './value-kinds';
  * are reflected too: Map and Set entries (nested at any depth), Date,
  * RegExp, BigInt, undefined, NaN/±Infinity, symbols (by description),
  * functions (by name) and registered class instances, with the class name
- * and, for a subclass of a built-in, its own fields (#407). A hole in an
- * array reads as undefined.
+ * and, for a subclass of a built-in, its own fields (#407). The atomic
+ * built-ins (see isAtomic) have their contents in the key: the bytes of a
+ * buffer, the place of a view in its buffer, the text of a URL or
+ * URLSearchParams, the class, message, cause and errors of an Error, the
+ * value of a boxed primitive (#418). A hole in an array reads as undefined.
  *
  * An object met again, through a cycle or a second reference to it, is a
  * marker naming where it was first met rather than another copy of its
@@ -88,6 +100,8 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     // hole from an undefined element (deepEqual does)
     return withFields(`[${Array.from(val, (v) => keyOf(v, seen)).join(',')}]`);
   }
+  const atomic = atomicKey(obj, seen);
+  if (atomic !== undefined) return named(atomic);
   if (val instanceof Map) {
     const entries = Array.from(
       mapEntries(val),
@@ -100,6 +114,46 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     return withFields(`Set[${members.join(',')}]`);
   }
   return named(fieldsOf(obj, Object.keys(obj), seen));
+}
+
+/**
+ * The key of an atomic built-in other than a Map, Set, Date or RegExp (see
+ * isAtomic), or undefined for any other object. Read with the built-in
+ * methods, as a subclass may override them.
+ */
+function atomicKey(obj: object, seen: Map<object, number>): string | undefined {
+  if (obj instanceof ArrayBuffer) {
+    return `ArrayBuffer[${new Uint8Array(obj).join(',')}]`;
+  }
+  if (ArrayBuffer.isView(obj)) {
+    // A view is its place in its buffer, which other views can share
+    return `${toStringTag(obj)}(${obj.byteOffset},${obj.byteLength},${keyOf(obj.buffer, seen)})`;
+  }
+  let key: string;
+  if (obj instanceof URL) {
+    key = `URL(${JSON.stringify(Object.getOwnPropertyDescriptor(URL.prototype, 'href')!.get!.call(obj))})`;
+  } else if (obj instanceof URLSearchParams) {
+    key = `URLSearchParams(${JSON.stringify(URLSearchParams.prototype.toString.call(obj))})`;
+  } else if (isBoxed(obj)) {
+    key = `${toStringTag(obj)}(${keyOf((obj as Number).valueOf(), seen)})`;
+  } else if (isTemporal(obj)) {
+    key = `${toStringTag(obj)}(${JSON.stringify(String(obj))})`;
+  } else if (obj instanceof Error) {
+    const record = obj as unknown as Record<string, unknown>;
+    const held = ERROR_HIDDEN_KEYS.filter((k) => hasOwn(obj, k)).map(
+      (k) => `${k}:${keyOf(record[k], seen)}`,
+    );
+    const proto = Object.getPrototypeOf(obj) as {
+      constructor?: unknown;
+    } | null;
+    const ctor = proto?.constructor;
+    const name = typeof ctor === 'function' ? ctor.name : '';
+    key = `Error(${JSON.stringify(name)},${held.join(',')})`;
+  } else {
+    return undefined;
+  }
+  const keys = Object.keys(obj);
+  return keys.length ? `${key}${fieldsOf(obj, keys, seen)}` : key;
 }
 
 /** `{"key":value,...}` for the `keys` of `obj`. */

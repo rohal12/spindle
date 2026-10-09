@@ -236,4 +236,46 @@ describe('stableKey', () => {
     };
     expect(() => stableKey(obj)).not.toThrow();
   });
+
+  describe('atomic built-ins (#418)', () => {
+    it.each([
+      [
+        'URL',
+        new URL('https://example.com/old'),
+        new URL('https://example.com/new'),
+      ],
+      [
+        'URLSearchParams',
+        new URLSearchParams('q=old'),
+        new URLSearchParams('q=new'),
+      ],
+      ['Error', new Error('old'), new Error('new')],
+      ['Error class', new Error('x'), new TypeError('x')],
+      [
+        'Error cause',
+        new Error('x', { cause: 1 }),
+        new Error('x', { cause: 2 }),
+      ],
+      [
+        'ArrayBuffer',
+        new Uint8Array([1, 2]).buffer,
+        new Uint8Array([1, 3]).buffer,
+      ],
+      ['view type', new Uint8Array([1]), new Int8Array([1])],
+      ['boxed', new Number(1), new Number(2)],
+    ])('tells apart two %s with different contents', (_, a, b) => {
+      expect(stableKey(a)).not.toBe(stableKey(b));
+      expect(stableKey([a])).not.toBe(stableKey([b]));
+    });
+
+    it('gives equal contents one key', () => {
+      expect(stableKey(new URL('https://example.com/a'))).toBe(
+        stableKey(new URL('https://example.com/a')),
+      );
+      expect(stableKey(new Error('a'))).toBe(stableKey(new Error('a')));
+      expect(stableKey(new Uint8Array([1, 2]))).toBe(
+        stableKey(new Uint8Array([1, 2])),
+      );
+    });
+  });
 });

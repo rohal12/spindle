@@ -23,6 +23,7 @@ import {
   resetTriggers,
   checkTriggersOnNavigation,
   restoreMacroWatchers,
+  interfaceMounted,
   savedMacroWatchers,
   reinitTriggerState,
 } from './triggers';
@@ -307,6 +308,7 @@ function persistSession(get: () => StoryState): { error: unknown } | undefined {
     renderCounts,
     prng: snapshotPRNG(),
     watchers: savedMacroWatchers(),
+    interfaceWatchers: interfaceMounted(),
   });
 }
 
@@ -576,9 +578,17 @@ function knownPlaythroughId(): string {
  * switch establishes.
  */
 export function resolvePlaythroughId(): Promise<string> {
+  if (leavingPlaythrough) return leavingPlaythrough;
   const current = knownPlaythroughId();
   return playthroughSetup.then((established) => current || established);
 }
+
+/**
+ * While the `beforeload` handlers of a load from a slot run, the playthrough
+ * the game is leaving: the saves they issue describe that game, though the
+ * load has already switched to the save's playthrough (#416).
+ */
+let leavingPlaythrough: Promise<string> | null = null;
 
 function setPlaythroughId(id: string): void {
   if (useStoryStore.getState().playthroughId === id) return;
@@ -661,6 +671,8 @@ let latestStateApplied = 0;
 
 /** The number of the slot load that is calling loadFromPayload. */
 let slotLoadApplying: number | null = null;
+/** The playthrough the slot load calling loadFromPayload leaves. */
+let slotLoadLeaving: Promise<string> | null = null;
 
 /** A replacement of the game state applied at its call. */
 function replaceStateNow(): void {
@@ -1529,6 +1541,7 @@ export const useStoryStore = create<StoryState>()(
           // A restart, boot or direct load issued after this one won
           if (latestStateApplied > replacement) return;
           slotLoadApplying = replacement;
+          slotLoadLeaving = previous;
           get().loadFromPayload(loaded.payload, slot);
         }),
         'spindle: failed to load save',
@@ -1679,6 +1692,7 @@ export const useStoryStore = create<StoryState>()(
         renderCounts: { ...renderCounts },
         prng: snapshotPRNG(),
         watchers: savedMacroWatchers(),
+        interfaceWatchers: interfaceMounted(),
       };
     },
 
@@ -1698,6 +1712,8 @@ export const useStoryStore = create<StoryState>()(
     ) => {
       const applying = slotLoadApplying;
       slotLoadApplying = null;
+      const leaving = slotLoadLeaving;
+      slotLoadLeaving = null;
       const replacement = applying ?? ++stateReplacementsIssued;
       if (payload.history.length === 0) {
         console.warn('loadFromPayload: rejecting payload with empty history');
@@ -1708,7 +1724,12 @@ export const useStoryStore = create<StoryState>()(
       assertPassagesExist(get().storyData, payload);
       applyReplacement(replacement);
 
-      emit('beforeload', slot);
+      leavingPlaythrough = leaving;
+      try {
+        emit('beforeload', slot);
+      } finally {
+        leavingPlaythrough = null;
+      }
 
       // Loading a save moves the game to the save's playthrough, after the
       // `beforeload` handlers (whose saves belong to the game being left).
@@ -1769,7 +1790,9 @@ export const useStoryStore = create<StoryState>()(
       // The watchers of the loaded game (a payload without any, from an
       // older version, leaves the registered ones), then: loaded state is
       // not a change watchers react to
-      if (payload.watchers) restoreMacroWatchers(payload.watchers);
+      if (payload.watchers) {
+        restoreMacroWatchers(payload.watchers, payload.interfaceWatchers);
+      }
       reinitTriggerState();
 
       // The next navigate() diffs from the snapshot recorded for the current

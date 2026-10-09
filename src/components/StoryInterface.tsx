@@ -1,7 +1,12 @@
-import { useMemo } from 'preact/hooks';
+import { useLayoutEffect, useMemo } from 'preact/hooks';
 import { useStoryFields } from '../hooks/use-story-fields';
 import { parseMarkup } from '../markup/parse';
-import { renderInlineNodes, NobrContext } from '../markup/render';
+import {
+  renderInlineNodes,
+  InterfaceContext,
+  NobrContext,
+} from '../markup/render';
+import { declareInterfaceMounted } from '../triggers';
 import { errorMessage } from '../utils/error-message';
 
 const DEFAULT_MARKUP =
@@ -26,9 +31,15 @@ export function StoryInterface() {
     }
   }, [markup]);
 
-  return nobr ? (
-    <NobrContext.Provider value={true}>{rendered}</NobrContext.Provider>
-  ) : (
-    rendered
+  useLayoutEffect(declareInterfaceMounted, []);
+
+  return (
+    <InterfaceContext.Provider value={true}>
+      {nobr ? (
+        <NobrContext.Provider value={true}>{rendered}</NobrContext.Provider>
+      ) : (
+        rendered
+      )}
+    </InterfaceContext.Provider>
   );
 }

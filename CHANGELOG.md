@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- HTML comments in a custom `StoryInterface` (and in SVG content) are hidden, as in a passage (#421).
+- HTML inside an SVG `<foreignObject>` keeps its boolean attributes (`checked`, `disabled`), including inside a nested `<svg>` (#420).
+- A `{watch}` in `StoryInterface` keeps watching after a checkpoint saved in `StoryInit`, before the interface mounted, is loaded; a `once` or `{unwatch}`-removed watcher stays removed in later saves (#419).
+- A `{for}` list remounts an iteration whose `URL`, `URLSearchParams`, `Error`, buffer, typed array or boxed primitive item was replaced by one with other contents (#418).
+- A `{@children}` in an HTML attribute or a macro label (`<span title="{@children}">`, `{button "{@children}"}`) makes a widget a block widget, so it takes a closing tag (#417).
+- Saves a `beforeload` handler issues during a load from a slot belong to the playthrough being left, not the loaded one (#416).
 - An input macro bound to a temporary variable or a local (`{textbox _name}`, `{textbox @name}`) shows an error, as one bound to a transient variable does, instead of reading and writing a story variable literally named `_name` (#414).
 - Native `<audio controls>` and `<video controls>` are tab stops of a dialog, so a dialog holding only a media player no longer traps Tab on its Close button (#413).
 - Assigning an object to, or from, an own field of a registered `Map`, `Set`, `Date` or `RegExp` subclass instance (`{set $state.bag.selected = $state.item}`) keeps the identity of the object, as it does for plain objects (#412).

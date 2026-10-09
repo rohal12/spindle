@@ -97,7 +97,10 @@ export function validateStoryMarkup(
   const list = [...passages];
   const all = [...macros];
   const known = new Set<string>();
-  const blocks = new Set(blockWidgetNames(list).map((n) => n.toLowerCase()));
+  const parametersOf = parameterLookup(all);
+  const blocks = new Set(
+    blockWidgetNames(list, parametersOf).map((n) => n.toLowerCase()),
+  );
   for (const macro of all) {
     const name = macro.name.toLowerCase();
     known.add(name);
@@ -107,7 +110,7 @@ export function validateStoryMarkup(
   return validateMarkup(list, {
     isKnownMacro: (name) => known.has(name),
     macroNames: known,
-    parametersOf: parameterLookup(all),
+    parametersOf,
     isBlockMacro: (name) =>
       blocks.has(name.toLowerCase()) || isBlockMacro(name),
     checkPassageNames: options.checkPassageNames,
