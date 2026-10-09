@@ -233,7 +233,7 @@ function classData(value: object): unknown {
     const flags = Reflect.get(RegExp.prototype, 'flags', value) as string;
     return ['RegExp', [source, flags, value.lastIndex], extra()];
   }
-  return ownData(value);
+  return savedData(ownData(value));
 }
 
 /** Make an error's message, cause and errors non-enumerable again. */
@@ -249,6 +249,32 @@ function hideErrorKeys(value: object): void {
 const isEscapedOneCharKey = (key: string): boolean =>
   key.length === 1 && JSON.stringify(key).length > 3;
 
+/**
+ * The `[key, value, ...]` entries of plain data `v` that holds a key
+ * isEscapedOneCharKey, or false when it holds none (see GUARD_V8_KEYS).
+ */
+function keyEntries(v: Record<string, unknown>): unknown[] | false {
+  const keys = Object.keys(v);
+  if (!keys.some(isEscapedOneCharKey)) return false;
+  refuseSymbolKeys(v);
+  if (keys.includes('__proto__')) {
+    throw new TypeError('spindle: Cannot save a property named "__proto__"');
+  }
+  return keys.flatMap((k) => [k, v[k]]);
+}
+
+/**
+ * The data of a class instance or error as devalue stores it. When it holds
+ * an escaped key it is a `[KEYS_TAG, ...entries]` list, the entries
+ * unwrapped by the class's own reviver: a `K` reducer applied to the data
+ * would wrap it a second time, and a cycle back to the instance would then
+ * meet the instance's reviver before the data revives (#432).
+ */
+function savedData(data: Record<string, unknown>): unknown {
+  const entries = GUARD_V8_KEYS && keyEntries(data);
+  return entries ? [KEYS_TAG, ...entries] : data;
+}
+
 function reducers(): Record<string, (value: unknown) => unknown> {
   const out: Record<string, (value: unknown) => unknown> = {};
   for (const [name, ctor] of registry) {
@@ -259,7 +285,9 @@ function reducers(): Record<string, (value: unknown) => unknown> {
   }
   for (const [proto, name] of BUILTIN_ERRORS) {
     out[ERROR_PREFIX + name] = (v) =>
-      isObject(v) && Object.getPrototypeOf(v) === proto && ownData(v);
+      isObject(v) &&
+      Object.getPrototypeOf(v) === proto &&
+      savedData(ownData(v));
   }
   // A unique symbol is left to devalue, which refuses it with its path
   out[SYMBOL_TAG] = (v) => {
@@ -272,18 +300,7 @@ function reducers(): Record<string, (value: unknown) => unknown> {
     v.lastIndex !== 0 && [v.source, v.flags, v.lastIndex];
   if (GUARD_V8_KEYS) {
     out[KEYS_TAG] = (v) => {
-      if (!isPlainData(v)) {
-        return false;
-      }
-      const keys = Object.keys(v);
-      if (!keys.some(isEscapedOneCharKey)) return false;
-      refuseSymbolKeys(v);
-      if (keys.includes('__proto__')) {
-        throw new TypeError(
-          'spindle: Cannot save a property named "__proto__"',
-        );
-      }
-      return keys.flatMap((k) => [k, (v as Record<string, unknown>)[k]]);
+      return isPlainData(v) && keyEntries(v);
     };
   }
   return out;
@@ -379,7 +396,9 @@ function fillCollection(made: object, contents: unknown[]): void {
 /** Restore a registered class instance in place, so cycles through it hold. */
 function reviveClass(name: string) {
   return (data: Record<string, unknown> | unknown[]): unknown => {
-    if (Array.isArray(data)) {
+    if (Array.isArray(data) && data[0] === KEYS_TAG)
+      data = reviveKeyed(data, 1);
+    else if (Array.isArray(data)) {
       return reviveBuiltin(name, registeredCtor(name), data);
     }
     if (!isPlainData(data)) {
@@ -413,7 +432,9 @@ function registeredCtor(name: string): Constructor {
 function reviveError(name: string) {
   const ctor = ERROR_CTORS.get(name);
   if (!ctor) return undefined;
-  return (data: Record<string, unknown>): unknown => {
+  return (data: Record<string, unknown> | unknown[]): unknown => {
+    if (Array.isArray(data) && data[0] === KEYS_TAG)
+      data = reviveKeyed(data, 1);
     if (Object.getPrototypeOf(data) === ctor.prototype) return data;
     if (!isPlainData(data)) {
       throw new TypeError(`spindle: Malformed data for "${name}"`);
@@ -430,13 +451,13 @@ function reviveError(name: string) {
  * the object is kept per list and filled with what the list holds so far.
  */
 const keyedObjects = new WeakMap<unknown[], Record<string, unknown>>();
-function reviveKeyed(entries: unknown[]): Record<string, unknown> {
-  if (!Array.isArray(entries) || entries.length % 2 !== 0) {
+function reviveKeyed(entries: unknown[], from = 0): Record<string, unknown> {
+  if (!Array.isArray(entries) || (entries.length - from) % 2 !== 0) {
     throw new TypeError('spindle: Malformed object entries');
   }
   let obj = keyedObjects.get(entries);
   if (!obj) keyedObjects.set(entries, (obj = {}));
-  for (let i = 0; i < entries.length; i += 2) {
+  for (let i = from; i < entries.length; i += 2) {
     if (!hasOwn(entries, i)) break;
     const key = entries[i];
     if (typeof key !== 'string' || key === '__proto__') {
