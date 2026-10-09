@@ -33,7 +33,7 @@ const LINK_SEPARATORS = [['|', false], ['->', false], ['<-', true]];
 const NO_SELECTORS = {};
 /**
  * A CommonMark email autolink, `<` an address `>` (without braces, which
- * are markup): the same as micromark reads one.
+ * are markup), as markdown reads one.
  */
 const EMAIL_AUTOLINK = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`|~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*>$/;
 
