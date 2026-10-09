@@ -1,4 +1,5 @@
 import { registeredClassName } from '../class-registry';
+import { mapEntries, setMembers } from './value-kinds';
 
 /**
  * Content-derived string key for a value, used to remount components when
@@ -60,13 +61,13 @@ function keyOf(val: unknown, ancestors: object[]): string {
       return `[${Array.from(val, (v) => keyOf(v, ancestors)).join(',')}]`;
     }
     if (val instanceof Map) {
-      const entries = [...val].map(
+      const entries = [...mapEntries(val)].map(
         ([k, v]) => `[${keyOf(k, ancestors)},${keyOf(v, ancestors)}]`,
       );
       return `Map[${entries.join(',')}]`;
     }
     if (val instanceof Set) {
-      return `Set[${[...val].map((v) => keyOf(v, ancestors)).join(',')}]`;
+      return `Set[${[...setMembers(val)].map((v) => keyOf(v, ancestors)).join(',')}]`;
     }
 
     const record = obj as Record<string, unknown>;

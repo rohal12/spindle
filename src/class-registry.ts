@@ -2,7 +2,7 @@
 
 import { parse, stringify } from 'devalue';
 import { hasOwn } from './utils/namespace';
-import { extraKeys } from './utils/value-kinds';
+import { extraKeys, mapEntries, setMembers } from './utils/value-kinds';
 
 type Constructor = new (...args: any[]) => any;
 
@@ -179,10 +179,10 @@ function classData(value: object): unknown {
     return ['Array', items, extra()];
   }
   if (value instanceof Map) {
-    return ['Map', Array.from(Map.prototype.entries.call(value)), extra()];
+    return ['Map', Array.from(mapEntries(value)), extra()];
   }
   if (value instanceof Set) {
-    return ['Set', Array.from(Set.prototype.values.call(value)), extra()];
+    return ['Set', Array.from(setMembers(value)), extra()];
   }
   return ownData(value);
 }

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copying, comparing and saving a registered `Map` or `Set` subclass reads the entries it holds, not the ones its overridden iterator, `entries()`, `get()` or `size` show, so a code change to an inventory that iterates only some of its items no longer drops the others (#394).
 - Instances of registered `Array`, `Map` and `Set` subclasses keep their class, elements and own properties when assigned in code, in history and in saves; a save of a `Map` or `Set` subclass loads (#391).
 - A dialog's Tab trap skips the hidden content of a closed `<details>` and chooses a radio group's tab stop among the members Tab can reach, so a hidden option no longer makes the visible ones unreachable (#389, #390).
 - `Story.get()` hands out a copy of a `Map` or `Set` holding a class instance or a `Date`, so changing it no longer changes recorded history (#388).

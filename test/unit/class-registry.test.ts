@@ -801,3 +801,95 @@ describe('registered collection subclasses (#391)', () => {
     expect(isDeserializable(saved.replace('"Map"', '"Date"'))).toBe(false);
   });
 });
+
+describe('collection subclasses that override iteration (#394)', () => {
+  // Iterate the available items only; what they hold is all of them
+  class Inventory extends Map<string, { available: boolean }> {
+    override *[Symbol.iterator](): MapIterator<
+      [string, { available: boolean }]
+    > {
+      for (const entry of super.entries()) {
+        if (entry[1].available) yield entry;
+      }
+    }
+    override entries() {
+      return this[Symbol.iterator]();
+    }
+    override get size() {
+      return [...this].length;
+    }
+    override get(key: string) {
+      const item = super.get(key);
+      return item?.available ? item : undefined;
+    }
+  }
+  class Shown extends Set<string> {
+    override *[Symbol.iterator](): SetIterator<string> {
+      for (const member of super.values()) {
+        if (!member.startsWith('_')) yield member;
+      }
+    }
+    override values() {
+      return this[Symbol.iterator]();
+    }
+    override get size() {
+      return [...this].length;
+    }
+  }
+  beforeEach(() => {
+    clearRegistry();
+    registerClass('Inventory', Inventory);
+    registerClass('Shown', Shown);
+  });
+
+  const inventory = (torch = false) =>
+    new Inventory([
+      ['sword', { available: true }],
+      ['torch', { available: torch }],
+    ]);
+  const allEntries = (map: Map<unknown, unknown>) => [
+    ...Map.prototype.entries.call(map),
+  ];
+
+  it('copies the entries a Map subclass holds, not those it iterates', () => {
+    const value = inventory();
+    for (const copy of [
+      deepClone(value),
+      deepClone(value, { keepUnregistered: true }),
+      deserialize(serialize(value)) as Inventory,
+    ]) {
+      expect(copy).toBeInstanceOf(Inventory);
+      expect(allEntries(copy)).toEqual(allEntries(value));
+    }
+  });
+
+  it('copies the members a Set subclass holds, not those it iterates', () => {
+    const value = new Shown(['a', '_hidden']);
+    const copy = deepClone(value);
+    expect(copy).toBeInstanceOf(Shown);
+    expect([...Set.prototype.values.call(copy)]).toEqual(['a', '_hidden']);
+  });
+
+  it('compares the entries a subclass holds', () => {
+    expect(deepEqual(inventory(), inventory())).toBe(true);
+    expect(deepEqual(inventory(), inventory(true))).toBe(false);
+    expect(deepEqual(new Shown(['a']), new Shown(['a', '_b']))).toBe(false);
+  });
+
+  it('keeps hidden entries where history shares unchanged parts', () => {
+    const prev = inventory();
+    const curr = inventory();
+    Map.prototype.set.call(curr, 'potion', { available: true });
+    const shared = shareEqual(prev, curr);
+    expect(shared).toBeInstanceOf(Inventory);
+    expect(allEntries(shared).map(([k]) => k)).toEqual([
+      'sword',
+      'torch',
+      'potion',
+    ]);
+    // The hidden entry, unchanged, is the one of the earlier moment
+    expect(Map.prototype.get.call(shared, 'torch')).toBe(
+      Map.prototype.get.call(prev, 'torch'),
+    );
+  });
+});

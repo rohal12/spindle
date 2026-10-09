@@ -12,7 +12,17 @@
 import { registeredClassName } from './class-registry';
 import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-import { extraKeys, isAtomic, isBoxed, isTemporal } from './utils/value-kinds';
+import {
+  collectionSize,
+  extraKeys,
+  isAtomic,
+  isBoxed,
+  isTemporal,
+  mapEntries,
+  mapGet,
+  mapSet,
+  setMembers,
+} from './utils/value-kinds';
 
 export { isAtomic };
 
@@ -175,10 +185,11 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       return arr;
     }
 
-    // Filled with the built-in methods: a subclass may override them
+    // Read and filled with the built-in methods: a subclass may override
+    // them (see mapEntries)
     if (val instanceof Map) {
       const copy = collection(obj, new Map());
-      for (const [k, v] of val) {
+      for (const [k, v] of mapEntries(val)) {
         Map.prototype.set.call(copy, settled(clone(k), k), clone(v));
       }
       return copy;
@@ -186,7 +197,9 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
 
     if (val instanceof Set) {
       const copy = collection(obj, new Set());
-      for (const v of val) Set.prototype.add.call(copy, settled(clone(v), v));
+      for (const v of setMembers(val)) {
+        Set.prototype.add.call(copy, settled(clone(v), v));
+      }
       return copy;
     }
 
@@ -337,8 +350,8 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
       collectionLike(c, empty, (out) => done.set(c, out), shareKey);
     if (c instanceof Map && p instanceof Map) {
       const out = collection(new Map());
-      for (const [k, v] of c) {
-        Map.prototype.set.call(out, fresh(k), share(p.get(k), v));
+      for (const [k, v] of mapEntries(c)) {
+        Map.prototype.set.call(out, fresh(k), share(mapGet(p, k), v));
       }
       return out;
     }
@@ -470,9 +483,9 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
 
   if (a instanceof Map || a instanceof Set) {
     const bc = b as Map<unknown, unknown> | Set<unknown>;
-    if (a.size !== bc.size) return false;
-    const ai = a.entries();
-    const bi = bc.entries();
+    if (collectionSize(a) !== collectionSize(bc)) return false;
+    const ai = a instanceof Map ? mapEntries(a) : setMembers(a);
+    const bi = bc instanceof Map ? mapEntries(bc) : setMembers(bc);
     for (
       let x = ai.next(), y = bi.next();
       !x.done;
@@ -762,13 +775,15 @@ function entryChildren(value: object): [string, unknown][] | undefined {
   const children: [string, unknown][] = [];
   if (value instanceof Map) {
     let index = 0;
-    for (const [k, v] of value) {
+    for (const [k, v] of mapEntries(value)) {
       children.push([entryKey('k', index), k], [entryKey('v', index), v]);
       index++;
     }
   } else if (value instanceof Set) {
     let index = 0;
-    for (const member of value) children.push([entryKey('s', index++), member]);
+    for (const member of setMembers(value)) {
+      children.push([entryKey('s', index++), member]);
+    }
   } else if (value instanceof Error) {
     for (const key of ['cause', 'errors'] as const) {
       if (hasOwn(value, key)) {
@@ -819,8 +834,9 @@ function setEntryValue(
   const holder = getByEntryPath(root, path.slice(0, -1));
   const match = /^\0v(\d+)$/.exec(path[path.length - 1]!);
   if (!(holder instanceof Map) || !match) return false;
-  const key = [...holder.keys()][Number(match[1])];
-  holder.set(key, value);
+  const entry = [...mapEntries(holder)][Number(match[1])];
+  if (!entry) return false;
+  mapSet(holder, entry[0], value);
   return true;
 }
 
@@ -921,7 +937,8 @@ function aliasMoved(
   if (xs && ys) {
     if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) return false;
     if (x instanceof Map || x instanceof Set) {
-      if (x.size !== (y as Map<unknown, unknown>).size) return false;
+      const ySize = collectionSize(y as Map<unknown, unknown>);
+      if (collectionSize(x) !== ySize) return false;
     }
     const held = new Map(ys);
     for (const [segment, a] of xs) {
