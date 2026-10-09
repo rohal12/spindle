@@ -290,24 +290,30 @@ function reducers(): Record<string, (value: unknown) => unknown> {
 }
 
 /**
+ * The RegExp of a `[source, flags, lastIndex]` list (an `R` entry, or the
+ * contents of a RegExp subclass), or undefined if the list is malformed.
+ */
+function newRegExp(data: unknown): RegExp | undefined {
+  if (
+    !Array.isArray(data) ||
+    typeof data[0] !== 'string' ||
+    typeof data[1] !== 'string' ||
+    !Number.isSafeInteger(data[2])
+  ) {
+    return undefined;
+  }
+  const re = new RegExp(data[0], data[1]);
+  re.lastIndex = data[2] as number;
+  return re;
+}
+
+/**
  * A new Date or RegExp holding `contents` (see classData), or undefined if
  * they are malformed.
  */
 function newAtomic(kind: 'Date' | 'RegExp', contents: unknown) {
-  if (kind === 'Date') {
-    return typeof contents === 'number' ? new Date(contents) : undefined;
-  }
-  if (
-    !Array.isArray(contents) ||
-    typeof contents[0] !== 'string' ||
-    typeof contents[1] !== 'string' ||
-    !Number.isSafeInteger(contents[2])
-  ) {
-    return undefined;
-  }
-  const re = new RegExp(contents[0], contents[1]);
-  re.lastIndex = contents[2] as number;
-  return re;
+  if (kind === 'RegExp') return newRegExp(contents);
+  return typeof contents === 'number' ? new Date(contents) : undefined;
 }
 
 /**
@@ -463,16 +469,8 @@ function reviverFor(key: string | symbol) {
   if (key === KEYS_TAG) return reviveKeyed;
   if (key === REGEXP_TAG) {
     return (data: unknown) => {
-      if (
-        !Array.isArray(data) ||
-        typeof data[0] !== 'string' ||
-        typeof data[1] !== 'string' ||
-        !Number.isSafeInteger(data[2])
-      ) {
-        throw new TypeError('spindle: Malformed regular expression');
-      }
-      const re = new RegExp(data[0], data[1]);
-      re.lastIndex = data[2] as number;
+      const re = newRegExp(data);
+      if (!re) throw new TypeError('spindle: Malformed regular expression');
       return re;
     };
   }
