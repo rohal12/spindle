@@ -66,6 +66,21 @@ describe('dialog accessibility', () => {
             'Checked',
             '<button type="button" id="first">First</button>\n<div hidden><input type="radio" name="cls" id="locked" checked></div>\n<input type="radio" name="cls" id="warrior"> <input type="radio" name="cls" id="mage">',
           ),
+          makePassage(
+            7,
+            'HiddenAuto',
+            '<input id="hidden-auto" hidden autofocus><input id="disabled-auto" disabled autofocus><button id="available">Continue</button>',
+          ),
+          makePassage(
+            8,
+            'Positive',
+            '<button id="first" tabindex="1">First</button><button id="last" tabindex="3">Last</button>',
+          ),
+          makePassage(
+            9,
+            'Frame',
+            '<iframe id="frame" srcdoc="<button id=\'embedded\'>Embedded</button>"></iframe>',
+          ),
         ]),
       );
     installStoryAPI();
@@ -117,6 +132,46 @@ describe('dialog accessibility', () => {
     expect(document.activeElement).not.toBe(opener);
     act(() => window.Story.closeDialog());
     expect(document.activeElement).toBe(opener);
+  });
+
+  it('skips unavailable autofocus elements (#426)', () => {
+    act(() => window.Story.openDialog('HiddenAuto'));
+    expect(document.activeElement).toBe(byId('available'));
+  });
+
+  it('keeps Tab inside the dialog despite outside positive tabindexes (#424)', () => {
+    const outside = document.createElement('button');
+    outside.tabIndex = 2;
+    document.body.appendChild(outside);
+    try {
+      act(() => window.Story.openDialog('Positive'));
+      const close = container.querySelector('.dialog-close');
+      expect(document.activeElement).toBe(byId('first'));
+      press('Tab');
+      expect(document.activeElement).toBe(byId('last'));
+      press('Tab');
+      expect(document.activeElement).toBe(close);
+      press('Tab');
+      expect(document.activeElement).toBe(byId('first'));
+      press('Tab', true);
+      expect(document.activeElement).toBe(close);
+      press('Tab', true);
+      expect(document.activeElement).toBe(byId('last'));
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('closes on Escape pressed inside an embedded document (#425)', () => {
+    act(() => window.Story.openDialog('Frame'));
+    const doc = (byId('frame') as HTMLIFrameElement).contentDocument;
+    if (!doc) return; // no same-origin frame documents in this environment
+    act(() => {
+      doc.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(panels()).toHaveLength(0);
   });
 
   it('wraps Tab and Shift+Tab inside the dialog', () => {

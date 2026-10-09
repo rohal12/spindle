@@ -84,6 +84,27 @@ const SvgContext = createContext(false);
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
+/**
+ * Elements whose children must be elements of particular types: markdown
+ * paragraphs between them would pull the children out of the structure (#423).
+ * Text between the children, when it is only whitespace, is dropped.
+ */
+const STRUCTURAL_ELEMENTS = new Set([
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'colgroup',
+  'ul',
+  'ol',
+  'menu',
+  'dl',
+  'select',
+  'optgroup',
+  'datalist',
+]);
+
 /** Elements whose content is literal text, not markdown. */
 const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style']);
 export const WidgetChildrenContext = createContext<WidgetChildren | null>(null);
@@ -693,16 +714,22 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
         tag === 'details' ? leadingSummaryIndex(node.children) : -1;
       const body = (nodes: ASTNode[]) =>
         renderNodes(nodes, { nobr, locals, inline: isInline });
-      children =
-        summaryAt === -1 ? (
-          body(node.children)
-        ) : (
-          <>
-            {body(node.children.slice(0, summaryAt))}
-            {renderSingleNode(node.children[summaryAt]!)}
-            {body(node.children.slice(summaryAt + 1))}
-          </>
-        );
+      const structural =
+        STRUCTURAL_ELEMENTS.has(tag) &&
+        node.children.every((n) => n.type !== 'text' || n.value.trim() === '');
+      children = structural ? (
+        node.children
+          .filter((n) => n.type !== 'text')
+          .map((n) => renderSingleNode(n))
+      ) : summaryAt === -1 ? (
+        body(node.children)
+      ) : (
+        <>
+          {body(node.children.slice(0, summaryAt))}
+          {renderSingleNode(node.children[summaryAt]!)}
+          {body(node.children.slice(summaryAt + 1))}
+        </>
+      );
       if (isInline !== parentInline) {
         children = (
           <InlineContext.Provider value={isInline}>
