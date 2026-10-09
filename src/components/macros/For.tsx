@@ -3,7 +3,11 @@ import { LocalsValuesContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
-import { controlEditVersion, editedItem } from '../../utils/control-edits';
+import {
+  ItemEditContext,
+  controlEditVersion,
+  editedItems,
+} from '../../utils/control-edits';
 import type { ASTNode } from '../../markup/ast';
 import { checkVariableName } from '../../utils/namespace';
 import { readState } from '../../execute-mutation';
@@ -129,18 +133,17 @@ defineMacro({
 
     const { itemVar, indexVar } = loop;
     // An iteration is remounted when its item's contents change, so mount-only
-    // macros run again for the new item (#45) -- unless the change is a
-    // reader editing the item through a control: remounting would drop the
-    // control's focus after the first keystroke.
-    const since = keys.edits;
-    const { variables } = readState();
+    // macros run again for the new item (#45) -- unless the change is an edit
+    // of the item (see control-edits): a reader typing into a control, which
+    // a remount would take the focus from, or code the iterations ran, which
+    // a remount would run again (#400).
+    const edited = editedItems(keys.edits, readState());
     keys.edits = controlEditVersion();
     const generations = list.map((item, i) => {
       const contents = stableKey(item);
       if (
         keys.generations[i] === undefined ||
-        (contents !== keys.contents[i] &&
-          !editedItem(since, variables, list, item, i))
+        (contents !== keys.contents[i] && !edited(list, item, i))
       ) {
         keys.generations[i] = keys.next++;
       }
@@ -160,7 +163,11 @@ defineMacro({
       />
     ));
 
-    return ctx.wrap(content);
+    return ctx.wrap(
+      <ItemEditContext.Provider value={true}>
+        {content}
+      </ItemEditContext.Provider>,
+    );
   },
   text({ rawArgs, children = [] }, ctx) {
     const { itemVar, indexVar, listExpr } = loopArgs(rawArgs, ctx.args);
