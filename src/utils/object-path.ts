@@ -1,4 +1,5 @@
 import { current as draftState, isDraft } from 'immer';
+import { registeredClassName } from '../class-registry';
 import { hasOwn } from './namespace';
 import { atomicName } from './value-kinds';
 
@@ -74,10 +75,12 @@ export interface SetByPathOptions {
  * written in place.
  *
  * The path goes through own properties of plain objects, class instances
- * and arrays (by index); anything else throws a TypeError rather than
- * writing where no clone or save would see it: an inherited property such
- * as a method counts as missing, and Map, Set, Date and RegExp values and
- * other keys of arrays are refused, as is a "__proto__" segment.
+ * and arrays (by index), and, outside a draft, any key of an instance of a
+ * registered subclass of a built-in (#408); anything else throws a
+ * TypeError rather than writing where no clone or save would see it: an
+ * inherited property such as a method counts as missing, and Map, Set,
+ * Date and RegExp values and other keys of arrays are refused, as is a
+ * "__proto__" segment.
  */
 export function setByPath(
   root: Record<string, unknown>,
@@ -134,13 +137,21 @@ function checkSegments(segments: readonly string[]): void {
   }
 }
 
-/** Throw unless `holder` can take `key` as story state (see setByPath). */
+/**
+ * Throw unless `holder` can take `key` as story state (see setByPath). An
+ * instance of a registered subclass of a built-in keeps its own fields
+ * through clones and saves, so it takes any key (#408) when written in
+ * place: a draft of one, or one a draft shares, is refused as other
+ * built-ins are, and the caller writes the whole value instead.
+ */
 function checkHolder(
   holder: object,
   key: string,
   segments: readonly string[],
   depth: number,
+  inPlace: boolean,
 ): void {
+  if (inPlace && registeredClassName(holder) !== undefined) return;
   const builtin = builtinName(holder);
   const kind =
     builtin ?? (Array.isArray(holder) && !isArrayKey(key) ? 'an array' : '');
@@ -167,7 +178,7 @@ function walkToParent(
   let current: Record<string, unknown> = root;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i]!;
-    checkHolder(current, seg, segments, i);
+    checkHolder(current, seg, segments, i, !copyOnWrite);
     // An inherited property (a method, "constructor") counts as missing
     let next = hasOwn(current, seg) ? current[seg] : undefined;
     if (next == null || typeof next !== 'object') {
@@ -189,6 +200,7 @@ function walkToParent(
     segments[segments.length - 1]!,
     segments,
     segments.length - 1,
+    !copyOnWrite,
   );
   return current;
 }
