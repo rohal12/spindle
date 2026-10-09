@@ -10,12 +10,16 @@ import {
 } from '../../markup/render';
 import type { ASTNode } from '../../markup/ast';
 import { useRenderOptions } from '../../hooks/use-render-options';
-import { FrozenStateContext } from '../../hooks/use-story-fields';
+import {
+  FrozenStateContext,
+  OutgoingContext,
+} from '../../hooks/use-story-fields';
 import { liveLocalsView } from '../../utils/live-locals';
 import { runWithCommittedMutations } from '../../execute-mutation';
 import { subscribeStateReplacement } from '../../store';
 import { RepeatContext } from './Repeat';
 import { DialogCloseContext } from '../PassageDialog';
+import { ItemEditContext } from '../../utils/control-edits';
 
 const frozenAlways = () => true;
 
@@ -35,7 +39,8 @@ const frozenAlways = () => true;
  * the owning macro sees and provides them again: the locals scope (read
  * through a live view, so a local assigned earlier in the body is visible),
  * nobr/inline rendering, the enclosing block widget's {@children}, the
- * enclosing {repeat}'s {stop} and the enclosing dialog's close callback.
+ * enclosing {repeat}'s {stop} and the enclosing dialog's close callback and whether it runs in a {for} iteration
+ * (#411) and the owning passage's departure (#410).
  * The body then behaves as if it rendered in place.
  *
  * The body's macros read story state from the store. Run from mutation code
@@ -50,6 +55,8 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
   const widgetChildren = useContext(WidgetChildrenContext);
   const repeat = useContext(RepeatContext);
   const closeDialog = useContext(DialogCloseContext);
+  const inIteration = useContext(ItemEditContext);
+  const hasLeft = useContext(OutgoingContext);
 
   const mounted = useRef<HTMLElement[]>([]);
   useEffect(() => {
@@ -81,7 +88,11 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
                 <WidgetChildrenContext.Provider value={widgetChildren}>
                   <RepeatContext.Provider value={repeat}>
                     <DialogCloseContext.Provider value={closeDialog}>
-                      {renderNodes(children, { nobr, inline, locals })}
+                      <ItemEditContext.Provider value={inIteration}>
+                        <OutgoingContext.Provider value={hasLeft}>
+                          {renderNodes(children, { nobr, inline, locals })}
+                        </OutgoingContext.Provider>
+                      </ItemEditContext.Provider>
                     </DialogCloseContext.Provider>
                   </RepeatContext.Provider>
                 </WidgetChildrenContext.Provider>

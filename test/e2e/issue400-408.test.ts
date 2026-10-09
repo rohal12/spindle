@@ -9,7 +9,11 @@
  * - #405: a cyclic default boots;
  * - #406: a loop over a shared graph renders without a long stall;
  * - #407: replacing a registered Array subclass item remounts its iteration;
- * - #408: Story.set writes a field of a registered Map subclass.
+ * - #408: Story.set writes a field of a registered Map subclass;
+ * - #410: a timer of a passage left stops writing;
+ * - #411: a {for} button that edits its item keeps its control;
+ * - #413: native media controls are tab stops of a dialog;
+ * - #414: input bindings of temporary variables are rejected.
  *
  * Compiles its own stories with the built format (global setup builds it).
  */
@@ -136,6 +140,44 @@ $bag = null
   Live: {@bag.label}
 {/for}
 Label: {$bag.label}
+`,
+  outgoingTimer: `${header('40000000-0000-4000-8000-000000000410')}:: StoryVariables
+$n = 0
+
+:: Start
+{repeat 20ms}{set $n += 1}{/repeat}
+[[B]]
+
+:: B
+N: {$n}
+`,
+  loopButton: `${header('40000000-0000-4000-8000-000000000411')}:: StoryVariables
+$party = [{hp: 0}]
+$done = 0
+
+:: Start
+{for @p, @i of $party}
+  {button "Heal"}
+    {set $party[@i].hp += 1}
+    {timed 100ms}{set $done += 1}{/timed}
+  {/button}
+{/for}
+Done: {$done}
+`,
+  mediaDialog: `${header('40000000-0000-4000-8000-000000000413')}:: StoryVariables
+
+:: Start
+{dialog "Listen"}Audio{/dialog}
+
+:: Audio
+<audio controls src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="></audio>
+`,
+  tempBinding: `${header('40000000-0000-4000-8000-000000000414')}:: StoryVariables
+
+:: Start
+{set _name = "Ada"}
+{textbox _name}
+Current: {_name}
 `,
 };
 
@@ -296,5 +338,58 @@ describe('registered collection subclasses (#407, #408)', () => {
     expect(await page.evaluate('Story.get("bag") instanceof Inventory')).toBe(
       true,
     );
+  });
+});
+
+describe('a timer of a passage that was left (#410)', () => {
+  it('does not write into the destination', async () => {
+    await open('outgoingTimer');
+    await page.waitForTimeout(100);
+    await page.evaluate('Story.goto("B")');
+    await page.waitForSelector('.passage:has-text("N:")');
+    const n = await page.evaluate('Story.get("n")');
+    await page.waitForTimeout(200);
+    expect(await page.evaluate('Story.get("n")')).toBe(n);
+  });
+});
+
+describe('a {for} button that edits its item (#411)', () => {
+  it('keeps the control and finishes its timer', async () => {
+    await open('loopButton');
+    const button = await page.$('.passage button');
+    await button!.click();
+    await expect.poll(() => page.evaluate('Story.get("done")')).toBe(1);
+    expect(await page.evaluate('Story.get("party")')).toEqual([{ hp: 1 }]);
+    expect(await button!.evaluate((el) => el.isConnected)).toBe(true);
+  });
+});
+
+describe('native media controls in a dialog (#413)', () => {
+  it('are reached by Tab before the trap wraps', async () => {
+    await open('mediaDialog');
+    await page.click('.passage button, .passage a');
+    await page.waitForSelector('.dialog-panel');
+    const tags = new Set<string>();
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('Tab');
+      tags.add(
+        await page.evaluate(
+          () =>
+            document.activeElement?.localName +
+            (document.activeElement?.closest('.dialog-panel') ? '' : '!'),
+        ),
+      );
+    }
+    expect(tags).toContain('audio');
+    expect(tags).not.toContain('body!');
+  });
+});
+
+describe('an input bound to a temporary variable (#414)', () => {
+  it('is rejected instead of binding a story key', async () => {
+    await open('tempBinding');
+    expect(await page.$('.passage input')).toBeNull();
+    expect(await page.textContent('.passage .error')).toContain('temporary');
+    expect(await page.evaluate('Story.get("_name")')).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
 import { defineMacro } from '../../define-macro';
 import { DELAY_PARAMETER, parseMacroArgs } from './macro-args';
 import { wrapContent } from './display';
+import { OutgoingContext } from '../../hooks/use-story-fields';
 
 /** The parameters of {timed} and of each {next}: the delay before it shows. */
 const TIMED_PARAMETERS = [DELAY_PARAMETER] as const;
@@ -11,7 +12,8 @@ defineMacro({
   interpolate: true,
   parameters: TIMED_PARAMETERS,
   render({ branches = [] }, ctx) {
-    const { useState, useEffect, useMemo } = ctx.hooks;
+    const { useState, useEffect, useMemo, useContext } = ctx.hooks;
+    const hasLeft = useContext(OutgoingContext);
 
     const sections = useMemo(() => {
       return branches.map((branch) => ({
@@ -31,6 +33,8 @@ defineMacro({
       const delay = sections[nextIndex]!.delay;
 
       const timer = setTimeout(() => {
+        // The passage was left: its body must not run (#410)
+        if (hasLeft?.()) return;
         setVisibleIndex(nextIndex);
       }, delay);
 

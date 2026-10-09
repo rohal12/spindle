@@ -9,6 +9,7 @@ import { useStoryStore, type StoryState } from '../../store';
 import {
   useStoryFields,
   FrozenStateContext,
+  OutgoingContext,
 } from '../../hooks/use-story-fields';
 import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
@@ -139,6 +140,11 @@ defineMacro({
     const isOutgoing = useCallback(
       (state: StoryState) => state.navigationId !== displayedId,
       [displayedId],
+    );
+    // Read live: a timer asks it before the outgoing tree has unmounted
+    const hasLeft = useCallback(
+      () => isOutgoing(useStoryStore.getState()),
+      [isOutgoing],
     );
     const lastElement = useRef<preact.VNode | null>(null);
 
@@ -350,7 +356,9 @@ defineMacro({
         >
           {passageElement && (
             <FrozenStateContext.Provider value={isOutgoing}>
-              {passageElement}
+              <OutgoingContext.Provider value={hasLeft}>
+                {passageElement}
+              </OutgoingContext.Provider>
             </FrozenStateContext.Provider>
           )}
         </div>

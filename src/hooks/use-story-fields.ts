@@ -16,6 +16,14 @@ export const FrozenStateContext = createContext<
 >(null);
 
 /**
+ * Tells a timer ({repeat}, {timed}) whether the passage it belongs to has
+ * been left: it must not run a new body then, for that would write into the
+ * destination's state until the outgoing tree unmounts (#410). Null outside
+ * a passage.
+ */
+export const OutgoingContext = createContext<(() => boolean) | null>(null);
+
+/**
  * Story state fields `keys`, re-rendering when any of them changes (as one
  * useStoryStore() selector per field would). The result keeps its identity
  * while the fields don't change, as the store's snapshot must.
