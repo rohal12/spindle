@@ -200,9 +200,24 @@ export function SaveManagerContent() {
     }
   };
 
+  /** Run `op`, then tell the player how it went and list the saves again. */
+  const runAction = async (
+    done: string,
+    failed: string,
+    op: () => Promise<void>,
+  ) => {
+    try {
+      await op();
+      showStatus(done);
+      await refresh();
+    } catch {
+      showStatus(failed, 'error');
+    }
+  };
+
   const handleDelete = async (saveId: string) => {
     if (!confirm('Delete this save?')) return;
-    try {
+    await runAction('Save deleted', 'Failed to delete save', async () => {
       await deleteSaveById(saveId);
       // The save may have been held by a slot; hasSave() and QuickLoad
       // read the store's cache
@@ -210,11 +225,7 @@ export function SaveManagerContent() {
       useStoryStore.setState((state) => {
         state.knownSaves = known;
       });
-      showStatus('Save deleted');
-      await refresh();
-    } catch {
-      showStatus('Failed to delete save', 'error');
-    }
+    });
   };
 
   const handleRenameStart = (save: SaveRecord) => {
@@ -226,15 +237,11 @@ export function SaveManagerContent() {
   const handleRenameConfirm = async () => {
     const id = renamingId;
     if (!id || !renameValue.trim()) return;
-    try {
+    await runAction('Save renamed', 'Failed to rename', async () => {
       await renameSave(id, renameValue.trim());
       // Only this edit is over: another save may be in the editor since (#438)
       setRenamingId((current) => (current === id ? null : current));
-      showStatus('Save renamed');
-      await refresh();
-    } catch {
-      showStatus('Failed to rename', 'error');
-    }
+    });
   };
 
   const handleRenameKeyDown = (e: KeyboardEvent) => {
