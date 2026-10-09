@@ -34,6 +34,7 @@ import {
   loadSlotSave,
   adoptPlaythrough,
   populateKnownSaves,
+  watchSlotChanges,
   getSlotSaveInfo,
   listSlotSaves,
   deleteSlotSave,
@@ -65,6 +66,7 @@ import {
   type PRNGSnapshot,
 } from './prng';
 import { errorMessage } from './utils/error-message';
+import { createListeners } from './utils/listeners';
 import {
   routeStoreUpdate,
   runWithCommittedMutations,
@@ -662,8 +664,24 @@ let slotLoadApplying: number | null = null;
 
 /** A replacement of the game state applied at its call. */
 function replaceStateNow(): void {
-  latestStateApplied = ++stateReplacementsIssued;
+  applyReplacement(++stateReplacementsIssued);
 }
+
+const replacementListeners = createListeners();
+
+/** Record that replacement `n` is applied, and tell the listeners. */
+function applyReplacement(n: number): void {
+  latestStateApplied = n;
+  replacementListeners.notify();
+}
+
+/**
+ * Call `listener` whenever a boot, restart or load replaces the game state:
+ * work the replaced game started that would write into the new one later (a
+ * click body's timer in the story interface, which stays mounted) is to
+ * stop (#401).
+ */
+export const subscribeStateReplacement = replacementListeners.subscribe;
 
 // ---------------------------------------------------------------------------
 // Runtime handler cleanup (auto-unsub on restart)
@@ -1122,6 +1140,18 @@ function recordKnownSave(
   });
 }
 
+/** Look up which slots hold a save again, as an operation queued now. */
+function refreshKnownSaves(set: StoreSet, ifid: string): Promise<void> {
+  return populateKnownSaves(ifid).then((known) => {
+    set((state) => {
+      state.knownSaves = known;
+    });
+  });
+}
+
+/** Stops following the slot changes of other tabs (see init). */
+let stopWatchingSlots: (() => void) | undefined;
+
 /**
  * Queue the clearing of saved data, then restart now: the new playthrough
  * is stored after it, and operations issued from here on belong to the new
@@ -1242,6 +1272,15 @@ export const useStoryStore = create<StoryState>()(
             return '';
           }),
       );
+      // Another tab of the story saving or deleting changes the slots too
+      // (#404). Looked up in an operation queued then, so after those issued
+      // before; operations issued later update the cache after it.
+      stopWatchingSlots?.();
+      stopWatchingSlots = watchSlotChanges(storyData.ifid, () => {
+        refreshKnownSaves(set, storyData.ifid).catch(() => {
+          // The cache keeps what it had; the next change tries again
+        });
+      });
     },
 
     navigate: (passageName: string) => {
@@ -1596,12 +1635,7 @@ export const useStoryStore = create<StoryState>()(
       }
 
       return reported(
-        deletion.then(async () => {
-          const known = await populateKnownSaves(storyData.ifid);
-          set((state) => {
-            state.knownSaves = known;
-          });
-        }),
+        deletion.then(() => refreshKnownSaves(set, storyData.ifid)),
         'spindle: failed to delete playthrough',
       );
     },
@@ -1672,7 +1706,7 @@ export const useStoryStore = create<StoryState>()(
       // Before anything is replaced: an incompatible payload leaves the
       // running game as it is
       assertPassagesExist(get().storyData, payload);
-      latestStateApplied = replacement;
+      applyReplacement(replacement);
 
       emit('beforeload', slot);
 

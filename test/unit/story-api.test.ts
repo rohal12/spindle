@@ -815,17 +815,22 @@ describe('StoryAPI', () => {
       expect(getReadyPromise()).toBeNull();
     });
 
-    it('deferRender() replaces previous promise on repeated calls', async () => {
+    it('deferRender() keeps the pending promise on repeated calls (#403)', async () => {
       const { getReadyPromise } = await import('../../src/story-api');
       Story.deferRender();
       const first = getReadyPromise();
       Story.deferRender();
-      const second = getReadyPromise();
-      expect(first).not.toBe(second);
+      // Boot may already wait on the first one
+      expect(getReadyPromise()).toBe(first);
 
-      // Resolve the current one; first is orphaned (harmless — no refs held)
       Story.ready();
-      await second;
+      await first;
+      expect(getReadyPromise()).toBeNull();
+
+      // A deferral after ready() is a new one
+      Story.deferRender();
+      expect(getReadyPromise()).not.toBe(first);
+      Story.ready();
     });
   });
 

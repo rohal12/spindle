@@ -1,6 +1,7 @@
 import { evaluate } from './expression';
 import { executeMutation, readState } from './execute-mutation';
 import { useStoryStore } from './store';
+import { createListeners } from './utils/listeners';
 
 export interface WatchOptions {
   goto?: string;
@@ -301,8 +302,24 @@ export function reinitTriggerState(): void {
  */
 export function resetTriggers(): void {
   triggers = [];
+  resets++;
   closeAllOpenDialogs();
+  resetListeners.notify();
 }
+
+let resets = 0;
+const resetListeners = createListeners();
+
+/** How many times resetTriggers has forgotten every watcher. */
+export function triggerResets(): number {
+  return resets;
+}
+
+/**
+ * Call `listener` after each resetTriggers (a restart): a {watch} that stays
+ * mounted, in the story interface, registers its watcher again (#402).
+ */
+export const subscribeTriggerResets = resetListeners.subscribe;
 
 export function subscribeTriggerDialogs(cb: () => void): () => void {
   dialogNotify = cb;

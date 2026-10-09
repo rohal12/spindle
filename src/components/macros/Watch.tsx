@@ -1,5 +1,12 @@
 import { defineMacro } from '../../define-macro';
-import { addMacroTrigger, removeTrigger } from '../../triggers';
+import { FrozenStateContext } from '../../hooks/use-story-fields';
+import { useStoryStore } from '../../store';
+import {
+  addMacroTrigger,
+  removeTrigger,
+  subscribeTriggerResets,
+  triggerResets,
+} from '../../triggers';
 
 defineMacro({
   name: 'watch',
@@ -34,9 +41,22 @@ defineMacro({
     // Register during render (like {set}) — triggers survive navigation
     // and are cleaned up via resetTriggers() on restart or {unwatch}.
     // Remounts (revisits, re-rendered branches) keep the registered watcher.
-    const registered = hooks.useRef(false);
-    if (!registered.current) {
-      registered.current = true;
+    // A {watch} still mounted when a restart forgets the watchers (in the
+    // story interface) registers it again for the new game (#402); one in a
+    // passage on its way out or a finished click body does not.
+    const frozen = hooks.useContext(FrozenStateContext);
+    const [, rerender] = hooks.useState(0);
+    hooks.useEffect(
+      () => subscribeTriggerResets(() => rerender((n) => n + 1)),
+      [],
+    );
+    const registered = hooks.useRef<number | null>(null);
+    if (
+      registered.current === null ||
+      (registered.current !== triggerResets() &&
+        !frozen?.(useStoryStore.getState()))
+    ) {
+      registered.current = triggerResets();
       addMacroTrigger(condition, options);
     }
 

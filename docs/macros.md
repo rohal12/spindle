@@ -44,6 +44,8 @@ With an index variable:
 
 The loop variables (`@item`, `@i`) use the `@` prefix and are block-scoped to the loop body. They do not affect `$` story variables or `_` temporary variables.
 
+An iteration's `{set}` and `{do}` run once per item, as it first renders. When an item is replaced or changed from outside the loop, its iteration renders anew and runs them again for the new item. Writes the iterations make to the items as they render (`{set $party[@i].hp += 1}`, or in a `{timed}` or `{repeat}` inside the loop), and edits through an input control inside the loop, do not make an iteration render anew.
+
 ### `{switch}` / `{case}` / `{default}`
 
 Match a value against multiple cases.

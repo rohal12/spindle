@@ -608,6 +608,7 @@ async function fillSlot(
       slots.includes(slot) ? slots : [...slots, slot],
     );
   }
+  announceSlots(ifid);
 }
 
 /** Clear a slot: its pointer, and its entry in the slot index. */
@@ -616,6 +617,7 @@ async function emptySlot(ifid: string, slot?: string): Promise<void> {
   if (isNamedSlot(slot)) {
     await updateSlotIndex(ifid, (slots) => slots.filter((s) => s !== slot));
   }
+  announceSlots(ifid);
 }
 
 /** Clear every slot holding a save whose ID passes `test`. */
@@ -627,6 +629,65 @@ async function emptySlotsHolding(
     const id = await slotSaveId(ifid, slot);
     if (id && test(id)) await emptySlot(ifid, slot);
   }
+}
+
+// --- Other tabs ---
+
+// The tabs of a story share its storage, but each keeps which slots hold a
+// save (the store's knownSaves, behind hasSave() and QuickLoad). A tab that
+// fills or empties slots tells the others, which look them up again (#404).
+
+const SLOTS_CHANNEL = 'spindle.slots';
+/** Every story's slots: what clearing all data announces. */
+const ALL_STORIES = '*';
+let slotsChannel: BroadcastChannel | null | undefined;
+
+function getSlotsChannel(): BroadcastChannel | null {
+  if (slotsChannel === undefined) {
+    try {
+      slotsChannel = new BroadcastChannel(SLOTS_CHANNEL);
+      // Node (headless runs) would not exit while it is open
+      (slotsChannel as { unref?: () => void }).unref?.();
+    } catch {
+      // No BroadcastChannel: tabs catch up when shown (see watchSlotChanges)
+      slotsChannel = null;
+    }
+  }
+  return slotsChannel;
+}
+
+/** Tell the story's other tabs that its slots changed. */
+function announceSlots(ifid: string): void {
+  try {
+    getSlotsChannel()?.postMessage(ifid);
+  } catch {
+    // A tab that cannot tell the others leaves them to catch up when shown
+  }
+}
+
+/**
+ * Call `onChange` when another tab may have filled or emptied the story's
+ * slots: when it says so, and when this tab is shown again. Returns the
+ * function that stops it.
+ */
+export function watchSlotChanges(
+  ifid: string,
+  onChange: () => void,
+): () => void {
+  const channel = getSlotsChannel();
+  const onMessage = (event: MessageEvent) => {
+    if (event.data === ifid || event.data === ALL_STORIES) onChange();
+  };
+  const onShown = () => {
+    if (document.visibilityState === 'visible') onChange();
+  };
+  const doc = typeof document === 'undefined' ? undefined : document;
+  channel?.addEventListener('message', onMessage);
+  doc?.addEventListener('visibilitychange', onShown);
+  return () => {
+    channel?.removeEventListener('message', onMessage);
+    doc?.removeEventListener('visibilitychange', onShown);
+  };
 }
 
 /** The `custom` keys that say which slot a save lives in. */
@@ -976,6 +1037,7 @@ export function clearGameData(ifid: string): Promise<void> {
     await backend.deletePlaythroughsByIfid(ifid);
     await backend.deleteMetaByIfid(ifid);
     clearSession(ifid);
+    announceSlots(ifid);
   });
 }
 
@@ -997,6 +1059,7 @@ async function clearAllDataNow(): Promise<void> {
   } catch {
     // no sessionStorage (or access denied): nothing to clear
   }
+  announceSlots(ALL_STORIES);
 }
 
 /**

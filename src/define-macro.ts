@@ -10,7 +10,11 @@ import {
   useMemo,
 } from 'preact/hooks';
 import { useInterpolate } from './hooks/use-interpolate';
-import { noteControlEdit } from './utils/control-edits';
+import {
+  ItemEditContext,
+  noteControlEdit,
+  runAsItemEdit,
+} from './utils/control-edits';
 import { useMergedLocals } from './hooks/use-merged-locals';
 import { useRenderOptions } from './hooks/use-render-options';
 import {
@@ -155,6 +159,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
 
     // Always-on: cssClass + mutation
     const { update, getValues } = useContext(LocalsUpdateContext);
+    const inIteration = useContext(ItemEditContext);
     const renderOptions = useRenderOptions();
     const renderNodes = (
       nodes: ASTNode[],
@@ -190,7 +195,11 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       id,
       resolve,
       cls: macroClass(config.name, className),
-      mutate: (code: string) => executeMutation(code, getValues(), update),
+      // Code run inside a {for} iteration edits the loop's items (#400)
+      mutate: inIteration
+        ? (code: string) =>
+            runAsItemEdit(() => executeMutation(code, getValues(), update))
+        : (code: string) => executeMutation(code, getValues(), update),
       update,
       getValues,
       wrap: (content: ComponentChildren): VNode<any> =>

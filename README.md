@@ -98,6 +98,7 @@ the job and extend it; most fixes then land in one place. The shared modules:
 | Where code in `{…}` ends (`closeBrace`, `rawBodyEnd`)    | `src/markup/code-end.ts`                                           |
 | Reading story state / render contexts in components      | `src/hooks/use-story-fields.ts`, `src/hooks/use-render-options.ts` |
 | Save storage operations                                  | `src/saves/storage.ts` (`createBackend`)                           |
+| Listeners to notify (`createListeners`)                  | `src/utils/listeners.ts`                                           |
 
 ## License
 

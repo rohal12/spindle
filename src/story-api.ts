@@ -60,9 +60,10 @@ export type { StoryAction };
 export type { MacroMetadata };
 
 // Deferred-render promise lifecycle.
-// deferRender() creates a promise; ready() resolves it.
+// deferRender() creates a promise; ready() resolves it. A deferRender() while
+// one is pending keeps that promise: boot may already wait on it (#403).
 // index.tsx reads getReadyPromise() AFTER render(), which is after both
-// author JS and storyinit have run, so it always gets the final promise.
+// author JS and storyinit have run.
 let readyResolve: (() => void) | null = null;
 let readyPromise: Promise<void> | null = null;
 
@@ -518,7 +519,7 @@ function createStoryAPI(): StoryAPI {
 
     deferRender(): void {
       useStoryStore.getState().deferRender();
-      readyPromise = new Promise<void>((resolve) => {
+      readyPromise ??= new Promise<void>((resolve) => {
         readyResolve = resolve;
       });
     },

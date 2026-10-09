@@ -866,7 +866,10 @@ export interface StoryAPI {
   /** Set a one-time transition for the next navigation only. Pass `null` to clear. */
   setNextTransition(config: TransitionConfig | null): void;
 
-  /** Defer initial passage rendering until `ready()` is called. */
+  /**
+   * Defer initial passage rendering until `ready()` is called. Calling it
+   * again before `ready()` keeps the one deferral: a single `ready()` ends it.
+   */
   deferRender(): void;
 
   /** Unblock deferred rendering (call after `deferRender()`). */

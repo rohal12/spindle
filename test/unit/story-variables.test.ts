@@ -516,3 +516,26 @@ describe('validatePassages with HTML comments (#360)', () => {
     ]);
   });
 });
+
+describe('cyclic defaults (#405)', () => {
+  it('infers a schema that refers to itself for a backreference', () => {
+    const schema = parseStoryVariables(
+      '$node = (() => { const n = { name: "A" }; n.self = n; return n; })()',
+    );
+    const node = schema.get('node')!;
+    expect(node.type).toBe('object');
+    expect(node.fields!.get('name')).toEqual({ type: 'string' });
+    const self = node.fields!.get('self')!;
+    expect(self.fields).toBe(node.fields);
+    expect(node.default).toBe((node.default as { self: unknown }).self);
+  });
+
+  it('handles mutual references and shared subtrees', () => {
+    const schema = parseStoryVariables(
+      '$pair = (() => { const a = {}, b = { a }; a.b = b; const leaf = { n: 1 }; return { a, b, x: leaf, y: leaf }; })()',
+    );
+    const fields = schema.get('pair')!.fields!;
+    expect(fields.get('a')!.fields!.get('b')).toBe(fields.get('b'));
+    expect(fields.get('x')).toBe(fields.get('y'));
+  });
+});

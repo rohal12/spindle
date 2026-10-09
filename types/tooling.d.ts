@@ -111,7 +111,11 @@ export type VarType =
 /** Inferred shape of a declared variable (or one of its object fields). */
 export interface FieldSchema {
   type: VarType;
-  /** Field schemas, only present for objects. */
+  /**
+   * Field schemas, only present for objects. An object the default refers
+   * to more than once has one schema, so a cyclic default (`node.self =
+   * node`) gives a schema that refers to itself.
+   */
   fields?: Map<string, FieldSchema>;
 }
 
