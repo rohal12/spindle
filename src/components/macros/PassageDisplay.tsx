@@ -94,6 +94,38 @@ function cleanupSnapshots(containerEl: Element | null): void {
   }
 }
 
+/**
+ * The navigation each mounted passage display last committed to the page,
+ * or null while it shows StoryLoading or is between the passages of a
+ * transition (#430).
+ */
+const shownNavigations = new Map<symbol, number | null>();
+const shownListeners = new Set<() => void>();
+
+/**
+ * Resolves once every passage display shows the current navigation's
+ * passage: after the render deferral ends and any transition has mounted
+ * the destination. Immediately when there is no passage display.
+ */
+export function passageShown(): Promise<void> {
+  const settled = () => {
+    const { navigationId, renderDeferred } = useStoryStore.getState();
+    return (
+      !renderDeferred &&
+      [...shownNavigations.values()].every((id) => id === navigationId)
+    );
+  };
+  if (settled()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!settled()) return;
+      shownListeners.delete(check);
+      resolve();
+    };
+    shownListeners.add(check);
+  });
+}
+
 /** Scroll the displayed passage's beginning into view if it is above it. */
 function scrollToPassageStart(containerEl: Element | null): void {
   const el = containerEl?.querySelector('.passage');
@@ -318,6 +350,19 @@ defineMacro({
         !container.classList.contains('passage-container--crossfading');
       if (!scrollAfterCleanup.current) scrollToPassageStart(container);
     }, [shownId]);
+
+    const displayKey = useRef(Symbol('passage-display')).current;
+    useLayoutEffect(() => {
+      shownNavigations.set(displayKey, shownId);
+      [...shownListeners].forEach((check) => check());
+    }, [shownId]);
+    useLayoutEffect(
+      () => () => {
+        shownNavigations.delete(displayKey);
+        [...shownListeners].forEach((check) => check());
+      },
+      [],
+    );
 
     // When render is deferred, show StoryLoading passage or nothing
     const effectivePassage = renderDeferred
