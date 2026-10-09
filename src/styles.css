@@ -185,6 +185,17 @@ tw-storydata {
   font-size: 0.9em;
 }
 
+@media (max-width: 600px) {
+  .story-menubar {
+    flex-wrap: wrap;
+    padding: 0.5em 0.75em;
+  }
+
+  .story-menubar .story-title {
+    flex: 1 1 100%;
+  }
+}
+
 .story-title {
   flex: 1;
   font-weight: 600;

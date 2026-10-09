@@ -35,3 +35,32 @@ describe('structural HTML containers (#423)', () => {
     expect(el.querySelector('td strong')?.textContent).toBe('bold');
   });
 });
+
+describe('structural HTML containers through macro bodies (#436)', () => {
+  it('keeps rows of a {for} loop with blank lines direct children of the table', () => {
+    const el = renderMarkup(
+      '<table id="t"><tbody>{for @item of ["A", "A long cell"]}\n\n<tr><td>{@item}</td><td>Z</td></tr>\n\n{/for}</tbody></table>',
+    );
+    const tbody = el.querySelector('tbody')!;
+    expect(tbody.querySelector('p > tr')).toBeNull();
+    expect(Array.from(tbody.children).map((c) => c.localName)).toEqual([
+      'tr',
+      'tr',
+    ]);
+    expect(el.querySelectorAll('tbody > tr > td').length).toBe(4);
+  });
+
+  it('keeps list items of an {if} branch direct children of the list', () => {
+    const el = renderMarkup('<ul>{if true}\n\n<li>a</li>\n\n{/if}</ul>');
+    expect(
+      Array.from(el.querySelector('ul')!.children).map((c) => c.localName),
+    ).toEqual(['li']);
+  });
+
+  it('still renders markdown inside cells of generated rows', () => {
+    const el = renderMarkup(
+      '<table><tbody>{for @i of [1]}\n\n<tr><td>**bold**</td></tr>\n\n{/for}</tbody></table>',
+    );
+    expect(el.querySelector('td strong')?.textContent).toBe('bold');
+  });
+});

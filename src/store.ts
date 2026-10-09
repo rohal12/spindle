@@ -674,6 +674,19 @@ let slotLoadApplying: number | null = null;
 /** The playthrough the slot load calling loadFromPayload leaves. */
 let slotLoadLeaving: Promise<string> | null = null;
 
+/**
+ * Take a place in the order of replacements for a load that reads before it
+ * applies (the save dialog's): see isStateReplacementSuperseded.
+ */
+export function issueStateReplacement(): number {
+  return ++stateReplacementsIssued;
+}
+
+/** Whether a replacement issued after `n` has been applied. */
+export function isStateReplacementSuperseded(n: number): boolean {
+  return latestStateApplied > n;
+}
+
 /** A replacement of the game state applied at its call. */
 function replaceStateNow(): void {
   applyReplacement(++stateReplacementsIssued);
