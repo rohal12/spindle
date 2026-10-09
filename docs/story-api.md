@@ -79,7 +79,7 @@ Go to the next passage in history (after going back).
 
 ### `Story.restart()`
 
-Restart the story. Restores variable defaults and re-runs `StoryInit`.
+Restart the story. Restores variable defaults, closes every open dialog (whether opened by `Story.openDialog()`, a `{dialog}` or a menubar button) and re-runs `StoryInit`.
 
 ### `Story.watch(condition, callbackOrOptions)`
 

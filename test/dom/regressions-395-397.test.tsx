@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
+import { TriggerDialogHost } from '../../src/components/TriggerDialogHost';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
@@ -98,5 +99,60 @@ describe('radio groups in passages and dialogs (#396)', () => {
     act(() => b!.click());
     expect(useStoryStore.getState().variables.choice).toBe('b');
     expect(checked(el)).toEqual([false, true]);
+  });
+});
+
+describe('restart with a dialog of a persistent view open (#397)', () => {
+  // Stands for the story interface, which a restart does not remount
+  const iface = makePassage(
+    10,
+    'StoryInterface',
+    '{dialog "Options"}Options{/dialog}',
+  );
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    setup({ n: 0 }, [
+      iface,
+      makePassage(
+        11,
+        'Options',
+        '{button "Reset"}{do}Story.restart(){/do}{/button}',
+      ),
+      makePassage(12, 'Host', 'Host content'),
+    ]);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    act(() => {
+      render(
+        <>
+          <TriggerDialogHost />
+          <Passage passage={iface} />
+        </>,
+        container,
+      );
+    });
+  });
+
+  const panels = () => container.querySelectorAll('.dialog-panel');
+  const click = (selector: string) =>
+    act(() => container.querySelector<HTMLElement>(selector)!.click());
+
+  it('closes it, as it closes dialogs opened through the Story API', () => {
+    click('button.macro-dialog');
+    expect(panels()).toHaveLength(1);
+    act(() => window.Story.openDialog('Host'));
+    expect(panels()).toHaveLength(2);
+
+    click('.dialog-panel button.macro-button');
+    expect(panels()).toHaveLength(0);
+    expect(window.Story.isDialogOpen()).toBe(false);
+    expect(document.querySelector('.dialog-panel')).toBeNull();
+
+    // It opens again on request
+    click('button.macro-dialog');
+    expect(panels()).toHaveLength(1);
+    act(() => render(null, container));
+    container.remove();
   });
 });
