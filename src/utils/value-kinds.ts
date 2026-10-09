@@ -43,3 +43,17 @@ export function atomicName(value: object): string | undefined {
   const tag = value instanceof Error ? 'Error' : toStringTag(value);
   return `${/^[AEIOU]/.test(tag) ? 'an' : 'a'} ${tag}`;
 }
+
+/** Whether `key` is an index of an array element. */
+const isIndexKey = (key: string): boolean =>
+  key !== '4294967295' && String(Number(key) >>> 0) === key;
+
+/**
+ * The own enumerable string keys of a collection (an Array, Map or Set) that
+ * are not its elements: what an instance of a subclass may hold besides
+ * them.
+ */
+export function extraKeys(collection: object): string[] {
+  const keys = Object.keys(collection);
+  return Array.isArray(collection) ? keys.filter((k) => !isIndexKey(k)) : keys;
+}

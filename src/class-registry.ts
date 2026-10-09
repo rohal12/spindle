@@ -2,6 +2,7 @@
 
 import { parse, stringify } from 'devalue';
 import { hasOwn } from './utils/namespace';
+import { extraKeys } from './utils/value-kinds';
 
 type Constructor = new (...args: any[]) => any;
 
@@ -46,7 +47,10 @@ export function clearRegistry(): void {
 // values. Spindle adds, with reducers and revivers:
 //
 // - `c:<name>`: an instance of the class registered as <name>, with its own
-//   enumerable keys (and, for Error subclasses, its message and cause);
+//   enumerable keys (and, for Error subclasses, its message and cause); for
+//   a subclass of Array, Map or Set, `[kind, contents, keys]`: the kind of
+//   collection, its elements (Map entries as pairs) and its other own
+//   enumerable keys;
 // - `E:<name>`: a built-in error (Error, TypeError, ..., AggregateError),
 //   with its message, cause, errors and own enumerable keys (not its stack);
 // - `S`: a symbol from the global registry (Symbol.for);
@@ -103,6 +107,13 @@ const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
 const isObject = (v: unknown): v is object =>
   typeof v === 'object' && v !== null;
 
+/** Whether `v` is a plain object (as devalue revives one). */
+const isPlainData = (v: unknown): v is Record<string, unknown> =>
+  isObject(v) && Object.getPrototypeOf(v) === Object.prototype;
+
+const malformedClass = (name: string): TypeError =>
+  new TypeError(`spindle: Malformed data for class "${name}"`);
+
 const defineData = (target: object, key: string, value: unknown): void => {
   // Define, so that a "__proto__" key stays a key (devalue refuses it)
   Object.defineProperty(target, key, {
@@ -127,7 +138,10 @@ function refuseSymbolKeys(value: object): void {
  * Own enumerable keys of `value`, as a plain object; for an error also its
  * message, cause and (AggregateError) errors, which are not enumerable.
  */
-function ownData(value: object): Record<string, unknown> {
+function ownData(
+  value: object,
+  keys = Object.keys(value),
+): Record<string, unknown> {
   refuseSymbolKeys(value);
   const data: Record<string, unknown> = {};
   if (value instanceof Error) {
@@ -135,10 +149,42 @@ function ownData(value: object): Record<string, unknown> {
       if (hasOwn(value, key)) defineData(data, key, value[key as keyof Error]);
     }
   }
-  for (const key of Object.keys(value)) {
+  for (const key of keys) {
     defineData(data, key, (value as Record<string, unknown>)[key]);
   }
   return data;
+}
+
+/** The kinds of collection a registered class may extend. */
+const COLLECTION_KINDS = {
+  Array: Array as unknown as Constructor,
+  Map: Map as Constructor,
+  Set: Set as Constructor,
+};
+type CollectionKind = keyof typeof COLLECTION_KINDS;
+
+/**
+ * The saved form of a registered class instance: its own data (see
+ * ownData), or for a collection its kind, elements and extra keys, read
+ * with the built-in methods, which a subclass may override (#391).
+ */
+function classData(value: object): unknown {
+  const extra = () => ownData(value, extraKeys(value));
+  if (Array.isArray(value)) {
+    // Holes stay holes
+    const items = new Array(value.length) as unknown[];
+    for (let i = 0; i < value.length; i++) {
+      if (i in value) items[i] = value[i] as unknown;
+    }
+    return ['Array', items, extra()];
+  }
+  if (value instanceof Map) {
+    return ['Map', Array.from(Map.prototype.entries.call(value)), extra()];
+  }
+  if (value instanceof Set) {
+    return ['Set', Array.from(Set.prototype.values.call(value)), extra()];
+  }
+  return ownData(value);
 }
 
 /** Make an error's message, cause and errors non-enumerable again. */
@@ -158,7 +204,9 @@ function reducers(): Record<string, (value: unknown) => unknown> {
   const out: Record<string, (value: unknown) => unknown> = {};
   for (const [name, ctor] of registry) {
     out[CLASS_PREFIX + name] = (v) =>
-      isObject(v) && Object.getPrototypeOf(v) === ctor.prototype && ownData(v);
+      isObject(v) &&
+      Object.getPrototypeOf(v) === ctor.prototype &&
+      classData(v);
   }
   for (const [proto, name] of BUILTIN_ERRORS) {
     out[ERROR_PREFIX + name] = (v) =>
@@ -175,7 +223,7 @@ function reducers(): Record<string, (value: unknown) => unknown> {
     v.lastIndex !== 0 && [v.source, v.flags, v.lastIndex];
   if (GUARD_V8_KEYS) {
     out[KEYS_TAG] = (v) => {
-      if (!isObject(v) || Object.getPrototypeOf(v) !== Object.prototype) {
+      if (!isPlainData(v)) {
         return false;
       }
       const keys = Object.keys(v);
@@ -192,24 +240,95 @@ function reducers(): Record<string, (value: unknown) => unknown> {
   return out;
 }
 
+/**
+ * The collection of a registered class that a `[kind, contents, keys]`
+ * list holds (see classData). A cycle through the collection revives it
+ * before its list is complete (devalue holds unread parts as holes), so the
+ * collection is kept per list and filled with what the list holds so far.
+ */
+const collections = new WeakMap<unknown[], object>();
+function reviveCollection(name: string, ctor: Constructor, list: unknown[]) {
+  const [kind, contents, keys] = list;
+  const base =
+    typeof kind === 'string' && hasOwn(COLLECTION_KINDS, kind)
+      ? COLLECTION_KINDS[kind as CollectionKind]
+      : undefined;
+  if (
+    list.length !== 3 ||
+    !base ||
+    !(ctor.prototype instanceof base) ||
+    (hasOwn(list, 1) && !Array.isArray(contents)) ||
+    (hasOwn(list, 2) && !isPlainData(keys))
+  ) {
+    throw malformedClass(name);
+  }
+  let made = collections.get(list);
+  if (!made) {
+    made = Object.setPrototypeOf(new base(), ctor.prototype) as object;
+    collections.set(list, made);
+  }
+  if (Array.isArray(contents)) fillCollection(made, contents);
+  if (isPlainData(keys)) {
+    for (const key of Object.keys(keys)) defineData(made, key, keys[key]);
+  }
+  return made;
+}
+
+/** Set the elements of a revived collection, with the built-in methods. */
+function fillCollection(made: object, contents: unknown[]): void {
+  if (Array.isArray(made)) {
+    made.length = contents.length;
+    for (let i = 0; i < contents.length; i++) {
+      if (hasOwn(contents, i)) made[i] = contents[i];
+      else delete made[i];
+    }
+  } else if (made instanceof Map) {
+    Map.prototype.clear.call(made);
+    for (const entry of contents) {
+      if (!Array.isArray(entry) || entry.length !== 2) {
+        throw new TypeError('spindle: Malformed map entries');
+      }
+      Map.prototype.set.call(made, entry[0], entry[1]);
+    }
+  } else {
+    Set.prototype.clear.call(made);
+    for (const member of contents) Set.prototype.add.call(made, member);
+  }
+}
+
 /** Restore a registered class instance in place, so cycles through it hold. */
 function reviveClass(name: string) {
-  return (data: Record<string, unknown>): unknown => {
-    if (!isObject(data) || Object.getPrototypeOf(data) !== Object.prototype) {
+  return (data: Record<string, unknown> | unknown[]): unknown => {
+    if (Array.isArray(data)) {
+      return reviveCollection(name, registeredCtor(name), data);
+    }
+    if (!isPlainData(data)) {
       // Already revived: a cycle through the instance revives it twice
       if (isObject(data) && registeredClassName(data) === name) return data;
-      throw new TypeError(`spindle: Malformed data for class "${name}"`);
+      throw malformedClass(name);
     }
-    const ctor = registry.get(name);
-    if (!ctor) {
-      throw new TypeError(
-        `spindle: The save holds an instance of class "${name}", which is not registered`,
-      );
+    const ctor = registeredCtor(name);
+    // A plain object cannot be made a collection (see classData)
+    if (
+      Object.values(COLLECTION_KINDS).some((c) => ctor.prototype instanceof c)
+    ) {
+      throw malformedClass(name);
     }
     Object.setPrototypeOf(data, ctor.prototype as object);
     if (data instanceof Error) hideErrorKeys(data);
     return data;
   };
+}
+
+/** The class registered as `name`; throws if there is none. */
+function registeredCtor(name: string): Constructor {
+  const ctor = registry.get(name);
+  if (!ctor) {
+    throw new TypeError(
+      `spindle: The save holds an instance of class "${name}", which is not registered`,
+    );
+  }
+  return ctor;
 }
 
 /** Restore a built-in error in place, like a class instance. */
@@ -218,7 +337,7 @@ function reviveError(name: string) {
   if (!ctor) return undefined;
   return (data: Record<string, unknown>): unknown => {
     if (Object.getPrototypeOf(data) === ctor.prototype) return data;
-    if (!isObject(data) || Object.getPrototypeOf(data) !== Object.prototype) {
+    if (!isPlainData(data)) {
       throw new TypeError(`spindle: Malformed data for "${name}"`);
     }
     Object.setPrototypeOf(data, ctor.prototype);
