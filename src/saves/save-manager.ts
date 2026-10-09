@@ -337,6 +337,8 @@ async function createSaveNow(
 
   const record = storedRecord(meta, payload);
   await (await getBackend()).putSave(record);
+  // Save dialogs open in other tabs list it (#445)
+  announceSlots(ifid);
   return record;
 }
 
@@ -423,6 +425,8 @@ export function deleteSaveById(saveId: string): Promise<void> {
     if (!record) return;
 
     await emptySlotsHolding(record.meta.ifid, (id) => id === saveId);
+    // A save in no slot is gone from the other tabs' dialogs too (#445)
+    announceSlots(record.meta.ifid);
   });
 }
 
@@ -441,6 +445,7 @@ export function renameSave(saveId: string, newTitle: string): Promise<void> {
       },
     };
     await backend.putSave(updated);
+    announceSlots(updated.meta.ifid);
   });
 }
 
@@ -980,6 +985,7 @@ export function importSave(data: unknown, ifid: string): Promise<SaveRecord> {
   return inOrder(async () => {
     const record = await prepareImport(data, ifid);
     await (await getBackend()).putSave(record);
+    announceSlots(ifid);
     return record;
   });
 }
@@ -1105,6 +1111,8 @@ export function deletePlaythroughData(
     // Clear the slots that held deleted saves (pointer and slot index)
     const deletedSet = new Set(deletedSaveIds);
     await emptySlotsHolding(ifid, (id) => deletedSet.has(id));
+    // Saves in no slot are gone from other tabs' dialogs too
+    announceSlots(ifid);
 
     if (replacement && (await replacement.current) === playthroughId) {
       await startNewPlaythroughNow(ifid, replacement.id);

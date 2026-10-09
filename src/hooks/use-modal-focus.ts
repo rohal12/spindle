@@ -227,6 +227,10 @@ export function useModalFocus(
       (next ?? (backwards ? last : first)).focus();
     };
 
+    // The media element whose native controls Tab is stepping through
+    let steppingMedia: { el: HTMLMediaElement; backwards: boolean } | null =
+      null;
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (!top()) return;
 
@@ -239,8 +243,21 @@ export function useModalFocus(
       }
 
       if (e.key !== 'Tab') return;
+      // The controls of a media element are in its user-agent shadow tree,
+      // where the element stays the active one: they step through them
+      // natively, and onFocusIn takes over where focus leaves the element
+      // (#444).
+      const active = document.activeElement;
+      if (active instanceof HTMLMediaElement && active.controls) {
+        steppingMedia = { el: active, backwards: e.shiftKey };
+        return;
+      }
       e.preventDefault();
-      moveFocus(document.activeElement, e.shiftKey);
+      moveFocus(active, e.shiftKey);
+    };
+    // The browser has moved focus by the time the key is released
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') steppingMedia = null;
     };
 
     // Key events inside an embedded document never reach this one (#425).
@@ -290,6 +307,13 @@ export function useModalFocus(
     // document can't be reached, is brought back in.
     const onFocusIn = (e: FocusEvent) => {
       const target = e.target;
+      if (steppingMedia && target !== steppingMedia.el && top()) {
+        // Focus left the media controls: on to the modal's next control
+        const { el, backwards } = steppingMedia;
+        steppingMedia = null;
+        moveFocus(el, backwards);
+        return;
+      }
       if (!top() || !(target instanceof Node) || panel.contains(target)) return;
       if (target === document.body || target === document.documentElement) {
         return;
@@ -298,6 +322,7 @@ export function useModalFocus(
     };
 
     document.addEventListener('keydown', onKeyDown, { signal });
+    document.addEventListener('keyup', onKeyUp, { signal });
     document.addEventListener('focusin', onFocusIn, { signal });
     return () => {
       controller.abort();

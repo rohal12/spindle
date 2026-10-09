@@ -188,6 +188,7 @@ export function SaveManagerContent() {
         decodeSavePayload(current.payload),
         undefined,
         current.meta.playthroughId,
+        replacement,
       );
       showStatus('Game loaded');
       if (closeDialog) {

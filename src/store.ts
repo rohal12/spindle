@@ -989,11 +989,14 @@ export interface StoryState {
    * passed to the `beforeload`/`afterload` events. Pass the save's
    * `playthroughId` when loading a save: the game moves to that playthrough
    * (no change if it is the current one). Restoring the session passes none.
+   * `issued` is the place in the order of replacements a load that read
+   * before applying took at its call (see issueStateReplacement).
    */
   loadFromPayload: (
     payload: SavePayload,
     slot?: string,
     playthroughId?: string,
+    issued?: number,
   ) => void;
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
@@ -1722,8 +1725,9 @@ export const useStoryStore = create<StoryState>()(
       payload: SavePayload,
       slot?: string,
       playthroughId?: string,
+      issued?: number,
     ) => {
-      const applying = slotLoadApplying;
+      const applying = slotLoadApplying ?? issued;
       slotLoadApplying = null;
       const leaving = slotLoadLeaving;
       slotLoadLeaving = null;

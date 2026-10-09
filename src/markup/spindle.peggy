@@ -39,9 +39,10 @@ const EMAIL_AUTOLINK = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`|~-]+@[a-zA-Z0-9](?:[a-zA-Z0-
 
 /**
  * A link's display text and target, from its text `inner` (at `at` in the
- * input), with where the target is written.
+ * input), with where the target is written. `indexOf(separator)` finds a
+ * separator that is written outside markup (see linkSeparatorIndex).
  */
-function parseLink(inner, at) {
+function parseLink(inner, at, indexOf) {
   /** The trimmed text from `start` to `end` of inner, and where it is. */
   const part = (start, end) => {
     const raw = inner.slice(start, end);
@@ -50,7 +51,7 @@ function parseLink(inner, at) {
     return { value, start: from, end: from + value.length };
   };
   for (const [separator, targetFirst] of LINK_SEPARATORS) {
-    const idx = inner.indexOf(separator);
+    const idx = indexOf(separator);
     if (idx === -1) continue;
     const before = part(0, idx);
     const after = part(idx + separator.length, inner.length);
@@ -168,6 +169,29 @@ let attrCode = false;
 /** The macro whose raw body is being read. */
 let rawName = '';
 
+/**
+ * The index in `inner` (at `at` in the input) of the first `separator` that
+ * is not inside a {…} of the label: its code (`{if $a || $b}`, a string with
+ * a pipe) belongs to the label, not to the link's syntax.
+ */
+function linkSeparatorIndex(inner, at, separator) {
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner.charAt(i);
+    if (c === '\\' && /[{}]/.test(inner.charAt(i + 1))) {
+      i++;
+    } else if (c === LB) {
+      // Selectors, then a macro name or the sigil of a variable or expression
+      const head = /^(?:[.#][\w-]*)* ?(\/?[a-zA-Z][\w-]*|(?=[$_@%(!]))/.exec(inner.slice(i + 1));
+      if (!head) continue;
+      const close = hooks.closeBrace(input, at + i + 1 + head[0].length, at + i + 1);
+      // One that does not end inside the label is no markup of it
+      if (close !== -1 && close < at + inner.length) i = close - at;
+    } else if (inner.startsWith(separator, i)) {
+      return i;
+    }
+  }
+  return -1;
+}
 function skipTo(end) {
   skipEnd = end;
   return end >= 0;
@@ -369,7 +393,7 @@ Literal
 
 LinkLexeme
   = &{ return !textMode; } "[[" s:Selectors at:Here inner:$LinkText "]]" {
-      return withSelectors(lexeme('link', location(), parseLink(inner, at)), s);
+      return withSelectors(lexeme('link', location(), parseLink(inner, at, (separator) => linkSeparatorIndex(inner, at, separator))), s);
     }
   / &{ return !textMode; } "[[" { fail('Unclosed link: [[ without ]]', location()); }
 
