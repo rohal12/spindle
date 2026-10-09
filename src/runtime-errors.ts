@@ -2,6 +2,7 @@
 // errors that would otherwise only reach the browser console.
 
 import { errorMessage } from './utils/error-message';
+import { createListeners } from './utils/listeners';
 
 /** A runtime error shown on the page until the player dismisses it. */
 export interface RuntimeError {
@@ -17,11 +18,11 @@ export interface RuntimeError {
 
 let errors: readonly RuntimeError[] = [];
 let nextId = 1;
-const listeners = new Set<() => void>();
+const listeners = createListeners();
 
 function update(next: readonly RuntimeError[]): void {
   errors = next;
-  for (const listener of listeners) listener();
+  listeners.notify();
 }
 
 /**
@@ -67,9 +68,4 @@ export function getRuntimeErrors(): readonly RuntimeError[] {
 }
 
 /** Call `listener` whenever the shown errors change; returns unsubscribe. */
-export function subscribeRuntimeErrors(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribeRuntimeErrors = listeners.subscribe;
