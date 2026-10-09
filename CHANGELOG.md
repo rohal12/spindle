@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Story.set()` and input bindings write the own properties of an instance of a registered `Array`, `Map`, `Set`, `Date` or `RegExp` subclass (`Story.set("bag.label", "Satchel")`), as `{set}` does, instead of throwing (#408).
+- A `{for}` iteration renders anew, running its `{set}` and `{do}` again, when its item is replaced by an instance of a registered collection or date subclass that differs only in its own properties or class (#407).
+- A `{for}` over items that share objects (a graph reusing subtrees) no longer spends time and memory exponential in the depth of the sharing to tell whether an item changed (#406).
+- A `StoryVariables` or `StoryTransients` default holding a cycle (`node.self = node`) no longer stops the story from booting (#405).
+- `Story.hasSave()` and the QuickLoad button follow saves made or deleted in another tab of the story, instead of keeping what the tab knew when it loaded (#404).
+- Calling `Story.deferRender()` again while the first render is deferred no longer leaves `:storyready` unfired and `bootStory()` unresolved after `Story.ready()` (#403).
+- A `{watch}` in `StoryInterface` watches again after a restart, as it did in the first game (#402).
+- A restart or a load cancels the pending work of a `{button}` or `{link}` body in `StoryInterface` (a `{timed}` it started), so it no longer writes into the new game (#401).
+- A `{for}` iteration whose `{set}` or `{do}` writes its own item (`{set $party[@i].hp += 1}`) runs once per item instead of again for each write, which without a bound made the game hang (#400).
 - A `StoryTransients` default that is an instance of an unregistered class (`%engine = new Engine()`) keeps its class and methods when the story starts, restarts or loads a save, instead of becoming a plain object (#398).
 - Restarting closes dialogs opened by a `{dialog}` or menubar button in `StoryInterface`, not only those opened through `Story.openDialog()`, so an Options dialog with a Restart button no longer stays open over the new game (#397).
 - Radiobuttons for one variable form a group within their passage or dialog only, so opening a dialog with radiobuttons for a variable the passage also binds no longer unchecks the passage's selection (#396).
