@@ -794,7 +794,9 @@ export interface StoryAPI {
   /**
    * Register a class so its instances keep their class through clones,
    * history, saves and loads. A save refuses instances of classes that are
-   * not registered.
+   * not registered. A class may extend Array, Map, Set, Date, RegExp or
+   * Error; one extending another built-in whose value a save cannot hold (a
+   * typed array, URL, Promise...) throws.
    */
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
 

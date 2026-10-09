@@ -414,7 +414,7 @@ Each metadata object has these properties:
 
 ### `Story.registerClass(name, constructor)`
 
-Register a class so its instances can be cloned, saved, and restored with their prototype intact. A save refuses instances of classes that are not registered, and loading a save fails if a class it holds is no longer registered.
+Register a class so its instances can be cloned, saved, and restored with their prototype intact. A save refuses instances of classes that are not registered, and loading a save fails if a class it holds is no longer registered. A class may extend `Array`, `Map`, `Set`, `Date`, `RegExp` or `Error`; registering one that extends another built-in whose value a save cannot hold (a typed array, `URL`, `Promise`, ...) throws.
 
 | Parameter     | Type       | Description                                   |
 | ------------- | ---------- | --------------------------------------------- |

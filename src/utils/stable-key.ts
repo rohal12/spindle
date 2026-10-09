@@ -49,8 +49,11 @@ function keyOf(val: unknown, ancestors: object[]): string {
   const depth = ancestors.indexOf(obj);
   if (depth !== -1) return `<cycle ${ancestors.length - depth}>`;
 
-  if (val instanceof Date) return `Date(${val.getTime()})`;
-  if (val instanceof RegExp) return `RegExp(${String(val)}@${val.lastIndex})`;
+  // Read with the built-in methods: a subclass may override them
+  if (val instanceof Date) return `Date(${Date.prototype.getTime.call(val)})`;
+  if (val instanceof RegExp) {
+    return `RegExp(${RegExp.prototype.toString.call(val)}@${val.lastIndex})`;
+  }
 
   ancestors.push(obj);
   try {

@@ -9,7 +9,41 @@ type Constructor = new (...args: any[]) => any;
 const registry = new Map<string, Constructor>();
 const ctorToName = new Map<Constructor, string>();
 
+/**
+ * Built-ins whose instances hold their value in internal slots that a save
+ * cannot rebuild: a registered class cannot extend them. (Array, Map, Set,
+ * Date, RegExp and Error can be extended, see classData.)
+ */
+const UNSUPPORTED_BASES: readonly Constructor[] = [
+  ArrayBuffer,
+  DataView,
+  Object.getPrototypeOf(Int8Array) as Constructor, // every typed array
+  URL,
+  URLSearchParams,
+  Number,
+  String,
+  Boolean,
+  Promise,
+  WeakMap,
+  WeakSet,
+  Function,
+] as Constructor[];
+
+/**
+ * Register `ctor` as `name`, so that its instances keep their class through
+ * copies, history and saves. Throws for a class extending a built-in whose
+ * instances cannot be saved (see UNSUPPORTED_BASES).
+ */
 export function registerClass(name: string, ctor: Constructor): void {
+  const base =
+    typeof ctor === 'function'
+      ? UNSUPPORTED_BASES.find((b) => ctor.prototype instanceof b)
+      : undefined;
+  if (base) {
+    throw new TypeError(
+      `spindle: Cannot register class "${name}": it extends ${base.name}, whose instances cannot be saved (a registered class may extend Array, Map, Set, Date, RegExp or Error)`,
+    );
+  }
   registry.set(name, ctor);
   ctorToName.set(ctor, name);
 }
@@ -48,8 +82,9 @@ export function clearRegistry(): void {
 //
 // - `c:<name>`: an instance of the class registered as <name>, with its own
 //   enumerable keys (and, for Error subclasses, its message and cause); for
-//   a subclass of Array, Map or Set, `[kind, contents, keys]`: the kind of
-//   collection, its elements (Map entries as pairs) and its other own
+//   a subclass of Array, Map, Set, Date or RegExp, `[kind, contents, keys]`:
+//   the built-in it extends, what that holds (elements, Map entries as
+//   pairs, the time, or the source, flags and lastIndex) and its other own
 //   enumerable keys;
 // - `E:<name>`: a built-in error (Error, TypeError, ..., AggregateError),
 //   with its message, cause, errors and own enumerable keys (not its stack);
@@ -155,18 +190,24 @@ function ownData(
   return data;
 }
 
-/** The kinds of collection a registered class may extend. */
-const COLLECTION_KINDS = {
+/**
+ * The built-ins a registered class may extend whose value is not in its
+ * keys, saved as their kind (see classData).
+ */
+const BUILTIN_KINDS = {
   Array: Array as unknown as Constructor,
   Map: Map as Constructor,
   Set: Set as Constructor,
+  Date: Date as Constructor,
+  RegExp: RegExp as Constructor,
 };
-type CollectionKind = keyof typeof COLLECTION_KINDS;
+type BuiltinKind = keyof typeof BUILTIN_KINDS;
 
 /**
  * The saved form of a registered class instance: its own data (see
- * ownData), or for a collection its kind, elements and extra keys, read
- * with the built-in methods, which a subclass may override (#391).
+ * ownData), or for a subclass of a built-in kind (see BUILTIN_KINDS) its
+ * kind, contents and extra keys, read with the built-in methods, which a
+ * subclass may override (#391, #393).
  */
 function classData(value: object): unknown {
   const extra = () => ownData(value, extraKeys(value));
@@ -183,6 +224,14 @@ function classData(value: object): unknown {
   }
   if (value instanceof Set) {
     return ['Set', Array.from(setMembers(value)), extra()];
+  }
+  if (value instanceof Date) {
+    return ['Date', Date.prototype.getTime.call(value), extra()];
+  }
+  if (value instanceof RegExp) {
+    const source = Reflect.get(RegExp.prototype, 'source', value) as string;
+    const flags = Reflect.get(RegExp.prototype, 'flags', value) as string;
+    return ['RegExp', [source, flags, value.lastIndex], extra()];
   }
   return ownData(value);
 }
@@ -241,33 +290,58 @@ function reducers(): Record<string, (value: unknown) => unknown> {
 }
 
 /**
- * The collection of a registered class that a `[kind, contents, keys]`
- * list holds (see classData). A cycle through the collection revives it
- * before its list is complete (devalue holds unread parts as holes), so the
- * collection is kept per list and filled with what the list holds so far.
+ * A new Date or RegExp holding `contents` (see classData), or undefined if
+ * they are malformed.
+ */
+function newAtomic(kind: 'Date' | 'RegExp', contents: unknown) {
+  if (kind === 'Date') {
+    return typeof contents === 'number' ? new Date(contents) : undefined;
+  }
+  if (
+    !Array.isArray(contents) ||
+    typeof contents[0] !== 'string' ||
+    typeof contents[1] !== 'string' ||
+    !Number.isSafeInteger(contents[2])
+  ) {
+    return undefined;
+  }
+  const re = new RegExp(contents[0], contents[1]);
+  re.lastIndex = contents[2] as number;
+  return re;
+}
+
+/**
+ * The built-in of a registered class that a `[kind, contents, keys]` list
+ * holds (see classData). A cycle through a collection revives it before its
+ * list is complete (devalue holds unread parts as holes), so the instance
+ * is kept per list and filled with what the list holds so far. (The
+ * contents of a Date or RegExp hold no objects, so they are complete.)
  */
 const collections = new WeakMap<unknown[], object>();
-function reviveCollection(name: string, ctor: Constructor, list: unknown[]) {
+function reviveBuiltin(name: string, ctor: Constructor, list: unknown[]) {
   const [kind, contents, keys] = list;
   const base =
-    typeof kind === 'string' && hasOwn(COLLECTION_KINDS, kind)
-      ? COLLECTION_KINDS[kind as CollectionKind]
+    typeof kind === 'string' && hasOwn(BUILTIN_KINDS, kind)
+      ? BUILTIN_KINDS[kind as BuiltinKind]
       : undefined;
+  const atomic = kind === 'Date' || kind === 'RegExp';
   if (
     list.length !== 3 ||
     !base ||
     !(ctor.prototype instanceof base) ||
-    (hasOwn(list, 1) && !Array.isArray(contents)) ||
+    (!atomic && hasOwn(list, 1) && !Array.isArray(contents)) ||
     (hasOwn(list, 2) && !isPlainData(keys))
   ) {
     throw malformedClass(name);
   }
   let made = collections.get(list);
   if (!made) {
-    made = Object.setPrototypeOf(new base(), ctor.prototype) as object;
+    const value = atomic ? newAtomic(kind, contents) : (new base() as object);
+    if (!value) throw malformedClass(name);
+    made = Object.setPrototypeOf(value, ctor.prototype) as object;
     collections.set(list, made);
   }
-  if (Array.isArray(contents)) fillCollection(made, contents);
+  if (!atomic && Array.isArray(contents)) fillCollection(made, contents);
   if (isPlainData(keys)) {
     for (const key of Object.keys(keys)) defineData(made, key, keys[key]);
   }
@@ -300,7 +374,7 @@ function fillCollection(made: object, contents: unknown[]): void {
 function reviveClass(name: string) {
   return (data: Record<string, unknown> | unknown[]): unknown => {
     if (Array.isArray(data)) {
-      return reviveCollection(name, registeredCtor(name), data);
+      return reviveBuiltin(name, registeredCtor(name), data);
     }
     if (!isPlainData(data)) {
       // Already revived: a cycle through the instance revives it twice
@@ -308,10 +382,8 @@ function reviveClass(name: string) {
       throw malformedClass(name);
     }
     const ctor = registeredCtor(name);
-    // A plain object cannot be made a collection (see classData)
-    if (
-      Object.values(COLLECTION_KINDS).some((c) => ctor.prototype instanceof c)
-    ) {
+    // A plain object cannot be made a built-in (see classData)
+    if (Object.values(BUILTIN_KINDS).some((c) => ctor.prototype instanceof c)) {
       throw malformedClass(name);
     }
     Object.setPrototypeOf(data, ctor.prototype as object);
