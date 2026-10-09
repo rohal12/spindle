@@ -175,7 +175,9 @@ function isPayload(value: unknown): value is Record<string, unknown> {
     isCountsMap(value.visitCounts) &&
     isCountsMap(value.renderCounts) &&
     isOptionalPRNGSnapshot(value.prng) &&
-    isWatchers(value.watchers)
+    isWatchers(value.watchers) &&
+    (value.interfaceWatchers === undefined ||
+      typeof value.interfaceWatchers === 'boolean')
   );
 }
 

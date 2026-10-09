@@ -135,13 +135,59 @@ export function savedMacroWatchers(): SavedWatcher[] {
 }
 
 /**
+ * The {watch} macros of the story interface that are mounted, and how many
+ * interfaces are: the interface mounts once the game has started, so a save
+ * made earlier (in StoryInit) holds none of its watchers.
+ */
+const interfaceWatches = new Set<SavedWatcher>();
+let interfacesMounted = 0;
+
+/** Record a mounted interface {watch}; call the result when it unmounts. */
+export function declareInterfaceWatch(
+  condition: string,
+  options: WatchOptions,
+): () => void {
+  const declared: SavedWatcher = { condition, options };
+  interfaceWatches.add(declared);
+  return () => {
+    interfaceWatches.delete(declared);
+  };
+}
+
+/** Record a mounted story interface; call the result when it unmounts. */
+export function declareInterfaceMounted(): () => void {
+  interfacesMounted++;
+  return () => {
+    interfacesMounted--;
+  };
+}
+
+/**
+ * Whether the story interface has mounted, so that its watchers are among
+ * `savedMacroWatchers()`: a save records it (see restoreMacroWatchers).
+ */
+export function interfaceMounted(): boolean {
+  return interfacesMounted > 0;
+}
+
+/**
  * Make the {watch} macro watchers those of a loaded game: the ones of
  * `watchers` replace the registered ones (watchers added by Story.watch
- * code stay). The passage shown mounts its own {watch} macros again.
+ * code stay). The passage shown mounts its own {watch} macros again. A save
+ * made before the story interface mounted (`interfaceSaved` false) cannot
+ * hold its watchers, so the ones of the mounted interface stay; in a later
+ * save a missing one was removed by `once` or {unwatch}, and stays so.
  */
-export function restoreMacroWatchers(watchers: readonly SavedWatcher[]): void {
+export function restoreMacroWatchers(
+  watchers: readonly SavedWatcher[],
+  interfaceSaved?: boolean,
+): void {
   triggers = triggers.filter((t) => t.macroKey === undefined);
   for (const { condition, options } of watchers) {
+    addMacroTrigger(condition, options);
+  }
+  if (interfaceSaved !== false) return;
+  for (const { condition, options } of interfaceWatches) {
     addMacroTrigger(condition, options);
   }
 }

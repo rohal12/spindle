@@ -8,6 +8,8 @@ import { NameSet } from '../utils/macro-names';
 export interface TextNode {
   type: 'text';
   value: string;
+  /** A closed HTML comment: markdown drops it, and so does raw rendering. */
+  comment?: true;
 }
 
 export interface VariableNode extends Selectors {

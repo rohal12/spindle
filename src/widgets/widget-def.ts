@@ -5,6 +5,8 @@
 import { parseMacroArgs } from '../components/macros/macro-args';
 import type { MacroArgs } from '../registry';
 import { tokenizeMarkupTolerant } from '../markup/parse';
+import type { ParametersOf } from '../code-check';
+import { registeredParameters, tokenTextContainsChildren } from './ast-scanner';
 
 /** A {widget} definition's name, then its `@` parameters. */
 export const WIDGET_PARAMETERS = [
@@ -49,6 +51,7 @@ export function parseWidgetDef(rawArgs: string): WidgetDef {
  */
 export function blockWidgetNames(
   passages: Iterable<{ name: string; tags?: string[]; content: string }>,
+  parametersOf: ParametersOf = registeredParameters,
 ): string[] {
   const names: string[] = [];
   for (const passage of passages) {
@@ -71,10 +74,11 @@ export function blockWidgetNames(
           // The {widget} macro reports a definition it cannot read
         }
       } else if (
-        token.type === 'variable' &&
-        token.scope === 'local' &&
-        token.name === 'children' &&
-        open.length > 0
+        open.length > 0 &&
+        ((token.type === 'variable' &&
+          token.scope === 'local' &&
+          token.name === 'children') ||
+          tokenTextContainsChildren(token, parametersOf))
       ) {
         open[open.length - 1]!.isBlock = true;
       }

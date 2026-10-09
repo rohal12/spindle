@@ -44,6 +44,8 @@ export const LocalsValuesContext =
   createContext<Record<string, unknown>>(EMPTY_NAMESPACE);
 export const LocalsUpdateContext = createContext<LocalsUpdater>(defaultUpdater);
 export const NobrContext = createContext(false);
+/** Whether the markup is the story interface, which stays mounted (#419). */
+export const InterfaceContext = createContext(false);
 /**
  * True while rendering inside an inline HTML element (e.g. `<span>`), where
  * block-level markdown and `<p>` wrappers would produce invalid HTML (#220).
@@ -710,6 +712,12 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       }
     }
   }
+  // The content of a foreignObject is HTML again, with HTML attributes
+  if (inSvg && tag === 'foreignobject' && children) {
+    children = (
+      <SvgContext.Provider value={false}>{children}</SvgContext.Provider>
+    );
+  }
   let element = h(node.tag, props, children);
   if (isSvgRoot && !inSvg) {
     element = <SvgContext.Provider value={true}>{element}</SvgContext.Provider>;
@@ -806,7 +814,7 @@ function renderMacro(node: MacroNode, key: string) {
  */
 function renderSingleNode(node: ASTNode): preact.ComponentChildren {
   // Authored text outside markdown still has its character references decoded
-  if (node.type === 'text') return decodeText(node.value);
+  if (node.type === 'text') return node.comment ? null : decodeText(node.value);
   const key = nodeKey(node);
   switch (node.type) {
     case 'variable':

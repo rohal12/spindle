@@ -1,8 +1,10 @@
 import { defineMacro } from '../../define-macro';
 import { FrozenStateContext } from '../../hooks/use-story-fields';
 import { useStoryStore } from '../../store';
+import { InterfaceContext } from '../../markup/render';
 import {
   addMacroTrigger,
+  declareInterfaceWatch,
   removeTrigger,
   subscribeTriggerResets,
   triggerResets,
@@ -49,6 +51,15 @@ defineMacro({
     hooks.useEffect(
       () => subscribeTriggerResets(() => rerender((n) => n + 1)),
       [],
+    );
+    // The interface's watchers are re-registered by a load of a save made
+    // before the interface mounted (#419)
+    const inInterface = hooks.useContext(InterfaceContext);
+    const declaredKey = JSON.stringify([condition, options]);
+    hooks.useLayoutEffect(
+      () =>
+        inInterface ? declareInterfaceWatch(condition, options) : undefined,
+      [inInterface, declaredKey],
     );
     const registered = hooks.useRef<number | null>(null);
     if (

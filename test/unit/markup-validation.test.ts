@@ -300,9 +300,11 @@ describe('HTML comments (#360)', () => {
     expect(validate('<!-- ok --><div>')).toHaveLength(1);
   });
 
-  it('keeps the comment as text', () => {
+  it('keeps the comment as text, marked as a comment', () => {
     expect(parseMarkup('a<!-- <div> -->b')).toEqual([
-      { type: 'text', value: 'a<!-- <div> -->b' },
+      { type: 'text', value: 'a' },
+      { type: 'text', value: '<!-- <div> -->', comment: true },
+      { type: 'text', value: 'b' },
     ]);
   });
 });

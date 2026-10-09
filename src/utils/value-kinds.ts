@@ -46,6 +46,9 @@ export function atomicName(value: object): string | undefined {
   return `${/^[AEIOU]/.test(tag) ? 'an' : 'a'} ${tag}`;
 }
 
+/** Own keys of an error that are not enumerable but are data. */
+export const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
+
 /** Whether `key` is an index of an array element. */
 const isIndexKey = (key: string): boolean =>
   key !== '4294967295' && String(Number(key) >>> 0) === key;

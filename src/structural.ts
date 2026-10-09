@@ -13,6 +13,7 @@ import { registeredClassName } from './class-registry';
 import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
 import {
+  ERROR_HIDDEN_KEYS,
   collectionSize,
   extraKeys,
   isAtomic,
@@ -53,9 +54,6 @@ function builtinLike<C extends object>(
   for (const key of extraKeys(obj)) setOwn(empty, key, value(key));
   return empty;
 }
-
-/** Own keys of an error that are not enumerable but are data. */
-const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
 
 // --- Deep Clone ---
 

@@ -104,7 +104,7 @@ function lexeme(lex, loc, fields) {
 function nodeOf(x) {
   switch (x.lex) {
     case 'text':
-      return { type: 'text', value: x.value };
+      return x.comment ? { type: 'text', value: x.value, comment: true } : { type: 'text', value: x.value };
     case 'link':
       return withSelectors({ type: 'macro', name: 'link', rawArgs: quoteArg(x.display) + ' ' + quoteArg(x.target), children: [] }, x);
     case 'variable':
@@ -137,7 +137,7 @@ function tokenOf(x) {
 
 /**
  * Flatten items (lexemes, nodes, arrays of them, nulls) and join adjacent
- * text, except escaped braces, which stay a text item of their own.
+ * text, except escaped braces and comments, which stay a text item of their own.
  */
 function joinText(items, convert) {
   const out = [];
@@ -145,7 +145,7 @@ function joinText(items, convert) {
   const add = (item) => {
     if (item === null || item === undefined) return;
     if (Array.isArray(item)) return item.forEach(add);
-    if (item.lex === 'text' && !item.escape && last && last.lex === 'text' && !last.escape && last.end === item.start) {
+    if (item.lex === 'text' && !item.escape && !item.comment && last && last.lex === 'text' && !last.escape && !last.comment && last.end === item.start) {
       last.value += item.value;
       last.end = item.end;
       return;
@@ -332,7 +332,9 @@ TextRun
  */
 Comment
   = value:$("<!--" (">" / "->" / (!"-->" .)* "-->")) {
-      return lexeme('text', location(), { value });
+      const node = lexeme('text', location(), { value });
+      node.comment = true;
+      return node;
     }
 
 /**

@@ -28,6 +28,11 @@ export interface SavePayload {
   prng?: PRNGSnapshot | null;
   /** The {watch} macro watchers registered (absent in older saves). */
   watchers?: SavedWatcher[];
+  /**
+   * Whether the story interface had mounted when the save was made, so that
+   * `watchers` includes its {watch} macros (absent in older saves).
+   */
+  interfaceWatchers?: boolean;
 }
 
 export interface SaveMeta {

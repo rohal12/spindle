@@ -145,7 +145,7 @@ Block widgets can be nested inside each other:
 
 ### How Detection Works
 
-The presence of `{@children}` in the widget body is the signal — no extra syntax is needed in the definition header. Widgets without `{@children}` remain self-closing and work exactly as before.
+The presence of `{@children}` in the widget body is the signal — no extra syntax is needed in the definition header. Widgets without `{@children}` remain self-closing and work exactly as before. It counts in an HTML attribute value (`<span title="{@children}">`) and in a macro argument that renders markup (`{button "{@children}"}`), not in a comment, a `{do}` body or a JavaScript string.
 
 Block widgets defined in `StoryInit` or in `[widget]`-tagged passages are detected at startup, before any passage is parsed. They can therefore be invoked from any passage, and other widget definitions can use them, in any definition order.
 
