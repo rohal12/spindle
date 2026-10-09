@@ -31,6 +31,11 @@ const BRANCH_PARENT = { elseif: 'if', else: 'if', case: 'switch', default: 'swit
 const BRANCHING = new Set(['if', 'switch', 'timed']);
 const LINK_SEPARATORS = [['|', false], ['->', false], ['<-', true]];
 const NO_SELECTORS = {};
+/**
+ * A CommonMark email autolink, `<` an address `>` (without braces, which
+ * are markup): the same as micromark reads one.
+ */
+const EMAIL_AUTOLINK = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`|~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*>$/;
 
 /**
  * A link's display text and target, from its text `inner` (at `at` in the
@@ -235,6 +240,7 @@ Item
   / Escape
   / Comment
   / LinkLexeme
+  / EmailAutolink
   / HtmlElement
   / VoidCloser
   / Value
@@ -294,6 +300,7 @@ TokenItem
   / Escape
   / Comment
   / LinkLexeme
+  / EmailAutolink
   / &{ return !textMode; } tag:HtmlOpen { return tag; }
   / &{ return !textMode; } tag:HtmlClose { return VOID_TAGS.has(tag.lower) ? null : tag; }
   / Value
@@ -428,6 +435,15 @@ MacroName
   = $([a-zA-Z] [^ \t\n\r\x0B\x0C\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF}]*)
 
 // -------------------------------------------------------------------- HTML
+
+/**
+ * An email autolink (`<support@example.com>`), text that markdown makes a
+ * link: not an element `<support>` with an attribute `@example.com` (#395).
+ */
+EmailAutolink
+  = value:$("<" [a-zA-Z0-9.!#$%&'*+/=?^_`|~-]+ "@" [a-zA-Z0-9.-]+ ">")
+    &{ return EMAIL_AUTOLINK.test(value); }
+    { return lexeme('text', location(), { value }); }
 
 /** A redundant closer of a void element (</br>), which is dropped. */
 VoidCloser
