@@ -990,20 +990,16 @@ function aliasMoved(
     for (const [segment, a] of xs) {
       if (held.has(segment)) pairs.push([segment, a, held.get(segment)]);
     }
-  } else if ((isMergeable(x) || Array.isArray(x)) && mergesWith(x, y, true)) {
-    for (const key of Object.keys(y)) {
-      if (hasOwn(x, key)) {
-        pairs.push([key, (x as any)[key], (y as any)[key]]);
-      }
-    }
   }
-  // The fields of a built-in subclass instance, besides its entries (#412)
-  if (sameBuiltin(x, y)) {
-    for (const key of builtinFields(y)) {
-      if (hasOwn(x, key)) {
-        pairs.push([key, (x as any)[key], (y as any)[key]]);
-      }
-    }
+  // The properties both hold: of objects that merge, and the fields of a
+  // built-in subclass instance besides its entries (#412)
+  const keys = mergesWith(x, y, true)
+    ? Object.keys(y)
+    : sameBuiltin(x, y)
+      ? builtinFields(y)
+      : [];
+  for (const key of keys) {
+    if (hasOwn(x, key)) pairs.push([key, (x as any)[key], (y as any)[key]]);
   }
   return pairs.some(([segment, a, b]) => {
     if (!isObjectValue(a) || !isObjectValue(b)) return false;
