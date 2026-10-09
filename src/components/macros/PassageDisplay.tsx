@@ -94,6 +94,14 @@ function cleanupSnapshots(containerEl: Element | null): void {
   }
 }
 
+/** Scroll the displayed passage's beginning into view if it is above it. */
+function scrollToPassageStart(containerEl: Element | null): void {
+  const el = containerEl?.querySelector('.passage');
+  if (el && el.getBoundingClientRect().top < 0) {
+    el.scrollIntoView?.({ block: 'start' });
+  }
+}
+
 /**
  * `config` for players who prefer reduced motion: the CSS shortens the
  * animations (see styles.css), so the waits that follow them shrink too,
@@ -153,11 +161,15 @@ defineMacro({
 
     // Track in-progress transition timeouts for cancellation
     const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    // The scroll to the new passage's beginning waits for the removal of an
+    // outgoing snapshot that holds the passage down in the page (#431)
+    const scrollAfterCleanup = useRef(false);
 
     /** Cancel any in-progress transition. */
     const cancelTransition = useCallback(() => {
       for (const t of timeoutsRef.current) clearTimeout(t);
       timeoutsRef.current = [];
+      scrollAfterCleanup.current = false;
       cleanupSnapshots(containerRef.current);
     }, []);
 
@@ -262,6 +274,8 @@ defineMacro({
         const cleanupDelay = incomingDelay + config.duration;
         const t2 = setTimeout(() => {
           cleanupSnapshots(containerEl);
+          if (scrollAfterCleanup.current) scrollToPassageStart(containerEl);
+          scrollAfterCleanup.current = false;
         }, cleanupDelay);
 
         timeoutsRef.current = [t1, t2];
@@ -297,10 +311,12 @@ defineMacro({
       const previous = lastShownId.current;
       lastShownId.current = shownId;
       if (previous === null || previous === shownId) return;
-      const el = containerRef.current?.querySelector('.passage');
-      if (el && el.getBoundingClientRect().top < 0) {
-        el.scrollIntoView?.({ block: 'start' });
-      }
+      const container = containerRef.current;
+      // An in-flow snapshot (fade-through) still sits above the passage
+      scrollAfterCleanup.current =
+        !!container?.querySelector('.passage-snapshot') &&
+        !container.classList.contains('passage-container--crossfading');
+      if (!scrollAfterCleanup.current) scrollToPassageStart(container);
     }, [shownId]);
 
     // When render is deferred, show StoryLoading passage or nothing
