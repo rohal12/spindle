@@ -18,6 +18,8 @@ import {
   exportSave,
   importSave,
   decodeSavePayload,
+  getSaveRecord,
+  watchSlotChanges,
   saveWithHooks,
   type PlaythroughGroup,
 } from '../../saves/save-manager';
@@ -88,6 +90,12 @@ export function SaveManagerContent() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // A save written while the dialog is open, here or in another tab (#428)
+  useEffect(
+    () => (ifid ? watchSlotChanges(ifid, refresh, true) : undefined),
+    [ifid, refresh],
+  );
 
   useEffect(() => {
     if (renamingId && renameInputRef.current) {
@@ -162,12 +170,15 @@ export function SaveManagerContent() {
 
   const handleLoad = async (save: SaveRecord) => {
     try {
+      // The record as stored now: the listed one may have been overwritten
+      // since the list was read (#428). One deleted since is loaded as listed.
+      const current = (await getSaveRecord(save.meta.id)) ?? save;
       // Stored records hold serialized variables; the store expects live
       // ones. The game moves to the save's playthrough.
       loadFromPayload(
-        decodeSavePayload(save.payload),
+        decodeSavePayload(current.payload),
         undefined,
-        save.meta.playthroughId,
+        current.meta.playthroughId,
       );
       showStatus('Game loaded');
       if (closeDialog) {

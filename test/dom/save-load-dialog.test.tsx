@@ -14,6 +14,7 @@ import {
   getSavesGrouped,
   populateKnownSaves,
   renameSave,
+  overwriteSave,
 } from '../../src/saves/save-manager';
 import { getBackend, getBackendType } from '../../src/saves/storage';
 import { on as emitterOn } from '../../src/event-emitter';
@@ -727,6 +728,67 @@ describe('SaveManagerContent', () => {
       const status = container.querySelector('.saves-status');
       expect(status).not.toBeNull();
       expect(status!.textContent).toContain('Game loaded');
+    });
+  });
+
+  describe('saves overwritten while the dialog is open (#428)', () => {
+    it('lists and loads the latest record', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      useStoryStore
+        .getState()
+        .init(
+          makeStoryData([
+            makePassage(1, 'Start', 'Hello'),
+            makePassage(2, 'Second', 'Next'),
+          ]),
+        );
+      useStoryStore.setState({ playthroughId: ptId });
+      const record = await createSave(IFID, ptId, makePayload());
+
+      renderSaveManager(container, onClose);
+      await flush();
+      expect(container.textContent).toContain('Start');
+
+      // Overwritten elsewhere (a quick save, another tab)
+      const newer: SavePayload = {
+        ...makePayload(),
+        passage: 'Second',
+        history: [
+          { passage: 'Second', variables: { data: 1 }, timestamp: Date.now() },
+        ],
+        variables: { data: 1 },
+      };
+      await overwriteSave(record.meta.id, newer, undefined, ptId);
+      await flush();
+      expect(container.querySelector('.save-slot')!.textContent).toContain(
+        'Second',
+      );
+
+      const loadBtn = [
+        ...container.querySelectorAll('.save-slot-action.primary'),
+      ].find((b) => b.textContent === 'Load') as HTMLElement;
+      await act(async () => loadBtn.click());
+      await flush();
+      expect(useStoryStore.getState().variables.data).toBe(1);
+    });
+
+    it('loads the stored record even before the list catches up', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      const record = await createSave(IFID, ptId, makePayload());
+      renderSaveManager(container, onClose);
+      await flush();
+      const loadBtn = [
+        ...container.querySelectorAll('.save-slot-action.primary'),
+      ].find((b) => b.textContent === 'Load') as HTMLElement;
+
+      await overwriteSave(record.meta.id, {
+        ...makePayload(),
+        variables: { data: 7 },
+        history: [{ passage: 'Start', variables: { data: 7 }, timestamp: 1 }],
+      });
+      await act(async () => loadBtn.click());
+      await flush();
+      expect(useStoryStore.getState().variables.data).toBe(7);
     });
   });
 

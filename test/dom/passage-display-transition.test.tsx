@@ -578,3 +578,54 @@ describe('scroll on navigation (#354)', () => {
     vi.useRealTimers();
   });
 });
+
+describe('scroll after a fade-through navigation (#431)', () => {
+  it('scrolls once the outgoing snapshot no longer holds the passage down', () => {
+    vi.useFakeTimers();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    useStoryStore
+      .getState()
+      .init(
+        makeStoryData([
+          makePassage(1, 'Start', 'Start'),
+          makePassage(2, 'Next', 'Next'),
+        ]),
+      );
+    renderPassageMacro(container);
+    const scrolled: { name: string | null; snapshot: boolean }[] = [];
+    Element.prototype.scrollIntoView = function () {
+      scrolled.push({
+        name: this.getAttribute('data-passage'),
+        snapshot: !!container.querySelector('.passage-snapshot'),
+      });
+    };
+    // The snapshot above it puts the passage's top inside the viewport
+    Element.prototype.getBoundingClientRect = () =>
+      ({
+        top: container.querySelector('.passage-snapshot') ? 600 : -2000,
+      }) as DOMRect;
+    act(() => {
+      useStoryStore
+        .getState()
+        .setTransition({ type: 'fade-through', duration: 100, pause: 100 });
+      useStoryStore.getState().navigate('Next');
+    });
+    // Mount the passage first (renders flush when an act ends), then
+    // remove the snapshot
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(container.querySelector('.passage-snapshot')).not.toBeNull();
+    expect(scrolled).toEqual([]);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(scrolled).toEqual([{ name: 'Next', snapshot: false }]);
+    act(() => {
+      render(null, container);
+    });
+    document.body.removeChild(container);
+    vi.useRealTimers();
+  });
+});

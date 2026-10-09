@@ -30,6 +30,7 @@ import { registerBlockMacro } from './markup/ast';
 import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
+import { passageShown } from './components/macros/PassageDisplay';
 import './macros/register-builtins';
 import builtinCSS from './styles.css?inline';
 
@@ -248,7 +249,8 @@ export function boot() {
 
   const pending = getReadyPromise();
   if (pending) {
-    pending.then(() => {
+    // The event follows the render of the passage the story is at (#430)
+    pending.then(passageShown).then(() => {
       document.dispatchEvent(new CustomEvent(':storyready'));
     });
   } else {

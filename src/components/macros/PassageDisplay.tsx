@@ -95,6 +95,46 @@ function cleanupSnapshots(containerEl: Element | null): void {
 }
 
 /**
+ * The navigation each mounted passage display last committed to the page,
+ * or null while it shows StoryLoading or is between the passages of a
+ * transition (#430).
+ */
+const shownNavigations = new Map<symbol, number | null>();
+const shownListeners = new Set<() => void>();
+
+/**
+ * Resolves once every passage display shows the current navigation's
+ * passage: after the render deferral ends and any transition has mounted
+ * the destination. Immediately when there is no passage display.
+ */
+export function passageShown(): Promise<void> {
+  const settled = () => {
+    const { navigationId, renderDeferred } = useStoryStore.getState();
+    return (
+      !renderDeferred &&
+      [...shownNavigations.values()].every((id) => id === navigationId)
+    );
+  };
+  if (settled()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (!settled()) return;
+      shownListeners.delete(check);
+      resolve();
+    };
+    shownListeners.add(check);
+  });
+}
+
+/** Scroll the displayed passage's beginning into view if it is above it. */
+function scrollToPassageStart(containerEl: Element | null): void {
+  const el = containerEl?.querySelector('.passage');
+  if (el && el.getBoundingClientRect().top < 0) {
+    el.scrollIntoView?.({ block: 'start' });
+  }
+}
+
+/**
  * `config` for players who prefer reduced motion: the CSS shortens the
  * animations (see styles.css), so the waits that follow them shrink too,
  * leaving no empty passage area before the next passage.
@@ -153,11 +193,15 @@ defineMacro({
 
     // Track in-progress transition timeouts for cancellation
     const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    // The scroll to the new passage's beginning waits for the removal of an
+    // outgoing snapshot that holds the passage down in the page (#431)
+    const scrollAfterCleanup = useRef(false);
 
     /** Cancel any in-progress transition. */
     const cancelTransition = useCallback(() => {
       for (const t of timeoutsRef.current) clearTimeout(t);
       timeoutsRef.current = [];
+      scrollAfterCleanup.current = false;
       cleanupSnapshots(containerRef.current);
     }, []);
 
@@ -262,6 +306,8 @@ defineMacro({
         const cleanupDelay = incomingDelay + config.duration;
         const t2 = setTimeout(() => {
           cleanupSnapshots(containerEl);
+          if (scrollAfterCleanup.current) scrollToPassageStart(containerEl);
+          scrollAfterCleanup.current = false;
         }, cleanupDelay);
 
         timeoutsRef.current = [t1, t2];
@@ -297,11 +343,26 @@ defineMacro({
       const previous = lastShownId.current;
       lastShownId.current = shownId;
       if (previous === null || previous === shownId) return;
-      const el = containerRef.current?.querySelector('.passage');
-      if (el && el.getBoundingClientRect().top < 0) {
-        el.scrollIntoView?.({ block: 'start' });
-      }
+      const container = containerRef.current;
+      // An in-flow snapshot (fade-through) still sits above the passage
+      scrollAfterCleanup.current =
+        !!container?.querySelector('.passage-snapshot') &&
+        !container.classList.contains('passage-container--crossfading');
+      if (!scrollAfterCleanup.current) scrollToPassageStart(container);
     }, [shownId]);
+
+    const displayKey = useRef(Symbol('passage-display')).current;
+    useLayoutEffect(() => {
+      shownNavigations.set(displayKey, shownId);
+      [...shownListeners].forEach((check) => check());
+    }, [shownId]);
+    useLayoutEffect(
+      () => () => {
+        shownNavigations.delete(displayKey);
+        [...shownListeners].forEach((check) => check());
+      },
+      [],
+    );
 
     // When render is deferred, show StoryLoading passage or nothing
     const effectivePassage = renderDeferred

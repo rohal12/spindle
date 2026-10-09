@@ -8,8 +8,9 @@ describe('typed arrays assigned onto another variable’s buffer', () => {
   it('share the buffer after the commit (#324)', async () => {
     const Story = await bootStory({
       html: storyHtml({
-        StoryVariables: '$view1 = []\n$view2 = []',
+        StoryVariables: '$view1 = []\n$view2 = []\n$same = false',
         Start: `{button "Alias buffers"}{set $view2 = new Uint8Array($view1.buffer)}{/button}
+{button "Compare"}{set $same = $view1.buffer === $view2.buffer}{/button}
 {button "Slice buffer"}{set $view2 = new Uint8Array($view1.buffer, 1)}{/button}`,
       }),
     });
@@ -25,14 +26,17 @@ describe('typed arrays assigned onto another variable’s buffer', () => {
       );
       await Story.waitForActions();
     };
-    const shared = () =>
-      (Story.get('view1') as Uint8Array).buffer ===
-      (Story.get('view2') as Uint8Array).buffer;
+    // Story.get() hands out isolated copies (#429), so the store's own
+    // buffers are compared by the story's code
+    const shared = async () => {
+      await run('Compare');
+      return Story.get('same');
+    };
 
     await run('Alias buffers');
-    expect(shared()).toBe(true);
+    expect(await shared()).toBe(true);
     await run('Slice buffer');
     expect([...(Story.get('view2') as Uint8Array)]).toEqual([4]);
-    expect(shared()).toBe(true);
+    expect(await shared()).toBe(true);
   });
 });

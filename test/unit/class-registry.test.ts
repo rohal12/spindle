@@ -1003,4 +1003,31 @@ describe('registered Date and RegExp subclasses (#393)', () => {
     class Failure extends TypeError {}
     expect(() => registerClass('Failure', Failure)).not.toThrow();
   });
+
+  it('restores a cycle through an instance or error with escaped keys (#432)', () => {
+    class Cyclic {
+      [key: string]: unknown;
+      self: unknown;
+      constructor() {
+        this.self = this;
+        for (const code of [92, 34, 10]) this[String.fromCharCode(code)] = code;
+      }
+    }
+    registerClass('Cyclic', Cyclic);
+    const back = deserialize(serialize(new Cyclic())) as Cyclic;
+    expect(back).toBeInstanceOf(Cyclic);
+    expect(back.self).toBe(back);
+    expect(back['\\']).toBe(92);
+    expect(back['"']).toBe(34);
+    expect(back['\n']).toBe(10);
+
+    const error = new Error('boom') as Error & Record<string, unknown>;
+    error.me = error;
+    error['\\'] = 1;
+    const errorBack = deserialize(serialize(error)) as typeof error;
+    expect(errorBack).toBeInstanceOf(Error);
+    expect(errorBack.me).toBe(errorBack);
+    expect(errorBack['\\']).toBe(1);
+    expect(errorBack.message).toBe('boom');
+  });
 });
