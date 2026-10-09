@@ -860,6 +860,28 @@ function setEntryValue(
 }
 
 /**
+ * The own enumerable fields of a Map, Set, Date or RegExp (an instance of a
+ * registered subclass may hold some besides its built-in content, #412);
+ * none for any other value.
+ */
+function builtinFields(value: object): string[] {
+  return value instanceof Map ||
+    value instanceof Set ||
+    value instanceof Date ||
+    value instanceof RegExp
+    ? extraKeys(value)
+    : [];
+}
+
+/** Whether `x` and `y` are built-ins of one class that may hold fields. */
+function sameBuiltin(x: object, y: object): boolean {
+  return (
+    Object.getPrototypeOf(x) === Object.getPrototypeOf(y) &&
+    (builtinFields(x).length > 0 || builtinFields(y).length > 0)
+  );
+}
+
+/**
  * Every path each object (or array, or other value) of `root` is at, the
  * first appearance first, in depth-first order. Plain objects and arrays are
  * entered, where first met only (an object held in an array is one object,
@@ -888,12 +910,17 @@ function objectPaths(
     all.set(value, [at]);
     if (isMergeable(value) || Array.isArray(value)) {
       walk(value as Record<string, unknown>, at);
-    } else if (entries && entryChildren(value)) {
-      collections.push([value, at]);
+    } else {
+      walk(value as Record<string, unknown>, at, builtinFields(value));
+      if (entries && entryChildren(value)) collections.push([value, at]);
     }
   }
-  function walk(node: Record<string, unknown>, path: string[]): void {
-    for (const key of Object.keys(node)) {
+  function walk(
+    node: Record<string, unknown>,
+    path: string[],
+    keys: string[] = Object.keys(node),
+  ): void {
+    for (const key of keys) {
       const value = node[key];
       if (!isObjectValue(value)) continue;
       const at = [...path, key];
@@ -963,12 +990,16 @@ function aliasMoved(
     for (const [segment, a] of xs) {
       if (held.has(segment)) pairs.push([segment, a, held.get(segment)]);
     }
-  } else if ((isMergeable(x) || Array.isArray(x)) && mergesWith(x, y, true)) {
-    for (const key of Object.keys(y)) {
-      if (hasOwn(x, key)) {
-        pairs.push([key, (x as any)[key], (y as any)[key]]);
-      }
-    }
+  }
+  // The properties both hold: of objects that merge, and the fields of a
+  // built-in subclass instance besides its entries (#412)
+  const keys = mergesWith(x, y, true)
+    ? Object.keys(y)
+    : sameBuiltin(x, y)
+      ? builtinFields(y)
+      : [];
+  for (const key of keys) {
+    if (hasOwn(x, key)) pairs.push([key, (x as any)[key], (y as any)[key]]);
   }
   return pairs.some(([segment, a, b]) => {
     if (!isObjectValue(a) || !isObjectValue(b)) return false;
@@ -1002,7 +1033,9 @@ export function aliasChanges(
     a: Record<string, unknown>,
     path: string[],
   ): void {
-    for (const key of Object.keys(a)) {
+    for (const key of Array.isArray(a) || isMergeable(a)
+      ? Object.keys(a)
+      : builtinFields(a)) {
       if (!hasOwn(b, key)) continue;
       const x = b[key];
       const y = a[key];
@@ -1023,8 +1056,8 @@ export function aliasChanges(
       // Only paths that are first appearances are entered: elsewhere the
       // contents are those of the object met first.
       if (
-        (isMergeable(x) || Array.isArray(x)) &&
-        mergesWith(x, y, true) &&
+        (((isMergeable(x) || Array.isArray(x)) && mergesWith(x, y, true)) ||
+          sameBuiltin(x, y)) &&
         pathKey(isAt) === k &&
         pathKey(wasAt) === k
       ) {

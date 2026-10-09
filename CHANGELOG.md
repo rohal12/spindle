@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An input macro bound to a temporary variable or a local (`{textbox _name}`, `{textbox @name}`) shows an error, as one bound to a transient variable does, instead of reading and writing a story variable literally named `_name` (#414).
+- Native `<audio controls>` and `<video controls>` are tab stops of a dialog, so a dialog holding only a media player no longer traps Tab on its Close button (#413).
+- Assigning an object to, or from, an own field of a registered `Map`, `Set`, `Date` or `RegExp` subclass instance (`{set $state.bag.selected = $state.item}`) keeps the identity of the object, as it does for plain objects (#412).
+- A `{button}` or `{link}` in a `{for}` loop whose body edits the loop's item no longer remounts the iteration, so its `{timed}` or `{repeat}` finishes and the control keeps focus (#411).
+- A `{repeat}` or `{timed}` of a passage the player has left no longer runs its body, and so no longer writes into the destination's state, before the outgoing passage unmounts (#410).
 - `Story.set()` and input bindings write the own properties of an instance of a registered `Array`, `Map`, `Set`, `Date` or `RegExp` subclass (`Story.set("bag.label", "Satchel")`), as `{set}` does, instead of throwing (#408).
 - A `{for}` iteration renders anew, running its `{set}` and `{do}` again, when its item is replaced by an instance of a registered collection or date subclass that differs only in its own properties or class (#407).
 - A `{for}` over items that share objects (a graph reusing subtrees) no longer spends time and memory exponential in the depth of the sharing to tell whether an item changed (#406).

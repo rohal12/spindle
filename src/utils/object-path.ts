@@ -1,4 +1,4 @@
-import { current as draftState, isDraft } from 'immer';
+import { current as draftState, isDraft, original } from 'immer';
 import { registeredClassName } from '../class-registry';
 import { hasOwn } from './namespace';
 import { atomicName } from './value-kinds';
@@ -18,7 +18,18 @@ export function getByPath(obj: object, segments: readonly string[]): unknown {
     if (seg in Object.prototype && !hasOwn(Object(current), seg)) {
       return undefined;
     }
-    current = (current as Record<string, unknown>)[seg];
+    const holder = current as Record<string, unknown>;
+    current = holder[seg];
+    // An Immer draft of a Map or Set does not carry the own properties of a
+    // registered subclass instance: they are those of its base (#412)
+    if (
+      current === undefined &&
+      isDraft(holder) &&
+      (holder instanceof Map || holder instanceof Set)
+    ) {
+      const base = original(holder) as Record<string, unknown> | undefined;
+      if (base && hasOwn(base, seg)) current = base[seg];
+    }
   }
   return current;
 }

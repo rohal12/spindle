@@ -216,11 +216,19 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
     if (config.storeVar) {
       const firstToken = readBoundVariable(props.rawArgs).replace(/["']/g, '');
 
-      if (firstToken.startsWith('%')) {
+      // Only story variables ($name) can be bound: another sigil would be
+      // read as a story key spelled with it (#414)
+      const unbindable: Record<string, string> = {
+        '%': 'transient variables',
+        _: 'temporary variables',
+        '@': 'locals',
+      };
+      const kind = unbindable[firstToken.charAt(0)];
+      if (kind) {
         return h(
           'span',
           { class: 'error' },
-          `{${config.name}}: transient variables (%${firstToken.slice(1)}) cannot be bound to input macros`,
+          `{${config.name}}: ${kind} (${firstToken}) cannot be bound to input macros`,
         );
       }
 
