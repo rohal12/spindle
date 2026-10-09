@@ -393,12 +393,18 @@ function fillCollection(made: object, contents: unknown[]): void {
   }
 }
 
+/** The object of a `[KEYS_TAG, ...entries]` list (see savedData); other data as is. */
+function unwrapSavedData<T>(data: T): T | Record<string, unknown> {
+  return Array.isArray(data) && data[0] === KEYS_TAG
+    ? reviveKeyed(data, 1)
+    : data;
+}
+
 /** Restore a registered class instance in place, so cycles through it hold. */
 function reviveClass(name: string) {
   return (data: Record<string, unknown> | unknown[]): unknown => {
-    if (Array.isArray(data) && data[0] === KEYS_TAG)
-      data = reviveKeyed(data, 1);
-    else if (Array.isArray(data)) {
+    data = unwrapSavedData(data);
+    if (Array.isArray(data)) {
       return reviveBuiltin(name, registeredCtor(name), data);
     }
     if (!isPlainData(data)) {
@@ -433,8 +439,7 @@ function reviveError(name: string) {
   const ctor = ERROR_CTORS.get(name);
   if (!ctor) return undefined;
   return (data: Record<string, unknown> | unknown[]): unknown => {
-    if (Array.isArray(data) && data[0] === KEYS_TAG)
-      data = reviveKeyed(data, 1);
+    data = unwrapSavedData(data);
     if (Object.getPrototypeOf(data) === ctor.prototype) return data;
     if (!isPlainData(data)) {
       throw new TypeError(`spindle: Malformed data for "${name}"`);
