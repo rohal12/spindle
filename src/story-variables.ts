@@ -68,18 +68,30 @@ const PRIMITIVE_SAMPLES: Partial<Record<VarType, object>> = {
   boolean: Object(false),
 };
 
-function inferSchema(value: unknown): FieldSchema {
+/**
+ * The schema of a default value. An object met again (a backreference, a
+ * shared subtree) has the schema made for it the first time, so a cyclic
+ * default gives a schema that refers to itself instead of recursing forever.
+ */
+function inferSchema(
+  value: unknown,
+  seen = new Map<object, FieldSchema>(),
+): FieldSchema {
   if (Array.isArray(value)) {
     return { type: 'array' };
   }
   // A default of null means "nothing yet"; the value may later be anything
   if (value === null) return { type: 'null' };
   if (typeof value === 'object') {
+    const known = seen.get(value);
+    if (known) return known;
     const fields = new Map<string, FieldSchema>();
+    const schema: FieldSchema = { type: 'object', fields };
+    seen.set(value, schema);
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      fields.set(key, inferSchema(val));
+      fields.set(key, inferSchema(val, seen));
     }
-    return { type: 'object', fields };
+    return schema;
   }
   const jsType = typeof value;
   if (!VALID_VAR_TYPES.has(jsType)) {
