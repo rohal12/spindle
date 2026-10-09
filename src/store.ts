@@ -445,6 +445,16 @@ function startVariables(defaults: Record<string, unknown>): Namespace {
 }
 
 /**
+ * Fresh transient variables from their declared defaults (init, restart,
+ * load). Transients are never saved, so an instance of an unregistered
+ * class (an engine, a library object) is kept as it is, as mutation code
+ * keeps it (#321): a copy would lose its class and methods (#398).
+ */
+function freshTransients(defaults: Record<string, unknown>): Namespace {
+  return createNamespace(deepClone(defaults, { keepUnregistered: true }));
+}
+
+/**
  * Enter the start passage with `variables`, as the only history moment
  * (init, restart). Call it inside a store update.
  */
@@ -457,7 +467,7 @@ function enterStart(
   state.currentPassage = passage;
   state.navigationId++;
   state.variables = variables;
-  state.transient = createNamespace(deepClone(transientDefaults));
+  state.transient = freshTransients(transientDefaults);
   state.temporary = createNamespace();
   state.history = [{ passage, timestamp: Date.now() }];
   state.historyIndex = 0;
@@ -1719,7 +1729,7 @@ export const useStoryStore = create<StoryState>()(
         state.visitCounts = createCounts(payload.visitCounts);
         state.renderCounts = createCounts(payload.renderCounts);
         state.temporary = createNamespace();
-        state.transient = createNamespace(deepClone(get().transientDefaults));
+        state.transient = freshTransients(get().transientDefaults);
       });
 
       // The watchers of the loaded game (a payload without any, from an

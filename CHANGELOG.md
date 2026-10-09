@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `StoryTransients` default that is an instance of an unregistered class (`%engine = new Engine()`) keeps its class and methods when the story starts, restarts or loads a save, instead of becoming a plain object (#398).
 - Restarting closes dialogs opened by a `{dialog}` or menubar button in `StoryInterface`, not only those opened through `Story.openDialog()`, so an Options dialog with a Restart button no longer stays open over the new game (#397).
 - Radiobuttons for one variable form a group within their passage or dialog only, so opening a dialog with radiobuttons for a variable the passage also binds no longer unchecks the passage's selection (#396).
 - An email autolink such as `<support@example.com>` renders as a `mailto:` link instead of stopping the story with an unclosed `<support>` element (#395).

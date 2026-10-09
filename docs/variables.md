@@ -57,7 +57,7 @@ Declare transient variables and their defaults in a special passage named `Story
 %economy_summary = {}
 ```
 
-These defaults are applied on `init()` and `restart()`, and after loading a save (since transient data is not saved).
+These defaults are applied on `init()` and `restart()`, and after loading a save (since transient data is not saved). Each time, they are copied fresh, except instances of classes that are not registered (an engine, a library object): those are not copied, so they keep their class and methods, and the same object is put back.
 
 The `StoryTransients` passage is optional. Variable names must be unique across `$` and `%` scopes.
 
