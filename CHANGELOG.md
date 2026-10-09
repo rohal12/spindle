@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Radiobuttons for one variable form a group within their passage or dialog only, so opening a dialog with radiobuttons for a variable the passage also binds no longer unchecks the passage's selection (#396).
 - An email autolink such as `<support@example.com>` renders as a `mailto:` link instead of stopping the story with an unclosed `<support>` element (#395).
 - Instances of registered `Date` and `RegExp` subclasses keep their class, value and own properties when read, assigned in code, in history and in saves; a save holding one loads. `Story.registerClass()` throws for a class extending a built-in whose value a save cannot hold (typed arrays, `URL`, `Promise`, ...) instead of letting its save fail to load (#393).
 - Copying, comparing and saving a registered `Map` or `Set` subclass reads the entries it holds, not the ones its overridden iterator, `entries()`, `get()` or `size` show, so a code change to an inventory that iterates only some of its items no longer drops the others (#394).

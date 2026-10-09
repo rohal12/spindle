@@ -58,3 +58,45 @@ describe('email autolinks (#395)', () => {
     ).toEqual(['https://example.com', '#top']);
   });
 });
+
+describe('radio groups in passages and dialogs (#396)', () => {
+  const RADIOS = '{radiobutton $choice "a" "A"}{radiobutton $choice "b" "B"}';
+  beforeEach(() => setup({ choice: 'a' }, [makePassage(2, 'Picker', RADIOS)]));
+
+  /** The checked state of the radio inputs below `root`. */
+  const checked = (root: ParentNode) =>
+    [...root.querySelectorAll<HTMLInputElement>('input[type=radio]')].map(
+      (r) => r.checked,
+    );
+
+  it('keeps the passage selection when a dialog binds the same variable', () => {
+    const el = renderPassage(`${RADIOS}{dialog "Open"}Picker{/dialog}`);
+    expect(checked(el)).toEqual([true, false]);
+
+    act(() => el.querySelector<HTMLButtonElement>('button')!.click());
+    const panel = el.querySelector('.dialog-panel')!;
+    expect(checked(panel)).toEqual([true, false]);
+    const passageRadios = [
+      ...el.querySelectorAll<HTMLInputElement>('.passage > * input'),
+    ].filter((r) => !panel.contains(r));
+    expect(passageRadios.map((r) => r.checked)).toEqual([true, false]);
+    // The dialog's group is its own
+    expect(passageRadios[0]!.name).not.toBe(
+      panel.querySelector<HTMLInputElement>('input')!.name,
+    );
+
+    act(() => el.querySelector<HTMLButtonElement>('.dialog-close')!.click());
+    expect(el.querySelector('.dialog-panel')).toBeNull();
+    expect(checked(el)).toEqual([true, false]);
+    expect(useStoryStore.getState().variables.choice).toBe('a');
+  });
+
+  it('groups the radiobuttons of a variable within one view', () => {
+    const el = renderPassage(RADIOS);
+    const [a, b] = el.querySelectorAll<HTMLInputElement>('input');
+    expect(a!.name).toBe(b!.name);
+    act(() => b!.click());
+    expect(useStoryStore.getState().variables.choice).toBe('b');
+    expect(checked(el)).toEqual([false, true]);
+  });
+});

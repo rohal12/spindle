@@ -1,5 +1,5 @@
 import { createContext, type RefObject } from 'preact';
-import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
+import { useContext, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
@@ -57,6 +57,22 @@ export const InlineContext = createContext(false);
  * Macro and widget bodies read it so their content stays literal too.
  */
 export const RawTextContext = createContext(false);
+
+/**
+ * The view content is rendered in: '' for the story interface, and an id of
+ * its own for each passage and dialog on display (see useViewScope). The
+ * radiobuttons of a variable form a native group within their view only:
+ * one group across views would let a dialog's checked button uncheck the
+ * passage's when it mounts (#396).
+ */
+export const ViewScopeContext = createContext('');
+
+let viewScopes = 0;
+
+/** A new view scope (see ViewScopeContext), kept while mounted. */
+export function useViewScope(): string {
+  return useState(() => `v${++viewScopes}`)[0];
+}
 
 /**
  * True inside an `<svg>` element. SVG attributes are case-sensitive and have
