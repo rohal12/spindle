@@ -198,6 +198,14 @@ describe('macros in attribute values', () => {
     expect(attr(el, 'span', 'title')).toBe('[P:c2]');
   });
 
+  it('forwards {@children} through another block widget (#386)', () => {
+    defineWidget('{widget "inner"}<{@children}>{/widget}');
+    defineWidget('{widget "outer"}{inner}{@children}{/inner}{/widget}');
+    initStory({});
+    const el = renderPassage('<span title="{outer}c{/outer}">s</span>');
+    expect(attr(el, 'span', 'title')).toBe('<c>');
+  });
+
   it('evaluates widget parameters in attributes inside the widget body', () => {
     defineWidget(
       '{widget "chip" @on}<b class="chip {if @on}on{else}off{/if}">c</b>{/widget}',

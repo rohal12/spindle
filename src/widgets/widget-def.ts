@@ -4,6 +4,7 @@
  */
 import { parseMacroArgs } from '../components/macros/macro-args';
 import type { MacroArgs } from '../registry';
+import { tokenizeMarkupTolerant } from '../markup/parse';
 
 /** A {widget} definition's name, then its `@` parameters. */
 export const WIDGET_PARAMETERS = [
@@ -37,19 +38,14 @@ export function parseWidgetDef(rawArgs: string): WidgetDef {
 }
 
 /**
- * A definition: its arguments (read like a {widget} macro's, see
- * parseWidgetDef) and its body. Macro names are not case-sensitive.
- */
-const WIDGET_DEFINITION = /\{widget\s+([^}]*)\}([\s\S]*?)\{\/widget\}/gi;
-
-/** `{@children}`, also with selectors such as `{.highlight @children}`. */
-const CHILDREN_PLACEHOLDER = /\{[^{}]*@children\s*\}/;
-
-/**
  * The names of the block widgets (those whose body renders `{@children}`)
  * that StoryInit and the passages tagged `widget` define. They must be
  * known as block macros before any passage is parsed, so that passages
  * invoking them nest their content whatever the passage order.
+ *
+ * The passages are read as flat tokens, which need no block macros to be
+ * known, so a `{@children}` in an HTML comment or in a `{do}` body is text
+ * here as it is to the parser, and does not make a block widget (#387).
  */
 export function blockWidgetNames(
   passages: Iterable<{ name: string; tags?: string[]; content: string }>,
@@ -59,12 +55,28 @@ export function blockWidgetNames(
     if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
       continue;
     }
-    for (const match of passage.content.matchAll(WIDGET_DEFINITION)) {
-      if (!CHILDREN_PLACEHOLDER.test(match[2]!)) continue;
-      try {
-        names.push(parseWidgetDef(match[1]!).name);
-      } catch {
-        // The {widget} macro reports a definition it cannot read
+    // The open definitions: their arguments, and whether a slot was seen
+    const open: { rawArgs: string; isBlock: boolean }[] = [];
+    for (const token of tokenizeMarkupTolerant(passage.content).tokens) {
+      if (token.type === 'macro' && token.name.toLowerCase() === 'widget') {
+        if (!token.isClose) {
+          open.push({ rawArgs: token.rawArgs, isBlock: false });
+          continue;
+        }
+        const def = open.pop();
+        if (!def?.isBlock) continue;
+        try {
+          names.push(parseWidgetDef(def.rawArgs).name);
+        } catch {
+          // The {widget} macro reports a definition it cannot read
+        }
+      } else if (
+        token.type === 'variable' &&
+        token.scope === 'local' &&
+        token.name === 'children' &&
+        open.length > 0
+      ) {
+        open[open.length - 1]!.isBlock = true;
       }
     }
   }

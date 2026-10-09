@@ -36,6 +36,28 @@ describe('blockWidgetNames', () => {
   it('skips widgets without a children placeholder', () => {
     expect(blockWidgetNames([passage('{widget "a"}x{/widget}')])).toEqual([]);
   });
+
+  it.each([
+    [
+      'an HTML comment',
+      '{widget "Badge"}<!-- This widget does not take {@children}. -->Ready{/widget}',
+    ],
+    [
+      'a {do} body',
+      '{widget "Badge"}{do}console.log("Example syntax: {@children}");{/do}Ready{/widget}',
+    ],
+    ['an escaped brace', '{widget "Badge"}\\{@children}Ready{/widget}'],
+  ])('ignores {@children} in %s (#387)', (_, content) => {
+    expect(blockWidgetNames([passage(content)])).toEqual([]);
+  });
+
+  it('reads each definition of a passage on its own (#387)', () => {
+    const content =
+      '{widget "A"}<!-- {/widget} -->a{/widget}\n' +
+      '{widget "B"}<b>{@children}</b>{/widget}\n' +
+      '{widget "C"}c{/widget}';
+    expect(blockWidgetNames([passage(content)])).toEqual(['B']);
+  });
 });
 
 describe('storage detection', () => {

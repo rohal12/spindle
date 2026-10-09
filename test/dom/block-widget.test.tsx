@@ -170,6 +170,23 @@ describe('block widgets', () => {
     expect(frame!.textContent).toContain('deep content');
   });
 
+  it('forwards @children through another block widget (#386)', () => {
+    defineAndTrack('{widget "Inner"}<b>{@children}</b>{/widget}');
+    defineAndTrack('{widget "Outer"}{Inner}{@children}{/Inner}{/widget}');
+    const el = renderPassage('{Outer}Chosen{/Outer}');
+    expect(el.querySelector('b')!.textContent).toBe('Chosen');
+  });
+
+  it('forwards @children through several block widgets (#386)', () => {
+    defineAndTrack('{widget "Inner"}<b>{@children}</b>{/widget}');
+    defineAndTrack(
+      '{widget "Middle"}<i>{Inner}[{@children}]{/Inner}</i>{/widget}',
+    );
+    defineAndTrack('{widget "Outer"}{Middle}{@children}{/Middle}{/widget}');
+    const el = renderPassage('{Outer}Chosen{/Outer}');
+    expect(el.querySelector('i > b')!.textContent).toBe('[Chosen]');
+  });
+
   it('detects block widget correctly via isBlockWidget', () => {
     defineAndTrack('{widget "Block"}<div>{@children}</div>{/widget}');
     expect(isBlockWidget('block')).toBe(true);
