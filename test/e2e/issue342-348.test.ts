@@ -3,7 +3,8 @@
  * - #348: {type} reveals wrapped text in reading order;
  * - #342: a session or save of a passage the updated story lacks is not
  *   restored;
- * - #363: a dialog's focus trap skips controls a disabled fieldset disables.
+ * - #363: a dialog's focus trap skips controls a disabled fieldset disables;
+ * - #389, #390: it skips closed details content and hidden radios.
  *
  * Compiles its own stories with the built format (global setup builds it).
  */
@@ -62,6 +63,28 @@ $choice = "a"
 
 :: Modal
 <button id="first">First</button><button tabindex="-1">Skip</button>
+`,
+  hint: `${header}:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+<button type="button" id="first">First</button>
+<details>
+  <summary id="summary">Hint</summary>
+  <button type="button" id="concealed">Hidden until expanded</button>
+</details>
+`,
+  hiddenRadio: `${header}:: StoryVariables
+$class = ""
+
+:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+<button type="button" id="first">First</button>
+<div hidden>{radiobutton $class "locked" "Unavailable"}</div>
+{radiobutton $class "warrior" "Warrior"}
+{radiobutton $class "mage" "Mage"}
 `,
   v1: `${header}:: Start
 [[Old]]
@@ -241,6 +264,29 @@ describe('a dialog trap follows the real tab stops (#373)', () => {
     expect(await insidePanel()).toBe(true);
     await page.keyboard.press('Shift+Tab');
     expect(await insidePanel()).toBe(true);
+  });
+
+  const activeId = () => page.evaluate(() => document.activeElement?.id);
+
+  it('wraps from the summary of a closed details element (#389)', async () => {
+    await open('hint');
+    await page.focus('#first');
+    await page.keyboard.press('Tab');
+    expect(await activeId()).toBe('summary');
+    await page.keyboard.press('Tab');
+    expect(await insidePanel()).toBe(true);
+  });
+
+  it('reaches a radio group whose first member is hidden (#390)', async () => {
+    await open('hiddenRadio');
+    await page.focus('#first');
+    await page.keyboard.press('Tab');
+    expect(
+      await page.evaluate(() => {
+        const el = document.activeElement as HTMLInputElement;
+        return el.type === 'radio' && el.closest('label')!.textContent!.trim();
+      }),
+    ).toBe('Warrior');
   });
 
   it('ignores controls with a negative tabindex', async () => {

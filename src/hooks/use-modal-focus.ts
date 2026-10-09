@@ -15,9 +15,25 @@ const FOCUSABLE = [
 ].join(',');
 
 /**
+ * Whether `el` is in a closed `<details>`, other than in the summary that
+ * toggles it: the browser renders none of that content (#389).
+ */
+function inClosedDetails(el: HTMLElement): boolean {
+  for (let e = el.parentElement; e; e = e.parentElement) {
+    if (e.localName !== 'details' || e.hasAttribute('open')) continue;
+    const summary = Array.from(e.children).find(
+      (c) => c.localName === 'summary',
+    );
+    if (!summary?.contains(el)) return true;
+  }
+  return false;
+}
+
+/**
  * Whether CSS leaves `el` in the tab sequence: not `visibility: hidden`
- * (inherited, so the computed value covers ancestors) and not inside a
- * `display: none` element.
+ * (inherited, so the computed value covers ancestors), not inside a
+ * `display: none` element and not in the hidden content of a closed
+ * `<details>`.
  */
 function isRendered(el: HTMLElement): boolean {
   const { visibility } = getComputedStyle(el);
@@ -25,7 +41,21 @@ function isRendered(el: HTMLElement): boolean {
   for (let e: HTMLElement | null = el; e; e = e.parentElement) {
     if (getComputedStyle(e).display === 'none') return false;
   }
-  return true;
+  return !inClosedDetails(el);
+}
+
+/**
+ * Whether `el` can be focused at all: shown, rendered, enabled (also by its
+ * fieldset) and not inert.
+ */
+function isAvailable(el: HTMLElement): boolean {
+  return (
+    !el.hidden &&
+    !el.closest('[hidden], [inert]') &&
+    // Also covers controls disabled by a <fieldset disabled> ancestor
+    !el.matches(':disabled') &&
+    isRendered(el)
+  );
 }
 
 /** The `tabindex` of `el` as an integer, or null when absent or invalid. */
@@ -36,9 +66,10 @@ function tabIndexAttr(el: HTMLElement): number | null {
 }
 
 /**
- * Whether the tab key can reach `el`: a negative tabindex only allows
- * scripted focus, and of a radio group the browser tabs to the checked
- * member only (the first one when none is checked).
+ * Whether the tab key can reach `el`, an available element (see
+ * isAvailable): a negative tabindex only allows scripted focus, and of a
+ * radio group the browser tabs to the checked member only (the first one
+ * when none is checked), of the members it can reach.
  */
 function isTabStop(el: HTMLElement): boolean {
   const tabIndex = tabIndexAttr(el);
@@ -67,7 +98,14 @@ function isTabStop(el: HTMLElement): boolean {
       (
         el.form ?? (el.getRootNode() as ParentNode)
       ).querySelectorAll<HTMLInputElement>('input[type="radio"]'),
-    ).filter((r) => r.name === el.name && r.form === el.form && !r.disabled);
+    ).filter(
+      (r) =>
+        r.name === el.name &&
+        r.form === el.form &&
+        // Of the members Tab can reach (#390)
+        (tabIndexAttr(r) ?? 0) >= 0 &&
+        isAvailable(r),
+    );
     const stop = group.find((r) => r.checked) ?? group[0];
     return el === stop;
   }
@@ -81,15 +119,7 @@ function isTabStop(el: HTMLElement): boolean {
 function focusables(root: HTMLElement): HTMLElement[] {
   const stops = Array.from(
     root.querySelectorAll<HTMLElement>(FOCUSABLE),
-  ).filter(
-    (el) =>
-      !el.hidden &&
-      !el.closest('[hidden], [inert]') &&
-      // Also covers controls disabled by a <fieldset disabled> ancestor
-      !el.matches(':disabled') &&
-      isRendered(el) &&
-      isTabStop(el),
-  );
+  ).filter((el) => isAvailable(el) && isTabStop(el));
   const positive = (el: HTMLElement) => Math.max(tabIndexAttr(el) ?? 0, 0);
   // Array.prototype.sort is stable: equal tabindexes keep document order
   return [

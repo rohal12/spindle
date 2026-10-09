@@ -7,7 +7,7 @@ import {
   deserialize,
   isDeserializable,
 } from '../../src/class-registry';
-import { deepClone, deepEqual } from '../../src/structural';
+import { deepClone, deepEqual, shareEqual } from '../../src/structural';
 
 class Player {
   name: string;
@@ -669,5 +669,135 @@ describe('symbol keys (#322)', () => {
     ]) {
       expect(() => serialize(value)).toThrow(/symbol keys/);
     }
+  });
+});
+
+describe('registered collection subclasses (#391)', () => {
+  class Bag extends Array<unknown> {
+    owner = 'Ada';
+    total() {
+      return this.length;
+    }
+  }
+  class Pouch extends Map<unknown, unknown> {
+    owner = 'Ada';
+    // Overridden methods are not used to copy or revive entries
+    override set(key: unknown, value: unknown): this {
+      if (key === 'cursed') throw new Error('refused');
+      return super.set(key, value);
+    }
+  }
+  class Tags extends Set<unknown> {
+    override add(value: unknown): this {
+      return super.add(String(value).toUpperCase());
+    }
+  }
+  beforeEach(() => {
+    clearRegistry();
+    registerClass('Bag', Bag);
+    registerClass('Pouch', Pouch);
+    registerClass('Tags', Tags);
+  });
+
+  const bag = () => {
+    const b = new Bag();
+    b.push('sword', { n: 1 });
+    b[4] = 'torch'; // holes at 2 and 3
+    return b;
+  };
+  const pouch = () => {
+    const p = new Pouch([['sword', 1]]);
+    Map.prototype.set.call(p, 'cursed', 2);
+    return p;
+  };
+  const tags = () => {
+    const t = new Tags();
+    Set.prototype.add.call(t, 'wet');
+    return t;
+  };
+
+  const roundTrips = (value: object) => [
+    deepClone(value),
+    deserialize(serialize(value)),
+  ];
+
+  it.each([
+    ['Array', bag, Bag],
+    ['Map', pouch, Pouch],
+    ['Set', tags, Tags],
+  ] as const)(
+    'keeps a %s subclass, its elements and its own keys',
+    (_, make, ctor) => {
+      const value = make();
+      for (const copy of roundTrips(value)) {
+        expect(copy).toBeInstanceOf(ctor);
+        expect(copy).not.toBe(value);
+        expect(deepEqual(copy, value)).toBe(true);
+      }
+    },
+  );
+
+  it('keeps a subclass where history shares unchanged parts', () => {
+    const prevBag = bag();
+    const currBag = bag();
+    currBag[0] = 'axe';
+    const sharedBag = shareEqual(prevBag, currBag);
+    expect(sharedBag).toBeInstanceOf(Bag);
+    expect(deepEqual(sharedBag, currBag)).toBe(true);
+    expect(sharedBag[1]).toBe(prevBag[1]);
+
+    const prevPouch = new Pouch([['a', { n: 1 }]]);
+    const currPouch = new Pouch([['a', { n: 1 }]]);
+    currPouch.owner = 'Bob';
+    const sharedPouch = shareEqual(prevPouch, currPouch);
+    expect(sharedPouch).toBeInstanceOf(Pouch);
+    expect(sharedPouch.owner).toBe('Bob');
+    expect(sharedPouch.get('a')).toBe(prevPouch.get('a'));
+  });
+
+  it('keeps the holes and length of an Array subclass', () => {
+    const copy = deserialize(serialize(bag())) as Bag;
+    expect(copy.total()).toBe(5);
+    expect(2 in copy).toBe(false);
+    expect(copy.owner).toBe('Ada');
+    expect(Object.keys(copy)).toEqual(['0', '1', '4', 'owner']);
+  });
+
+  it('keeps a Map subclass in its own entries and keys (cycles)', () => {
+    const p = pouch();
+    p.set('self', p);
+    (p as unknown as { me: unknown }).me = p;
+    const b = bag();
+    b.push(b);
+    for (const value of [p, b]) {
+      for (const copy of roundTrips(value)) {
+        expect(deepEqual(copy, value)).toBe(true);
+      }
+    }
+    const loaded = deserialize(serialize(p)) as Pouch & { me: unknown };
+    expect(loaded.get('self')).toBe(loaded);
+    expect(loaded.me).toBe(loaded);
+    const arr = deserialize(serialize(b)) as Bag;
+    expect(arr[5]).toBe(arr);
+  });
+
+  it('counts own keys of a subclass instance in equality', () => {
+    const other = bag();
+    other.owner = 'Bob';
+    expect(deepEqual(bag(), other)).toBe(false);
+    expect(deepEqual(new Pouch(), Object.assign(new Pouch(), { x: 1 }))).toBe(
+      false,
+    );
+  });
+
+  it('rejects malformed collection data', () => {
+    const saved = serialize(new Pouch([['a', 1]]));
+    expect(isDeserializable(saved)).toBe(true);
+    // A Map subclass saved as a plain object, as before #391
+    expect(isDeserializable('[["c:Pouch",1],{"owner":2},"Ada"]')).toBe(false);
+    expect(isDeserializable('[["c:Bag",1],{"0":2},"sword"]')).toBe(false);
+    // The kind does not match the class
+    expect(isDeserializable(saved.replace('"Map"', '"Set"'))).toBe(false);
+    expect(isDeserializable(saved.replace('"Map"', '"Date"'))).toBe(false);
   });
 });

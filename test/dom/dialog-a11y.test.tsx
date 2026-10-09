@@ -51,6 +51,21 @@ describe('dialog accessibility', () => {
             '<button id="first">A</button> <button id="second">B</button> <button id="last">OK</button>',
           ),
           makePassage(3, 'Plain', 'Just text'),
+          makePassage(
+            4,
+            'Hint',
+            '<button type="button" id="first">First</button>\n<details id="hint">\n<summary id="summary">Hint</summary>\n<button type="button" id="concealed">Hidden until expanded</button>\n</details>',
+          ),
+          makePassage(
+            5,
+            'Choice',
+            '<button type="button" id="first">First</button>\n<div hidden><input type="radio" name="cls" id="locked"></div>\n<input type="radio" name="cls" id="warrior"> <input type="radio" name="cls" id="mage">',
+          ),
+          makePassage(
+            6,
+            'Checked',
+            '<button type="button" id="first">First</button>\n<div hidden><input type="radio" name="cls" id="locked" checked></div>\n<input type="radio" name="cls" id="warrior"> <input type="radio" name="cls" id="mage">',
+          ),
         ]),
       );
     installStoryAPI();
@@ -116,6 +131,38 @@ describe('dialog accessibility', () => {
     press('Tab', true);
     expect(document.activeElement).toBe(byId('last'));
   });
+
+  const noClose = { showCloseButton: false, dismissible: false };
+
+  it('wraps from the summary of a closed details element (#389)', () => {
+    act(() => window.Story.openDialog('Hint', noClose));
+    expect(document.activeElement).toBe(byId('first'));
+    byId('summary').focus();
+    press('Tab');
+    expect(document.activeElement).toBe(byId('first'));
+    press('Tab', true);
+    expect(document.activeElement).toBe(byId('summary'));
+  });
+
+  it('wraps to the content of an open details element (#389)', () => {
+    act(() => window.Story.openDialog('Hint', noClose));
+    byId('hint').setAttribute('open', '');
+    byId('first').focus();
+    press('Tab', true);
+    expect(document.activeElement).toBe(byId('concealed'));
+  });
+
+  it.each(['Choice', 'Checked'])(
+    'tabs to the first visible radio when a hidden one leads its group (%s, #390)',
+    (passage) => {
+      act(() => window.Story.openDialog(passage, noClose));
+      byId('first').focus();
+      press('Tab', true);
+      expect(document.activeElement).toBe(byId('warrior'));
+      press('Tab');
+      expect(document.activeElement).toBe(byId('first'));
+    },
+  );
 
   it('pulls focus back into the dialog when it escaped', () => {
     act(() => window.Story.openDialog('Form'));

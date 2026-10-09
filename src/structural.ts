@@ -12,7 +12,7 @@
 import { registeredClassName } from './class-registry';
 import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-import { isAtomic, isBoxed, isTemporal } from './utils/value-kinds';
+import { extraKeys, isAtomic, isBoxed, isTemporal } from './utils/value-kinds';
 
 export { isAtomic };
 
@@ -22,6 +22,26 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+/**
+ * `empty`, a new collection (Array, Map or Set) standing for `obj`, made
+ * like it: an instance of a registered subclass keeps its class and its
+ * extra keys (#391), with the values `value` gives for them; other
+ * collections are plain. `made` gets it before its keys are filled, so
+ * that cycles through it find it.
+ */
+function collectionLike<C extends object>(
+  obj: object,
+  empty: C,
+  made: (copy: C) => void,
+  value: (key: string) => unknown,
+): C {
+  made(empty);
+  if (registeredClassName(obj) === undefined) return empty;
+  Object.setPrototypeOf(empty, Object.getPrototypeOf(obj) as object);
+  for (const key of extraKeys(obj)) setOwn(empty, key, value(key));
+  return empty;
 }
 
 /** Own keys of an error that are not enumerable but are data. */
@@ -131,6 +151,15 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       : copy;
   }
 
+  /** `empty`, made the copy of the collection `obj` (see collectionLike). */
+  const collection = <C extends object>(obj: object, empty: C): C =>
+    collectionLike(
+      obj,
+      empty,
+      (copy) => keep(obj, copy),
+      (key) => clone((obj as Record<string, unknown>)[key]),
+    );
+
   function clone(val: unknown): unknown {
     if (val === null || typeof val !== 'object') return val;
 
@@ -139,22 +168,25 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
 
     if (Array.isArray(val)) {
       // Holes stay holes
-      const arr = keep(obj, new Array(val.length) as unknown[]);
+      const arr = collection(obj, new Array(val.length) as unknown[]);
       for (let i = 0; i < val.length; i++) {
         if (i in val) arr[i] = clone(val[i]);
       }
       return arr;
     }
 
+    // Filled with the built-in methods: a subclass may override them
     if (val instanceof Map) {
-      const copy = keep(obj, new Map());
-      for (const [k, v] of val) copy.set(settled(clone(k), k), clone(v));
+      const copy = collection(obj, new Map());
+      for (const [k, v] of val) {
+        Map.prototype.set.call(copy, settled(clone(k), k), clone(v));
+      }
       return copy;
     }
 
     if (val instanceof Set) {
-      const copy = keep(obj, new Set());
-      for (const v of val) copy.add(settled(clone(v), v));
+      const copy = collection(obj, new Set());
+      for (const v of val) Set.prototype.add.call(copy, settled(clone(v), v));
       return copy;
     }
 
@@ -295,15 +327,23 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     if (placed !== undefined) return placed;
     if (!isObjectValue(p)) return fresh(c);
     if (reuse(p, c)) return p;
+    const pr = p as Record<string, unknown>;
+    const cr = c as Record<string, unknown>;
+    /** What the result holds at `key` of `c`. */
+    const shareKey = (key: string) =>
+      share(hasOwn(pr, key) ? pr[key] : undefined, cr[key]);
+    /** `empty`, made the result for the collection `c` (see collectionLike). */
+    const collection = <C extends object>(empty: C): C =>
+      collectionLike(c, empty, (out) => done.set(c, out), shareKey);
     if (c instanceof Map && p instanceof Map) {
-      const out = new Map();
-      done.set(c, out);
-      for (const [k, v] of c) out.set(fresh(k), share(p.get(k), v));
+      const out = collection(new Map());
+      for (const [k, v] of c) {
+        Map.prototype.set.call(out, fresh(k), share(p.get(k), v));
+      }
       return out;
     }
     if (Array.isArray(c) && Array.isArray(p)) {
-      const out = new Array(c.length) as unknown[];
-      done.set(c, out);
+      const out = collection(new Array(c.length) as unknown[]);
       for (let i = 0; i < c.length; i++) {
         if (i in c) out[i] = share(p[i], c[i]);
       }
@@ -312,10 +352,7 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     if (mergesWith(p, c, false)) {
       const out = Object.create(Object.getPrototypeOf(c) as object | null);
       done.set(c, out);
-      const cr = c as Record<string, unknown>;
-      for (const key of Object.keys(cr)) {
-        setOwn(out, key, share(hasOwn(p, key) ? p[key] : undefined, cr[key]));
-      }
+      for (const key of Object.keys(cr)) setOwn(out, key, shareKey(key));
       return out;
     }
     return fresh(c);
@@ -382,15 +419,38 @@ function equalBuiltin(
   return undefined;
 }
 
-function equalKeys(a: object, b: object, assumed: Pairs): boolean {
+function equalKeys(
+  a: object,
+  b: object,
+  assumed: Pairs,
+  keysOf: (o: object) => string[] = Object.keys,
+): boolean {
   const ao = a as Record<string, unknown>;
   const bo = b as Record<string, unknown>;
-  const keys = Object.keys(ao);
-  if (keys.length !== Object.keys(bo).length) return false;
+  const keys = keysOf(ao);
+  if (keys.length !== keysOf(bo).length) return false;
   for (const key of keys) {
     if (!hasOwn(bo, key) || !equal(ao[key], bo[key], assumed)) return false;
   }
   return true;
+}
+
+/** Built-in collection prototypes, whose instances hold no extra keys. */
+const COLLECTION_PROTOS: ReadonlySet<object | null> = new Set([
+  Array.prototype,
+  Map.prototype,
+  Set.prototype,
+]);
+
+/**
+ * Equality of the extra keys (see extraKeys) of two collections of one
+ * class: those of a subclass instance are part of its value.
+ */
+function equalExtraKeys(a: object, b: object, assumed: Pairs): boolean {
+  return (
+    COLLECTION_PROTOS.has(Object.getPrototypeOf(a) as object | null) ||
+    equalKeys(a, b, assumed, extraKeys)
+  );
 }
 
 /** `assumed` tracks the pairs of objects met (see Pairs). */
@@ -420,7 +480,7 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
     ) {
       if (!equal(x.value, y.value, assumed)) return false;
     }
-    return true;
+    return equalExtraKeys(a, b, assumed);
   }
 
   const builtin = equalBuiltin(a, b, assumed);
@@ -432,7 +492,7 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
     for (let i = 0; i < a.length; i++) {
       if (i in a !== i in bc || !equal(a[i], bc[i], assumed)) return false;
     }
-    return true;
+    return equalExtraKeys(a, b, assumed);
   }
 
   return equalKeys(a, b, assumed);
@@ -466,7 +526,11 @@ export function mergesWith(
   arrays: boolean,
 ): a is Record<string, unknown> {
   if (arrays && (Array.isArray(a) || Array.isArray(b))) {
-    return Array.isArray(a) && Array.isArray(b);
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      Object.getPrototypeOf(a) === Object.getPrototypeOf(b)
+    );
   }
   return (
     isMergeable(a) &&

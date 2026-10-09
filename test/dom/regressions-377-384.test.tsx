@@ -123,3 +123,49 @@ describe('registered class instances in history (#377)', () => {
     expect((useStoryStore.getState().variables.player as Player).hp).toBe(100);
   });
 });
+
+describe('values inside a Map or Set read through Story.get() (#388)', () => {
+  class Hero {
+    hp = 100;
+    damage(n: number) {
+      this.hp -= n;
+    }
+  }
+  beforeEach(() => registerClass('Hero388', Hero));
+
+  const stored = () => useStoryStore.getState().variables.party;
+
+  it('hands out a copy of a class instance in a Map', () => {
+    setup({ party: new Map([['hero', new Hero()]]) });
+    const got = window.Story.get('party') as Map<string, Hero>;
+    got.get('hero')!.damage(20);
+    expect((stored() as Map<string, Hero>).get('hero')!.hp).toBe(100);
+  });
+
+  it('hands out a copy of a class instance used as a Map key', () => {
+    setup({ party: new Map([[new Hero(), 'hero']]) });
+    const got = window.Story.get('party') as Map<Hero, string>;
+    [...got.keys()][0]!.damage(20);
+    expect([...(stored() as Map<Hero, string>).keys()][0]!.hp).toBe(100);
+  });
+
+  it('hands out a copy of a class instance in a Set', () => {
+    setup({ party: new Set([new Hero()]) });
+    const got = window.Story.get('party') as Set<Hero>;
+    [...got][0]!.damage(20);
+    expect([...(stored() as Set<Hero>)][0]!.hp).toBe(100);
+  });
+
+  it('hands out a copy of a Date in a Map', () => {
+    setup({ party: new Map([['when', new Date(2000, 0, 1)]]) });
+    const got = window.Story.get('party') as Map<string, Date>;
+    got.get('when')!.setFullYear(2020);
+    const when = (stored() as Map<string, Date>).get('when')!;
+    expect(when.getFullYear()).toBe(2000);
+  });
+
+  it('still returns a plain frozen collection as it is', () => {
+    setup({ party: new Map([['hero', { hp: 100 }]]) });
+    expect(window.Story.get('party')).toBe(stored());
+  });
+});

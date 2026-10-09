@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Instances of registered `Array`, `Map` and `Set` subclasses keep their class, elements and own properties when assigned in code, in history and in saves; a save of a `Map` or `Set` subclass loads (#391).
+- A dialog's Tab trap skips the hidden content of a closed `<details>` and chooses a radio group's tab stop among the members Tab can reach, so a hidden option no longer makes the visible ones unreachable (#389, #390).
+- `Story.get()` hands out a copy of a `Map` or `Set` holding a class instance or a `Date`, so changing it no longer changes recorded history (#388).
+- A `{@children}` in an HTML comment or a `{do}` body no longer makes a widget a block widget (#387).
+- A block widget that forwards `{@children}` to another block widget renders its content instead of recursing until the stack overflows (#386).
 - Generating a save title (the `SaveTitle` passage or a title generator) no longer advances the seeded random sequence (#375).
 - Native `<button>` labels, headings and paragraphs render their content without block markdown, so a label starting with `+` or `-` is not turned into a list (#374).
 - A dialog's Tab trap follows the browser's real tab stops: the checked member of a radio group, no controls with a negative `tabindex`, positive `tabindex` order (#373).

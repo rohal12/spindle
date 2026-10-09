@@ -1,4 +1,4 @@
-import { useMemo } from 'preact/hooks';
+import { useContext, useMemo } from 'preact/hooks';
 import { WidgetChildrenContext, renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluate } from '../../expression';
@@ -9,6 +9,7 @@ import { useRenderOptions } from '../../hooks/use-render-options';
 import { LocalsScope } from './locals-scope';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { wrapContent } from './display';
+import { widgetChildrenOf } from '../../interpolation';
 
 export { splitArgs };
 
@@ -44,7 +45,11 @@ function WidgetContent({
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
-  const childrenValue = invocationChildren?.length ? invocationChildren : null;
+  const outerChildren = useContext(WidgetChildrenContext);
+  const childrenValue = useMemo(
+    () => widgetChildrenOf(invocationChildren, outerChildren),
+    [invocationChildren, outerChildren],
+  );
 
   // Every widget gets its own local scope, even when it declares no
   // parameters or is invoked without arguments: missing parameters shadow

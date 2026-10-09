@@ -40,6 +40,25 @@ export function hasInterpolation(s: string): boolean {
   return s.includes('{') || s.includes('}');
 }
 
+/**
+ * The children an invocation passes to a block widget, for `{@children}`.
+ * `outer` is the children context the invocation itself was written in: a
+ * `{@children}` among `nodes` forwards the enclosing widget's children, so it
+ * resolves there, not against `nodes` again (#386).
+ */
+export interface WidgetChildren {
+  readonly nodes: ASTNode[];
+  readonly outer: WidgetChildren | null;
+}
+
+/** The children context for an invocation's `children`, or null if none. */
+export function widgetChildrenOf(
+  children: ASTNode[] | undefined,
+  outer: WidgetChildren | null | undefined,
+): WidgetChildren | null {
+  return children?.length ? { nodes: children, outer: outer ?? null } : null;
+}
+
 /** The scope text-only markup is evaluated in. */
 export interface TextScope {
   variables: Record<string, unknown>;
@@ -47,7 +66,7 @@ export interface TextScope {
   locals: Record<string, unknown>;
   transient: Record<string, unknown>;
   /** Invocation children of the enclosing block widget, for `{@children}`. */
-  widgetChildren?: ASTNode[] | null;
+  widgetChildren?: WidgetChildren | null;
 }
 
 /** A macro, expression or markup error met while evaluating text. */
@@ -177,11 +196,12 @@ class TextEvaluator {
       case 'variable':
         if (node.scope === 'local' && node.name === 'children') {
           // As {@children} in a widget body: the invocation's children, in
-          // the scope of the body.
+          // the scope of the body, and in the children context they were
+          // written in.
           const children = scope.widgetChildren;
           if (!children) return '';
-          return this.nested('children', children, scope, depth, {
-            widgetChildren: null,
+          return this.nested('children', children.nodes, scope, depth, {
+            widgetChildren: children.outer,
           });
         }
         return this.variable(node.scope, node.name, scope);
@@ -262,7 +282,7 @@ class TextEvaluator {
       }
       return this.nested(node.name, widget.body, scope, depth, {
         locals,
-        widgetChildren: node.children.length > 0 ? node.children : null,
+        widgetChildren: widgetChildrenOf(node.children, scope.widgetChildren),
       });
     }
 

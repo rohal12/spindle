@@ -9,6 +9,7 @@ import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
 import { useTextScope } from '../hooks/use-interpolate';
+import type { WidgetChildren } from '../interpolation';
 import { useRenderOptions } from '../hooks/use-render-options';
 import {
   hasInterpolation,
@@ -67,7 +68,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 /** Elements whose content is literal text, not markdown. */
 const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style']);
-export const WidgetChildrenContext = createContext<ASTNode[] | null>(null);
+export const WidgetChildrenContext = createContext<WidgetChildren | null>(null);
 
 /**
  * Components rendered for the non-text nodes of one renderNodes() call. Each
@@ -708,10 +709,16 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
 }
 
 function ChildrenSlot() {
-  const childrenAST = useContext(WidgetChildrenContext);
+  const children = useContext(WidgetChildrenContext);
   const renderOptions = useRenderOptions();
-  if (!childrenAST || childrenAST.length === 0) return null;
-  return <>{renderNodes(childrenAST, renderOptions)}</>;
+  if (!children) return null;
+  // The children render with the widget's locals, but a {@children} among
+  // them forwards the enclosing widget's children (#386).
+  return (
+    <WidgetChildrenContext.Provider value={children.outer}>
+      {renderNodes(children.nodes, renderOptions)}
+    </WidgetChildrenContext.Provider>
+  );
 }
 
 /**

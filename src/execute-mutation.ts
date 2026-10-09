@@ -148,6 +148,16 @@ function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return true;
   if (!Object.isFrozen(value)) return false;
   seen.add(value);
+  // What a Map or Set holds is not in its properties (#388)
+  if (value instanceof Map) {
+    for (const [key, entry] of value) {
+      if (!deeplyFrozen(key, seen) || !deeplyFrozen(entry, seen)) return false;
+    }
+  } else if (value instanceof Set) {
+    for (const member of value) {
+      if (!deeplyFrozen(member, seen)) return false;
+    }
+  }
   return Reflect.ownKeys(value).every((key) => {
     const desc = Object.getOwnPropertyDescriptor(value, key);
     return !desc || !('value' in desc) || deeplyFrozen(desc.value, seen);
