@@ -306,3 +306,21 @@ describe('HTML comments (#360)', () => {
     ]);
   });
 });
+
+describe('validateMarkup — email autolinks (#395)', () => {
+  it('accepts an email autolink, which is no unclosed element', () => {
+    expect(validate('Contact <support@example.com>.')).toEqual([]);
+    expect(validate('Write to <first.last+tag@mail-1.example.org>')).toEqual(
+      [],
+    );
+    expect(parseMarkup('<a@b.c>')).toEqual([
+      { type: 'text', value: '<a@b.c>' },
+    ]);
+  });
+
+  it('still reads tags that are no addresses', () => {
+    // A domain label cannot end with "-": no autolink, so an element
+    expect(validate('<support@example-.com>')).toHaveLength(1);
+    expect(validate('<b>bold</b> <a@b.c>')).toEqual([]);
+  });
+});

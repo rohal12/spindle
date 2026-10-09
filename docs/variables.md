@@ -57,7 +57,7 @@ Declare transient variables and their defaults in a special passage named `Story
 %economy_summary = {}
 ```
 
-These defaults are applied on `init()` and `restart()`, and after loading a save (since transient data is not saved).
+These defaults are applied on `init()` and `restart()`, and after loading a save (since transient data is not saved). Each time, they are copied fresh, except instances of classes that are not registered (an engine, a library object): those are not copied, so they keep their class and methods, and the same object is put back.
 
 The `StoryTransients` passage is optional. Variable names must be unique across `$` and `%` scopes.
 
@@ -163,7 +163,7 @@ Then use methods and getters in your passages:
 - **Register every class** with `Story.registerClass(name, constructor)` before creating instances. The name must be unique. Saving an instance of a class that is not registered throws an error (see [What Cannot Be Saved](saves.md#what-cannot-be-saved)).
 - **Constructor should accept a plain data object.** On restart, Spindle passes the `StoryVariables` default (a plain object) to your constructor.
 - **Only own enumerable properties are saved.** Methods, getters, and prototype properties are restored automatically from the class prototype.
-- **Collections can be subclassed.** An instance of a registered class that extends `Array`, `Map` or `Set` (an `Inventory extends Map`, say) keeps its class, its elements and its own enumerable properties.
+- **Collections, dates and patterns can be subclassed.** An instance of a registered class that extends `Array`, `Map`, `Set`, `Date` or `RegExp` (an `Inventory extends Map`, a `GameDate extends Date`, say) keeps its class, what it holds and its own enumerable properties. Its contents are read and written with the built-in methods, so overriding its iterator, `get()`, `set()` or `getTime()` does not change what is copied or saved. A class extending another built-in whose value a save cannot hold (typed arrays, `ArrayBuffer`, `DataView`, `URL`, `URLSearchParams`, `Number`, `String`, `Boolean`, `Promise`, `WeakMap`, `WeakSet`, `Function`) cannot be registered: `Story.registerClass()` throws.
 - Class instances are fully supported by the save system, history navigation (back/forward), and restart, including instances that refer to each other or to themselves.
 - **Don't store functions** in story variables, not even as properties of an instance: a save cannot hold them. Put behaviour in methods of the class.
 

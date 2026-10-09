@@ -79,7 +79,7 @@ Go to the next passage in history (after going back).
 
 ### `Story.restart()`
 
-Restart the story. Restores variable defaults and re-runs `StoryInit`.
+Restart the story. Restores variable defaults, closes every open dialog (whether opened by `Story.openDialog()`, a `{dialog}` or a menubar button) and re-runs `StoryInit`.
 
 ### `Story.watch(condition, callbackOrOptions)`
 
@@ -414,7 +414,7 @@ Each metadata object has these properties:
 
 ### `Story.registerClass(name, constructor)`
 
-Register a class so its instances can be cloned, saved, and restored with their prototype intact. A save refuses instances of classes that are not registered, and loading a save fails if a class it holds is no longer registered.
+Register a class so its instances can be cloned, saved, and restored with their prototype intact. A save refuses instances of classes that are not registered, and loading a save fails if a class it holds is no longer registered. A class may extend `Array`, `Map`, `Set`, `Date`, `RegExp` or `Error`; registering one that extends another built-in whose value a save cannot hold (a typed array, `URL`, `Promise`, ...) throws.
 
 | Parameter     | Type       | Description                                   |
 | ------------- | ---------- | --------------------------------------------- |

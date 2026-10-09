@@ -12,7 +12,17 @@
 import { registeredClassName } from './class-registry';
 import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
-import { extraKeys, isAtomic, isBoxed, isTemporal } from './utils/value-kinds';
+import {
+  collectionSize,
+  extraKeys,
+  isAtomic,
+  isBoxed,
+  isTemporal,
+  mapEntries,
+  mapGet,
+  mapSet,
+  setMembers,
+} from './utils/value-kinds';
 
 export { isAtomic };
 
@@ -25,13 +35,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * `empty`, a new collection (Array, Map or Set) standing for `obj`, made
- * like it: an instance of a registered subclass keeps its class and its
- * extra keys (#391), with the values `value` gives for them; other
- * collections are plain. `made` gets it before its keys are filled, so
+ * `empty`, a new built-in (an Array, Map, Set, Date or RegExp) standing for
+ * `obj`, made like it: an instance of a registered subclass keeps its class
+ * and its extra keys (#391, #393), with the values `value` gives for them;
+ * other built-ins are plain. `made` gets it before its keys are filled, so
  * that cycles through it find it.
  */
-function collectionLike<C extends object>(
+function builtinLike<C extends object>(
   obj: object,
   empty: C,
   made: (copy: C) => void,
@@ -103,11 +113,17 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
   }
 
   function cloneBuiltin(val: object): object | undefined {
-    if (val instanceof Date) return keep(val, new Date(val.getTime()));
+    // Read with the built-in getters: a subclass may override them
+    if (val instanceof Date) {
+      return builtin(val, new Date(Date.prototype.getTime.call(val)));
+    }
     if (val instanceof RegExp) {
-      const copy = new RegExp(val.source, val.flags);
+      const copy = new RegExp(
+        Reflect.get(RegExp.prototype, 'source', val) as string,
+        Reflect.get(RegExp.prototype, 'flags', val) as string,
+      );
       copy.lastIndex = val.lastIndex; // the scanning cursor of g/y patterns
-      return keep(val, copy);
+      return builtin(val, copy);
     }
     if (val instanceof ArrayBuffer) return keep(val, val.slice(0));
     if (ArrayBuffer.isView(val)) {
@@ -151,9 +167,9 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       : copy;
   }
 
-  /** `empty`, made the copy of the collection `obj` (see collectionLike). */
-  const collection = <C extends object>(obj: object, empty: C): C =>
-    collectionLike(
+  /** `empty`, made the copy of the built-in `obj` (see builtinLike). */
+  const builtin = <C extends object>(obj: object, empty: C): C =>
+    builtinLike(
       obj,
       empty,
       (copy) => keep(obj, copy),
@@ -168,30 +184,33 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
 
     if (Array.isArray(val)) {
       // Holes stay holes
-      const arr = collection(obj, new Array(val.length) as unknown[]);
+      const arr = builtin(obj, new Array(val.length) as unknown[]);
       for (let i = 0; i < val.length; i++) {
         if (i in val) arr[i] = clone(val[i]);
       }
       return arr;
     }
 
-    // Filled with the built-in methods: a subclass may override them
+    // Read and filled with the built-in methods: a subclass may override
+    // them (see mapEntries)
     if (val instanceof Map) {
-      const copy = collection(obj, new Map());
-      for (const [k, v] of val) {
+      const copy = builtin(obj, new Map());
+      for (const [k, v] of mapEntries(val)) {
         Map.prototype.set.call(copy, settled(clone(k), k), clone(v));
       }
       return copy;
     }
 
     if (val instanceof Set) {
-      const copy = collection(obj, new Set());
-      for (const v of val) Set.prototype.add.call(copy, settled(clone(v), v));
+      const copy = builtin(obj, new Set());
+      for (const v of setMembers(val)) {
+        Set.prototype.add.call(copy, settled(clone(v), v));
+      }
       return copy;
     }
 
-    const builtin = cloneBuiltin(obj);
-    if (builtin !== undefined) return builtin;
+    const copied = cloneBuiltin(obj);
+    if (copied !== undefined) return copied;
 
     // A registered class instance keeps its class, and a plain object its
     // prototype (which may be null). An instance of an unregistered class
@@ -332,13 +351,13 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     /** What the result holds at `key` of `c`. */
     const shareKey = (key: string) =>
       share(hasOwn(pr, key) ? pr[key] : undefined, cr[key]);
-    /** `empty`, made the result for the collection `c` (see collectionLike). */
+    /** `empty`, made the result for the collection `c` (see builtinLike). */
     const collection = <C extends object>(empty: C): C =>
-      collectionLike(c, empty, (out) => done.set(c, out), shareKey);
+      builtinLike(c, empty, (out) => done.set(c, out), shareKey);
     if (c instanceof Map && p instanceof Map) {
       const out = collection(new Map());
-      for (const [k, v] of c) {
-        Map.prototype.set.call(out, fresh(k), share(p.get(k), v));
+      for (const [k, v] of mapEntries(c)) {
+        Map.prototype.set.call(out, fresh(k), share(mapGet(p, k), v));
       }
       return out;
     }
@@ -381,9 +400,20 @@ function equalBuiltin(
   b: object,
   assumed: Pairs,
 ): boolean | undefined {
-  if (a instanceof Date) return Object.is(a.getTime(), (b as Date).getTime());
+  if (a instanceof Date) {
+    const time = Date.prototype.getTime;
+    return (
+      Object.is(time.call(a), time.call(b as Date)) &&
+      equalExtraKeys(a, b, assumed)
+    );
+  }
   if (a instanceof RegExp) {
-    return String(a) === String(b) && a.lastIndex === (b as RegExp).lastIndex;
+    const text = RegExp.prototype.toString;
+    return (
+      text.call(a) === text.call(b as RegExp) &&
+      a.lastIndex === (b as RegExp).lastIndex &&
+      equalExtraKeys(a, b, assumed)
+    );
   }
   if (ArrayBuffer.isView(a)) {
     // A view is its place in its backing buffer, and the whole buffer (which
@@ -435,20 +465,22 @@ function equalKeys(
   return true;
 }
 
-/** Built-in collection prototypes, whose instances hold no extra keys. */
-const COLLECTION_PROTOS: ReadonlySet<object | null> = new Set([
+/** Built-in prototypes (see builtinLike), whose instances hold no extra keys. */
+const BUILTIN_PROTOS: ReadonlySet<object | null> = new Set([
   Array.prototype,
   Map.prototype,
   Set.prototype,
+  Date.prototype,
+  RegExp.prototype,
 ]);
 
 /**
- * Equality of the extra keys (see extraKeys) of two collections of one
+ * Equality of the extra keys (see extraKeys) of two built-ins of one
  * class: those of a subclass instance are part of its value.
  */
 function equalExtraKeys(a: object, b: object, assumed: Pairs): boolean {
   return (
-    COLLECTION_PROTOS.has(Object.getPrototypeOf(a) as object | null) ||
+    BUILTIN_PROTOS.has(Object.getPrototypeOf(a) as object | null) ||
     equalKeys(a, b, assumed, extraKeys)
   );
 }
@@ -470,9 +502,9 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
 
   if (a instanceof Map || a instanceof Set) {
     const bc = b as Map<unknown, unknown> | Set<unknown>;
-    if (a.size !== bc.size) return false;
-    const ai = a.entries();
-    const bi = bc.entries();
+    if (collectionSize(a) !== collectionSize(bc)) return false;
+    const ai = a instanceof Map ? mapEntries(a) : setMembers(a);
+    const bi = bc instanceof Map ? mapEntries(bc) : setMembers(bc);
     for (
       let x = ai.next(), y = bi.next();
       !x.done;
@@ -762,13 +794,15 @@ function entryChildren(value: object): [string, unknown][] | undefined {
   const children: [string, unknown][] = [];
   if (value instanceof Map) {
     let index = 0;
-    for (const [k, v] of value) {
+    for (const [k, v] of mapEntries(value)) {
       children.push([entryKey('k', index), k], [entryKey('v', index), v]);
       index++;
     }
   } else if (value instanceof Set) {
     let index = 0;
-    for (const member of value) children.push([entryKey('s', index++), member]);
+    for (const member of setMembers(value)) {
+      children.push([entryKey('s', index++), member]);
+    }
   } else if (value instanceof Error) {
     for (const key of ['cause', 'errors'] as const) {
       if (hasOwn(value, key)) {
@@ -819,8 +853,9 @@ function setEntryValue(
   const holder = getByEntryPath(root, path.slice(0, -1));
   const match = /^\0v(\d+)$/.exec(path[path.length - 1]!);
   if (!(holder instanceof Map) || !match) return false;
-  const key = [...holder.keys()][Number(match[1])];
-  holder.set(key, value);
+  const entry = [...mapEntries(holder)][Number(match[1])];
+  if (!entry) return false;
+  mapSet(holder, entry[0], value);
   return true;
 }
 
@@ -921,7 +956,8 @@ function aliasMoved(
   if (xs && ys) {
     if (Object.getPrototypeOf(x) !== Object.getPrototypeOf(y)) return false;
     if (x instanceof Map || x instanceof Set) {
-      if (x.size !== (y as Map<unknown, unknown>).size) return false;
+      const ySize = collectionSize(y as Map<unknown, unknown>);
+      if (collectionSize(x) !== ySize) return false;
     }
     const held = new Map(ys);
     for (const [segment, a] of xs) {

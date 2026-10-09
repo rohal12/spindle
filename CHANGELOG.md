@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `StoryTransients` default that is an instance of an unregistered class (`%engine = new Engine()`) keeps its class and methods when the story starts, restarts or loads a save, instead of becoming a plain object (#398).
+- Restarting closes dialogs opened by a `{dialog}` or menubar button in `StoryInterface`, not only those opened through `Story.openDialog()`, so an Options dialog with a Restart button no longer stays open over the new game (#397).
+- Radiobuttons for one variable form a group within their passage or dialog only, so opening a dialog with radiobuttons for a variable the passage also binds no longer unchecks the passage's selection (#396).
+- An email autolink such as `<support@example.com>` renders as a `mailto:` link instead of stopping the story with an unclosed `<support>` element (#395).
+- Instances of registered `Date` and `RegExp` subclasses keep their class, value and own properties when read, assigned in code, in history and in saves; a save holding one loads. `Story.registerClass()` throws for a class extending a built-in whose value a save cannot hold (typed arrays, `URL`, `Promise`, ...) instead of letting its save fail to load (#393).
+- Copying, comparing and saving a registered `Map` or `Set` subclass reads the entries it holds, not the ones its overridden iterator, `entries()`, `get()` or `size` show, so a code change to an inventory that iterates only some of its items no longer drops the others (#394).
 - Instances of registered `Array`, `Map` and `Set` subclasses keep their class, elements and own properties when assigned in code, in history and in saves; a save of a `Map` or `Set` subclass loads (#391).
 - A dialog's Tab trap skips the hidden content of a closed `<details>` and chooses a radio group's tab stop among the members Tab can reach, so a hidden option no longer makes the visible ones unreachable (#389, #390).
 - `Story.get()` hands out a copy of a `Map` or `Set` holding a class instance or a `Date`, so changing it no longer changes recorded history (#388).

@@ -7,7 +7,12 @@ import {
 } from 'preact/hooks';
 import { parseMarkup } from '../markup/parse';
 import type { ASTNode } from '../markup/ast';
-import { renderNodes, NobrContext } from '../markup/render';
+import {
+  renderNodes,
+  NobrContext,
+  ViewScopeContext,
+  useViewScope,
+} from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
@@ -130,20 +135,23 @@ export function Passage({
   }, [passage.name, navigationId]);
 
   const nobr = passage.tags.includes('nobr');
+  const viewScope = useViewScope();
 
   const inner = (
-    <div
-      ref={elRef}
-      class="passage"
-      data-passage={passage.name}
-      data-tags={passage.tags.join(' ')}
-      data-transition={dataTransition}
-    >
-      {headerContent && <div class="passage-header">{headerContent}</div>}
-      {content}
-      {footerContent && <div class="passage-footer">{footerContent}</div>}
-      {doneContent && <div hidden>{doneContent}</div>}
-    </div>
+    <ViewScopeContext.Provider value={viewScope}>
+      <div
+        ref={elRef}
+        class="passage"
+        data-passage={passage.name}
+        data-tags={passage.tags.join(' ')}
+        data-transition={dataTransition}
+      >
+        {headerContent && <div class="passage-header">{headerContent}</div>}
+        {content}
+        {footerContent && <div class="passage-footer">{footerContent}</div>}
+        {doneContent && <div hidden>{doneContent}</div>}
+      </div>
+    </ViewScopeContext.Provider>
   );
 
   return nobr ? (

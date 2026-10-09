@@ -294,10 +294,14 @@ export function reinitTriggerState(): void {
   }
 }
 
+/**
+ * Forget every watcher and close every dialog on display, whoever opened it
+ * (restart): a `{dialog}` or menubar dialog of the story interface, which
+ * stays mounted, would otherwise stay open over the new game (#397).
+ */
 export function resetTriggers(): void {
   triggers = [];
-  dialogQueue = [];
-  dialogHostCallbacks?.closeAll();
+  closeAllOpenDialogs();
 }
 
 export function subscribeTriggerDialogs(cb: () => void): () => void {

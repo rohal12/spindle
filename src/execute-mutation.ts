@@ -26,6 +26,7 @@ import {
 } from './structural';
 import { getByPath, setByPath } from './utils/object-path';
 import { asNamespace, hasOwn } from './utils/namespace';
+import { mapEntries, setMembers } from './utils/value-kinds';
 
 type NamespaceName = keyof VariableNamespaces;
 
@@ -150,11 +151,11 @@ function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   seen.add(value);
   // What a Map or Set holds is not in its properties (#388)
   if (value instanceof Map) {
-    for (const [key, entry] of value) {
+    for (const [key, entry] of mapEntries(value)) {
       if (!deeplyFrozen(key, seen) || !deeplyFrozen(entry, seen)) return false;
     }
   } else if (value instanceof Set) {
-    for (const member of value) {
+    for (const member of setMembers(value)) {
       if (!deeplyFrozen(member, seen)) return false;
     }
   }

@@ -801,3 +801,206 @@ describe('registered collection subclasses (#391)', () => {
     expect(isDeserializable(saved.replace('"Map"', '"Date"'))).toBe(false);
   });
 });
+
+describe('collection subclasses that override iteration (#394)', () => {
+  // Iterate the available items only; what they hold is all of them
+  class Inventory extends Map<string, { available: boolean }> {
+    override *[Symbol.iterator](): MapIterator<
+      [string, { available: boolean }]
+    > {
+      for (const entry of super.entries()) {
+        if (entry[1].available) yield entry;
+      }
+    }
+    override entries() {
+      return this[Symbol.iterator]();
+    }
+    override get size() {
+      return [...this].length;
+    }
+    override get(key: string) {
+      const item = super.get(key);
+      return item?.available ? item : undefined;
+    }
+  }
+  class Shown extends Set<string> {
+    override *[Symbol.iterator](): SetIterator<string> {
+      for (const member of super.values()) {
+        if (!member.startsWith('_')) yield member;
+      }
+    }
+    override values() {
+      return this[Symbol.iterator]();
+    }
+    override get size() {
+      return [...this].length;
+    }
+  }
+  beforeEach(() => {
+    clearRegistry();
+    registerClass('Inventory', Inventory);
+    registerClass('Shown', Shown);
+  });
+
+  const inventory = (torch = false) =>
+    new Inventory([
+      ['sword', { available: true }],
+      ['torch', { available: torch }],
+    ]);
+  const allEntries = (map: Map<unknown, unknown>) => [
+    ...Map.prototype.entries.call(map),
+  ];
+
+  it('copies the entries a Map subclass holds, not those it iterates', () => {
+    const value = inventory();
+    for (const copy of [
+      deepClone(value),
+      deepClone(value, { keepUnregistered: true }),
+      deserialize(serialize(value)) as Inventory,
+    ]) {
+      expect(copy).toBeInstanceOf(Inventory);
+      expect(allEntries(copy)).toEqual(allEntries(value));
+    }
+  });
+
+  it('copies the members a Set subclass holds, not those it iterates', () => {
+    const value = new Shown(['a', '_hidden']);
+    const copy = deepClone(value);
+    expect(copy).toBeInstanceOf(Shown);
+    expect([...Set.prototype.values.call(copy)]).toEqual(['a', '_hidden']);
+  });
+
+  it('compares the entries a subclass holds', () => {
+    expect(deepEqual(inventory(), inventory())).toBe(true);
+    expect(deepEqual(inventory(), inventory(true))).toBe(false);
+    expect(deepEqual(new Shown(['a']), new Shown(['a', '_b']))).toBe(false);
+  });
+
+  it('keeps hidden entries where history shares unchanged parts', () => {
+    const prev = inventory();
+    const curr = inventory();
+    Map.prototype.set.call(curr, 'potion', { available: true });
+    const shared = shareEqual(prev, curr);
+    expect(shared).toBeInstanceOf(Inventory);
+    expect(allEntries(shared).map(([k]) => k)).toEqual([
+      'sword',
+      'torch',
+      'potion',
+    ]);
+    // The hidden entry, unchanged, is the one of the earlier moment
+    expect(Map.prototype.get.call(shared, 'torch')).toBe(
+      Map.prototype.get.call(prev, 'torch'),
+    );
+  });
+});
+
+describe('registered Date and RegExp subclasses (#393)', () => {
+  class GameDate extends Date {
+    calendar = 'imperial';
+    day() {
+      return this.getUTCDate();
+    }
+    // Overridden methods are not used to copy or save the time
+    override getTime(): number {
+      return 0;
+    }
+  }
+  class Pattern extends RegExp {
+    label = 'digits';
+  }
+  beforeEach(() => {
+    clearRegistry();
+    registerClass('GameDate', GameDate);
+    registerClass('Pattern', Pattern);
+  });
+
+  const date = () => new GameDate('2026-01-02T00:00:00Z');
+  const pattern = () => {
+    const p = new Pattern('\\d+', 'g');
+    p.lastIndex = 3;
+    return p;
+  };
+  const time = (d: Date) => Date.prototype.getTime.call(d);
+
+  it('keeps a Date subclass, its time and its own keys', () => {
+    const value = date();
+    for (const copy of [
+      deepClone(value),
+      deepClone(value, { keepUnregistered: true }),
+      deserialize(serialize(value)) as GameDate,
+    ]) {
+      expect(copy).toBeInstanceOf(GameDate);
+      expect(copy).not.toBe(value);
+      expect(time(copy)).toBe(time(value));
+      expect(copy.day()).toBe(2);
+      expect(copy.toISOString()).toBe('2026-01-02T00:00:00.000Z');
+      expect(copy.calendar).toBe('imperial');
+      expect(deepEqual(copy, value)).toBe(true);
+    }
+  });
+
+  it('keeps a RegExp subclass, its pattern, lastIndex and own keys', () => {
+    const value = pattern();
+    for (const copy of [
+      deepClone(value),
+      deserialize(serialize(value)) as Pattern,
+    ]) {
+      expect(copy).toBeInstanceOf(Pattern);
+      expect(String(copy)).toBe('/\\d+/g');
+      expect(copy.lastIndex).toBe(3);
+      expect(copy.label).toBe('digits');
+      expect(copy.exec('ab 12')?.[0]).toBe('12');
+    }
+  });
+
+  it('compares the time and own keys of a Date subclass', () => {
+    expect(deepEqual(date(), date())).toBe(true);
+    expect(deepEqual(date(), new GameDate('2026-01-03T00:00:00Z'))).toBe(false);
+    const other = date();
+    other.calendar = 'lunar';
+    expect(deepEqual(date(), other)).toBe(false);
+    expect(deepEqual(date(), new Date('2026-01-02T00:00:00Z'))).toBe(false);
+  });
+
+  it('keeps a Date subclass where history shares unchanged parts', () => {
+    const prev = { when: date(), other: { n: 1 } };
+    const curr = {
+      when: new GameDate('2026-02-01T00:00:00Z'),
+      other: { n: 1 },
+    };
+    const shared = shareEqual(prev, curr);
+    expect(shared.when).toBeInstanceOf(GameDate);
+    expect(shared.when.day()).toBe(1);
+    expect(shared.other).toBe(prev.other);
+  });
+
+  it('rejects malformed Date and RegExp data', () => {
+    const saved = serialize(date());
+    expect(isDeserializable(saved)).toBe(true);
+    // A Date subclass saved as a plain object, as before #393
+    expect(isDeserializable('[["c:GameDate",1],{"calendar":2},"x"]')).toBe(
+      false,
+    );
+    expect(isDeserializable(saved.replace('"Date"', '"RegExp"'))).toBe(false);
+    expect(isDeserializable(saved.replace('"Date"', '"Map"'))).toBe(false);
+    expect(isDeserializable(serialize(pattern()))).toBe(true);
+  });
+
+  it('refuses to register a class extending a built-in a save cannot hold', () => {
+    for (const ctor of [
+      class extends Uint8Array {},
+      class extends ArrayBuffer {},
+      class extends URL {},
+      class extends Promise<unknown> {},
+      class extends Number {},
+      class extends WeakMap {},
+    ]) {
+      expect(() => registerClass('Unsupported', ctor)).toThrow(
+        /Cannot register class "Unsupported": it extends/,
+      );
+    }
+    expect(getClassName(class extends URL {})).toBeUndefined();
+    class Failure extends TypeError {}
+    expect(() => registerClass('Failure', Failure)).not.toThrow();
+  });
+});

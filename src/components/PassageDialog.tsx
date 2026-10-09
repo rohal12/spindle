@@ -1,7 +1,12 @@
 import { createContext } from 'preact';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { parseMarkup } from '../markup/parse';
-import { renderNodes, NobrContext } from '../markup/render';
+import {
+  renderNodes,
+  NobrContext,
+  ViewScopeContext,
+  useViewScope,
+} from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
 import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
@@ -66,6 +71,7 @@ export function PassageDialog({
   }, [markup, nobr]);
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const viewScope = useViewScope();
 
   // Focus into the dialog, trap Tab, Escape to close, restore focus on close.
   // Declared before the dialogrender effect so handlers can move focus.
@@ -113,7 +119,11 @@ export function PassageDialog({
               ✕
             </button>
           )}
-          <div class="dialog-body">{content}</div>
+          <div class="dialog-body">
+            <ViewScopeContext.Provider value={viewScope}>
+              {content}
+            </ViewScopeContext.Provider>
+          </div>
         </div>
       </div>
     </DialogCloseContext.Provider>
