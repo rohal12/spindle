@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A save dialog open in another tab lists a save created, renamed, imported or deleted there, including one in no slot (#445).
+- Tab moves through the native controls of an `<audio controls>` or `<video controls>` in a dialog before moving on to the next control, instead of skipping them (#444).
+- A localStorage save that fails to store (a full quota) puts back its record and index entries, so no record is left that the save dialog cannot list and clearing the story cannot delete (#443).
+- Two saves chosen in the save dialog before the first is read load in order: the one chosen last wins, also over a `Story.load()` issued after (#442).
+- A bracket link whose label holds markup with a separator in its code (`[[{if $key || $lockpick}Open{/if}->Hall]]`) splits at the separator outside the label's markup (#441).
 - HTML comments in a custom `StoryInterface` (and in SVG content) are hidden, as in a passage (#421).
 - HTML inside an SVG `<foreignObject>` keeps its boolean attributes (`checked`, `disabled`), including inside a nested `<svg>` (#420).
 - A `{watch}` in `StoryInterface` keeps watching after a checkpoint saved in `StoryInit`, before the interface mounted, is loaded; a `once` or `{unwatch}`-removed watcher stays removed in later saves (#419).

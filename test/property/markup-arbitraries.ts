@@ -576,7 +576,8 @@ const quoteArg = (v: string) => `"${v.replace(/[\\"]/g, '\\$&')}"`;
  * or `#` is parsed as selectors (`[[.cls Target]]`), so such names are only
  * generated after explicit selectors. Names containing `|`, `->` or `<-`
  * are ambiguous (Twine tools disagree on which separator wins), so they are
- * not generated.
+ * not generated. Neither is a `{` in the first part with a `}` in the second:
+ * the braces make a macro or expression, whose code holds the separator.
  */
 export const linkArb: fc.Arbitrary<
   Generated & { display: string; target: string }
@@ -590,6 +591,14 @@ export const linkArb: fc.Arbitrary<
   .filter(
     ([form, a, b, sel]) =>
       sel !== undefined || !/^[.#]/.test(form === 'reverse' ? b : a),
+  )
+  .filter(
+    ([form, a, b]) =>
+      form === 'plain' ||
+      !(
+        (form === 'reverse' ? b : a).includes('{') &&
+        (form === 'reverse' ? a : b).includes('}')
+      ),
   )
   .map(([form, a, b, sel]) => {
     const inner =

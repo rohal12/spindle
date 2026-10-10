@@ -197,6 +197,16 @@ function lsDel(key: string): void {
   localStorage.removeItem(key);
 }
 
+/** Put an item back as it was (`raw` null: absent); best effort. */
+function lsRestore(key: string, raw: string | null): void {
+  try {
+    if (raw === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, raw);
+  } catch {
+    // The quota forbids even the old value: nothing more to do
+  }
+}
+
 function lsIndex(key: string): string[] {
   return lsGet<string[]>(key) ?? [];
 }
@@ -239,13 +249,22 @@ export function createLocalStorageBackend(): StorageBackend {
         // after a restart, under the new playthrough) leaves the old list
         const previous = lsGet<T>(`${prefix}${key}`);
         const lists = listsOf(value);
-        if (previous !== undefined) {
-          for (const list of listsOf(previous)) {
-            if (!lists.includes(list)) lsIndexRemove(list, key);
-          }
+        const obsolete =
+          previous === undefined
+            ? []
+            : listsOf(previous).filter((list) => !lists.includes(list));
+        // A write that fails (the quota) puts back what it changed: a record
+        // no index lists is neither shown nor cleared with its story (#443)
+        const touched = [`${prefix}${key}`, ...obsolete, ...lists];
+        const before = touched.map((k) => localStorage.getItem(k));
+        try {
+          for (const list of obsolete) lsIndexRemove(list, key);
+          lsSet(`${prefix}${key}`, value);
+          for (const list of lists) lsIndexAdd(list, key);
+        } catch (err) {
+          touched.forEach((k, i) => lsRestore(k, before[i] ?? null));
+          throw err;
         }
-        lsSet(`${prefix}${key}`, value);
-        for (const list of lists) lsIndexAdd(list, key);
       },
       async delete(key) {
         const record = lsGet<T>(`${prefix}${key}`);

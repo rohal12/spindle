@@ -792,6 +792,63 @@ describe('SaveManagerContent', () => {
       expect(useStoryStore.getState().variables.data).not.toBe(1);
     });
 
+    it('applies the later of two loads selected before the reads finish (#442)', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      for (const [title, data] of [
+        ['First save', 1],
+        ['Second save', 2],
+      ] as const) {
+        const payload = makePayload();
+        payload.variables = { data };
+        payload.history = [
+          { passage: 'Start', variables: { data }, timestamp: Date.now() },
+        ];
+        const record = await createSave(IFID, ptId, payload);
+        await renameSave(record.meta.id, title);
+      }
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const loadOf = (title: string) =>
+        [...container.querySelectorAll('.save-slot')]
+          .find((row) => row.textContent!.includes(title))!
+          .querySelector('.save-slot-action.primary') as HTMLElement;
+      const loadBoth = async (first: string, second: string) => {
+        await act(async () => {
+          loadOf(first).click();
+          loadOf(second).click();
+        });
+        await flush();
+        return useStoryStore.getState().variables.data;
+      };
+
+      expect(await loadBoth('First save', 'Second save')).toBe(2);
+      expect(await loadBoth('Second save', 'First save')).toBe(1);
+    });
+
+    it('does not load over a Story.load issued while the record is read (#442)', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      const payload = makePayload();
+      payload.variables = { data: 1 };
+      await createSave(IFID, ptId, payload);
+      await useStoryStore.getState().save('later');
+      useStoryStore.setState({ variables: { data: 5 } });
+
+      renderSaveManager(container, onClose);
+      await flush();
+
+      const loadBtn = [
+        ...container.querySelectorAll('.save-slot-action.primary'),
+      ].find((b) => b.textContent === 'Load') as HTMLElement;
+      await act(async () => {
+        loadBtn.click();
+        void useStoryStore.getState().load('later');
+      });
+      await flush();
+      expect(useStoryStore.getState().variables.data).not.toBe(1);
+    });
+
     it('loads the stored record even before the list catches up', async () => {
       const ptId = useStoryStore.getState().playthroughId;
       const record = await createSave(IFID, ptId, makePayload());
@@ -1367,7 +1424,10 @@ describe('SaveManagerContent', () => {
       renderSaveManager(container);
       await flush();
 
-      await useStoryStore.getState().deletePlaythrough(first);
+      // Deleted behind the dialog's back (a change it has not heard of yet)
+      const backend = await getBackend();
+      await backend.deleteSavesByPlaythrough(first);
+      await backend.deletePlaythroughById(first);
       await act(async () => clickLoad('stale-target'));
       await flush();
 

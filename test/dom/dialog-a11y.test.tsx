@@ -26,12 +26,17 @@ function makeStoryData(passages: Passage[]): StoryData {
   };
 }
 
-function press(key: string, shiftKey = false): void {
-  act(() => {
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', { key, shiftKey, bubbles: true }),
-    );
+function press(key: string, shiftKey = false): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', {
+    key,
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
   });
+  act(() => {
+    document.dispatchEvent(event);
+  });
+  return event;
 }
 
 describe('dialog accessibility', () => {
@@ -80,6 +85,11 @@ describe('dialog accessibility', () => {
             9,
             'Frame',
             '<iframe id="frame" srcdoc="<button id=\'embedded\'>Embedded</button>"></iframe>',
+          ),
+          makePassage(
+            10,
+            'Media',
+            '<button id="before">Before</button><audio id="audio" controls tabindex="0"></audio><button id="after">After</button>',
           ),
         ]),
       );
@@ -160,6 +170,43 @@ describe('dialog accessibility', () => {
     } finally {
       outside.remove();
     }
+  });
+
+  it('leaves Tab to the native controls of a media element (#444)', () => {
+    act(() => window.Story.openDialog('Media'));
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      byId('audio').focus();
+      // The browser steps through the player's controls; the element stays
+      // the active one, and the modal does not move focus
+      const stepping = press('Tab');
+      expect(stepping.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(byId('audio'));
+
+      // From its last control the browser leaves the element, here out of
+      // the dialog: focus goes on to the modal's next control instead
+      press('Tab');
+      act(() => outside.focus());
+      expect(document.activeElement).toBe(byId('after'));
+
+      byId('audio').focus();
+      press('Tab', true);
+      act(() => outside.focus());
+      expect(document.activeElement).toBe(byId('before'));
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it('takes focus that leaves a media element for nothing (#444)', () => {
+    act(() => window.Story.openDialog('Media'));
+    byId('audio').focus();
+    press('Tab');
+    act(() => {
+      byId('audio').blur();
+    });
+    expect(document.activeElement).toBe(byId('after'));
   });
 
   it('closes on Escape pressed inside an embedded document (#425)', () => {
