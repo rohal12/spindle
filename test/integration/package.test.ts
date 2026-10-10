@@ -136,6 +136,8 @@ describe('@rohal12/spindle/tooling', async () => {
       'stripLooseQuotes',
       'endsWithOperator',
       'splitIncludeFlag',
+      'parseWidgetDef',
+      'widgetDefinitions',
     ]) {
       expect(typeof tooling[name], name).toBe('function');
     }

@@ -256,4 +256,55 @@ describe('detached {button}/{link} bodies', () => {
     expect(el.textContent).toContain('Count: 1');
     expect(el.textContent).toContain('Outer: 1');
   });
+
+  describe('releasing a body (#458)', () => {
+    /** The nodes the click body was rendered into: emptied when released. */
+    const clickBodies = (el: HTMLElement, label: string): HTMLElement[] => {
+      const bodies: HTMLElement[] = [];
+      const create = document.createElement.bind(document);
+      const spy = vi.spyOn(document, 'createElement').mockImplementation(((
+        tag: string,
+      ) => {
+        const created = create(tag);
+        if (tag === 'div') bodies.push(created);
+        return created;
+      }) as typeof document.createElement);
+      act(() => {
+        for (const b of el.querySelectorAll('button')) {
+          if (b.textContent === label) b.click();
+        }
+      });
+      spy.mockRestore();
+      return bodies;
+    };
+
+    it('releases a body of plain macros once it has run', async () => {
+      const el = renderPassage(
+        '{button "Add"}{if true}{set $n = 1}{/if}{/button}',
+      );
+      const bodies = clickBodies(el, 'Add');
+      expect(useStoryStore.getState().variables.n).toBe(1);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      expect(bodies.length).toBeGreaterThan(0);
+      expect(bodies.every((b) => b.childNodes.length === 0)).toBe(true);
+    });
+
+    it('lets a body with a timer finish', async () => {
+      const el = renderPassage(
+        '{button "Later"}{timed 30ms}{set $n = 1}{/timed}{/button}',
+      );
+      const bodies = clickBodies(el, 'Later');
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+      });
+      expect(bodies.length).toBeGreaterThan(0);
+      expect(useStoryStore.getState().variables.n).toBeUndefined();
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 80));
+      });
+      expect(useStoryStore.getState().variables.n).toBe(1);
+    });
+  });
 });

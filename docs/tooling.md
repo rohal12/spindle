@@ -99,6 +99,31 @@ validateStoryMarkup(passages, [...builtinMacros, mine]);
 validateStoryMarkup(otherProjectsPassages, builtinMacros); // no `alert` here
 ```
 
+## Widget definitions
+
+`widgetDefinitions(passages, macros?)` lists the widgets a story defines as the runtime registers them: those of `StoryInit` and of the passages tagged `widget`, in source order. Each is a `WidgetDefinition`:
+
+- `name`, `params` (the `@` parameters, as `{widget "Name" @a @b}` declares them) and `block`: whether its body renders `{@children}`. It is decided on tokens, so a `{@children}` in an HTML comment or a `{do}` body does not count, while one in an attribute value or a label does. In nested definitions it belongs to the innermost.
+- `passage`, and as `[start, end)` UTF-16 offsets into its content: the opening `{widget …}` tag (`start`, `end`), the name as written without quotes (`nameStart`, `nameEnd`) and the `{/widget}` closer (`closeStart`, absent while the definition is not closed).
+
+It is tolerant: a half-typed definition is reported without `closeStart`, one whose arguments cannot be read is left out. `macros` is the list `validateStoryMarkup` takes, for the parameters that hold markup. `parseWidgetDef(rawArgs)` reads the arguments alone (`{ name, params }`). The runtime's startup, `validateStoryMarkup` and these exports read definitions with the same code.
+
+```js
+import { widgetDefinitions, builtinMacros } from '@rohal12/spindle/tooling';
+
+const [def] = widgetDefinitions(
+  [
+    {
+      name: 'W',
+      tags: ['widget'],
+      content: '{widget "Box" @tone}<b>{@children}</b>{/widget}',
+    },
+  ],
+  builtinMacros,
+);
+// { name: 'Box', params: ['@tone'], block: true, passage: 'W', start: 0, … }
+```
+
 ## Diagnostics
 
 A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, besides `passage`, `line`, `column`, `message` and the `file` and `fileLine` of its passage:

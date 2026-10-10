@@ -77,6 +77,9 @@ export function defineMenubarAction(config: MenubarActionConfig) {
               passageName={config.dialog.passageName}
               fallbackMarkup={config.dialog.fallbackMarkup}
               panelClass={config.dialog.panelClass}
+              label={
+                typeof config.label === 'string' ? config.label : config.name
+              }
               onClose={() => setDialogOpen(false)}
               showCloseButton={config.dialog.showCloseButton}
             />

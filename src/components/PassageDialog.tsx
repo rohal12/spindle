@@ -1,5 +1,11 @@
 import { createContext } from 'preact';
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'preact/hooks';
 import { parseMarkup } from '../markup/parse';
 import {
   renderNodes,
@@ -20,6 +26,11 @@ interface PassageDialogProps {
   fallbackMarkup?: string;
   panelClass?: string;
   onClose: () => void;
+  /**
+   * The dialog's accessible name. Without one, the first heading authored in
+   * the dialog names it, or else its passage.
+   */
+  label?: string;
   /** Show the default `✕` button. Defaults to `dismissible`. */
   showCloseButton?: boolean;
   /**
@@ -35,6 +46,7 @@ export function PassageDialog({
   fallbackMarkup,
   panelClass,
   onClose,
+  label,
   dismissible = true,
   showCloseButton = dismissible,
 }: PassageDialogProps) {
@@ -71,6 +83,7 @@ export function PassageDialog({
   }, [markup, nobr]);
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const labelId = useId();
   const viewScope = useViewScope();
 
   // Focus into the dialog, trap Tab, Escape to close, restore focus on close.
@@ -79,6 +92,19 @@ export function PassageDialog({
 
   // Be on the stack of displayed dialogs the Story dialog API works on.
   useLayoutEffect(() => registerOpenDialog(stableOnClose), [stableOnClose]);
+
+  // Name the dialog after its first heading when no label is given
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || label) return;
+    const heading = panel.querySelector<HTMLElement>(
+      '.dialog-body :is(h1, h2, h3, h4, h5, h6)',
+    );
+    if (!heading) return;
+    heading.id ||= `${labelId}-heading`;
+    panel.setAttribute('aria-labelledby', heading.id);
+    return () => panel.removeAttribute('aria-labelledby');
+  }, [label, markup]);
 
   // Signal that the dialog's DOM is committed (once per open).
   useLayoutEffect(() => {
@@ -107,6 +133,7 @@ export function PassageDialog({
           class={cls}
           role="dialog"
           aria-modal="true"
+          aria-label={label ?? passageName}
           tabIndex={-1}
         >
           {showCloseButton && (

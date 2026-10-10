@@ -125,7 +125,7 @@ defineMacro({
             clipPath: clip,
           }}
         >
-          {ctx.renderInlineNodes(children)}
+          {ctx.renderNodes(children, { inline: true })}
         </span>
         {!done && totalChars > 0 && <span class="macro-type-cursor" />}
       </span>

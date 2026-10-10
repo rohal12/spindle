@@ -26,6 +26,8 @@ import {
   collectStoryPassageReferences,
   evaluatePassageName,
   passageTarget,
+  parseWidgetDef,
+  widgetDefinitions,
 } from '../../src/tooling';
 
 describe('tooling API: the JavaScript lexer', () => {
@@ -359,5 +361,95 @@ describe('tooling API: passage references', () => {
   it('reads half-typed markup', () => {
     const src = '[[Go->Hall]] {goto "Cellar"} {goto "Att';
     expect(refs(src).map((r) => at(src, r))).toEqual(['Hall', '"Cellar"']);
+  });
+});
+
+describe('widgetDefinitions (#462)', () => {
+  const widgets = (content: string, name = 'Widgets') =>
+    widgetDefinitions([{ name, tags: ['widget'], content }]);
+
+  it('reads the name, parameters and offsets of a definition', () => {
+    const content = '{widget "Box" @a @b}<b>{@children}</b>{/widget}';
+    const [def] = widgets(content);
+    expect(def).toMatchObject({
+      name: 'Box',
+      params: ['@a', '@b'],
+      block: true,
+      passage: 'Widgets',
+      start: 0,
+      end: content.indexOf('<b>'),
+      closeStart: content.indexOf('{/widget}'),
+    });
+    expect(content.slice(def!.nameStart, def!.nameEnd)).toBe('Box');
+  });
+
+  it.each([
+    ['double quotes', '{widget "Two words" @p}x{/widget}', 'Two words'],
+    ['single quotes', "{widget 'single' @p}x{/widget}", 'single'],
+    ['a bare name', '{widget bare @p}x{/widget}', 'bare'],
+  ])('reads %s', (_, content, name) => {
+    const [def] = widgets(content);
+    expect(def!.name).toBe(name);
+    expect(content.slice(def!.nameStart, def!.nameEnd)).toBe(name);
+  });
+
+  it('ignores parameters that do not start with @', () => {
+    expect(widgets('{widget "W" $x @y z}a{/widget}')[0]!.params).toEqual([
+      '@y',
+    ]);
+  });
+
+  it('takes only StoryInit and passages tagged widget', () => {
+    const content = '{widget "A"}a{/widget}';
+    expect(widgetDefinitions([{ name: 'Other', content }])).toEqual([]);
+    expect(widgetDefinitions([{ name: 'StoryInit', content }])).toHaveLength(1);
+  });
+
+  it('does not count {@children} in comments or {do} bodies', () => {
+    expect(
+      widgets('{widget "A"}<!-- {@children} -->a{/widget}')[0]!.block,
+    ).toBe(false);
+    expect(
+      widgets('{widget "A"}{do}"{@children}"{/do}a{/widget}')[0]!.block,
+    ).toBe(false);
+  });
+
+  it('gives {@children} to the innermost nested definition', () => {
+    const defs = widgets(
+      '{widget "Outer"}{widget "Inner"}{@children}{/widget}{/widget}',
+    );
+    expect(defs.map((d) => [d.name, d.block])).toEqual([
+      ['Outer', false],
+      ['Inner', true],
+    ]);
+    expect(defs[1]!.start).toBeGreaterThan(defs[0]!.start);
+  });
+
+  it('reports a half-typed definition without a closer', () => {
+    const [def] = widgets('{widget "Open"}{@children}');
+    expect(def).toMatchObject({ name: 'Open', block: true });
+    expect(def!.closeStart).toBeUndefined();
+  });
+
+  it('counts offsets in UTF-16 units across CRLF and multibyte text', () => {
+    const content = '\r\n😀 {widget "Wé😀" @p}x{/widget}';
+    const [def] = widgets(content);
+    expect(content.slice(def!.start, def!.end)).toBe('{widget "Wé😀" @p}');
+    expect(content.slice(def!.nameStart, def!.nameEnd)).toBe('Wé😀');
+    expect(content.slice(def!.closeStart)).toBe('{/widget}');
+  });
+
+  it('reads a {@children} in an attribute through the given macros', () => {
+    const content = '{widget "A"}{button "{@children}"}x{/button}{/widget}';
+    const macros = getMacroRegistry();
+    const [def] = widgetDefinitions(
+      [{ name: 'Widgets', tags: ['widget'], content }],
+      macros,
+    );
+    expect(def!.block).toBe(true);
+  });
+
+  it('parseWidgetDef reads the arguments alone', () => {
+    expect(parseWidgetDef('"Box" @a')).toEqual({ name: 'Box', params: ['@a'] });
   });
 });

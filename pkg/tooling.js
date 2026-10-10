@@ -37,6 +37,8 @@ export {
   stripLooseQuotes,
   unescapeQuoted,
   splitIncludeFlag,
+  parseWidgetDef,
+  widgetDefinitions,
 } from './story-variables.js';
 
 /**

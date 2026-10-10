@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tooling: every markup token says where its parts are: a macro's name and arguments, a link's label, a variable's name, an expression, the selectors, an HTML tag's name and each attribute's name, value and quote, as written (`attributeSpans`); a text token that is an HTML comment says so (#450).
 - Tooling: `passagePieces(source, macros?)` returns which parts of a passage are code, passage names, text with markup of its own and malformed arguments, with UTF-16 offsets into the source, also for the markup in labels and attribute values (and over the escapes of a quoted string: `pieceOffset`). The story-start check and `collectPassageReferences` read the same pieces, so the latter now also finds the passages named in labels (#451).
 
+- Tooling: `widgetDefinitions(passages, macros?)` lists the widgets a story defines as the runtime registers them (name, `@` parameters, whether the body renders `{@children}`, and the offsets of the opening tag, the name and the closer), tolerant of half-typed definitions; `parseWidgetDef(rawArgs)` is exported. The runtime's startup reads definitions with the same code (#462).
+
 ### Changed
 
 - **Breaking:** `{link}`'s target is a passage name as in `{goto}`: a quoted string or an expression, so `{link "Go" $dest}{/link}` navigates to the passage `$dest` names. A quoted name is checked when the story starts; an expression naming a missing passage shows an error in place.
@@ -23,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tab in a dialog steps through the segments of a native date, time, datetime-local, month or week input before moving on (#461), and enters the controls of an iframe, at its first (or last, with Shift) control, instead of its empty body (#460).
+- Dialogs have an accessible name: the built-in Saves and Settings dialogs their label, a story dialog its first heading, or else its passage name (#456).
+- A `{button}` or `{link}` click body made of plain macros is released once it has run, instead of being kept, with its detached nodes, until the control goes away; bodies that may still be working (a `{timed}`, a widget) are kept as before (#458).
+- An HTML comment in a table body or before a `<details>` summary no longer wraps the rows in paragraphs or hides the summary (#459).
+- `{type}` renders inline Markdown (`**bold**`, links, images) in its content (#455).
+- `{settings-controls}` follow changes made with `Story.settings.set()` and by other views (#454).
+- The CSS in a passage `<style>` keeps character-reference lookalikes as written (`?theme=dark&notch=1`, `content: "&amp;"`) (#453).
 - A save dialog open in another tab lists a save created, renamed, imported or deleted there, including one in no slot (#445).
 - Tab moves through the native controls of an `<audio controls>` or `<video controls>` in a dialog before moving on to the next control, instead of skipping them (#444).
 - A localStorage save that fails to store (a full quota) puts back its record and index entries, so no record is left that the save dialog cannot list and clearing the story cannot delete (#443).
