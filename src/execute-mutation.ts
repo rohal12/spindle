@@ -139,6 +139,22 @@ export function frozenCopy<T>(value: T): T {
   return freeze(cloneValue(value), true);
 }
 
+/**
+ * Whether a built-in's mutators can still change a frozen `value` (#473):
+ * Object.freeze() locks properties, not internal slots. Immer locks a Map or
+ * Set it freezes by overriding its mutators with own properties; a Date, URL
+ * or URLSearchParams has no such lock, and one frozen by hand has none either.
+ */
+function hasUnlockedSlots(value: object): boolean {
+  if (value instanceof Map) return !hasOwn(value, 'set');
+  if (value instanceof Set) return !hasOwn(value, 'add');
+  return (
+    value instanceof Date ||
+    value instanceof URL ||
+    value instanceof URLSearchParams
+  );
+}
+
 /** Whether `value` and everything it holds is frozen. */
 function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   if (typeof value !== 'object' || value === null || seen.has(value)) {
@@ -148,7 +164,7 @@ function deeplyFrozen(value: unknown, seen = new Set<object>()): boolean {
   // a write to them would change the store's recorded history (#429): a value
   // holding one is handed out as a copy, which keeps the buffers it shares
   if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return false;
-  if (!Object.isFrozen(value)) return false;
+  if (!Object.isFrozen(value) || hasUnlockedSlots(value)) return false;
   seen.add(value);
   // What a Map or Set holds is not in its properties (#388)
   if (value instanceof Map) {
