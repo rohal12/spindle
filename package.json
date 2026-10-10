@@ -45,6 +45,7 @@
     "dist/pkg/headless.js",
     "dist/pkg/story-variables.js",
     "dist/pkg/macro-registry.json",
+    "dist/pkg/macro-registry.js",
     "types",
     "src"
   ],

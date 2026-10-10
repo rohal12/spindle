@@ -43,48 +43,88 @@ export function withSelectors<T extends Selectors>(
   return target;
 }
 
+/**
+ * Where a part of a token is written: `xStart` up to `xEnd`, for the part
+ * named `x` (UTF-16 offsets into the input).
+ */
+export type Spans<Part extends string> = Record<
+  `${Part}Start` | `${Part}End`,
+  number
+>;
+
+/**
+ * Where the selectors of a token are written, without the space that may
+ * follow them. Both are absent for a token without selectors.
+ */
+export type SelectorSpan = Partial<Spans<'selectors'>>;
+
 /** Where a token is in the input: from `start` up to `end`. */
-interface Span {
+export interface Span {
   start: number;
   end: number;
 }
 
+/** A token that may start with `.class#id` selectors. */
+interface SelectorToken extends Span, Selectors, SelectorSpan {}
+
 export interface TextToken extends Span {
   type: 'text';
   value: string;
+  /** A closed HTML comment: markdown drops it, and so does raw rendering. */
+  comment?: true;
 }
 
-export interface LinkToken extends Span, Selectors {
+/** `display` is where the label is written, `target` the target. */
+export interface LinkToken
+  extends SelectorToken, Spans<'display'>, Spans<'target'> {
   type: 'link';
   display: string;
   target: string;
-  /** Where the target is written, from `targetStart` to `targetEnd`. */
-  targetStart: number;
-  targetEnd: number;
 }
 
-export interface MacroToken extends Span, Selectors {
+/**
+ * `name` is written after the `{`, the `/` and the selectors; `args`, where
+ * `rawArgs` is, is an empty span at `nameEnd` with no arguments.
+ */
+export interface MacroToken
+  extends SelectorToken, Spans<'name'>, Spans<'args'> {
   type: 'macro';
   name: string;
   rawArgs: string;
   isClose: boolean;
 }
 
-export interface VariableToken extends Span, Selectors {
+/** `name` is written without the sigil. */
+export interface VariableToken extends SelectorToken, Spans<'name'> {
   type: 'variable';
   name: string;
   scope: VariableScope;
 }
 
-export interface ExpressionToken extends Span, Selectors {
+/** `expression` is written after the `{` and the selectors. */
+export interface ExpressionToken extends SelectorToken, Spans<'expression'> {
   type: 'expression';
   expression: string;
 }
 
-export interface HtmlToken extends Span {
+/**
+ * An attribute of an HTML tag as it is written, in order. The value is
+ * written without its quotes, and absent with no `=`.
+ */
+export interface AttributeSpan extends Spans<'name'>, Partial<Spans<'value'>> {
+  name: string;
+  /** The quote around the value, if it has one. */
+  quote?: '"' | "'";
+}
+
+/** `tagName` is where the tag name is written. */
+export interface HtmlToken extends Span, Spans<'tagName'> {
   type: 'html';
   tag: string;
+  /** The attribute values by name; the first of equal names (any case). */
   attributes: Record<string, string>;
+  /** Every attribute as written, in order, duplicates included. */
+  attributeSpans: AttributeSpan[];
   isClose: boolean;
   isSelfClose: boolean;
 }

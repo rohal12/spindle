@@ -1,5 +1,5 @@
 import type { Passage } from './parser';
-import type { Token } from './markup/tokens';
+import type { Spans, Token } from './markup/tokens';
 import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
@@ -18,6 +18,7 @@ import {
 import { getMacroParameters, type ParameterDef } from './registry';
 import { NOT_MARKUP } from './markup/validate';
 import { createNamespace, variableNameError } from './utils/namespace';
+import { staticLiteral, type LiteralShape } from './static-literal';
 
 /**
  * The tokens of markup, or none if it is malformed: validateMarkup reports
@@ -102,32 +103,169 @@ function inferSchema(
   return { type: jsType as VarType };
 }
 
+/** What is wrong with a declaration (see DeclarationError). */
+export type DeclarationErrorCode =
+  | 'invalid-declaration'
+  | 'invalid-name'
+  | 'duplicate-declaration'
+  | 'unsupported-value';
+
+/**
+ * A declaration of a StoryVariables or StoryTransients passage: the name
+ * (without the sigil) and the initializer expression (without surrounding
+ * space) are written from `nameStart` to `nameEnd` and from `valueStart` to
+ * `valueEnd` (UTF-16 offsets).
+ */
+export interface Declaration extends Spans<'name'>, Spans<'value'> {
+  name: string;
+  /**
+   * The shape of the initializer when it is static: a literal, or an array or
+   * object literal of them (an object has the members that are static).
+   * Absent when it is not.
+   */
+  schema?: FieldSchema;
+}
+
+/**
+ * An invalid line of a StoryVariables or StoryTransients passage, from
+ * `offset` up to `end` (UTF-16 offsets into the content).
+ */
+export interface DeclarationError extends Record<'offset' | 'end', number> {
+  code: DeclarationErrorCode;
+  /** What is wrong, as parseStoryVariables throws it after the passage name. */
+  message: string;
+}
+
+const UNSUPPORTED_TYPE = 'Expected number, string, boolean, array, or object.';
+
+/** The schema of a literal shape (see staticLiteral). */
+function shapeSchema(shape: LiteralShape): FieldSchema {
+  if (!shape.fields) return { type: shape.type };
+  const fields = new Map<string, FieldSchema>();
+  for (const [key, member] of shape.fields)
+    fields.set(key, shapeSchema(member));
+  return { type: shape.type, fields };
+}
+
+/**
+ * Read the declarations of a StoryVariables (`$name = value`) or
+ * StoryTransients (`%name = value`) passage, without evaluating them and
+ * without throwing: every valid declaration, and every invalid line as an
+ * error. It is the grammar parseStoryVariables reads with.
+ *
+ * A declaration is a line of the form `$name = expression`; blank lines are
+ * skipped. A line that is not, and a name that cannot be a variable, are
+ * errors. So is an initializer that no variable can hold (a function,
+ * `undefined`), when it is a literal; whether any other initializer can only
+ * be known by running it. A name declared again is an error too, but both
+ * declarations are returned (the later wins when evaluated).
+ */
+export function parseDeclarations(
+  content: string,
+  sigil: '$' | '%' = '$',
+): { declarations: Declaration[]; errors: DeclarationError[] } {
+  const declarations: Declaration[] = [];
+  const errors: DeclarationError[] = [];
+  const DECLARATION_RE = declarationRegex(sigil);
+  const seen = new Set<string>();
+
+  let lineStart = 0;
+  for (const rawLine of content.split('\n')) {
+    const at = lineStart + rawLine.length - rawLine.trimStart().length;
+    lineStart += rawLine.length + 1;
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const match = line.match(DECLARATION_RE);
+    const error = (
+      code: DeclarationErrorCode,
+      start: number,
+      end: number,
+      message: string,
+    ) => errors.push({ code, offset: start, end, message });
+    if (!match) {
+      error(
+        'invalid-declaration',
+        at,
+        at + line.length,
+        `Invalid declaration: "${line}". Expected: ${sigil}name = value`,
+      );
+      continue;
+    }
+
+    const [, name, expr] = match as [string, string, string];
+    const nameStart = at + sigil.length;
+    const nameEnd = nameStart + name.length;
+    const nameError = variableNameError(name, sigil + name);
+    if (nameError) {
+      error('invalid-name', nameStart, nameEnd, nameError);
+      continue;
+    }
+    const valueEnd = at + line.length;
+    const declaration: Declaration = {
+      name,
+      nameStart,
+      nameEnd,
+      valueStart: valueEnd - expr.length,
+      valueEnd,
+    };
+    if (seen.has(name)) {
+      error(
+        'duplicate-declaration',
+        nameStart,
+        nameEnd,
+        `Duplicate declaration of ${sigil}${name}`,
+      );
+    }
+    seen.add(name);
+    const literal = staticLiteral(expr);
+    if (literal && 'shape' in literal) {
+      declaration.schema = shapeSchema(literal.shape);
+    } else if (literal) {
+      error(
+        'unsupported-value',
+        declaration.valueStart,
+        valueEnd,
+        `Unsupported type "${literal.unsupported}" for value ${expr}. ${UNSUPPORTED_TYPE}`,
+      );
+    }
+    declarations.push(declaration);
+  }
+  return { declarations, errors };
+}
+
 /**
  * Parse a StoryVariables or StoryTransients passage content into a schema map.
  * Each line: `$varName = expression` (or `%varName = expression` for transients)
+ * The expressions are evaluated; parseDeclarations reads the same lines
+ * without.
  */
 export function parseStoryVariables(
   content: string,
   sigil: '$' | '%' = '$',
 ): Map<string, VariableSchema> {
   const schema = new Map<string, VariableSchema>();
-  const DECLARATION_RE = declarationRegex(sigil);
   const passageName = sigil === '%' ? 'StoryTransients' : 'StoryVariables';
+  const { declarations, errors } = parseDeclarations(content, sigil);
 
-  for (const rawLine of content.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
+  // Lines in order: the first that is invalid, or that cannot be evaluated,
+  // is the error. What parseDeclarations reports about a value that is
+  // evaluated here is left to the evaluation (its wording is the runtime's).
+  const lines = [
+    ...errors
+      .filter(
+        (e) => e.code === 'invalid-declaration' || e.code === 'invalid-name',
+      )
+      .map((e) => ({ at: e.offset, error: e })),
+    ...declarations.map((d) => ({ at: d.nameStart, declaration: d })),
+  ].sort((a, b) => a.at - b.at);
 
-    const match = line.match(DECLARATION_RE);
-    if (!match) {
-      throw new Error(
-        `${passageName}: Invalid declaration: "${line}". Expected: ${sigil}name = value`,
-      );
+  for (const line of lines) {
+    if ('error' in line) {
+      throw new Error(`${passageName}: ${line.error.message}`);
     }
-
-    const [, name, expr] = match as [string, string, string];
-    const nameError = variableNameError(name, sigil + name);
-    if (nameError) throw new Error(`${passageName}: ${nameError}`);
+    const { name, valueStart, valueEnd } = line.declaration;
+    const expr = content.slice(valueStart, valueEnd);
     let value: unknown;
     try {
       value = new Function('return (' + expr + ')')();

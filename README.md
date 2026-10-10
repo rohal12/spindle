@@ -96,6 +96,9 @@ the job and extend it; most fixes then land in one place. The shared modules:
 | Sigils and scopes (`SIGIL_SCOPES`, `SCOPE_SIGILS`)       | `src/markup/tokens.ts`                                             |
 | Passage markup (`parseMarkup`, `tokenizeMarkup`)         | `src/markup/parse.ts` (grammar: `src/markup/spindle.peggy`)        |
 | Where code in `{…}` ends (`closeBrace`, `rawBodyEnd`)    | `src/markup/code-end.ts`                                           |
+| Which closer closes which opener (`pairMarkup`, the AST) | `src/markup/pair.ts` (`buildAst` in `src/markup/ast.ts`)           |
+| Code, passage names and markup text in a passage         | `src/code-check.ts` (`passagePiecesOf`)                            |
+| Declarations of `StoryVariables` (`parseDeclarations`)   | `src/story-variables.ts` (literals: `src/static-literal.ts`)       |
 | Reading story state / render contexts in components      | `src/hooks/use-story-fields.ts`, `src/hooks/use-render-options.ts` |
 | Save storage operations                                  | `src/saves/storage.ts` (`createBackend`)                           |
 | Listeners to notify (`createListeners`)                  | `src/utils/listeners.ts`                                           |

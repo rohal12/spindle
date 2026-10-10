@@ -65,12 +65,16 @@ export function astContainsChildren(
       return true;
     }
     if (node.type === 'html') {
-      const span = { start: 0, end: 0 };
+      // A token in name only: the scan reads its attribute values
       const tag: Token = {
         isClose: false,
         isSelfClose: false,
+        tagNameStart: 0,
+        tagNameEnd: 0,
+        attributeSpans: [],
         ...node,
-        ...span,
+        start: 0,
+        end: 0,
       };
       if (
         tokenTextContainsChildren(tag, parametersOf) ||
@@ -80,8 +84,16 @@ export function astContainsChildren(
       }
     }
     if (node.type === 'macro') {
-      const span = { start: 0, end: 0 };
-      const tag: Token = { isClose: false, ...node, ...span };
+      const tag: Token = {
+        isClose: false,
+        nameStart: 0,
+        nameEnd: 0,
+        argsStart: 0,
+        argsEnd: 0,
+        ...node,
+        start: 0,
+        end: 0,
+      };
       if (
         tokenTextContainsChildren(tag, parametersOf) ||
         astContainsChildren(node.children, parametersOf)

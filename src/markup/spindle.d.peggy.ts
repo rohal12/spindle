@@ -13,7 +13,7 @@ export declare class SyntaxError extends globalThis.SyntaxError {
 }
 
 export interface ParseOptions {
-  startRule: 'Markup' | 'Tokens' | 'SelectorsPrefix';
+  startRule: 'Tokens' | 'SelectorsPrefix';
   /** Text mode (attribute values, labels). */
   text: boolean;
   /** What the grammar leaves to code (see parse.ts MarkupHooks). */
@@ -21,7 +21,7 @@ export interface ParseOptions {
 }
 
 /**
- * Parse markup: the AST for `Markup`, the tokens for `Tokens`, the selectors
- * and where they end for `SelectorsPrefix`.
+ * Parse markup: the tokens for `Tokens`, the selectors and where they end for
+ * `SelectorsPrefix`.
  */
 export declare function parse(input: string, options: ParseOptions): unknown;
