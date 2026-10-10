@@ -684,11 +684,28 @@ function isBlankText(n: ASTNode): boolean {
   return n.type === 'text' && (n.comment === true || n.value.trim() === '');
 }
 
-/** The index of the summary element opening `nodes`, or -1 when none does. */
-function leadingSummaryIndex(nodes: ASTNode[]): number {
+/**
+ * The element a container must open with, to stay its direct child: the
+ * summary of a details element (#382), the legend of a fieldset (#475), whose
+ * first legend exempts the controls in it from the fieldset's `disabled`.
+ */
+const LEADING_PARTS: Record<string, string> = {
+  details: 'summary',
+  fieldset: 'legend',
+};
+
+/**
+ * The index of the node opening `nodes` as the leading part of the `tag`
+ * container, or -1 when none does: the element itself, or a macro, which may
+ * render it ({if}, {include}, a widget: #474).
+ */
+function leadingPartIndex(tag: string, nodes: ASTNode[]): number {
+  const part = LEADING_PARTS[tag];
   const at = nodes.findIndex((n) => !isBlankText(n));
   const first = nodes[at];
-  return first?.type === 'html' && first.tag.toLowerCase() === 'summary'
+  return part &&
+    (first?.type === 'macro' ||
+      (first?.type === 'html' && first.tag.toLowerCase() === part))
     ? at
     : -1;
 }
@@ -705,6 +722,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const inSvg = useContext(SvgContext);
   const tag = node.tag.toLowerCase();
   const isSvgRoot = tag === 'svg';
+  // The content of a foreignObject is HTML again (see below)
+  const isHtmlRoot = inSvg && tag === 'foreignobject';
+  const rawContent = inRaw && !isHtmlRoot;
   const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
   const errors: AttributeError[] = [];
   const resolved = Object.entries(node.attributes).map(([k, v]): Attribute => [
@@ -731,13 +751,13 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       children = node.children.map((n) =>
         n.type === 'text' ? n.value : renderSingleNode(n),
       );
-    } else if (inRaw || isRawRoot) {
+    } else if (rawContent || isRawRoot) {
       children = renderInlineNodes(node.children);
     } else {
-      // A details element's summary stays its direct child: it is rendered
-      // apart from the markdown of the rest of the content.
-      const summaryAt =
-        tag === 'details' ? leadingSummaryIndex(node.children) : -1;
+      // The summary of a details element and the legend of a fieldset stay
+      // its direct children: rendered apart from the markdown of the rest of
+      // the content.
+      const leadAt = leadingPartIndex(tag, node.children);
       const body = (nodes: ASTNode[]) =>
         renderNodes(nodes, { nobr, locals, inline: isInline });
       structural =
@@ -747,13 +767,13 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
         node.children
           .filter((n) => n.type !== 'text')
           .map((n) => renderSingleNode(n))
-      ) : summaryAt === -1 ? (
+      ) : leadAt === -1 ? (
         body(node.children)
       ) : (
         <>
-          {body(node.children.slice(0, summaryAt))}
-          {renderSingleNode(node.children[summaryAt]!)}
-          {body(node.children.slice(summaryAt + 1))}
+          {body(node.children.slice(0, leadAt))}
+          {renderSingleNode(node.children[leadAt]!)}
+          {body(node.children.slice(leadAt + 1))}
         </>
       );
       if (isInline !== parentInline) {
@@ -772,10 +792,15 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       }
     }
   }
-  // The content of a foreignObject is HTML again, with HTML attributes
-  if (inSvg && tag === 'foreignobject' && children) {
+  // The content of a foreignObject is HTML again: HTML attributes, and
+  // markdown, for the content of macros and widgets in it too (#477)
+  if (isHtmlRoot && children) {
     children = (
-      <SvgContext.Provider value={false}>{children}</SvgContext.Provider>
+      <SvgContext.Provider value={false}>
+        <RawTextContext.Provider value={false}>
+          {children}
+        </RawTextContext.Provider>
+      </SvgContext.Provider>
     );
   }
   let element = h(node.tag, props, children);

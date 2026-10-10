@@ -64,6 +64,19 @@ function stopWithErrors(errors: string[]): never {
 }
 
 /**
+ * The result of `parse`, or, when it throws, the error shown on the page
+ * instead of the story (a declaration that does not evaluate, a widget passage
+ * that does not parse), prefixed with `where` when that is not in the message.
+ */
+function orStop<T>(parse: () => T, where = ''): T {
+  try {
+    return parse();
+  } catch (err) {
+    return stopWithErrors([where + errorMessage(err)]);
+  }
+}
+
+/**
  * The undeclared variables the passages refer to, with the macros known now:
  * the input macros that bind a variable (registered by author JS or
  * StoryInit) and the roles of their parameters decide what is a reference.
@@ -149,12 +162,14 @@ export function boot() {
     throw new Error(`spindle: ${msg}`);
   }
 
-  const schema = parseStoryVariables(storyVarsPassage.content);
+  const schema = orStop(() => parseStoryVariables(storyVarsPassage.content));
   // Pass 1: Register the block widgets as block macros BEFORE any passage
   // is parsed (validation and StoryInit included), so that passages
   // invoking block widgets and widget bodies using other block widgets
   // parse correctly regardless of passage or definition order.
-  for (const name of blockWidgetNames(storyData.passages.values())) {
+  for (const name of orStop(() =>
+    blockWidgetNames(storyData.passages.values()),
+  )) {
     registerBlockMacro(name);
   }
 
@@ -167,9 +182,8 @@ export function boot() {
   let transientDefaults: Record<string, unknown> = {};
   const storyTransientsPassage = storyData.passages.get('StoryTransients');
   if (storyTransientsPassage) {
-    const transientSchema = parseStoryVariables(
-      storyTransientsPassage.content,
-      '%',
+    const transientSchema = orStop(() =>
+      parseStoryVariables(storyTransientsPassage.content, '%'),
     );
 
     // Check for cross-scope name collisions
@@ -198,7 +212,11 @@ export function boot() {
   // before StoryInit runs so that it can invoke them
   for (const [, passage] of storyData.passages) {
     if (passage.tags.includes('widget')) {
-      registerWidgetDefinitions(parseMarkup(passage.content), passage.name);
+      orStop(
+        () =>
+          registerWidgetDefinitions(parseMarkup(passage.content), passage.name),
+        `Passage "${passage.name}": `,
+      );
     }
   }
 

@@ -627,4 +627,76 @@ describe('Story.get inside mutation code', () => {
     const story = (globalThis as Record<string, any>).Story;
     expect(story.get('obj')).toBe(state().variables.obj);
   });
+
+  // Object.freeze() cannot lock the internal slots of a Date or URL (#473)
+  describe.each([
+    [
+      'a Date',
+      () => new Date('2025-01-01T00:00:00Z'),
+      (v: Date) => v.setFullYear(2030),
+      (v: Date) => v.getFullYear(),
+      2025,
+    ],
+    [
+      'a URL',
+      () => new URL('https://example.com/a'),
+      (v: URL) => {
+        v.pathname = '/b';
+      },
+      (v: URL) => v.pathname,
+      '/a',
+    ],
+    [
+      'a Map',
+      () => new Map([['k', 1]]),
+      (v: Map<string, number>) => v.set('k', 2),
+      (v: Map<string, number>) => v.get('k'),
+      1,
+    ],
+    [
+      'a Set',
+      () => new Set([1]),
+      (v: Set<number>) => v.add(2),
+      (v: Set<number>) => v.size,
+      1,
+    ],
+    [
+      'a URLSearchParams',
+      () => new URLSearchParams('a=1'),
+      (v: URLSearchParams) => v.set('a', '2'),
+      (v: URLSearchParams) => v.get('a'),
+      '1',
+    ],
+  ] as const)('a pre-frozen %s', (_name, make, mutate, read, original) => {
+    const story = () => (globalThis as Record<string, any>).Story;
+
+    it('is copied by Story.get, so a write to the read cannot reach the store', () => {
+      const value = Object.freeze(make());
+      story().set('stamp', value);
+      const got = story().get('stamp');
+      expect(got).not.toBe(value);
+      try {
+        (mutate as (v: unknown) => void)(got);
+      } catch {
+        // a frozen copy may refuse the write instead
+      }
+      expect((read as (v: unknown) => unknown)(story().get('stamp'))).toBe(
+        original,
+      );
+    });
+
+    it('is copied when nested in a frozen object', () => {
+      const holder = Object.freeze({ at: Object.freeze(make()) });
+      story().set('holder', holder);
+      const got = story().get('holder');
+      try {
+        (mutate as (v: unknown) => void)(got.at);
+      } catch {
+        // a frozen copy may refuse the write instead
+      }
+      expect((read as (v: unknown) => unknown)(story().get('holder').at)).toBe(
+        original,
+      );
+    });
+  });
 });
