@@ -6,6 +6,7 @@
  * Tooling runs it too (see src/tooling.ts).
  */
 import {
+  analyzeMarkup,
   lineColumn,
   MarkupError,
   parseMarkup,
@@ -102,6 +103,14 @@ export interface MarkupValidationOptions {
    * and attributes is checked.
    */
   parametersOf?: ParametersOf;
+  /**
+   * Report every problem of a passage (default: false). By default a
+   * passage is read only up to its first malformed tag or unpaired tag, which
+   * is enough to refuse to start the story. With this, malformed tags and
+   * unpaired tags are all reported, and the macros, code, arguments and
+   * passage names are checked in the markup that could be read.
+   */
+  tolerant?: boolean;
 }
 
 /**
@@ -241,20 +250,32 @@ export function validateMarkup(
   const parsed: [MarkupPassage, Token[]][] = [];
   const widgets = new Set<string>();
   const passageNames = new Set<string>();
+  const addWidgets = (tokens: readonly Token[]) => {
+    for (const token of tokens) {
+      if (token.type !== 'macro' || token.isClose) continue;
+      if (token.name.toLowerCase() !== 'widget') continue;
+      const name = widgetName(token.rawArgs);
+      if (name) widgets.add(name);
+    }
+  };
   for (const passage of passages) {
     passageNames.add(passage.name);
     if (NOT_MARKUP.has(passage.name)) continue;
     if (passage.tags?.some((tag) => NOT_MARKUP_TAGS.includes(tag))) continue;
     const reported = !options.only || options.only(passage);
+    if (options.tolerant) {
+      // Every problem, and the tokens that could be read around them
+      const { tokens, errors } = analyzeMarkup(passage.content, { hooks });
+      addWidgets(tokens);
+      if (!reported) continue;
+      for (const err of errors) reportError(passage, err, '');
+      parsed.push([passage, tokens]);
+      continue;
+    }
     try {
       // The tokens first: they don't depend on which macros take a body
       const tokens = tokenizeMarkup(passage.content);
-      for (const token of tokens) {
-        if (token.type !== 'macro' || token.isClose) continue;
-        if (token.name.toLowerCase() !== 'widget') continue;
-        const name = widgetName(token.rawArgs);
-        if (name) widgets.add(name);
-      }
+      addWidgets(tokens);
       if (!reported) continue;
       parseMarkup(passage.content, { hooks });
       parsed.push([passage, tokens]);

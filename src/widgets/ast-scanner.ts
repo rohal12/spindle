@@ -31,12 +31,15 @@ function textContainsChildren(
  * Whether a tag renders a `{@children}` in an attribute value or a macro
  * argument that holds markup (`<span title="{@children}">`,
  * `{button "{@children}"}`). Literal arguments and code are not markup.
+ * `src` is the text a flat token's offsets index into (its attribute values
+ * are read from it); a token made from an AST has none.
  */
 export function tokenTextContainsChildren(
   token: Token,
   parametersOf: ParametersOf = registeredParameters,
+  src = '',
 ): boolean {
-  for (const piece of codeAndText('', [token], parametersOf)) {
+  for (const piece of codeAndText(src, [token], parametersOf)) {
     if (
       piece.kind === 'text' &&
       textContainsChildren(piece.text, parametersOf)

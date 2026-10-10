@@ -113,7 +113,24 @@ const _toolingTypes: [
     typeof SourceTooling.collectStoryPassageReferences,
     typeof PublishedTooling.collectStoryPassageReferences
   >,
+  Same<
+    typeof SourceTooling.variableReferences,
+    typeof PublishedTooling.variableReferences
+  >,
+  Same<SourceTooling.DiscoveredMacro, PublishedTooling.DiscoveredMacro>,
+  Same<
+    typeof SourceTooling.discoverMacros,
+    typeof PublishedTooling.discoverMacros
+  >,
+  Same<
+    SourceTooling.ValidateMarkupOptions,
+    PublishedTooling.ValidateMarkupOptions
+  >,
 ] = [
+  true,
+  true,
+  true,
+  true,
   true,
   true,
   true,

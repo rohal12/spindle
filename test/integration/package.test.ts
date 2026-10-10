@@ -139,6 +139,7 @@ describe('@rohal12/spindle/tooling', async () => {
       'parseWidgetDef',
       'widgetDefinitions',
       'variableReferences',
+      'discoverMacros',
       'validateVariableReferences',
     ]) {
       expect(typeof tooling[name], name).toBe('function');

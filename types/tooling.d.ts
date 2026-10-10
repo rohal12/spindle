@@ -212,6 +212,14 @@ export interface ValidateMarkupOptions {
    * only part of a story.
    */
   checkPassageNames?: boolean;
+  /**
+   * Report every problem of a passage, not only the first malformed or
+   * unpaired tag (default: `false`, which is the story-start check). The
+   * macros, code, arguments and passage names are checked in the markup that
+   * could be read around the malformed tags, so an unclosed `{if}` does not
+   * hide the unknown macro, broken link and bad expression after it.
+   */
+  tolerant?: boolean;
 }
 
 /**
@@ -723,10 +731,17 @@ export interface VariableDiagnostic {
  * The variable references the markup of a passage evaluates, in source order,
  * with their positions. Malformed tags are skipped. The macros are those the
  * markup may use (`builtinMacros` and the user-defined ones).
+ *
+ * These are the references the story start checks. With `all: true` the list
+ * is complete (the checked ones are among it, in source order): it also has
+ * the variable a macro names in a `variable` parameter, such as the target of
+ * `{unset}` and `{computed}`, and the `{$name}` in the selectors of a link,
+ * display or expression (`[[.c{$name} Go->T]]`).
  */
 export declare function variableReferences(
   source: string,
   macros?: Iterable<ToolingMacro>,
+  options?: { all?: boolean },
 ): VariableReference[];
 
 /**
@@ -1010,7 +1025,8 @@ export type DeclarationErrorCode =
   | 'invalid-declaration'
   | 'invalid-name'
   | 'duplicate-declaration'
-  | 'unsupported-value';
+  | 'unsupported-value'
+  | 'syntax';
 
 /** A declaration of a `StoryVariables` or `StoryTransients` passage. */
 export interface Declaration {
@@ -1050,11 +1066,43 @@ export interface DeclarationError {
  * `null` literals (also signed numbers), arrays of them, and objects with
  * identifier, string or number keys and static values. The `schema` of an
  * array is `{ type: 'array' }`, as `parseStoryVariables` makes it. Anything
- * else (`Math.PI`, `new Date()`, `1 + 2`, a reference, a spread, a computed
- * key) has no `schema`, and is no error: only a value that no variable can
- * hold is, a function (`function`, `=>`, `class`) or `undefined`.
+ * else (`Math.PI`, `new Date()`, `1 + 2`, a reference) has no `schema`, and
+ * is no error. An object with a spread, a computed key, a shorthand member or
+ * an accessor has the fields written after it (an earlier one can be replaced).
+ *
+ * The errors are those of the runtime's evaluation: a syntax error, and a
+ * literal that no variable can hold (a function, `undefined` or `void 0`, a
+ * BigInt) or whose evaluation throws (`+1n`). A message names the value as
+ * the runtime does.
  */
 export declare function parseDeclarations(
   content: string,
   sigil?: '$' | '%',
 ): { declarations: Declaration[]; errors: DeclarationError[] };
+
+// ---------------------------------------------------------------------------
+// Macro definitions in JavaScript
+// ---------------------------------------------------------------------------
+
+/** A macro that a `defineMacro` call declares, and where its name is written. */
+export interface DiscoveredMacro extends ToolingMacro {
+  merged?: boolean;
+  description?: string;
+  /** The name as written, without quotes: `[nameStart, nameEnd)` UTF-16 offsets. */
+  nameStart: number;
+  nameEnd: number;
+}
+
+/**
+ * The macros the `defineMacro({ … })` and `Story.defineMacro({ … })` calls in
+ * `source` (JavaScript: a script passage, the body of a `{do}`, a project
+ * file) declare, in source order, read from the text without running it. A
+ * call whose config is an object literal (or a variable declared as one) and
+ * whose `name` is a string is found, wherever it is. Only what is written
+ * out is read: `block`, `interpolate`, `storeVar` and `merged` as boolean
+ * literals, the strings of `subMacros`, and `parameters` when every one is
+ * an object literal with a string `name` and `type`; a list with a parameter
+ * that is not, or that `defineMacro` would refuse, declares none. It never
+ * throws.
+ */
+export declare function discoverMacros(source: string): DiscoveredMacro[];

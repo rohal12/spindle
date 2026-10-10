@@ -101,7 +101,7 @@ diagnostics.map(formatDiagnostic);
 // ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
 ```
 
-Each diagnostic has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (see [Diagnostics](tooling.md#diagnostics)). Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)). To check only some passages, pass `{ checkPassageNames: false }` as the second argument; everything else is still checked.
+Each diagnostic has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (see [Diagnostics](tooling.md#diagnostics)). Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)). To check only some passages, pass `{ checkPassageNames: false }` as the second argument; everything else is still checked. A passage is read up to its first malformed or unpaired tag, as at startup; `{ tolerant: true }` reports every problem (see [Tooling API](tooling.md#stateless-checks-and-the-built-in-macros)).
 
 ## `StoryInterface`
 

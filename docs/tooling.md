@@ -86,7 +86,7 @@ const { nodes, errors } = pairMarkup(tokens, { source });
 
 `validateMarkup(passages, options)` and `collectPassageReferences(source)` read the process-global registry, which only `defineMacro` can add to. A host that analyses several projects in one process (a language server with workspace folders) would leak macros between them. For that, use the functions that take the macros and keep no state:
 
-- `validateStoryMarkup(passages, macros, options?)` is `validateMarkup` against `macros`.
+- `validateStoryMarkup(passages, macros, options?)` is `validateMarkup` against `macros`. The options are `checkPassageNames` and `tolerant`: the story-start check reads a passage up to its first malformed or unpaired tag, which is enough to refuse to start. An editor wants every problem at once, so with `tolerant: true` all the malformed tags and pairing errors of a passage are reported (with the same codes, messages and spans), and the unknown macros, syntax errors in code, argument errors and unknown passage names are checked in the markup that could be read around them: an unclosed `{if}` on line 3 doesn't hide the unknown macro on line 5, the broken link on line 7 and the bad expression on line 9. Without the option nothing changes.
 - `collectStoryPassageReferences(source, macros)` is `collectPassageReferences` against `macros`.
 - `passagePieces(source, macros?)` as above.
 - `builtinMacros` is the list of built-in macros (a frozen array of the metadata `getMacroRegistry()` starts with), loaded without `fs`: a bundler (esbuild, rollup) inlines it. A macro is `{ name, block, subMacros, parameters?, interpolate? }` (`ToolingMacro`); the metadata `getMacroRegistry()` returns has all of it.
@@ -103,7 +103,7 @@ validateStoryMarkup(otherProjectsPassages, builtinMacros); // no `alert` here
 
 `widgetDefinitions(passages, macros?)` lists the widgets a story defines as the runtime registers them: those of `StoryInit` and of the passages tagged `widget`, in source order. Each is a `WidgetDefinition`:
 
-- `name`, `params` (the `@` parameters, as `{widget "Name" @a @b}` declares them) and `block`: whether its body renders `{@children}`. It is decided on tokens, so a `{@children}` in an HTML comment or a `{do}` body does not count, while one in an attribute value or a label does. In nested definitions it belongs to the innermost.
+- `name`, `params` (the `@` parameters, as `{widget "Name" @a @b}` declares them, separated by spaces or commas: `@a, @b` is the same) and `block`: whether its body renders `{@children}`. It is decided on tokens, so a `{@children}` in an HTML comment or a `{do}` body does not count, while one in an attribute value or a label does. In nested definitions it belongs to the innermost.
 - `passage`, and as `[start, end)` UTF-16 offsets into its content: the opening `{widget …}` tag (`start`, `end`), the name as written without quotes (`nameStart`, `nameEnd`) and the `{/widget}` closer (`closeStart`, absent while the definition is not closed).
 
 It is tolerant: a half-typed definition is reported without `closeStart`, one whose arguments cannot be read is left out. `macros` is the list `validateStoryMarkup` takes, for the parameters that hold markup. `parseWidgetDef(rawArgs)` reads the arguments alone (`{ name, params }`). The runtime's startup, `validateStoryMarkup` and these exports read definitions with the same code.
@@ -126,7 +126,9 @@ const [def] = widgetDefinitions(
 
 ## Variable references
 
-`variableReferences(source, macros?)` returns every `$` and `%` variable reference a passage's markup evaluates, in source order, as `{ sigil, name, path, start, end }`: `$a.b.c` is `name: 'a'`, `path: ['b', 'c']`, and `[start, end)` are UTF-16 offsets into `source`. They are found where the story start looks for them: `{$var}` displays, expressions, conditions, `{do}` bodies and the code arguments of macros (by their declared parameters, so `{set}` targets count), the quoted names input macros bind (`{textbox "$name"}`; pass the macros with `storeVar`), and the markup in labels, selectors and HTML attributes. Strings, comments, property names and prose hold none; `_` and `@` locals are never variables. The path is the dotted part only: `$a?.b` and `$a["b"]` give `$a`. The target of `{unset}` is not a reference, as the story start does not check it. Malformed tags are skipped.
+`variableReferences(source, macros?)` returns every `$` and `%` variable reference a passage's markup evaluates, in source order, as `{ sigil, name, path, start, end }`: `$a.b.c` is `name: 'a'`, `path: ['b', 'c']`, and `[start, end)` are UTF-16 offsets into `source`. They are found where the story start looks for them: `{$var}` displays, expressions, conditions, `{do}` bodies and the code arguments of macros (by their declared parameters, so `{set}` targets count), the quoted names input macros bind (`{textbox "$name"}`; pass the macros with `storeVar`), and the markup in labels, selectors and HTML attributes. Strings, comments, property names and prose hold none; `_` and `@` locals are never variables. The path is the dotted part only: `$a?.b` and `$a["b"]` give `$a`. The target of `{unset}` and `{computed}` and a `{$name}` in the selectors of a link, display or expression are not in the list, as the story start does not check them. Malformed tags are skipped.
+
+`variableReferences(source, macros, { all: true })` returns the complete list, for rename and find-references: the checked references above, in source order, and also the variable a macro names in a `variable` parameter (the target of `{unset $x}` and `{computed $x = …}`; the quoted names input macros bind are in the checked list already) and the `{$name}` in the selectors of a link (`[[.c{$name} Go->T]]`), display or expression. `validateVariableReferences` checks the first list only.
 
 `validateVariableReferences(passages, declarations, macros?)` checks them, as the story start does, and returns `VariableDiagnostic`s: `{ passage, code, name, path?, start, end, message }`, with offsets into the passage's content and the story start's `message`.
 
@@ -150,6 +152,31 @@ validateVariableReferences(
   builtinMacros,
 );
 // [{ passage: 'Start', code: 'undeclared-variable', name: 'maxHp', start: 13, end: 19, message: 'Undeclared variable: $maxHp' }]
+```
+
+## Macro definitions
+
+`discoverMacros(source)` reads what the `defineMacro({ … })` and `Story.defineMacro({ … })` calls in JavaScript declare, without running it: a script passage, the body of a `{do}` (such as `StoryInit`'s), a project file. It is for editors, which need the metadata of custom macros (the typed `parameters` are what lets `passagePieces` find code in a macro's arguments) before anything runs. It returns, in source order, a `DiscoveredMacro` for each call: a `ToolingMacro` (`name`, `block`, `subMacros`, `parameters?`, `interpolate?`, `storeVar?`, so it can go to `validateStoryMarkup` and `passagePieces`) with `merged?`, `description?` and where the name is written without its quotes, `[nameStart, nameEnd)` UTF-16 offsets into `source`, for go-to-definition.
+
+It is static and tolerant, and throws for nothing. A call is found where it is written (also in a function), when its argument is an object literal, or a variable declared as one with `const`, `let` or `var`, and its `name` is a string. Of that object it reads only what is written out: `block`, `interpolate`, `storeVar` and `merged` as `true` or `false`, `description`, the strings of `subMacros` (`block` defaults as `defineMacro` does: a macro with sub-macros is a block unless `block: false`) and `parameters`, when every parameter is an object literal with a string `name` and `type` (and, as written, `required`, `description`, `holds` and the `parameters` of an `options` one). If one is not, or `defineMacro` would refuse it (an unknown `type`), the macro declares no `parameters`. Calls in comments and strings, text that is not a call, and a `name` that is not a string are skipped.
+
+```js
+import {
+  discoverMacros,
+  validateStoryMarkup,
+  builtinMacros,
+} from '@rohal12/spindle/tooling';
+
+const macros = discoverMacros(`
+  Story.defineMacro({
+    name: 'alert',
+    block: true,
+    parameters: [{ name: 'level', type: 'expression' }],
+    render: (props, ctx) => ctx.h('div', null, ctx.renderNodes(props.children)),
+  });
+`);
+// [{ name: 'alert', block: true, subMacros: [], parameters: [...], nameStart: 29, nameEnd: 34 }]
+validateStoryMarkup(passages, [...builtinMacros, ...macros]);
 ```
 
 ## Diagnostics
@@ -181,8 +208,10 @@ A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, beside
 `parseDeclarations(content, sigil?)` reads a `StoryVariables` (or, with `'%'`, `StoryTransients`) passage without evaluating the initializers and without throwing: `{ declarations, errors }`. `parseStoryVariables` reads with the same grammar, and then evaluates.
 
 - A `Declaration` is `{ name, nameStart, nameEnd, valueStart, valueEnd, schema? }`: the name (without the sigil) and the initializer expression (without the space around it) as `[start, end)` UTF-16 offsets into `content`. One bad line doesn't hide the rest.
-- `schema` (`{ type, fields? }`) is there when the initializer is static: a `number` (also signed, hex, `NaN`, `Infinity`), `string` (also a template without `${}`), `boolean` or `null` literal, an array literal (`{ type: 'array' }`, as `parseStoryVariables` makes it), or an object literal, whose `fields` are its members with an identifier, string or number key and a static value (a spread, a computed key, a shorthand member or a member that is not static is left out). Anything else (`Math.PI`, `new Date()`, `1 + 2`, a reference) has no `schema`, and is no error: its value is only known by running it.
-- An error is `{ code, offset, end, message }`: `invalid-declaration` (a line that is not `$name = value`), `invalid-name` (a name no variable can have), `duplicate-declaration` (both declarations are returned; the later wins when evaluated) and `unsupported-value` (an initializer that is a literal no variable can hold: a function, `undefined`, a BigInt).
+- `schema` (`{ type, fields? }`) is there when the initializer is static: a `number` (also signed, hex, `NaN`, `Infinity`), `string` (also a template without `${}`), `boolean` or `null` literal, an array literal (`{ type: 'array' }`, as `parseStoryVariables` makes it), or an object literal, whose `fields` are its members with an identifier, string or number key (a number as the runtime names it: `0x10` is `16`) and a static value. A member that is not static (a call, a reference) has no field, and neither has a name that a later member can replace: a member that is not static, a shorthand member, a computed key, an accessor or a spread takes away the fields written before it (`{ a: 1, ...x }` has none; `{ ...x, a: 1 }` has `a`), and of equal keys the last counts. Anything else (`Math.PI`, `new Date()`, `1 + 2`, a reference) has no `schema`, and is no error: its value is only known by running it.
+- An error is `{ code, offset, end, message }`: `invalid-declaration` (a line that is not `$name = value`), `invalid-name` (a name no variable can have), `duplicate-declaration` (both declarations are returned; the later wins when evaluated), `unsupported-value` and `syntax`.
+  - `unsupported-value` is an initializer that is a literal no variable can hold, wherever it is in an object that is static: a function (`function`, `=>`, `class`, a method), `undefined` (also `void 0`) or a BigInt (`10n`), and a literal whose evaluation throws (`+1n`). Its `message` is what `parseStoryVariables` throws after the passage name: it names the value the runtime finds (`Unsupported type "undefined" for value undefined.` for `{ a: { b: undefined } }`), not the initializer. Only the final value of a key counts (`{ a: undefined, a: 1 }` is fine), and a call (`function () { return 1 }()`) is a value that is only known by running it.
+  - `syntax` is an initializer that the runtime cannot compile (`(1`, `1 2`, `{ a: 1 b: 2 }`). `offset` is the problem, `end` the next character (for an unexpected end, the last character), and the `message` that of the parser (the runtime's wording differs). The declaration is returned, without a `schema`.
 
 ```js
 import { parseDeclarations } from '@rohal12/spindle/tooling';
