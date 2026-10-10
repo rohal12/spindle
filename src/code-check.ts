@@ -331,17 +331,13 @@ export function* codeAndText(
           );
           continue;
         }
-        let from = 0;
-        for (const part of splitSigilTemplate(value)) {
-          if (!('expr' in part)) continue;
-          const k = locate(value, part.expr, from);
-          from = k + part.expr.length;
+        for (const { expr, at: k } of sigilExpressions(value)) {
           yield {
             kind: 'code',
-            code: part.expr,
+            code: expr,
             offset: at + k,
             goal: 'expression',
-            label: `{${part.expr}} in the ${name} attribute of <${token.tag}>`,
+            label: `{${expr}} in the ${name} attribute of <${token.tag}>`,
           };
         }
       }
@@ -652,7 +648,7 @@ const textPiece = (text: string, offset: number, where: string): TextPiece => ({
  * value is: the first of equal names, which is the one in effect. A token
  * with no spans (made from an AST) has them found in `src`, in order.
  */
-function attributeValues(
+export function attributeValues(
   src: string,
   token: HtmlToken,
 ): { name: string; value: string; at: number }[] {
@@ -681,10 +677,28 @@ function attributeValues(
 }
 
 /**
+ * The `{$…}` expressions in the value of a code attribute (`onclick`, see
+ * isCodeAttribute), with where each is in the value.
+ */
+export function sigilExpressions(
+  value: string,
+): { expr: string; at: number }[] {
+  const found = [];
+  let from = 0;
+  for (const part of splitSigilTemplate(value)) {
+    if (!('expr' in part)) continue;
+    const at = locate(value, part.expr, from);
+    from = at + part.expr.length;
+    found.push({ expr: part.expr, at });
+  }
+  return found;
+}
+
+/**
  * Index of `part` in `text` from `from` on, else anywhere, else `from`: the
  * place to report an error in `part` at.
  */
-function locate(text: string, part: string, from: number): number {
+export function locate(text: string, part: string, from: number): number {
   const at = text.indexOf(part, from);
   if (at >= 0) return at;
   const anywhere = text.indexOf(part);

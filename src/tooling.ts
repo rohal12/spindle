@@ -24,9 +24,22 @@ import {
   widgetDefinitions as readWidgetDefinitions,
   type WidgetDefinition,
 } from './widgets/widget-def';
+import {
+  checkVariableReferences,
+  collectVariableReferences,
+  type VariableDeclarations,
+  type VariableDiagnostic,
+  type VariableReference,
+} from './story-variables';
 import type { ParameterDef } from './registry';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
+export type {
+  VariableDeclarations,
+  VariableDiagnostic,
+  VariableDiagnosticCode,
+  VariableReference,
+} from './story-variables';
 export type {
   Declaration,
   DeclarationError,
@@ -136,6 +149,8 @@ export interface ToolingMacro {
   parameters?: readonly ParameterDef[];
   /** Whether it resolves markup: its strings hold markup by default. */
   interpolate?: boolean;
+  /** Whether its first argument names the story variable it binds. */
+  storeVar?: boolean;
 }
 
 /**
@@ -230,4 +245,56 @@ export function widgetDefinitions(
   macros: Iterable<ToolingMacro> = [],
 ): WidgetDefinition[] {
   return readWidgetDefinitions(passages, parameterLookup([...macros]));
+}
+
+/** Passages tagged so hold code or styles, not markup. */
+const NOT_MARKUP_TAGS = ['script', 'stylesheet'];
+
+/** What reading the variable references of markup depends on. */
+function referenceOptions(macros: Iterable<ToolingMacro>) {
+  const all = [...macros];
+  return {
+    storeVarMacros: new Set(
+      all.filter((m) => m.storeVar).map((m) => m.name.toLowerCase()),
+    ),
+    parametersOf: parameterLookup(all),
+    tolerant: true,
+  };
+}
+
+/**
+ * The `$` and `%` variable references that the markup of a passage evaluates,
+ * in source order, with the dotted path of fields accessed and where each is
+ * written (offsets into `source`, UTF-16): `{$var}` displays, code in
+ * expressions, conditions, `{do}` bodies and macro arguments, quoted names
+ * bound by input macros, and the markup in labels and HTML attributes. Prose
+ * is literal text. Malformed tags are skipped, so it reads half-typed markup.
+ * The macros are those the markup may use, built-in and user-defined.
+ */
+export function variableReferences(
+  source: string,
+  macros: Iterable<ToolingMacro> = [],
+): VariableReference[] {
+  return collectVariableReferences(source, referenceOptions(macros));
+}
+
+/**
+ * The variable references of the passages' markup that are not valid against
+ * the declarations, as the story start checks them: a variable (or, when
+ * `transients` is given, a transient) that is not declared, and a field of a
+ * primitive that it has no member of. Built on `variableReferences`:
+ * tolerant of half-typed markup, and it evaluates no project code.
+ */
+export function validateVariableReferences(
+  passages: Iterable<MarkupPassage>,
+  declarations: VariableDeclarations,
+  macros: Iterable<ToolingMacro> = [],
+): VariableDiagnostic[] {
+  return checkVariableReferences(
+    [...passages].filter(
+      (p) => !p.tags?.some((t) => NOT_MARKUP_TAGS.includes(t)),
+    ),
+    declarations,
+    referenceOptions(macros),
+  );
 }
