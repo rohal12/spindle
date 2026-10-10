@@ -253,6 +253,12 @@ describe('Tab in a dialog', () => {
   it('enters the controls of an iframe (#460)', async () => {
     await open('dialogIframe');
     await page.click('button:has-text("Open")');
+    await page.waitForFunction(
+      () =>
+        !!document
+          .querySelector<HTMLIFrameElement>('#frame')
+          ?.contentDocument?.getElementById('inside2'),
+    );
     const active = () =>
       page.evaluate(() => {
         const frame = document.querySelector<HTMLIFrameElement>('#frame')!;
