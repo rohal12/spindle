@@ -1288,7 +1288,7 @@ describe('SaveManagerContent', () => {
       const callsBefore = clearSpy.mock.calls.length;
 
       // Unmount the component
-      render(null, container);
+      act(() => render(null, container));
 
       // clearTimeout should have been called at least once more on unmount
       expect(clearSpy.mock.calls.length).toBeGreaterThan(callsBefore);

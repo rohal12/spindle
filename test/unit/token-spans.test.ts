@@ -176,8 +176,7 @@ describe('tolerant tokens carry the same spans (#450)', () => {
     const { tokens, errors } = tokenizeMarkupTolerant(src);
     expect(errors).toHaveLength(1);
     const html = tokens.find((t) => t.type === 'html' && !t.isClose) as
-      | HtmlToken
-      | undefined;
+      HtmlToken | undefined;
     expect(slice(src, html!.tagNameStart, html!.tagNameEnd)).toBe('a');
     const [b, c] = html!.attributeSpans;
     expect(slice(src, b!.valueStart, b!.valueEnd)).toBe('1');

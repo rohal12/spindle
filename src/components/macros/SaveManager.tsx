@@ -112,8 +112,8 @@ export function SaveManagerContent() {
   // Actions are async and may finish after the manager closed: once
   // unmounted, no status is shown and no timer is left behind.
   const mounted = useRef(true);
-  const statusTimer = useRef<number>();
-  const closeTimer = useRef<number>();
+  const statusTimer = useRef<number | undefined>(undefined);
+  const closeTimer = useRef<number | undefined>(undefined);
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
     if (!mounted.current) return;
     clearTimeout(statusTimer.current);

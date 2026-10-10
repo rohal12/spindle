@@ -344,8 +344,7 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
 
 /** What a `passage` argument is: a quoted name, or an expression. */
 export type PassageTarget =
-  | { kind: 'name'; name: string }
-  | { kind: 'expression'; expression: string };
+  { kind: 'name'; name: string } | { kind: 'expression'; expression: string };
 
 /**
  * Read a `passage` argument as written (`{goto "Hall"}`, `{goto $room}`): a

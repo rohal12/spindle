@@ -119,16 +119,15 @@ const literal: fc.Arbitrary<TextPiece> = fc.oneof(
         ['&#123;$a}', '{$a}'],
         ['&#92;{$n}', null],
       )
-      .map(
-        ([src, decoded]): TextPiece =>
-          decoded === null
-            ? // `&#92;` decodes to a backslash, which escapes nothing.
-              {
-                src,
-                ref: (env, decode) =>
-                  text((decode ? '\\' : '&#92;') + show(env.vars.n)),
-              }
-            : { src, ref: (_env, decode) => text(decode ? decoded : src) },
+      .map(([src, decoded]): TextPiece =>
+        decoded === null
+          ? // `&#92;` decodes to a backslash, which escapes nothing.
+            {
+              src,
+              ref: (env, decode) =>
+                text((decode ? '\\' : '&#92;') + show(env.vars.n)),
+            }
+          : { src, ref: (_env, decode) => text(decode ? decoded : src) },
       ),
   },
   {
@@ -382,12 +381,10 @@ export function pieces(
         // shows, and the markup stays live.
         {
           weight: 1,
-          arbitrary: live.map(
-            (p): TextPiece => ({
-              src: `\\\\${p.src}`,
-              ref: (env, decode) => join([text('\\'), p.ref(env, decode)]),
-            }),
-          ),
+          arbitrary: live.map((p): TextPiece => ({
+            src: `\\\\${p.src}`,
+            ref: (env, decode) => join([text('\\'), p.ref(env, decode)]),
+          })),
         },
       ),
       { maxLength: 5 },
@@ -424,12 +421,10 @@ export const codePieces: fc.Arbitrary<TextPiece> = fc
             ['&lt;', '<'],
             ['&#123;$a}', '{$a}'],
           )
-          .map(
-            ([src, decoded]): TextPiece => ({
-              src,
-              ref: (_env, decode) => text(decode ? decoded! : src!),
-            }),
-          ),
+          .map(([src, decoded]): TextPiece => ({
+            src,
+            ref: (_env, decode) => text(decode ? decoded! : src!),
+          })),
       },
       {
         // Kept verbatim, character references and all.

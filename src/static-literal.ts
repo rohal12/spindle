@@ -11,12 +11,7 @@ import { scanStringLiteral } from './js-lexer';
 
 /** The type of a variable by its default (see story-variables.ts VarType). */
 type LiteralType =
-  | 'number'
-  | 'string'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'null';
+  'number' | 'string' | 'boolean' | 'array' | 'object' | 'null';
 
 /** The shape of a literal (see story-variables.ts FieldSchema). */
 export interface LiteralShape {

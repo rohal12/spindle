@@ -353,11 +353,10 @@ function convertDomNode(
       const parts = splitPlaceholderText(value, ph);
       if (parts.every((part) => typeof part === 'string')) continue;
       placeholders ??= {};
-      placeholders[name] = parts.map(
-        (part): ASTNode =>
-          typeof part === 'string'
-            ? { type: 'text', value: part }
-            : ph.nodes[part]!,
+      placeholders[name] = parts.map((part): ASTNode =>
+        typeof part === 'string'
+          ? { type: 'text', value: part }
+          : ph.nodes[part]!,
       );
     }
 
@@ -572,7 +571,7 @@ function splitAttributes(
  */
 function useDirectAttributes(
   direct: [string, string][],
-): RefObject<Element> | undefined {
+): RefObject<Element | null> | undefined {
   const elementRef = useRef<Element>(null);
   const directKey = JSON.stringify(direct);
   useLayoutEffect(() => {
@@ -708,9 +707,11 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const isSvgRoot = tag === 'svg';
   const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
   const errors: AttributeError[] = [];
-  const resolved = Object.entries(node.attributes).map(
-    ([k, v]): Attribute => [k, resolveAttributeValue(k, v, scope, errors), v],
-  );
+  const resolved = Object.entries(node.attributes).map(([k, v]): Attribute => [
+    k,
+    resolveAttributeValue(k, v, scope, errors),
+    v,
+  ]);
   const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
   const ref = useDirectAttributes(direct);
   if (ref) props.ref = ref;

@@ -175,7 +175,7 @@ function frameStops(doc: Document | null): HTMLElement[] {
 }
 
 export function useModalFocus(
-  panelRef: RefObject<HTMLElement>,
+  panelRef: RefObject<HTMLElement | null>,
   bodySelector: string,
   dismissible: boolean,
   onClose: () => void,

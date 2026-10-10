@@ -46,12 +46,7 @@ function tokensOf(
 }
 
 export type VarType =
-  | 'number'
-  | 'string'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'null';
+  'number' | 'string' | 'boolean' | 'array' | 'object' | 'null';
 
 export interface FieldSchema {
   type: VarType;

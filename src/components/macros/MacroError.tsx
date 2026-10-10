@@ -41,7 +41,7 @@ export function logMacroError(
 export function useRunOnce(macro: string, rawArgs: string, effect: () => void) {
   // Unset until the effect has run. Boxed: anything can be thrown,
   // including null and other falsy values.
-  const failure = useRef<{ error: unknown } | null>();
+  const failure = useRef<{ error: unknown } | null | undefined>(undefined);
   if (failure.current === undefined) {
     failure.current = null;
     const location = currentSourceLocation();

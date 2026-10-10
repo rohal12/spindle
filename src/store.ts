@@ -165,7 +165,7 @@ function computeVarPatches(
   }
   // Probe an unchanged variable with a copy of its own: it shares with a
   // recorded one if the copy meets an object already copied
-  for (let found = seen.size > 0; found; ) {
+  for (let found = seen.size > 0; found;) {
     found = false;
     for (const key of unchanged) {
       const probe = new Map<object, object>();

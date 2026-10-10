@@ -33,7 +33,7 @@ const NON_STRING_QUOTE_PREFIX = /[\p{L}\p{N}_\\]/u;
 function skipLiteral(input: string, i: number): number {
   const quote = input[i];
   const template = quote === '`';
-  for (let j = i + 1; j < input.length; ) {
+  for (let j = i + 1; j < input.length;) {
     const c = input[j];
     if (c === '\\') j += 2;
     else if (c === quote) return j + 1;

@@ -167,11 +167,7 @@ export type ParameterType =
  * any other `text`.
  */
 export type StringHolds =
-  | 'markup'
-  | 'text'
-  | 'passage'
-  | 'expression'
-  | 'statements';
+  'markup' | 'text' | 'passage' | 'expression' | 'statements';
 
 /**
  * Typed parameter definition for macro tooling metadata.

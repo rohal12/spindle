@@ -16,10 +16,7 @@ import type { HtmlToken, MacroToken, Span, Token } from './tokens';
 
 /** What is wrong with the pairing, by kind. */
 export type PairingErrorCode =
-  | 'unclosed-block'
-  | 'mismatched-closer'
-  | 'stray-closer'
-  | 'misplaced-branch';
+  'unclosed-block' | 'mismatched-closer' | 'stray-closer' | 'misplaced-branch';
 
 /**
  * A problem in the pairing of the tokens, at the token from `start` up to
