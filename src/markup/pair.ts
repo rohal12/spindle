@@ -174,6 +174,23 @@ export function pairMarkup(
     });
   };
 
+  /** A branch outside its macro, or inside another element `inside`. */
+  const misplaced = (
+    tag: MacroToken,
+    inside: MacroToken | HtmlToken | undefined,
+    noticedAt: number,
+  ) => {
+    const parent = BRANCH_PARENT[tag.name.toLowerCase()]!;
+    const where = inside ? `, not inside ${tagLabel(inside)}` : '';
+    report(
+      'misplaced-branch',
+      tag,
+      `${tagLabel(tag)} must be directly inside {${parent}}${where}`,
+      noticedAt,
+      { name: tag.name, parent, ...(inside && { inside: nameOf(inside) }) },
+    );
+  };
+
   const root: PairedNode[] = [];
   const stack: Frame[] = [];
   const add = (node: PairedNode) => (last(stack)?.into ?? root).push(node);
@@ -193,13 +210,7 @@ export function pairMarkup(
     for (const { tag } of body.branches) {
       const parent = BRANCH_PARENT[tag.name.toLowerCase()]!;
       if (open.type !== 'macro' || lowerName(open) !== parent) {
-        report(
-          'misplaced-branch',
-          tag,
-          `${tagLabel(tag)} must be directly inside {${parent}}, not inside ${tagLabel(open)}`,
-          noticedAt,
-          { name: tag.name, parent, inside: nameOf(open) },
-        );
+        misplaced(tag, open, noticedAt);
       }
     }
     if (ending === 'unclosed') {
@@ -256,13 +267,7 @@ export function pairMarkup(
       const tag = token as MacroToken;
       const frame = last(stack);
       if (!frame) {
-        report(
-          'misplaced-branch',
-          tag,
-          `${tagLabel(tag)} must be directly inside {${BRANCH_PARENT[tag.name.toLowerCase()]}}`,
-          tag.start,
-          { name: tag.name, parent: BRANCH_PARENT[tag.name.toLowerCase()]! },
-        );
+        misplaced(tag, undefined, tag.start);
         continue;
       }
       const branch: PairedBranch = { tag, children: [] };
