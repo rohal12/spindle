@@ -20,7 +20,6 @@ import {
   type Piece,
 } from './code-check';
 import {
-  blockWidgetNames,
   widgetDefinitions as readWidgetDefinitions,
   type WidgetDefinition,
 } from './widgets/widget-def';
@@ -32,6 +31,7 @@ import {
   type VariableReference,
 } from './story-variables';
 import type { ParameterDef } from './registry';
+import type { WidgetDef } from './widgets/widget-def';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
 export { discoverMacros } from './macro-discovery';
@@ -156,6 +156,12 @@ export interface ToolingMacro {
    * Its declared parameters: their types tell which arguments are code, and
    * what a `string` or `text` argument holds (see ParameterDef.holds).
    */
+  /**
+   * For a widget: its `@` parameters and what the ones that declare it hold
+   * (`@target:passage`, see WidgetDef), so that a call is checked like the
+   * call of a macro whose `string` parameter has that `holds`.
+   */
+  widget?: Pick<WidgetDef, 'params' | 'holds'>;
   parameters?: readonly ParameterDef[];
   /** Whether it resolves markup: its strings hold markup by default. */
   interpolate?: boolean;
@@ -177,10 +183,17 @@ export function validateStoryMarkup(
   const list = [...passages];
   const all = [...macros];
   const known = new Set<string>();
-  const parametersOf = parameterLookup(all);
+  // The calls of widgets that declare what their arguments hold are checked
+  const widgets = readWidgetDefinitions(list, parameterLookup(all));
   const blocks = new Set(
-    blockWidgetNames(list, parametersOf).map((n) => n.toLowerCase()),
+    widgets
+      .filter((def) => def.block && def.closeStart !== undefined)
+      .map((def) => def.name.toLowerCase()),
   );
+  const parametersOf = parameterLookup([
+    ...all,
+    ...widgets.map((widget) => ({ name: widget.name, widget })),
+  ]);
   for (const macro of all) {
     const name = macro.name.toLowerCase();
     known.add(name);

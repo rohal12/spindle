@@ -1,10 +1,14 @@
 import type { ASTNode } from '../markup/ast';
 import { checkVariableName } from '../utils/namespace';
 import { NameMap } from '../utils/macro-names';
+import type { StringHolds } from '../registry';
+import type { MacroParameters } from '../code-check';
 
 interface WidgetEntry {
   body: ASTNode[];
   params: string[];
+  /** What the parameters declare to hold, by name with the `@`. */
+  holds: Record<string, StringHolds>;
   isBlock: boolean;
 }
 
@@ -20,6 +24,7 @@ export function registerWidget(
   bodyAST: ASTNode[],
   params: string[],
   isBlock = false,
+  holds: Record<string, StringHolds> = {},
 ): void {
   const filteredParams = params.filter((p) => p !== '@children');
   for (const param of filteredParams) {
@@ -28,12 +33,21 @@ export function registerWidget(
   widgets.set(name, {
     body: bodyAST,
     params: filteredParams,
+    holds,
     isBlock,
   });
 }
 
 export function getWidget(name: string): WidgetEntry | undefined {
   return widgets.get(name);
+}
+
+/** The widgets as `parameterLookup` reads them (see MacroParameters). */
+export function widgetMacros(): MacroParameters[] {
+  return [...widgets].map(([name, { params, holds }]) => ({
+    name,
+    widget: { params, holds },
+  }));
 }
 
 export function isBlockWidget(name: string): boolean {

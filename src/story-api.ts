@@ -1,4 +1,4 @@
-import { useStoryStore, trackRuntimeUnsub } from './store';
+import { useStoryStore, trackRuntimeUnsub, recordHookWrite } from './store';
 import type { StoryState, VariableNamespaces } from './store';
 import {
   on as emitterOn,
@@ -299,6 +299,7 @@ function createStoryAPI(): StoryAPI {
       for (const [name] of entries) {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
+        if (!isTransient) recordHookWrite(key.split('.'));
       }
       // One store update for all keys, so watchers see them together. Made
       // while mutation code runs ({do}, ctx.mutate, watcher run actions), it

@@ -18,7 +18,7 @@ import {
 } from './story-variables';
 import { getMacro, getMacroRegistry, isSubMacro } from './registry';
 import { parameterLookup } from './code-check';
-import { getWidget } from './widgets/widget-registry';
+import { getWidget, widgetMacros } from './widgets/widget-registry';
 import {
   formatDiagnostic,
   validateMarkup,
@@ -105,7 +105,7 @@ function markupErrors(
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
     macroNames: macros.map((m) => m.name),
-    parametersOf: parameterLookup(macros),
+    parametersOf: parameterLookup([...macros, ...widgetMacros()]),
     only,
   }).map(formatDiagnostic);
 }

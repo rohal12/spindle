@@ -82,6 +82,22 @@ Parameter names in the definition are separated by spaces or commas: `{widget "S
 
 Parameters are block-scoped to the widget body using the `@` namespace — they never conflict with `$` story variables or `_` temporary variables. If fewer arguments are passed than parameters declared (including none at all), the extra parameters are `undefined` — they shadow any outer `@` locals of the same name rather than inheriting them.
 
+### What an Argument Holds
+
+A widget passes its arguments on: to `Story.goto`, a `{link}`, a `data-` attribute a click handler navigates to. Say what a parameter holds after a colon, and the story-start check (and editor tooling) reads the argument as it reads the same [`holds`](custom-macros.md#what-a-string-holds) of a macro's `string` parameter:
+
+```
+:: Widgets [widget]
+{widget "choice" @label @target:passage @cost}
+  <button type="button" data-goto-target="{@target}">{@label}</button>
+{/widget}
+
+:: Start
+{choice "Leave" "NoSuchPassage"}
+```
+
+The story does not start: there is no passage named "NoSuchPassage". The kinds are `passage`, `expression`, `statements`, `markup` and `text`, as for a macro; an unknown one is an error in the `{widget}` definition. Only an argument written as one quoted string is checked (`{choice "Leave" "Hall"}`); `{choice "Leave" $where}` is whatever `$where` is when the widget renders. Parameters without a colon, and calls that pass fewer arguments, behave as before.
+
 ## Block Widgets (Wrapping Content)
 
 Widgets can wrap body content using the special `{@children}` placeholder. When `{@children}` appears in a widget's body, the widget becomes a **block widget** — it must be invoked with a closing tag, and the content between the tags replaces `{@children}`.

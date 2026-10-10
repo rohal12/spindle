@@ -34,7 +34,12 @@ import {
   MarkupError,
   mapOffsets,
 } from './markup/parse';
-import { CodeSyntaxError, parseCode, type JsGoal } from './js-lexer';
+import {
+  CodeSyntaxError,
+  parseCode,
+  stringLiteralValue,
+  type JsGoal,
+} from './js-lexer';
 import type { ParsedCode } from './js-lexer';
 import type { ParameterDef, StringHolds } from './registry';
 import {
@@ -45,7 +50,9 @@ import {
   type PassageTarget,
 } from './components/macros/macro-args';
 import { subMacroParameters } from './components/macros/option-utils';
+import { splitArgSpans } from './components/macros/arg-utils';
 import { NameMap } from './utils/macro-names';
+import { hasOwn } from './utils/namespace';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -190,16 +197,52 @@ const PASSAGE_BODIES = new Set(['dialog']);
 /** What a passage runs and names, and where (see passagePieces). */
 export type Piece = CodePiece | TextPiece | PassagePiece | ArgumentErrorPiece;
 
+/**
+ * A parameter of a widget, by position: what its argument holds when it
+ * declares it (`@target:passage`).
+ */
+export interface WidgetParameter {
+  name: string;
+  holds?: StringHolds;
+}
+
+/**
+ * The parameters of a widget given its `@` parameters and what they declare
+ * to hold, or none when it declares nothing (a call is then not read by
+ * parameter).
+ */
+export function widgetParameters(
+  params: readonly string[],
+  holds: Readonly<Record<string, StringHolds>> = {},
+): WidgetParameter[] | undefined {
+  if (!params.some((param) => hasOwn(holds, param))) return undefined;
+  return params.map((name) => ({
+    name,
+    ...(hasOwn(holds, name) ? { holds: holds[name]! } : {}),
+  }));
+}
+
 /** The declared parameters of a macro, if it has any. */
-export type ParametersOf = (
-  macro: string,
-) => readonly ParameterDef[] | undefined;
+export interface ParametersOf {
+  (macro: string): readonly ParameterDef[] | undefined;
+  /**
+   * The parameters of the widget `name` if it declares what some argument
+   * holds. Its arguments are read as a widget call reads them (separated by
+   * commas or spaces, see splitArgs), not by parseMacroArgs.
+   */
+  widget?(name: string): readonly WidgetParameter[] | undefined;
+}
 
 /** What the argument check needs to know of a macro (see MacroMetadata). */
 export interface MacroParameters {
   name: string;
   parameters?: readonly ParameterDef[];
   interpolate?: boolean;
+  /** For a widget: its `@` parameters and what some declare to hold. */
+  widget?: {
+    params: readonly string[];
+    holds?: Readonly<Record<string, StringHolds>>;
+  };
 }
 
 /**
@@ -225,16 +268,20 @@ function withHolds(
  * collection and tooling read arguments by. Each `string` and `text`
  * parameter says what it holds: what it declares, else `markup` for a macro
  * with `interpolate` (which can resolve markup) and `text` for any other.
+ * A widget among `macros` says what its parameters hold (see ParametersOf).
  */
 export function parameterLookup(
   macros: Iterable<MacroParameters>,
 ): ParametersOf {
   const parameters = new NameMap<readonly ParameterDef[]>();
-  for (const { name, parameters: params, interpolate } of macros) {
+  const widgets = new NameMap<readonly WidgetParameter[]>();
+  for (const { name, parameters: params, interpolate, widget } of macros) {
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
+    const declared = widget && widgetParameters(widget.params, widget.holds);
+    if (declared) widgets.set(name, declared);
   }
-  return (name) => {
+  const lookup: ParametersOf = (name) => {
     let params = parameters.get(name);
     if (!params) {
       const sub = subMacroParameters(name);
@@ -242,6 +289,8 @@ export function parameterLookup(
     }
     return params;
   };
+  if (widgets.size > 0) lookup.widget = (name) => widgets.get(name);
+  return lookup;
 }
 
 /** What a `string` or `text` argument holds when its parameter doesn't say. */
@@ -390,6 +439,8 @@ export function* codeAndText(
       }
       const params = parametersOf(name);
       if (params) yield* argPieces(args, argsAt, params, token.name, label);
+      const widget = parametersOf.widget?.(name);
+      if (widget) yield* widgetPieces(args, argsAt, widget, token.name, label);
     }
   }
 }
@@ -532,7 +583,6 @@ export function* argPieces(
   macro: string,
   label: string,
 ): Generator<Piece> {
-  const name = macro.toLowerCase();
   let values: Record<string, unknown>;
   const spans: ArgSpans = new Map();
   try {
@@ -545,10 +595,56 @@ export function* argPieces(
       offset,
       length: args.length,
       label,
-      macro: name,
+      macro: macro.toLowerCase(),
     };
     return;
   }
+  yield* valuePieces(args, offset, params, values, spans, macro, label);
+}
+
+/**
+ * The code and text in the arguments `args` (at `offset`) of the widget
+ * `macro`, the ones whose parameter declares what it holds. Such an argument
+ * is checked when it is one quoted string, as a `string` parameter with that
+ * `holds` of a macro is; any other expression is its value at run time.
+ */
+function* widgetPieces(
+  args: string,
+  offset: number,
+  params: readonly WidgetParameter[],
+  macro: string,
+  label: string,
+): Generator<Piece> {
+  const written = splitArgSpans(args);
+  const declared: ParameterDef[] = [];
+  const values: Record<string, unknown> = {};
+  const spans: ArgSpans = new Map();
+  params.forEach(({ name, holds }, i) => {
+    const span = written[i];
+    const value = span && stringLiteralValue(args.slice(...span));
+    if (!holds || value == null) return;
+    const param: ParameterDef = { name, type: 'string', holds };
+    declared.push(param);
+    values[name] = value;
+    spans.set(param, span!);
+  });
+  yield* valuePieces(args, offset, declared, values, spans, macro, label);
+}
+
+/**
+ * The pieces of the `params` of `macro` with the `values` read from `args`
+ * (at `offset`), whose `spans` tell where each was written.
+ */
+function* valuePieces(
+  args: string,
+  offset: number,
+  params: readonly ParameterDef[],
+  values: Record<string, unknown>,
+  spans: ArgSpans,
+  macro: string,
+  label: string,
+): Generator<Piece> {
+  const name = macro.toLowerCase();
   /** The pieces of the parameters `list`, with their values in `from`. */
   function* visit(
     list: readonly ParameterDef[],
