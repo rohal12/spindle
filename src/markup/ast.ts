@@ -45,11 +45,7 @@ export interface HtmlNode {
 }
 
 export type ASTNode =
-  | TextNode
-  | VariableNode
-  | ExpressionNode
-  | MacroNode
-  | HtmlNode;
+  TextNode | VariableNode | ExpressionNode | MacroNode | HtmlNode;
 
 /** Macros that require a closing tag and can contain children */
 const BLOCK_MACROS = new NameSet([

@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import preact from '@preact/preset-vite';
-import { peggyPlugin } from './scripts/peggy';
+import { peggyPlugin } from './scripts/peggy.ts';
 
 export default defineConfig({
   plugins: [preact(), peggyPlugin()],

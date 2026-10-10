@@ -44,11 +44,7 @@ export type ParameterType =
  * any other `text`.
  */
 export type StringHolds =
-  | 'markup'
-  | 'text'
-  | 'passage'
-  | 'expression'
-  | 'statements';
+  'markup' | 'text' | 'passage' | 'expression' | 'statements';
 
 export interface ParameterDef {
   name: string;
@@ -101,12 +97,7 @@ export declare function getMacroRegistry(): MacroMetadata[];
 
 /** Variable type inferred from a StoryVariables/StoryTransients default value. */
 export type VarType =
-  | 'number'
-  | 'string'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'null';
+  'number' | 'string' | 'boolean' | 'array' | 'object' | 'null';
 
 /** Inferred shape of a declared variable (or one of its object fields). */
 export interface FieldSchema {
@@ -580,8 +571,7 @@ export declare function transform(expr: string, goal?: JsGoal): string;
 
 /** What a `passage` argument is: a quoted name, or an expression. */
 export type PassageTarget =
-  | { kind: 'name'; name: string }
-  | { kind: 'expression'; expression: string };
+  { kind: 'name'; name: string } | { kind: 'expression'; expression: string };
 
 /**
  * Read a `passage` argument (`{goto "Hall"}`, `{include $room}`) as written:
@@ -922,10 +912,7 @@ export declare function passagePieces(
 
 /** What is wrong with the pairing of tags (a subset of {@link MarkupErrorCode}). */
 export type PairingErrorCode =
-  | 'unclosed-block'
-  | 'mismatched-closer'
-  | 'stray-closer'
-  | 'misplaced-branch';
+  'unclosed-block' | 'mismatched-closer' | 'stray-closer' | 'misplaced-branch';
 
 /** A problem in the pairing of the tokens. */
 export interface PairingError {

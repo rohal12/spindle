@@ -213,13 +213,11 @@ describe('parseWatchArgs', () => {
       return fc
         .nat({ max: 10_000 })
         .map((n): WatchOption => ({ key, src: `priority ${n}`, value: n }));
-    return fc.tuple(quotedLabel(), spaceSep).map(
-      ([l, sp]): WatchOption => ({
-        key,
-        src: key + sp + l.quoted,
-        value: l.text,
-      }),
-    );
+    return fc.tuple(quotedLabel(), spaceSep).map(([l, sp]): WatchOption => ({
+      key,
+      src: key + sp + l.quoted,
+      value: l.text,
+    }));
   });
 
   const watchArgs = fc

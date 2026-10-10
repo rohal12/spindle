@@ -287,11 +287,7 @@ export type ParameterType =
  * @see {@link ../../src/registry.ts} for the implementation.
  */
 export type StringHolds =
-  | 'markup'
-  | 'text'
-  | 'passage'
-  | 'expression'
-  | 'statements';
+  'markup' | 'text' | 'passage' | 'expression' | 'statements';
 
 /**
  * Parameter metadata for a macro definition.
@@ -401,11 +397,7 @@ export interface HtmlNode {
  * @see {@link ../../src/markup/ast.ts} for the implementation.
  */
 export type ASTNode =
-  | TextNode
-  | VariableNode
-  | ExpressionNode
-  | MacroNode
-  | HtmlNode;
+  TextNode | VariableNode | ExpressionNode | MacroNode | HtmlNode;
 
 /**
  * Props passed to a macro's render function.

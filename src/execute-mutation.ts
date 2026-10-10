@@ -340,9 +340,10 @@ export function routeStoreUpdate<S extends VariableNamespaces>(
   const changes = NAMESPACES.flatMap((ns) => {
     const own = patches.filter((p) => p.path[0] === ns);
     return own.length
-      ? writtenPaths(view[ns], next[ns], own).map(
-          (change): PathChange => ({ ...change, path: [ns, ...change.path] }),
-        )
+      ? writtenPaths(view[ns], next[ns], own).map((change): PathChange => ({
+          ...change,
+          path: [ns, ...change.path],
+        }))
       : [];
   });
   // Each target takes its own copies, which share what the written values do,

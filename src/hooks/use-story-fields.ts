@@ -31,7 +31,7 @@ export const OutgoingContext = createContext<(() => boolean) | null>(null);
 export function useStoryFields<K extends keyof StoryState>(
   ...keys: K[]
 ): Pick<StoryState, K> {
-  const prev = useRef<Pick<StoryState, K>>();
+  const prev = useRef<Pick<StoryState, K> | undefined>(undefined);
   const freeze = useContext(FrozenStateContext);
   return useStoryStore((s) => {
     if (prev.current && freeze?.(s)) return prev.current;

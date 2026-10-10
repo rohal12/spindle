@@ -17,9 +17,7 @@ export function isCodeAttribute(name: string): boolean {
 /** Literal text, the source of one `{…}` reference (without braces), or a
  * `{…}` block that is kept exactly as written. */
 export type SigilPart =
-  | { text: string }
-  | { expr: string }
-  | { verbatim: string };
+  { text: string } | { expr: string } | { verbatim: string };
 
 /**
  * Split a code attribute value into literal text and its `{…}` blocks that

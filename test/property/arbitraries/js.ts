@@ -187,12 +187,10 @@ const LINE_TERMINATOR = /[\n\r\u2028\u2029]/g;
 
 const lineComment = fc
   .tuple(rawText(6), fc.constantFrom('\n', '\r', '\r\n', '\u2028', '\u2029'))
-  .map(
-    ([text, end]): Doc => [
-      { lit: '//' + text.replace(LINE_TERMINATOR, ' ') },
-      end,
-    ],
-  );
+  .map(([text, end]): Doc => [
+    { lit: '//' + text.replace(LINE_TERMINATOR, ' ') },
+    end,
+  ]);
 
 const blockComment = (inline: boolean) =>
   rawText(6).map((text): Doc => {
@@ -638,8 +636,8 @@ export function jsArbitraries({ refs }: JsOptions) {
     const params = fc.oneof(ident, seq('(', list(ident, ',', 3), ')'));
     /** An expression usable as an arrow body: an object literal needs (). */
     const arrowBody = fc.oneof(
-      expr.map(
-        (d): Doc => (firstChar(d) === '{' ? concat([['('], d, [')']]) : d),
+      expr.map((d): Doc =>
+        firstChar(d) === '{' ? concat([['('], d, [')']]) : d,
       ),
       block,
     );
@@ -730,13 +728,11 @@ export function jsArbitraries({ refs }: JsOptions) {
             templateText.map((t): Doc => [{ lit: t }]),
             fc
               .tuple(trivia, expr, trivia)
-              .map(
-                ([a, e, b]): Doc => [
-                  { lit: '${' },
-                  ...concat([a, e, b]),
-                  { lit: '}' },
-                ],
-              ),
+              .map(([a, e, b]): Doc => [
+                { lit: '${' },
+                ...concat([a, e, b]),
+                { lit: '}' },
+              ]),
           ),
           { maxLength: 3 },
         )
@@ -948,9 +944,11 @@ export function jsArbitraries({ refs }: JsOptions) {
         },
         {
           weight: 1,
-          arbitrary: seq('var', ident, '=', expr).map(
-            (doc): Stmt => ({ doc, semi: true, asiSafe: true }),
-          ),
+          arbitrary: seq('var', ident, '=', expr).map((doc): Stmt => ({
+            doc,
+            semi: true,
+            asiSafe: true,
+          })),
         },
       ),
     };
@@ -1009,13 +1007,11 @@ function assignStmt(
   target: fc.Arbitrary<Doc>,
   expr: fc.Arbitrary<Doc>,
 ): fc.Arbitrary<Stmt> {
-  return seq(target, tok(...ASSIGN), expr).map(
-    (doc): Stmt => ({
-      doc,
-      semi: true,
-      asiSafe: startsSafely(doc) || (isRef(doc[0]!) && doc[0].ref === '%'),
-    }),
-  );
+  return seq(target, tok(...ASSIGN), expr).map((doc): Stmt => ({
+    doc,
+    semi: true,
+    asiSafe: startsSafely(doc) || (isRef(doc[0]!) && doc[0].ref === '%'),
+  }));
 }
 
 /** The body of if/for/do: a statement, terminated if it needs one. */

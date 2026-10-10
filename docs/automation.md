@@ -24,7 +24,7 @@ steps:
 The automation runner uses `js-yaml` which is included as a dev dependency. It is **not** bundled into production story builds.
 
 ```sh
-bun add -D js-yaml @types/js-yaml
+bun add -D js-yaml
 ```
 
 ## Script Format
