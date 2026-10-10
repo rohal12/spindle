@@ -5,6 +5,10 @@
 import { describe, it, expect } from 'vitest';
 import { getMacroRegistry } from '../../src/registry';
 import {
+  parseStoryVariables,
+  validatePassages,
+} from '../../src/story-variables';
+import {
   MarkupError,
   SIGIL_SCOPES,
   endsWithOperator,
@@ -28,6 +32,9 @@ import {
   passageTarget,
   parseWidgetDef,
   widgetDefinitions,
+  variableReferences,
+  validateVariableReferences,
+  parseDeclarations,
 } from '../../src/tooling';
 
 describe('tooling API: the JavaScript lexer', () => {
@@ -451,5 +458,172 @@ describe('widgetDefinitions (#462)', () => {
 
   it('parseWidgetDef reads the arguments alone', () => {
     expect(parseWidgetDef('"Box" @a')).toEqual({ name: 'Box', params: ['@a'] });
+  });
+});
+
+describe('variable references (#464)', () => {
+  const macros = getMacroRegistry();
+  const refs = (source: string) =>
+    variableReferences(source, macros).map((r) => ({
+      text: source.slice(r.start, r.end),
+      sigil: r.sigil,
+      name: r.name,
+      path: r.path,
+    }));
+  const declare = (variables: string, transients = '') => {
+    const read = (content: string, sigil?: '$' | '%') =>
+      new Map(
+        parseDeclarations(content, sigil).declarations.map((d) => [
+          d.name,
+          d.schema,
+        ]),
+      );
+    return {
+      variables: read(variables),
+      ...(transients ? { transients: read(transients, '%') } : {}),
+    };
+  };
+  const check = (content: string, declared = declare('$a = 1')) =>
+    validateVariableReferences([{ name: 'P', content }], declared, macros);
+
+  it('finds references with their sigil, path and span', () => {
+    expect(refs('x {$a.b.c} {print $d + %e.f} {set $g = 1}')).toEqual([
+      { text: '$a.b.c', sigil: '$', name: 'a', path: ['b', 'c'] },
+      { text: '$d', sigil: '$', name: 'd', path: [] },
+      { text: '%e.f', sigil: '%', name: 'e', path: ['f'] },
+      { text: '$g', sigil: '$', name: 'g', path: [] },
+    ]);
+  });
+
+  it('finds references in labels, attributes, selectors and bound names', () => {
+    expect(
+      refs(
+        '{button "Go {$a}"}x{/button} <p title="{$b}" onclick="{$c}">x</p> ' +
+          '{.{$d} span}x{/span} {textbox "$e"} [[Link {$f}->Hall]]',
+      ).map((r) => r.text),
+    ).toEqual(['$a', '$b', '$c', '$d', '$e', '$f']);
+  });
+
+  it('finds references in {do} bodies and conditions, not in strings', () => {
+    expect(
+      refs('{do}$a = "$b" + $c; // $d\n{/do}{if $e > 1}x{/if}').map(
+        (r) => r.text,
+      ),
+    ).toEqual(['$a', '$c', '$e']);
+  });
+
+  it('never takes _ and @ locals for variables', () => {
+    expect(refs('{set _t = 1}{$x} {_t} {@l} {for @i of $list}{/for}')).toEqual([
+      { text: '$x', sigil: '$', name: 'x', path: [] },
+      { text: '$list', sigil: '$', name: 'list', path: [] },
+    ]);
+    expect(check('{_t}{@l}{set _u = 1}')).toEqual([]);
+  });
+
+  it('reports undeclared variables and transients with their spans', () => {
+    const content = 'Hi {$a} {$missing.x} {%t}';
+    const declared = declare('$a = 1', '%u = 1');
+    const found = check(content, declared);
+    expect(
+      found.map((d) => [d.code, d.name, content.slice(d.start, d.end)]),
+    ).toEqual([
+      ['undeclared-variable', 'missing', '$missing.x'],
+      ['undeclared-transient', 't', '%t'],
+    ]);
+    expect(found[0]).toMatchObject({
+      passage: 'P',
+      path: ['x'],
+      message: 'Undeclared variable: $missing.x',
+    });
+    // Transients are not checked unless given
+    expect(check(content).map((d) => d.name)).toEqual(['missing']);
+  });
+
+  it('checks {set} targets, as the story start does, but not {unset} ones', () => {
+    expect(check('{set $no = 1}{unset $no2}').map((d) => d.name)).toEqual([
+      'no',
+    ]);
+  });
+
+  it('checks fields against the declared schema', () => {
+    const declared = declare(
+      '$n = 1\n$s = "x"\n$arr = []\n$o = { a: { b: 1 }, "q-k": 2 }\n$nil = null\n$calc = Math.PI',
+    );
+    const ok = [
+      '{$n.toFixed}',
+      '{$s.length}',
+      '{$arr.length}',
+      '{$arr.anything.deeper}',
+      '{$o.a.b}',
+      '{$o.unknown}',
+      '{$nil.any}',
+      '{$calc.whatever}',
+      '{$o?.a}',
+      '{$o["q-k"]}',
+    ];
+    for (const content of ok)
+      expect(check(content, declared), content).toEqual([]);
+    const bad = check('{$n.nope} {$o.a.b.c}', declared);
+    expect(bad.map((d) => [d.code, d.message])).toEqual([
+      ['primitive-field', 'Cannot access field "nope" on $n (type: number)'],
+      ['primitive-field', 'Cannot access field "c" on $o.a.b (type: number)'],
+    ]);
+  });
+
+  it('reads destructuring and shorthand', () => {
+    expect(
+      refs('{do}const { x } = $o; const p = { $a };{/do}').map((r) => r.text),
+    ).toEqual(['$o', '$a']);
+  });
+
+  it('reports a reserved name', () => {
+    expect(check('{$__proto__}')[0]).toMatchObject({ code: 'reserved-name' });
+  });
+
+  it('skips script and stylesheet passages and declarations', () => {
+    expect(
+      validateVariableReferences(
+        [
+          { name: 'S', tags: ['script'], content: '$nope' },
+          { name: 'StoryVariables', content: '$nope = 1' },
+        ],
+        declare('$a = 1'),
+        macros,
+      ),
+    ).toEqual([]);
+  });
+
+  it('reads half-typed markup, skipping malformed tags', () => {
+    const content = '{$a} {if $b >} {$c} {broken';
+    expect(check(content).map((d) => d.name)).toEqual(['b', 'c']);
+  });
+
+  it('gives offsets in UTF-16 units across CRLF and multibyte text', () => {
+    const content = '\r\n😀 é {$ünd}\r\n{$ok}\r\n{button "😀 {$no}"}x{/button}';
+    const found = check(content, declare('$ok = 1'));
+    expect(found.map((d) => content.slice(d.start, d.end))).toEqual(['$no']);
+    expect(variableReferences('😀 {$a}', macros)[0]).toMatchObject({
+      start: 4,
+      end: 6,
+    });
+  });
+
+  it('places a reference in a string with escapes', () => {
+    const content = '{button "say \\"hi\\" {$gone}"}x{/button}';
+    const found = check(content);
+    expect(found.map((d) => content.slice(d.start, d.end))).toEqual(['$gone']);
+  });
+
+  it('is what the story start reports, with the same messages', () => {
+    const content = '{$a.nope} {$undeclared} {textbox "$undeclared2"}';
+    const messages = check(content, declare('$a = 1')).map((d) => d.message);
+    const passages = new Map([
+      ['P', { pid: 1, name: 'P', tags: [], metadata: {}, content }],
+    ]);
+    expect(
+      validatePassages(passages, parseStoryVariables('$a = 1')).map((e) =>
+        e.replace('Passage "P": ', ''),
+      ),
+    ).toEqual(messages);
   });
 });

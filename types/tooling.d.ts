@@ -652,6 +652,8 @@ export interface ToolingMacro {
   parameters?: readonly ParameterDef[];
   /** Whether it resolves markup: its strings hold markup by default. */
   interpolate?: boolean;
+  /** Whether its first argument names the story variable it binds. */
+  storeVar?: boolean;
 }
 
 /**
@@ -679,6 +681,77 @@ export declare function collectStoryPassageReferences(
   source: string,
   macros: Iterable<ToolingMacro>,
 ): PassageReference[];
+
+// ---------------------------------------------------------------------------
+// Variable references
+// ---------------------------------------------------------------------------
+
+/** A reference to a story (`$`) or transient (`%`) variable in markup. */
+export interface VariableReference {
+  sigil: '$' | '%';
+  /** The variable, without the sigil. */
+  name: string;
+  /** The fields accessed with dots (`$a.b.c`: `['b', 'c']`). */
+  path: string[];
+  /** Where `$a.b.c` is written: `[start, end)` UTF-16 offsets into the markup. */
+  start: number;
+  end: number;
+}
+
+/**
+ * What is declared. A schema is absent for a variable whose initializer is not
+ * static (`parseDeclarations`): it is declared, and its fields are not checked.
+ */
+export interface VariableDeclarations {
+  variables: ReadonlyMap<string, FieldSchema | undefined>;
+  /** The transients (`%`); not checked when absent, as at story start. */
+  transients?: ReadonlyMap<string, FieldSchema | undefined>;
+}
+
+export type VariableDiagnosticCode =
+  | 'undeclared-variable'
+  | 'undeclared-transient'
+  | 'reserved-name'
+  | 'primitive-field';
+
+/** A variable reference that is not valid against the declarations. */
+export interface VariableDiagnostic {
+  passage: string;
+  code: VariableDiagnosticCode;
+  /** The variable, without the sigil. */
+  name: string;
+  /** The fields accessed with dots, if any. */
+  path?: string[];
+  /** The reference, as offsets into the passage content. */
+  start: number;
+  end: number;
+  /** The message the story start shows (after `Passage "name": `). */
+  message: string;
+}
+
+/**
+ * The variable references the markup of a passage evaluates, in source order,
+ * with their positions. Malformed tags are skipped. The macros are those the
+ * markup may use (`builtinMacros` and the user-defined ones).
+ */
+export declare function variableReferences(
+  source: string,
+  macros?: Iterable<ToolingMacro>,
+): VariableReference[];
+
+/**
+ * The variable references of the passages that are not valid against the
+ * declarations, as the story start checks them: undeclared variables (and
+ * transients, when `transients` is given), and fields accessed on primitives
+ * that have no such member. Unknown fields of objects are valid (classes may
+ * add members), as are any fields of arrays and `null` defaults. Tolerant of
+ * half-typed markup; evaluates no project code.
+ */
+export declare function validateVariableReferences(
+  passages: Iterable<MarkupPassage>,
+  declarations: VariableDeclarations,
+  macros?: Iterable<ToolingMacro>,
+): VariableDiagnostic[];
 
 // ---------------------------------------------------------------------------
 // Widget definitions

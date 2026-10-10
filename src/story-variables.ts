@@ -1,7 +1,11 @@
 import type { Passage } from './parser';
 import type { Spans, Token } from './markup/tokens';
-import { MarkupError, tokenizeMarkup } from './markup/parse';
-import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
+import {
+  MarkupError,
+  tokenizeMarkup,
+  tokenizeMarkupTolerant,
+} from './markup/parse';
+import { isCodeAttribute } from './markup/code-attributes';
 import { errorMessage } from './utils/error-message';
 import {
   CodeSyntaxError,
@@ -11,7 +15,10 @@ import {
 } from './js-lexer';
 import {
   argPieces,
+  attributeValues,
+  sigilExpressions,
   parseOrError,
+  pieceOffset,
   withParseCache,
   type ParametersOf,
 } from './code-check';
@@ -21,10 +28,15 @@ import { createNamespace, variableNameError } from './utils/namespace';
 import { staticLiteral, type LiteralShape } from './static-literal';
 
 /**
- * The tokens of markup, or none if it is malformed: validateMarkup reports
- * that, with its position.
+ * The tokens of markup, or none if it is malformed (validateMarkup reports
+ * that, with its position); in tolerant mode, those of the well-formed parts.
  */
-function tokensOf(text: string, textMode: boolean): Token[] {
+function tokensOf(
+  text: string,
+  textMode: boolean,
+  { tolerant }: { tolerant?: boolean } = {},
+): Token[] {
+  if (tolerant) return tokenizeMarkupTolerant(text, { text: textMode }).tokens;
   try {
     return tokenizeMarkup(text, { text: textMode });
   } catch (err) {
@@ -55,8 +67,8 @@ function declarationRegex(sigil: string): RegExp {
   const escaped = sigil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
 }
-/** A `$name` reference with its dot path, at a `$` the lexer found. */
-const VAR_PATH_RE = /\$(\w+(?:\.\w+)*)/y;
+/** A `$name` or `%name` reference with its dot path, at a sigil the lexer found. */
+const VAR_PATH_RE = /([$%])(\w+(?:\.\w+)*)/y;
 /** Quoted first argument of an input macro naming a story variable. */
 const QUOTED_VAR_ARG_RE = /^["']\$(\w+(?:\.\w+)*)["']?$/;
 
@@ -287,29 +299,86 @@ export function parseStoryVariables(
   return schema;
 }
 
+/** A reference to a story (`$`) or transient (`%`) variable in markup. */
+export interface VariableReference {
+  sigil: '$' | '%';
+  /** The variable, without the sigil. */
+  name: string;
+  /** The fields accessed with dots (`$a.b.c`: `['b', 'c']`). */
+  path: string[];
+  /** Where `$a.b.c` is written in the markup, as `[start, end)` UTF-16 offsets. */
+  start: number;
+  end: number;
+}
+
+/** What a check of a variable reference found wrong with it. */
+export type VariableDiagnosticCode =
+  | 'undeclared-variable'
+  | 'undeclared-transient'
+  | 'reserved-name'
+  | 'primitive-field';
+
+/** A variable reference that is not valid against the declarations. */
+export interface VariableDiagnostic {
+  passage: string;
+  code: VariableDiagnosticCode;
+  /** The variable, without the sigil. */
+  name: string;
+  /** The fields accessed with dots. */
+  path?: string[];
+  /** The reference, as offsets into the passage content. */
+  start: number;
+  end: number;
+  message: string;
+}
+
 /**
- * Validate a single variable reference path (e.g. "player.health") against
- * the schema. Returns an error message or null if valid.
+ * What is declared: the schema of each variable, which is absent for one
+ * whose initializer is not static (`parseDeclarations`): it is declared, but
+ * its fields are not checked.
  */
-function validateRef(
-  ref: string,
-  schema: Map<string, VariableSchema>,
-): string | null {
-  const parts = ref.split('.');
-  const rootName = parts[0]!;
+export interface VariableDeclarations {
+  variables: ReadonlyMap<string, FieldSchema | undefined>;
+  /**
+   * The transients (`%`). They are not checked when absent, as the story
+   * start does not check them.
+   */
+  transients?: ReadonlyMap<string, FieldSchema | undefined>;
+}
 
-  const nameError = variableNameError(rootName, '$' + rootName);
-  if (nameError) return nameError;
+/**
+ * Check a reference against the declarations: the error code and message, or
+ * null if it is valid. (Unknown fields of objects are valid: classes
+ * registered with Story.registerClass() can add members that are not in the
+ * defaults.)
+ */
+function checkReference(
+  ref: VariableReference,
+  declared: VariableDeclarations,
+): { code: VariableDiagnosticCode; message: string } | null {
+  const label = (path: readonly string[]) =>
+    ref.sigil + [ref.name, ...path].join('.');
+  const nameError = variableNameError(ref.name, ref.sigil + ref.name);
+  if (nameError) return { code: 'reserved-name', message: nameError };
 
-  const rootSchema = schema.get(rootName);
-  if (!rootSchema) {
-    return `Undeclared variable: $${ref}`;
+  const schema = ref.sigil === '$' ? declared.variables : declared.transients;
+  if (!schema) return null;
+  if (!schema.has(ref.name)) {
+    return ref.sigil === '$'
+      ? {
+          code: 'undeclared-variable',
+          message: `Undeclared variable: ${label(ref.path)}`,
+        }
+      : {
+          code: 'undeclared-transient',
+          message: `Undeclared transient: ${label(ref.path)}`,
+        };
   }
 
-  // Walk through field access path
-  let current: FieldSchema = rootSchema;
-  for (let i = 1; i < parts.length; i++) {
-    const part = parts[i] as string;
+  // Walk through the field access path
+  let current = schema.get(ref.name);
+  for (let i = 0; current && i < ref.path.length; i++) {
+    const part = ref.path[i]!;
 
     // Arrays have built-in methods/properties (push, find, length, etc.)
     // so any field access on an array is allowed.
@@ -329,15 +398,12 @@ function validateRef(
     }
 
     if (current.type !== 'object' || !current.fields) {
-      return `Cannot access field "${part}" on $${parts.slice(0, i).join('.')} (type: ${current.type})`;
+      return {
+        code: 'primitive-field',
+        message: `Cannot access field "${part}" on ${label(ref.path.slice(0, i))} (type: ${current.type})`,
+      };
     }
-    const fieldSchema = current.fields.get(part);
-    if (!fieldSchema) {
-      // Unknown fields on objects are allowed — classes registered via
-      // Story.registerClass() can add methods/getters not in the defaults.
-      return null;
-    }
-    current = fieldSchema;
+    current = current.fields.get(part);
   }
 
   return null;
@@ -357,17 +423,49 @@ const BUILTIN_STORE_VAR_MACROS: readonly string[] = [
   'textbox',
 ];
 
-type RefCallback = (ref: string) => void;
+/** What reading the variable references of markup depends on. */
+interface ReferenceOptions {
+  /** The (lowercase) names of the input macros that bind a variable. */
+  storeVarMacros: ReadonlySet<string>;
+  parametersOf: ParametersOf;
+  /** Read half-typed markup: skip its malformed tags (default: none read). */
+  tolerant?: boolean;
+}
+
+/** Where index `i` of a text is in the markup being read. */
+type At = (i: number) => number;
+
+type Emit = (ref: VariableReference) => void;
 
 const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
+/** A reference written at `index` of `code`, with its dot path. */
+function referenceAt(
+  code: string,
+  index: number,
+  at: At,
+): VariableReference | undefined {
+  VAR_PATH_RE.lastIndex = index;
+  const match = VAR_PATH_RE.exec(code);
+  if (!match) return undefined;
+  const [name, ...path] = match[2]!.split('.');
+  return {
+    sigil: match[1] as '$' | '%',
+    name: name!,
+    path,
+    start: at(index),
+    end: at(index + match[0].length),
+  };
+}
+
 /**
  * Scan the value of a code attribute (`onclick`, see isCodeAttribute) for
- * the `{$…}` references resolved in it; its other braces are code.
+ * the `{$…}` references resolved in it; its other braces are code. `at` is
+ * where the value is.
  */
-function scanSigilReferences(value: string, onRef: RefCallback): void {
-  for (const part of splitSigilTemplate(value)) {
-    if ('expr' in part) scanCode(part.expr, onRef);
+function scanSigilReferences(value: string, at: At, emit: Emit): void {
+  for (const { expr, at: k } of sigilExpressions(value)) {
+    scanCode(expr, (i) => at(k + i), emit);
   }
 }
 
@@ -379,11 +477,12 @@ function scanSigilReferences(value: string, onRef: RefCallback): void {
  */
 function scanInterpolations(
   text: string,
-  onRef: RefCallback,
-  storeVarMacros: ReadonlySet<string> = NO_STORE_VAR_MACROS,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
 ): void {
   if (!text.includes('{')) return;
-  collectTokenRefs(text, tokensOf(text, true), storeVarMacros, onRef);
+  collectTokenRefs(text, tokensOf(text, true, options), at, emit, options);
 }
 
 /**
@@ -396,62 +495,41 @@ function scanInterpolations(
  */
 function scanCode(
   code: string,
-  onRef: RefCallback,
+  at: At,
+  emit: Emit,
   goal: JsGoal = 'expression',
 ): void {
   const parsed = parseOrError(code, goal);
   if (parsed instanceof CodeSyntaxError) {
-    scanCodeLeniently(code, onRef, goal);
+    scanCodeLeniently(code, at, emit, goal);
     return;
   }
   for (const ref of parsed.refs) {
-    if (ref.sigil !== '$') continue;
-    VAR_PATH_RE.lastIndex = ref.start;
-    onRef(VAR_PATH_RE.exec(code)![1]!);
+    if (ref.sigil !== '$' && ref.sigil !== '%') continue;
+    const found = referenceAt(code, ref.start, at);
+    if (found) emit(found);
   }
 }
 
 /** `scanCode` for code acorn can't parse: lexed leniently. */
 function scanCodeLeniently(
   code: string,
-  onRef: RefCallback,
+  at: At,
+  emit: Emit,
   goal: JsGoal,
 ): void {
   lexJs(
     code,
     {
       variable(sigil, _name, index) {
-        if (sigil !== '$') return;
-        VAR_PATH_RE.lastIndex = index;
-        onRef(VAR_PATH_RE.exec(code)![1]!);
+        if (sigil !== '$' && sigil !== '%') return;
+        const found = referenceAt(code, index, at);
+        if (found) emit(found);
       },
       // Strings, regex literals and comments hold no references
       literal() {},
     },
     goal,
-  );
-}
-
-/**
- * Report the `$var` references a passage evaluates at runtime: `{$var}`
- * displays, `{$expr}` expressions, macro arguments and `{do}` bodies (as
- * code), quoted variable names bound by input macros, and `{$…}`
- * interpolations in HTML attributes. Prose is literal text and not scanned.
- */
-function collectPassageRefs(
-  content: string,
-  storeVarMacros: ReadonlySet<string>,
-  onRef: RefCallback,
-  parametersOf: ParametersOf,
-): void {
-  withParseCache(() =>
-    collectTokenRefs(
-      content,
-      tokensOf(content, false),
-      storeVarMacros,
-      onRef,
-      parametersOf,
-    ),
   );
 }
 
@@ -465,55 +543,111 @@ function collectPassageRefs(
 function scanArgs(
   token: Extract<Token, { type: 'macro' }>,
   params: readonly ParameterDef[] | undefined,
-  onRef: RefCallback,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
 ): void {
   if (!token.rawArgs) return;
   if (params) {
-    const pieces = [...argPieces(token.rawArgs, 0, params, token.name, '')];
+    const pieces = [
+      ...argPieces(token.rawArgs, token.argsStart, params, token.name, ''),
+    ];
     if (!pieces.some((piece) => piece.kind === 'argument-error')) {
       for (const piece of pieces) {
-        if (piece.kind === 'code') scanCode(piece.code, onRef, piece.goal);
-        else if (piece.kind === 'text') scanInterpolations(piece.text, onRef);
+        const pieceAt: At = (i) => at(pieceOffset(piece, i));
+        if (piece.kind === 'code') {
+          scanCode(piece.code, pieceAt, emit, piece.goal);
+        } else if (piece.kind === 'text') {
+          scanInterpolations(piece.text, pieceAt, emit, {
+            ...options,
+            storeVarMacros: NO_STORE_VAR_MACROS,
+          });
+        }
       }
       return;
     }
   }
-  scanCode(token.rawArgs, onRef);
+  scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
 }
 
 /** Report the `$var` references in the tokens of `content`. */
 function collectTokenRefs(
   content: string,
   tokens: Token[],
-  storeVarMacros: ReadonlySet<string>,
-  onRef: RefCallback,
-  parametersOf: ParametersOf = () => undefined,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
 ): void {
+  const { storeVarMacros, parametersOf } = options;
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
     if (token.type === 'variable') {
-      if (token.scope === 'variable' && token.name) onRef(token.name);
+      if (
+        (token.scope === 'variable' || token.scope === 'transient') &&
+        token.name
+      ) {
+        const [name, ...path] = token.name.split('.');
+        emit({
+          sigil: token.scope === 'variable' ? '$' : '%',
+          name: name!,
+          path,
+          start: at(token.nameStart - 1),
+          end: at(token.nameEnd),
+        });
+      }
     } else if (token.type === 'link') {
-      scanInterpolations(token.display, onRef);
+      scanInterpolations(
+        token.display,
+        (i) => at(token.displayStart + i),
+        emit,
+        { ...options, storeVarMacros: NO_STORE_VAR_MACROS },
+      );
     } else if (token.type === 'expression') {
-      scanCode(token.expression, onRef);
+      scanCode(token.expression, (i) => at(token.expressionStart + i), emit);
     } else if (token.type === 'html') {
-      for (const [name, value] of Object.entries(token.attributes)) {
-        if (isCodeAttribute(name)) scanSigilReferences(value, onRef);
-        else scanInterpolations(value, onRef, storeVarMacros);
+      for (const { name, value, at: valueAt } of attributeValues(
+        content,
+        token,
+      )) {
+        const valueIn: At = (i) => at(valueAt + i);
+        if (isCodeAttribute(name)) scanSigilReferences(value, valueIn, emit);
+        else scanInterpolations(value, valueIn, emit, options);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanArgs(token, parametersOf(token.name), onRef);
+      scanArgs(token, parametersOf(token.name), at, emit, options);
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
-      if (token.className) scanInterpolations(token.className, onRef);
-      if (token.id) scanInterpolations(token.id, onRef);
+      if (
+        token.selectorsStart !== undefined &&
+        token.selectorsEnd !== undefined
+      ) {
+        const from = token.selectorsStart;
+        scanInterpolations(
+          content.slice(from, token.selectorsEnd),
+          (i) => at(from + i),
+          emit,
+          { ...options, storeVarMacros: NO_STORE_VAR_MACROS },
+        );
+      }
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
+        const lead = token.rawArgs.length - token.rawArgs.trimStart().length;
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
         const quoted = QUOTED_VAR_ARG_RE.exec(first);
-        if (quoted) onRef(quoted[1]!);
+        if (quoted) {
+          const [name, ...path] = quoted[1]!.split('.');
+          const start = token.argsStart + lead + 1;
+          emit({
+            sigil: '$',
+            name: name!,
+            path,
+            start: at(start),
+            end: at(start + 1 + quoted[1]!.length),
+          });
+        }
         // Unquoted, the variable is an argument of no declared role
-        else if (!/^["'`]/.test(first)) scanCode(first, onRef);
+        else if (!/^["'`]/.test(first)) {
+          scanCode(first, (i) => at(token.argsStart + lead + i), emit);
+        }
       }
 
       if (token.name.toLowerCase() === 'do') {
@@ -533,12 +667,66 @@ function collectTokenRefs(
         }
         if (close < tokens.length) {
           const body = content.slice(token.end, tokens[close]!.start);
-          scanCode(body, onRef, 'statements');
+          scanCode(body, (i) => at(token.end + i), emit, 'statements');
           t = close;
         }
       }
     }
   }
+}
+
+/**
+ * The `$` and `%` variable references a passage evaluates at runtime, in
+ * source order: `{$var}` displays, `{$expr}` expressions, macro arguments and
+ * `{do}` bodies (as code), quoted variable names bound by input macros, and
+ * `{$…}` interpolations in labels and HTML attributes. Prose is literal text
+ * and not scanned.
+ */
+export function collectVariableReferences(
+  content: string,
+  options: ReferenceOptions,
+): VariableReference[] {
+  const found: VariableReference[] = [];
+  withParseCache(() =>
+    collectTokenRefs(
+      content,
+      tokensOf(content, false, options),
+      (i) => i,
+      (ref) => found.push(ref),
+      options,
+    ),
+  );
+  return found;
+}
+
+/**
+ * The invalid variable references of the passages, against what is declared,
+ * with their positions. The passages that hold no markup (the declarations
+ * themselves, SaveTitle) are skipped.
+ */
+export function checkVariableReferences(
+  passages: Iterable<{ name: string; content: string }>,
+  declared: VariableDeclarations,
+  options: ReferenceOptions,
+): VariableDiagnostic[] {
+  const diagnostics: VariableDiagnostic[] = [];
+  for (const passage of passages) {
+    if (NOT_MARKUP.has(passage.name)) continue;
+    for (const ref of collectVariableReferences(passage.content, options)) {
+      const error = checkReference(ref, declared);
+      if (!error) continue;
+      diagnostics.push({
+        passage: passage.name,
+        code: error.code,
+        name: ref.name,
+        ...(ref.path.length > 0 ? { path: ref.path } : {}),
+        start: ref.start,
+        end: ref.end,
+        message: error.message,
+      });
+    }
+  }
+  return diagnostics;
 }
 
 /**
@@ -555,29 +743,16 @@ export function validatePassages(
   storeVarMacros: Iterable<string> = BUILTIN_STORE_VAR_MACROS,
   parametersOf: ParametersOf = getMacroParameters,
 ): string[] {
-  const errors: string[] = [];
-  const storeVarSet = new Set(
-    Array.from(storeVarMacros, (m) => m.toLowerCase()),
-  );
-
-  for (const [name, passage] of passages) {
-    // Don't validate the declarations or the SaveTitle code themselves
-    if (NOT_MARKUP.has(name)) continue;
-
-    collectPassageRefs(
-      passage.content,
-      storeVarSet,
-      (ref) => {
-        const error = validateRef(ref, schema);
-        if (error) {
-          errors.push(`Passage "${name}": ${error}`);
-        }
-      },
+  return checkVariableReferences(
+    passages.values(),
+    { variables: schema },
+    {
+      storeVarMacros: new Set(
+        Array.from(storeVarMacros, (m) => m.toLowerCase()),
+      ),
       parametersOf,
-    );
-  }
-
-  return errors;
+    },
+  ).map((d) => `Passage "${d.passage}": ${d.message}`);
 }
 
 /**

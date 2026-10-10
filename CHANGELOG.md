@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tooling: `widgetDefinitions(passages, macros?)` lists the widgets a story defines as the runtime registers them (name, `@` parameters, whether the body renders `{@children}`, and the offsets of the opening tag, the name and the closer), tolerant of half-typed definitions; `parseWidgetDef(rawArgs)` is exported. The runtime's startup reads definitions with the same code (#462).
 
+- Tooling: `variableReferences(source, macros?)` returns the `$`/`%` variable references a passage evaluates with their dotted path and span, and `validateVariableReferences(passages, declarations, macros?)` checks them as the story start does (undeclared variables, fields of primitives), with codes and offsets. The story start reads references with the same code, with its messages unchanged (#464).
+
 ### Changed
 
 - **Breaking:** `{link}`'s target is a passage name as in `{goto}`: a quoted string or an expression, so `{link "Go" $dest}{/link}` navigates to the passage `$dest` names. A quoted name is checked when the story starts; an expression naming a missing passage shows an error in place.

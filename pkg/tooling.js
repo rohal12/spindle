@@ -39,6 +39,8 @@ export {
   splitIncludeFlag,
   parseWidgetDef,
   widgetDefinitions,
+  variableReferences,
+  validateVariableReferences,
 } from './story-variables.js';
 
 /**

@@ -124,6 +124,34 @@ const [def] = widgetDefinitions(
 // { name: 'Box', params: ['@tone'], block: true, passage: 'W', start: 0, … }
 ```
 
+## Variable references
+
+`variableReferences(source, macros?)` returns every `$` and `%` variable reference a passage's markup evaluates, in source order, as `{ sigil, name, path, start, end }`: `$a.b.c` is `name: 'a'`, `path: ['b', 'c']`, and `[start, end)` are UTF-16 offsets into `source`. They are found where the story start looks for them: `{$var}` displays, expressions, conditions, `{do}` bodies and the code arguments of macros (by their declared parameters, so `{set}` targets count), the quoted names input macros bind (`{textbox "$name"}`; pass the macros with `storeVar`), and the markup in labels, selectors and HTML attributes. Strings, comments, property names and prose hold none; `_` and `@` locals are never variables. The path is the dotted part only: `$a?.b` and `$a["b"]` give `$a`. The target of `{unset}` is not a reference, as the story start does not check it. Malformed tags are skipped.
+
+`validateVariableReferences(passages, declarations, macros?)` checks them, as the story start does, and returns `VariableDiagnostic`s: `{ passage, code, name, path?, start, end, message }`, with offsets into the passage's content and the story start's `message`.
+
+- `declarations` is `{ variables, transients? }`, maps from name to schema: from `parseDeclarations`, `new Map(declarations.map((d) => [d.name, d.schema]))`. A variable with no `schema` (a non-static initializer) is declared and its fields are not checked. `transients` is checked only when given.
+- `undeclared-variable` and `undeclared-transient`: the variable is not declared. `primitive-field`: a field a number, string or boolean has no member of (`$hp.nope`; `$hp.toFixed` and `$name.length` are fine). `reserved-name`: `$__proto__`.
+- Not errors, as at story start: an unknown field of an object (a registered class can add members), any field of an array or of a `null` default.
+- Passages tagged `script` or `stylesheet`, and the declaration passages, are skipped.
+
+```js
+import {
+  builtinMacros,
+  parseDeclarations,
+  validateVariableReferences,
+} from '@rohal12/spindle/tooling';
+
+const { declarations } = parseDeclarations('$hp = 10\n');
+const variables = new Map(declarations.map((d) => [d.name, d.schema]));
+validateVariableReferences(
+  [{ name: 'Start', content: 'HP {$hp} of {$maxHp}' }],
+  { variables },
+  builtinMacros,
+);
+// [{ passage: 'Start', code: 'undeclared-variable', name: 'maxHp', start: 13, end: 19, message: 'Undeclared variable: $maxHp' }]
+```
+
 ## Diagnostics
 
 A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, besides `passage`, `line`, `column`, `message` and the `file` and `fileLine` of its passage:
