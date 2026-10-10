@@ -4,6 +4,7 @@ import { checkVariableName } from '../../utils/namespace';
 import { MacroError } from './MacroError';
 import {
   WIDGET_PARAMETERS,
+  checkWidgetHolds,
   widgetDef,
   type WidgetDef,
 } from '../../widgets/widget-def';
@@ -19,6 +20,7 @@ defineMacro({
       // Refuse `@` parameters that no namespace can hold
       const def = widgetDef(ctx.args);
       for (const param of def.params) checkVariableName(param.slice(1), param);
+      checkWidgetHolds(def);
       parsed = def;
     } catch (err) {
       error = err;

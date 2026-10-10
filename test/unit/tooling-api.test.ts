@@ -30,6 +30,7 @@ import {
   transform,
   unescapeQuoted,
   collectStoryPassageReferences,
+  passagePieces,
   evaluatePassageName,
   passageTarget,
   parseWidgetDef,
@@ -476,6 +477,87 @@ describe('widgetDefinitions (#462)', () => {
     // The {widget} macro registers what parseWidgetDef reads
     const [def] = widgets(`{widget ${rawArgs}}{@a}{/widget}`);
     expect(def!.params).toEqual(['@a', '@b']);
+  });
+
+  it('reads what a parameter holds after a colon (#480)', () => {
+    expect(parseWidgetDef('"choice" @label @target:passage, @cost')).toEqual({
+      name: 'choice',
+      params: ['@label', '@target', '@cost'],
+      holds: { '@target': 'passage' },
+    });
+    // A word that holds nothing is reported, the name still read
+    expect(parseWidgetDef('"choice" @target:pasage')).toEqual({
+      name: 'choice',
+      params: ['@target'],
+      badHolds: [{ param: '@target', written: 'pasage' }],
+    });
+    const [def] = widgets(
+      '{widget "choice" @label @target:passage}{@label}{/widget}',
+    );
+    expect(def).toMatchObject({ holds: { '@target': 'passage' } });
+  });
+
+  describe('the calls of a widget that declares what its arguments hold (#480)', () => {
+    const passages = [
+      {
+        name: 'Widgets',
+        tags: ['widget'],
+        content:
+          '{widget "choice" @label @target:passage @cost}{@label}{/widget}',
+      },
+      {
+        name: 'Start',
+        content:
+          '{choice "Leave" "NoSuchPassage"}\n{choice "Stay" "Hall", 3}\n{choice "Dyn" $where}\n{CHOICE "Up" "Nowhere"}',
+      },
+      { name: 'Hall', content: 'Hall.' },
+    ];
+
+    it('validateStoryMarkup finds a passage name no passage has', () => {
+      const found = validateStoryMarkup(passages, getMacroRegistry()).map(
+        (d) => [d.passage, d.line, d.column, d.code],
+      );
+      expect(found).toEqual([
+        ['Start', 1, 17, 'unknown-passage'],
+        ['Start', 4, 14, 'unknown-passage'],
+      ]);
+    });
+
+    it('passagePieces reads them from a macro that names the widget', () => {
+      const widget = {
+        name: 'choice',
+        block: false,
+        subMacros: [],
+        widget: {
+          params: ['@label', '@target', '@cost'],
+          holds: { '@target': 'passage' as const },
+        },
+      };
+      const source = '{choice "Leave" "Hall"} {choice "Dyn" $x}';
+      expect(
+        passagePieces(source, [widget]).map((p) => [p.kind, p.offset]),
+      ).toEqual([['passage', 16]]);
+      expect(passagePieces(source, [])).toEqual([]);
+    });
+
+    it('other holds are read as a macro parameter reads them', () => {
+      const macros = [
+        {
+          name: 'cond',
+          block: false,
+          subMacros: [],
+          widget: {
+            params: ['@when', '@text'],
+            holds: {
+              '@when': 'expression' as const,
+              '@text': 'markup' as const,
+            },
+          },
+        },
+      ];
+      const pieces = passagePieces('{cond "$a >" "{nomacro}"}', macros);
+      expect(pieces.map((p) => p.kind)).toEqual(['code', 'text']);
+    });
   });
 
   it('counts a {@children} in an attribute value, as the docs say (#467)', () => {

@@ -133,6 +133,28 @@ export function topLevelIndices(
   return indices;
 }
 
+/** The start and end of a run of text in a larger one. */
+export type Span = [start: number, end: number];
+
+/**
+ * The segments of `src` between its depth-0 separators (see
+ * `topLevelIndices`), as spans: untrimmed, and empty segments are kept, so
+ * `n` separators always give `n + 1` segments.
+ */
+export function topLevelSpans(
+  src: string,
+  isSeparator: (ch: string) => boolean,
+): Span[] {
+  const spans: Span[] = [];
+  let from = 0;
+  for (const i of topLevelIndices(src, isSeparator)) {
+    spans.push([from, i]);
+    from = i + 1;
+  }
+  spans.push([from, src.length]);
+  return spans;
+}
+
 /**
  * Split `src` at every depth-0 separator (see `topLevelIndices`). Segments
  * are returned as written, untrimmed, and empty segments are kept, so
@@ -142,14 +164,7 @@ export function splitTopLevel(
   src: string,
   isSeparator: (ch: string) => boolean,
 ): string[] {
-  const segments: string[] = [];
-  let from = 0;
-  for (const i of topLevelIndices(src, isSeparator)) {
-    segments.push(src.slice(from, i));
-    from = i + 1;
-  }
-  segments.push(src.slice(from));
-  return segments;
+  return topLevelSpans(src, isSeparator).map(([a, b]) => src.slice(a, b));
 }
 
 /**
@@ -189,17 +204,50 @@ function startsLikeValue(token: string): boolean {
  * Try to split a raw string on whitespace at depth 0 (respecting strings,
  * template literals, parentheses, brackets, and braces). Each resulting token
  * must pass `isStandaloneValue()` or the split is rejected and `null` is
- * returned.
+ * returned. The spans are those of the tokens in `raw`.
  */
-function trySplitOnWhitespace(raw: string): string[] | null {
-  const args = splitTopLevel(raw, isWhitespace).filter(Boolean);
+function trySplitOnWhitespace(raw: string): Span[] | null {
+  const args = topLevelSpans(raw, isWhitespace).filter(([a, b]) => b > a);
 
   // Need 2+ tokens
   if (args.length < 2) return null;
 
   // Every token must be a standalone value (not an operator)
-  for (const arg of args) {
-    if (!isStandaloneValue(arg)) return null;
+  for (const [a, b] of args) {
+    if (!isStandaloneValue(raw.slice(a, b))) return null;
+  }
+
+  return args;
+}
+
+/** `span` less the whitespace at its ends. */
+function trimmed(src: string, [start, end]: Span): Span {
+  const text = src.slice(start, end);
+  const lead = text.length - text.trimStart().length;
+  return [
+    start + lead,
+    Math.max(start + lead, end - (text.length - text.trimEnd().length)),
+  ];
+}
+
+/**
+ * Where the arguments in `raw` are written (see `splitArgs`), as spans of
+ * `raw`.
+ */
+export function splitArgSpans(raw: string): Span[] {
+  const args = topLevelSpans(raw, (ch) => ch === ',').map((span) =>
+    trimmed(raw, span),
+  );
+  const hasComma = args.length > 1;
+  const last = args[args.length - 1]!;
+  if (last[0] === last[1]) args.pop();
+
+  // If no commas were found and we got a single expression, try splitting
+  // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
+  if (!hasComma && args.length === 1) {
+    const [start, end] = args[0]!;
+    const split = trySplitOnWhitespace(raw.slice(start, end));
+    if (split) return split.map(([a, b]) => [start + a, start + b]);
   }
 
   return args;
@@ -211,16 +259,5 @@ function trySplitOnWhitespace(raw: string): string[] | null {
  * string literals separated by whitespace (e.g. `"Label" "target"`).
  */
 export function splitArgs(raw: string): string[] {
-  const args = splitTopLevel(raw, (ch) => ch === ',').map((a) => a.trim());
-  const hasComma = args.length > 1;
-  if (args[args.length - 1] === '') args.pop();
-
-  // If no commas were found and we got a single expression, try splitting
-  // on whitespace at depth 0 (e.g. "Label" "target", $var "text", $x $y).
-  if (!hasComma && args.length === 1) {
-    const split = trySplitOnWhitespace(args[0]!);
-    if (split) return split;
-  }
-
-  return args;
+  return splitArgSpans(raw).map(([a, b]) => raw.slice(a, b));
 }

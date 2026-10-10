@@ -53,8 +53,11 @@ import {
   deepClone,
   existingObjects,
   locateObjects,
+  deepEqual,
   mergesWith,
+  pathKey,
   shareEqual,
+  underChange,
   type PathChange,
 } from './structural';
 import { getByPath } from './utils/object-path';
@@ -771,6 +774,14 @@ function loadedEntryMoment(
   return moment;
 }
 
+/** The variable paths `Story.set` writes while a save's hooks run. */
+let hookWrites: Map<string, string[]> | null = null;
+
+/** Note that `path` of the variables was written (see keepHookWrites). */
+export function recordHookWrite(path: string[]): void {
+  hookWrites?.set(pathKey(path), path);
+}
+
 /**
  * Write the changes between `before` and `after` (the live variables around
  * the `beforesave` hooks) into the payload's snapshot of the saved moment. A
@@ -788,10 +799,22 @@ function keepHookWrites(
   payload: SavePayload,
   before: Record<string, unknown>,
   after: Record<string, unknown>,
+  written: readonly string[][],
 ): void {
   const moment = payload.history[payload.historyIndex];
   if (!moment) return;
   const changes = changesBetween(before, after, true);
+  const keys = new Set(changes.map((c) => pathKey(c.path)));
+  // A write of the live value is no change to the live store, but the
+  // snapshot can still hold another one: an earlier save's hooks wrote the
+  // live value, which this moment's snapshot does not have (#479)
+  for (const path of written) {
+    if (underChange(path, keys)) continue;
+    keys.add(pathKey(path));
+    const value = getByPath(after, path);
+    if (deepEqual(getByPath(moment.variables, path), value)) continue;
+    changes.push({ path, deleted: false, value });
+  }
   if (changes.length === 0) return;
   // A copy of its own, so the writes keep the snapshot's references (which
   // the history shares with other moments) as they are
@@ -1714,9 +1737,12 @@ export const useStoryStore = create<StoryState>()(
 
     beginSave: () => {
       const before = get().variables;
+      const writes = new Map<string, string[]>();
+      hookWrites = writes;
       return () => {
+        if (hookWrites === writes) hookWrites = null;
         const payload = get().getSavePayload();
-        keepHookWrites(payload, before, get().variables);
+        keepHookWrites(payload, before, get().variables, [...writes.values()]);
         return payload;
       };
     },

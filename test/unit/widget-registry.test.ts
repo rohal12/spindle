@@ -6,6 +6,8 @@ import {
   isBlockWidget,
 } from '../../src/widgets/widget-registry';
 import type { ASTNode } from '../../src/markup/ast';
+import { registerWidgetDef } from '../../src/widgets/register-widget-def';
+import { parseWidgetDef } from '../../src/widgets/widget-def';
 
 describe('widget-registry', () => {
   beforeEach(() => {
@@ -18,6 +20,24 @@ describe('widget-registry', () => {
     const widget = getWidget('greeting');
     expect(widget?.body).toBe(body);
     expect(widget?.params).toEqual([]);
+  });
+
+  it('keeps what the parameters declare to hold (#480)', () => {
+    registerWidgetDef(parseWidgetDef('"choice" @label @target:passage'), []);
+    expect(getWidget('choice')).toMatchObject({
+      params: ['@label', '@target'],
+      holds: { '@target': 'passage' },
+    });
+  });
+
+  it('refuses a parameter that holds an unknown kind (#480)', () => {
+    expect(() =>
+      registerWidgetDef(parseWidgetDef('"choice" @target:pasage'), []),
+    ).toThrow(
+      'spindle: The widget parameter @target of {widget "choice"} holds the unknown "pasage". ' +
+        'Write one of markup, text, passage, expression, statements after the colon',
+    );
+    expect(getWidget('choice')).toBeUndefined();
   });
 
   it('returns undefined for unregistered widget', () => {

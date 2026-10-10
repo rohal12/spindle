@@ -3,7 +3,7 @@
  * macro, startup and markup validation (also in tooling) share these.
  */
 import { parseMacroArgs, type ArgSpans } from '../components/macros/macro-args';
-import type { MacroArgs } from '../registry';
+import { STRING_HOLDS, type MacroArgs, type StringHolds } from '../registry';
 import { tokenizeMarkupTolerant } from '../markup/parse';
 import type { MacroToken } from '../markup/tokens';
 import type { ParametersOf } from '../code-check';
@@ -17,23 +17,60 @@ export const WIDGET_PARAMETERS = [
 
 export interface WidgetDef {
   name: string;
+  /** The `@` parameters, without what they declare to hold. */
   params: string[];
+  /**
+   * What the parameters that declare it hold (`@target:passage`), by name
+   * with the `@`: the check of a call reads such an argument as it reads
+   * the same `holds` of a macro's `string` parameter. Absent when none does.
+   */
+  holds?: Record<string, StringHolds>;
+  /** The parameters that declare something no `holds` is (see checkWidgetHolds). */
+  badHolds?: { param: string; written: string }[];
 }
 
 /**
  * The widget a {widget} definition's arguments declare: its name and its
  * parameters, the words after it that start with `@` (docs/widgets.md),
- * separated by spaces or commas (`@a, @b`). Other words, such as `$name`, are
- * not parameters.
+ * separated by spaces or commas (`@a, @b`). A parameter may say what its
+ * argument holds after a colon (`@target:passage`, one of the `holds` of a
+ * macro parameter; another word is a `badHolds`). Other words, such as
+ * `$name`, are not parameters.
  */
 export function widgetDef({
   name = '',
   parameters = '',
 }: MacroArgs<typeof WIDGET_PARAMETERS>): WidgetDef {
+  const params: string[] = [];
+  const holds: Record<string, StringHolds> = {};
+  const badHolds: WidgetDef['badHolds'] = [];
+  for (const word of parameters.split(/[\s,]+/)) {
+    if (!word.startsWith('@')) continue;
+    const [param = word, written] = word.split(/:(.*)/s);
+    params.push(param);
+    if (written === undefined) continue;
+    if (STRING_HOLDS.includes(written as StringHolds)) {
+      holds[param] = written as StringHolds;
+    } else {
+      badHolds.push({ param, written });
+    }
+  }
   return {
     name,
-    params: parameters.split(/[\s,]+/).filter((word) => word.startsWith('@')),
+    params,
+    ...(Object.keys(holds).length > 0 ? { holds } : {}),
+    ...(badHolds.length > 0 ? { badHolds } : {}),
   };
+}
+
+/** Throw if a parameter of `def` declares what it holds wrongly. */
+export function checkWidgetHolds({ name, badHolds = [] }: WidgetDef): void {
+  const [bad] = badHolds;
+  if (!bad) return;
+  throw new Error(
+    `spindle: The widget parameter ${bad.param} of {widget "${name}"} holds the unknown ${JSON.stringify(bad.written)}. ` +
+      `Write one of ${STRING_HOLDS.join(', ')} after the colon (see docs/widgets.md#what-an-argument-holds).`,
+  );
 }
 
 /** Read the arguments of a {widget} definition (see widgetDef). */
