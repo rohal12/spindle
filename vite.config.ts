@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 import { resolve } from 'path';
-import { peggyPlugin } from './scripts/peggy';
+import { peggyPlugin } from './scripts/peggy.ts';
 
 export default defineConfig({
   plugins: [preact(), peggyPlugin(), viteSingleFile()],
@@ -12,7 +12,7 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'es2020',
     rollupOptions: {
-      input: resolve(__dirname, 'template/format.html'),
+      input: resolve(import.meta.dirname, 'template/format.html'),
     },
   },
 });
