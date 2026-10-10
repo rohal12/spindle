@@ -19,7 +19,11 @@ import {
   type PassageReference,
   type Piece,
 } from './code-check';
-import { blockWidgetNames } from './widgets/widget-def';
+import {
+  blockWidgetNames,
+  widgetDefinitions as readWidgetDefinitions,
+  type WidgetDefinition,
+} from './widgets/widget-def';
 import type { ParameterDef } from './registry';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
@@ -33,6 +37,8 @@ export type {
 } from './story-variables';
 export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
+export { parseWidgetDef } from './widgets/widget-def';
+export type { WidgetDef, WidgetDefinition } from './widgets/widget-def';
 
 // The parsing rules (see "Tooling API" in docs/tooling.md): the leaf rules
 // the runtime parses with, so editor tooling needn't mirror them.
@@ -209,4 +215,19 @@ export function collectStoryPassageReferences(
   macros: Iterable<ToolingMacro>,
 ): PassageReference[] {
   return referencesOf(passagePieces(source, macros));
+}
+
+/**
+ * The widgets the story defines, as the runtime reads them: those of
+ * StoryInit and of the passages tagged `widget`, with their parameters,
+ * whether their body renders `{@children}` (a block widget) and where they
+ * are written, in source order. Half-typed definitions are reported without a
+ * `closeStart`. The macros are those the markup may use, built-in and
+ * user-defined (a `{@children}` in an attribute or label counts).
+ */
+export function widgetDefinitions(
+  passages: Iterable<MarkupPassage>,
+  macros: Iterable<ToolingMacro> = [],
+): WidgetDefinition[] {
+  return readWidgetDefinitions(passages, parameterLookup([...macros]));
 }

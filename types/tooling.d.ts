@@ -681,6 +681,55 @@ export declare function collectStoryPassageReferences(
 ): PassageReference[];
 
 // ---------------------------------------------------------------------------
+// Widget definitions
+// ---------------------------------------------------------------------------
+
+/** What a `{widget}` definition's arguments declare. */
+export interface WidgetDef {
+  name: string;
+  /** The `@` parameters. */
+  params: string[];
+}
+
+/**
+ * A widget defined by a `{widget}` macro. The offsets are UTF-16 offsets into
+ * the content of `passage`.
+ */
+export interface WidgetDefinition extends WidgetDef {
+  /** Whether its body renders `{@children}`: it takes a closing tag. */
+  block: boolean;
+  passage: string;
+  /** The opening `{widget …}` tag. */
+  start: number;
+  end: number;
+  /** The name as written, without quotes. */
+  nameStart: number;
+  nameEnd: number;
+  /** The `{/widget}` closer; absent while the definition is not closed. */
+  closeStart?: number;
+}
+
+/**
+ * The name and `@` parameters a `{widget}` macro reads from its arguments
+ * (`"Wrap" @a @b`), as the runtime reads them. Throws where the macro
+ * reports the arguments.
+ */
+export declare function parseWidgetDef(rawArgs: string): WidgetDef;
+
+/**
+ * The widgets the story defines, as the runtime registers them: those of
+ * `StoryInit` and of the passages tagged `widget`, in source order. Block-ness
+ * is decided on tokens, so a `{@children}` in an HTML comment or a `{do}` body
+ * does not count; one in an attribute value or label of the `macros` does.
+ * Tolerant: a half-typed definition is reported without `closeStart`, and one
+ * whose arguments cannot be read is left out.
+ */
+export declare function widgetDefinitions(
+  passages: Iterable<MarkupPassage>,
+  macros?: Iterable<ToolingMacro>,
+): WidgetDefinition[];
+
+// ---------------------------------------------------------------------------
 // Pieces of a passage
 // ---------------------------------------------------------------------------
 

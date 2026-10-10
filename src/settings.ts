@@ -32,6 +32,14 @@ let values: Record<string, unknown> = createNamespace();
 let storageLoaded = false;
 let unsubscribeStoryData: (() => void) | null = null;
 
+const listeners = new Set<() => void>();
+
+/** Call `listener` after a setting changes; returns the unsubscribe. */
+export function subscribeSettings(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 function storageKey(): string {
   const storyData = useStoryStore.getState().storyData;
   const ifid = storyData?.ifid || 'unknown';
@@ -125,6 +133,7 @@ export const settings = {
   set(name: string, value: unknown): void {
     values[name] = value;
     persist();
+    for (const listener of [...listeners]) listener();
   },
 
   getAll(): Record<string, unknown> {

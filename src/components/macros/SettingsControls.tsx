@@ -1,14 +1,18 @@
-import { useState } from 'preact/hooks';
-import { settings, type SettingDef } from '../../settings';
+import { useEffect, useState } from 'preact/hooks';
+import { settings, subscribeSettings, type SettingDef } from '../../settings';
 import { defineMacro } from '../../define-macro';
 
 function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   const [value, setValue] = useState(() => settings.get(name));
 
-  const update = (newValue: unknown) => {
-    setValue(newValue);
-    settings.set(name, newValue);
-  };
+  // Follow changes made elsewhere: Story.settings.set(), another view
+  useEffect(() => {
+    const sync = () => setValue(settings.get(name));
+    sync();
+    return subscribeSettings(sync);
+  }, [name]);
+
+  const update = (newValue: unknown) => settings.set(name, newValue);
 
   switch (def.type) {
     case 'toggle':

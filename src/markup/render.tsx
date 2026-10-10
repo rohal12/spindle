@@ -680,9 +680,14 @@ function resolveAttributeValue(
   return result.text;
 }
 
+/** Whether a node shows nothing as text: whitespace, or a closed HTML comment. */
+function isBlankText(n: ASTNode): boolean {
+  return n.type === 'text' && (n.comment === true || n.value.trim() === '');
+}
+
 /** The index of the summary element opening `nodes`, or -1 when none does. */
 function leadingSummaryIndex(nodes: ASTNode[]): number {
-  const at = nodes.findIndex((n) => n.type !== 'text' || n.value.trim() !== '');
+  const at = nodes.findIndex((n) => !isBlankText(n));
   const first = nodes[at];
   return first?.type === 'html' && first.tag.toLowerCase() === 'summary'
     ? at
@@ -719,7 +724,13 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   let children: preact.ComponentChildren = undefined;
   let structural = false;
   if (node.children.length > 0) {
-    if (inRaw || isRawRoot) {
+    if (tag === 'style') {
+      // A raw-text element: its CSS keeps character-reference lookalikes
+      // (`?a=1&notch=2`) as written (#453)
+      children = node.children.map((n) =>
+        n.type === 'text' ? n.value : renderSingleNode(n),
+      );
+    } else if (inRaw || isRawRoot) {
       children = renderInlineNodes(node.children);
     } else {
       // A details element's summary stays its direct child: it is rendered
@@ -730,7 +741,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
         renderNodes(nodes, { nobr, locals, inline: isInline });
       structural =
         STRUCTURAL_ELEMENTS.has(tag) &&
-        node.children.every((n) => n.type !== 'text' || n.value.trim() === '');
+        node.children.every((n) => n.type !== 'text' || isBlankText(n));
       children = structural ? (
         node.children
           .filter((n) => n.type !== 'text')
@@ -1017,7 +1028,7 @@ export function renderNodes(
   // paragraphs would pull the elements they produce out of it (#436)
   if (
     options?.structural &&
-    nodes.every((n) => n.type !== 'text' || n.value.trim() === '')
+    nodes.every((n) => n.type !== 'text' || isBlankText(n))
   ) {
     return nodes.filter((n) => n.type !== 'text').map(renderSingleNode);
   }

@@ -147,6 +147,33 @@ const openModals: ModalEntry[] = [];
  * - closes the topmost dialog on Escape when it is dismissible;
  * - returns focus to the previously focused element on close.
  */
+/** The input types made of several segments, each a native Tab stop. */
+const SEGMENTED_INPUTS = new Set([
+  'date',
+  'time',
+  'datetime-local',
+  'month',
+  'week',
+]);
+
+/** Whether the element has native tab stops inside it, in its shadow tree. */
+function hasNativeStops(el: Element | null): el is HTMLElement {
+  if (el instanceof HTMLMediaElement) return el.controls;
+  return (
+    el instanceof HTMLInputElement &&
+    SEGMENTED_INPUTS.has(el.type) &&
+    !el.readOnly
+  );
+}
+
+/** The tab stops of an embedded document, in tab order. */
+function frameStops(doc: Document | null): HTMLElement[] {
+  if (!doc) return [];
+  return Array.from(doc.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => isAvailable(el) && isTabStop(el),
+  );
+}
+
 export function useModalFocus(
   panelRef: RefObject<HTMLElement>,
   bodySelector: string,
@@ -200,6 +227,24 @@ export function useModalFocus(
      * (#424). `from` may be an element of an embedded document, whose frame
      * element then stands in for it.
      */
+    /** Focus `el`; a frame is entered at its first (or last) control (#460). */
+    const enter = (el: HTMLElement, backwards: boolean) => {
+      if (el instanceof HTMLIFrameElement) {
+        let inner: HTMLElement[] = [];
+        try {
+          inner = frameStops(el.contentDocument);
+        } catch {
+          // Not accessible: the frame itself takes focus
+        }
+        const edge = backwards ? inner[inner.length - 1] : inner[0];
+        if (edge) {
+          edge.focus();
+          return;
+        }
+      }
+      el.focus();
+    };
+
     const moveFocus = (from: Element | null, backwards: boolean) => {
       const items = focusables(panel);
       const first = items[0];
@@ -224,12 +269,12 @@ export function useModalFocus(
       } else {
         next = backwards ? last : first;
       }
-      (next ?? (backwards ? last : first)).focus();
+      enter(next ?? (backwards ? last : first), backwards);
     };
 
-    // The media element whose native controls Tab is stepping through
-    let steppingMedia: { el: HTMLMediaElement; backwards: boolean } | null =
-      null;
+    // The element whose native inner controls (a media element's, a date
+    // input's segments) Tab is stepping through
+    let steppingNative: { el: HTMLElement; backwards: boolean } | null = null;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (!top()) return;
@@ -243,13 +288,13 @@ export function useModalFocus(
       }
 
       if (e.key !== 'Tab') return;
-      // The controls of a media element are in its user-agent shadow tree,
-      // where the element stays the active one: they step through them
-      // natively, and onFocusIn takes over where focus leaves the element
-      // (#444).
+      // The controls of a media element and the segments of a date input are
+      // in its user-agent shadow tree, where the element stays the active
+      // one: they step through them natively, and onFocusIn takes over where
+      // focus leaves the element (#444, #461).
       const active = document.activeElement;
-      if (active instanceof HTMLMediaElement && active.controls) {
-        steppingMedia = { el: active, backwards: e.shiftKey };
+      if (hasNativeStops(active)) {
+        steppingNative = { el: active, backwards: e.shiftKey };
         return;
       }
       e.preventDefault();
@@ -257,7 +302,7 @@ export function useModalFocus(
     };
     // Clicking elsewhere ends the stepping through the controls
     const onPointerDown = () => {
-      steppingMedia = null;
+      steppingNative = null;
     };
 
     // Key events inside an embedded document never reach this one (#425).
@@ -279,9 +324,7 @@ export function useModalFocus(
       const onFrameKeyDown = (e: KeyboardEvent) => {
         if (!top()) return;
         if (e.key !== 'Tab') return onKeyDown(e);
-        const inner = Array.from(
-          doc!.querySelectorAll<HTMLElement>(FOCUSABLE),
-        ).filter((el) => isAvailable(el) && isTabStop(el));
+        const inner = frameStops(doc!);
         const active = doc!.activeElement;
         const edge = e.shiftKey ? inner[0] : inner[inner.length - 1];
         if (!edge || active === edge || active === doc!.body) {
@@ -307,10 +350,10 @@ export function useModalFocus(
     // document can't be reached, is brought back in.
     const onFocusIn = (e: FocusEvent) => {
       const target = e.target;
-      if (steppingMedia && target !== steppingMedia.el && top()) {
+      if (steppingNative && target !== steppingNative.el && top()) {
         // Focus left the media controls: on to the modal's next control
-        const { el, backwards } = steppingMedia;
-        steppingMedia = null;
+        const { el, backwards } = steppingNative;
+        steppingNative = null;
         moveFocus(el, backwards);
         return;
       }
@@ -330,11 +373,11 @@ export function useModalFocus(
     // with no tab stop after it in the document) sends no focusin: the
     // modal's next control takes it at once.
     const onFocusOut = (e: FocusEvent) => {
-      const pending = steppingMedia;
+      const pending = steppingNative;
       if (!pending || e.target !== pending.el || e.relatedTarget || !top()) {
         return;
       }
-      steppingMedia = null;
+      steppingNative = null;
       moveFocus(pending.el, pending.backwards);
     };
     document.addEventListener('focusout', onFocusOut, { signal });
