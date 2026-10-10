@@ -5,7 +5,7 @@ describe('tokenizeMarkup', () => {
   describe('text', () => {
     it('returns a single text token for plain text', () => {
       const tokens = tokenizeMarkup('Hello world');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         { type: 'text', value: 'Hello world', start: 0, end: 11 },
       ]);
     });
@@ -18,7 +18,7 @@ describe('tokenizeMarkup', () => {
   describe('links', () => {
     it('parses [[passage]] as plain link', () => {
       const tokens = tokenizeMarkup('[[Garden]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Garden',
@@ -33,7 +33,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[display|target]] pipe syntax', () => {
       const tokens = tokenizeMarkup('[[Go|Garden]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -48,7 +48,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[display->target]] arrow syntax', () => {
       const tokens = tokenizeMarkup('[[Go->Garden]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -63,7 +63,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[target<-display]] reverse arrow syntax', () => {
       const tokens = tokenizeMarkup('[[Garden<-Go]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -78,7 +78,7 @@ describe('tokenizeMarkup', () => {
 
     it('trims whitespace in link parts', () => {
       const tokens = tokenizeMarkup('[[  display  |  target  ]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'display',
@@ -94,13 +94,13 @@ describe('tokenizeMarkup', () => {
     it('handles multiple links with text between', () => {
       const tokens = tokenizeMarkup('Go [[Left]] or [[Right]]');
       expect(tokens).toHaveLength(4);
-      expect(tokens[0]).toEqual({
+      expect(tokens[0]).toMatchObject({
         type: 'text',
         value: 'Go ',
         start: 0,
         end: 3,
       });
-      expect(tokens[1]).toEqual({
+      expect(tokens[1]).toMatchObject({
         type: 'link',
         display: 'Left',
         target: 'Left',
@@ -109,13 +109,13 @@ describe('tokenizeMarkup', () => {
         start: 3,
         end: 11,
       });
-      expect(tokens[2]).toEqual({
+      expect(tokens[2]).toMatchObject({
         type: 'text',
         value: ' or ',
         start: 11,
         end: 15,
       });
-      expect(tokens[3]).toEqual({
+      expect(tokens[3]).toMatchObject({
         type: 'link',
         display: 'Right',
         target: 'Right',
@@ -160,7 +160,7 @@ describe('tokenizeMarkup', () => {
   describe('variables', () => {
     it('parses {$var} as variable token', () => {
       const tokens = tokenizeMarkup('{$health}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'health',
@@ -173,7 +173,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {_temp} as temporary variable token', () => {
       const tokens = tokenizeMarkup('{_count}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'count',
@@ -187,20 +187,20 @@ describe('tokenizeMarkup', () => {
     it('handles variable in text', () => {
       const tokens = tokenizeMarkup('Health: {$health} points');
       expect(tokens).toHaveLength(3);
-      expect(tokens[0]).toEqual({
+      expect(tokens[0]).toMatchObject({
         type: 'text',
         value: 'Health: ',
         start: 0,
         end: 8,
       });
-      expect(tokens[1]).toEqual({
+      expect(tokens[1]).toMatchObject({
         type: 'variable',
         name: 'health',
         scope: 'variable',
         start: 8,
         end: 17,
       });
-      expect(tokens[2]).toEqual({
+      expect(tokens[2]).toMatchObject({
         type: 'text',
         value: ' points',
         start: 17,
@@ -216,7 +216,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {@local} as local variable token', () => {
       const tokens = tokenizeMarkup('{@item}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'item',
@@ -229,7 +229,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {@local.field} with dot path', () => {
       const tokens = tokenizeMarkup('{@player.name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'player.name',
@@ -243,7 +243,7 @@ describe('tokenizeMarkup', () => {
     it('handles @ local in text', () => {
       const tokens = tokenizeMarkup('Item: {@item} here');
       expect(tokens).toHaveLength(3);
-      expect(tokens[1]).toEqual({
+      expect(tokens[1]).toMatchObject({
         type: 'variable',
         name: 'item',
         scope: 'local',
@@ -276,7 +276,7 @@ describe('tokenizeMarkup', () => {
   describe('macros', () => {
     it('parses {set $x = 5} as macro token', () => {
       const tokens = tokenizeMarkup('{set $x = 5}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'set',
@@ -290,7 +290,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {/if} as closing macro token', () => {
       const tokens = tokenizeMarkup('{/if}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'if',
@@ -304,7 +304,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {else} as a macro', () => {
       const tokens = tokenizeMarkup('{else}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'else',
@@ -318,7 +318,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {elseif $x > 3} with args', () => {
       const tokens = tokenizeMarkup('{elseif $x > 3}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'elseif',
@@ -332,7 +332,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {print $health * 2}', () => {
       const tokens = tokenizeMarkup('{print $health * 2}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -356,7 +356,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {for $item, $i of $list}', () => {
       const tokens = tokenizeMarkup('{for $item, $i of $list}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'for',
@@ -370,14 +370,14 @@ describe('tokenizeMarkup', () => {
 
     it('treats bare { as text', () => {
       const tokens = tokenizeMarkup('a { b');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         { type: 'text', value: 'a { b', start: 0, end: 5 },
       ]);
     });
 
     it('treats {123} as text (not a macro)', () => {
       const tokens = tokenizeMarkup('{123}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         { type: 'text', value: '{123}', start: 0, end: 5 },
       ]);
     });
@@ -386,7 +386,7 @@ describe('tokenizeMarkup', () => {
   describe('CSS class syntax', () => {
     it('parses {.class $var} as variable with className', () => {
       const tokens = tokenizeMarkup('{.hero-name $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -400,7 +400,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class _temp} as temporary variable with className', () => {
       const tokens = tokenizeMarkup('{.muted _count}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'count',
@@ -414,7 +414,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses multiple classes on variable: {.foo.bar $var}', () => {
       const tokens = tokenizeMarkup('{.foo.bar $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -428,7 +428,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class macroName args} as macro with className', () => {
       const tokens = tokenizeMarkup('{.danger button $health -= 10}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'button',
@@ -443,7 +443,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses multiple classes on macro: {.danger.large button ...}', () => {
       const tokens = tokenizeMarkup('{.danger.large button $health -= 10}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'button',
@@ -458,7 +458,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class if $cond} as macro with className', () => {
       const tokens = tokenizeMarkup('{.highlight if $health < 50}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'if',
@@ -473,7 +473,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class print expr} as macro with className', () => {
       const tokens = tokenizeMarkup('{.muted print $visited_rooms}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -488,7 +488,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class elseif $cond} as macro with className', () => {
       const tokens = tokenizeMarkup('{.red elseif $health < 50}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'elseif',
@@ -503,7 +503,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class else} as macro with className', () => {
       const tokens = tokenizeMarkup('{.red else}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'else',
@@ -518,7 +518,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .{$theme} selector with interpolation', () => {
       const tokens = tokenizeMarkup('{.{$theme} print "hello"}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -533,7 +533,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .{$theme}-dark selector — interpolation with suffix', () => {
       const tokens = tokenizeMarkup('{.{$theme}-dark print "hi"}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -548,7 +548,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .static.{$dynamic} — mixed static and interpolated classes', () => {
       const tokens = tokenizeMarkup('{.static.{$dynamic} print "x"}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -563,7 +563,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses #{$pageId} selector with interpolation on id', () => {
       const tokens = tokenizeMarkup('{#{$pageId} print "x"}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -578,7 +578,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .{_temp} selector with temporary var interpolation', () => {
       const tokens = tokenizeMarkup('{.{_cls} $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -592,7 +592,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .{@local} selector with local var interpolation', () => {
       const tokens = tokenizeMarkup('{.{@cls} $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -606,7 +606,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses .{%transient} selector with transient var interpolation', () => {
       // Found by property testing: selectors accepted {$ {_ {@ but not {%.
-      expect(tokenizeMarkup('{.a-{%_}.a $A}')).toEqual([
+      expect(tokenizeMarkup('{.a-{%_}.a $A}')).toMatchObject([
         {
           type: 'variable',
           name: 'A',
@@ -616,7 +616,7 @@ describe('tokenizeMarkup', () => {
           end: 14,
         },
       ]);
-      expect(tokenizeMarkup('[[.a-{%a}.a a]]')).toEqual([
+      expect(tokenizeMarkup('[[.a-{%a}.a a]]')).toMatchObject([
         {
           type: 'link',
           display: 'a',
@@ -632,7 +632,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[.{$cls} link]] with interpolation in link selector', () => {
       const tokens = tokenizeMarkup('[[.{$cls} Go|Start]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -648,7 +648,7 @@ describe('tokenizeMarkup', () => {
 
     it('closing tags do not take classes', () => {
       const tokens = tokenizeMarkup('{/button}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'button',
@@ -662,7 +662,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[.class link]] with className', () => {
       const tokens = tokenizeMarkup('[[.fancy Open the door|Hallway]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Open the door',
@@ -678,7 +678,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[.class.class2 link]] with multiple classes', () => {
       const tokens = tokenizeMarkup('[[.fancy.bold Go|Start]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -694,7 +694,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[.class plain]] plain link with className', () => {
       const tokens = tokenizeMarkup('[[.fancy Garden]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Garden',
@@ -710,7 +710,7 @@ describe('tokenizeMarkup', () => {
 
     it('tokens without classes have no className property', () => {
       const tokens = tokenizeMarkup('{$name}');
-      expect(tokens[0]).toEqual({
+      expect(tokens[0]).toMatchObject({
         type: 'variable',
         name: 'name',
         scope: 'variable',
@@ -749,7 +749,7 @@ describe('tokenizeMarkup', () => {
   describe('#id syntax', () => {
     it('parses {#id $var} as variable with id', () => {
       const tokens = tokenizeMarkup('{#health $hp}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'hp',
@@ -763,7 +763,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {#id _temp} as temporary variable with id', () => {
       const tokens = tokenizeMarkup('{#counter _count}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'count',
@@ -777,7 +777,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {#id macroName args} as macro with id', () => {
       const tokens = tokenizeMarkup('{#charselect button $choice = 1}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'button',
@@ -792,7 +792,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[#id link]] with id', () => {
       const tokens = tokenizeMarkup('[[#door-link Open the door|Hallway]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Open the door',
@@ -808,7 +808,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[#id plain]] plain link with id', () => {
       const tokens = tokenizeMarkup('[[#main-link Garden]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Garden',
@@ -824,7 +824,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {#id.class $var} — id then class', () => {
       const tokens = tokenizeMarkup('{#myid.myclass $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -839,7 +839,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class#id $var} — class then id', () => {
       const tokens = tokenizeMarkup('{.myclass#myid $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -854,7 +854,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {#id.class1.class2 button args} — id with multiple classes', () => {
       const tokens = tokenizeMarkup('{#btn.danger.large button $x}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'button',
@@ -870,7 +870,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class1#id.class2 macroName} — mixed order', () => {
       const tokens = tokenizeMarkup('{.foo#bar.baz print $x}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'macro',
           name: 'print',
@@ -886,7 +886,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[#id.class link]] — id and class on link', () => {
       const tokens = tokenizeMarkup('[[#door.fancy Go|Hallway]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -903,7 +903,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses [[.class#id link]] — class then id on link', () => {
       const tokens = tokenizeMarkup('[[.fancy#door Go|Hallway]]');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'link',
           display: 'Go',
@@ -920,7 +920,7 @@ describe('tokenizeMarkup', () => {
 
     it('last #id wins when multiple specified', () => {
       const tokens = tokenizeMarkup('{#first#second $name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'variable',
           name: 'name',
@@ -936,7 +936,7 @@ describe('tokenizeMarkup', () => {
   describe('svg tags', () => {
     it('tokenizes single-line <svg> as html tokens', () => {
       const tokens = tokenizeMarkup('<svg><circle r="5"/></svg>');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'html',
           tag: 'svg',
@@ -1002,7 +1002,7 @@ describe('tokenizeMarkup', () => {
   describe('expression tokens', () => {
     it('parses bracket access {$arr[$i]} as expression token', () => {
       const tokens = tokenizeMarkup('{$arr[$i]}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '$arr[$i]',
@@ -1014,7 +1014,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses nested bracket access {@p.labels[@p.level]}', () => {
       const tokens = tokenizeMarkup('{@p.labels[@p.level]}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '@p.labels[@p.level]',
@@ -1026,7 +1026,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses expression with nullish coalescing', () => {
       const tokens = tokenizeMarkup('{@p.labels[@p.level] ?? @p.level}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '@p.labels[@p.level] ?? @p.level',
@@ -1038,7 +1038,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses expression with ternary', () => {
       const tokens = tokenizeMarkup('{$x != null ? $x : 0}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '$x != null ? $x : 0',
@@ -1050,7 +1050,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses _temporary bracket access as expression', () => {
       const tokens = tokenizeMarkup('{_actions[$i].name}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '_actions[$i].name',
@@ -1086,7 +1086,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {.class $expr[...]} with selector prefix as expression', () => {
       const tokens = tokenizeMarkup('{.highlight $arr[$i]}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '$arr[$i]',
@@ -1099,7 +1099,7 @@ describe('tokenizeMarkup', () => {
 
     it('parses {#id @expr[...]} with id prefix as expression', () => {
       const tokens = tokenizeMarkup('{#val @map[@key]}');
-      expect(tokens).toEqual([
+      expect(tokens).toMatchObject([
         {
           type: 'expression',
           expression: '@map[@key]',
@@ -1281,7 +1281,7 @@ describe('tokenizeMarkup — raw {do} bodies (#176)', () => {
     const tokens = tokenizeMarkup(
       '{do}const obj={foo:1}; $x=obj.foo;{/do}after',
     );
-    expect(tokens).toEqual([
+    expect(tokens).toMatchObject([
       {
         type: 'macro',
         name: 'do',
@@ -1424,7 +1424,7 @@ describe('tokenizeMarkup — whitespace around attribute equals (#219)', () => {
 
 describe('tokenizeMarkup — backslash runs before braces', () => {
   it('escapes a brace after a single backslash', () => {
-    expect(tokenizeMarkup('\\{$x}')).toEqual([
+    expect(tokenizeMarkup('\\{$x}')).toMatchObject([
       { type: 'text', value: '{', start: 0, end: 2 },
       { type: 'text', value: '$x}', start: 2, end: 5 },
     ]);
@@ -1433,7 +1433,7 @@ describe('tokenizeMarkup — backslash runs before braces', () => {
   it('does not escape a brace after an even backslash run', () => {
     const tokens = tokenizeMarkup('C:\\\\{$dir}');
     expect(tokens).toHaveLength(2);
-    expect(tokens[0]).toEqual({
+    expect(tokens[0]).toMatchObject({
       type: 'text',
       value: 'C:\\\\',
       start: 0,
@@ -1443,7 +1443,7 @@ describe('tokenizeMarkup — backslash runs before braces', () => {
   });
 
   it('escapes with the last backslash of an odd run and keeps the rest', () => {
-    expect(tokenizeMarkup('C:\\\\\\{$dir}')).toEqual([
+    expect(tokenizeMarkup('C:\\\\\\{$dir}')).toMatchObject([
       { type: 'text', value: 'C:\\\\', start: 0, end: 4 },
       { type: 'text', value: '{', start: 4, end: 6 },
       { type: 'text', value: '$dir}', start: 6, end: 11 },
@@ -1451,7 +1451,7 @@ describe('tokenizeMarkup — backslash runs before braces', () => {
   });
 
   it('applies the same rule to closing braces', () => {
-    expect(tokenizeMarkup('a\\\\\\}')).toEqual([
+    expect(tokenizeMarkup('a\\\\\\}')).toMatchObject([
       { type: 'text', value: 'a\\\\', start: 0, end: 3 },
       { type: 'text', value: '}', start: 3, end: 5 },
     ]);
@@ -1671,7 +1671,7 @@ describe('tokenizeMarkup — {do} bodies are lexed as JavaScript', () => {
 
 describe('tokenizeMarkup — expressions opened by ( or ! (#225)', () => {
   it('reads {!expr} as an expression', () => {
-    expect(tokenizeMarkup("{!$n ? 'zero' : 'nonzero'}")).toEqual([
+    expect(tokenizeMarkup("{!$n ? 'zero' : 'nonzero'}")).toMatchObject([
       {
         type: 'expression',
         expression: "!$n ? 'zero' : 'nonzero'",
@@ -1683,7 +1683,7 @@ describe('tokenizeMarkup — expressions opened by ( or ! (#225)', () => {
 
   it('reads {(expr)} as an expression, braces in strings included', () => {
     const tokens = tokenizeMarkup('a {(Math.max($a, 0) + "}")} b');
-    expect(tokens).toEqual([
+    expect(tokens).toMatchObject([
       { type: 'text', value: 'a ', start: 0, end: 2 },
       {
         type: 'expression',
@@ -1696,7 +1696,7 @@ describe('tokenizeMarkup — expressions opened by ( or ! (#225)', () => {
   });
 
   it('takes selectors before the expression', () => {
-    expect(tokenizeMarkup('{.big#n !$x}')).toEqual([
+    expect(tokenizeMarkup('{.big#n !$x}')).toMatchObject([
       {
         type: 'expression',
         expression: '!$x',

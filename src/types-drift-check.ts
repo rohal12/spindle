@@ -35,6 +35,8 @@ import type {
   validateStoryMarkup as SourceValidateStoryMarkup,
 } from './tooling';
 import type { bootStory as PublishedBootStory } from '../types/headless';
+import type * as SourceTooling from './tooling';
+import type * as PublishedTooling from '../types/tooling';
 
 /** What the source declares, by published name. */
 interface Source {
@@ -76,6 +78,56 @@ interface Published {
 const _sourceToPublished: Published = {} as Source;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _publishedToSource: Source = {} as Published;
+
+/** `true` if `A` and `B` are assignable to each other, else `false`. */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+// The rest of the tooling entry point: what it parses and returns (tokens,
+// pieces, pairing, declarations) and the stateless checks. Each must be the
+// same type in the source and in types/tooling.d.ts, or `false` here is no
+// `true`.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _toolingTypes: [
+  Same<SourceTooling.MarkupError, PublishedTooling.MarkupError>,
+  Same<SourceTooling.Token, PublishedTooling.Token>,
+  Same<SourceTooling.Piece, PublishedTooling.Piece>,
+  Same<SourceTooling.PairedNode, PublishedTooling.PairedNode>,
+  Same<SourceTooling.PairingError, PublishedTooling.PairingError>,
+  Same<SourceTooling.Declaration, PublishedTooling.Declaration>,
+  Same<SourceTooling.DeclarationError, PublishedTooling.DeclarationError>,
+  Same<SourceTooling.ToolingMacro, PublishedTooling.ToolingMacro>,
+  Same<typeof SourceTooling.pairMarkup, typeof PublishedTooling.pairMarkup>,
+  Same<
+    typeof SourceTooling.passagePieces,
+    typeof PublishedTooling.passagePieces
+  >,
+  Same<
+    typeof SourceTooling.parseDeclarations,
+    typeof PublishedTooling.parseDeclarations
+  >,
+  Same<
+    typeof SourceTooling.validateStoryMarkup,
+    typeof PublishedTooling.validateStoryMarkup
+  >,
+  Same<
+    typeof SourceTooling.collectStoryPassageReferences,
+    typeof PublishedTooling.collectStoryPassageReferences
+  >,
+] = [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+];
 
 // A typical custom macro written against the published types must type-check,
 // and misuse of the hooks must not (no `any` leaking through).

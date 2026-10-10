@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tooling (`@rohal12/spindle/tooling`): `validateStoryMarkup(passages, macros)` and `collectStoryPassageReferences(source, macros)` take the macros to check against and keep no state, so one process can analyse several projects; `builtinMacros` is the built-in macro list as data, loaded without `fs` so a bundler inlines it (`getMacroRegistry()` read `macro-registry.json` next to the file, and was empty in a bundle) (#446).
+- Tooling: a `MarkupDiagnostic` has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (the macro, the passage, the closest known name); a `MarkupError` has `code`, `end` and `data` too (#447).
+- Tooling: `pairMarkup(tokens, options)` pairs the flat tokens into a tree with the spans of the opening tag, closer and branches, and returns every unclosed, mismatched or stray tag instead of throwing; `isBlockMacro` is exported. `parseMarkup` builds its AST from the same pairing, so the runtime and tooling agree (#448).
+- Tooling: `parseDeclarations(content, sigil?)` reads a `StoryVariables` or `StoryTransients` passage without evaluating it or throwing: every declaration with the spans of its name and value, a `schema` for static initializers, and every error with its offsets; `parseStoryVariables` reads with the same grammar (#449).
+- Tooling: every markup token says where its parts are: a macro's name and arguments, a link's label, a variable's name, an expression, the selectors, an HTML tag's name and each attribute's name, value and quote, as written (`attributeSpans`); a text token that is an HTML comment says so (#450).
+- Tooling: `passagePieces(source, macros?)` returns which parts of a passage are code, passage names, text with markup of its own and malformed arguments, with UTF-16 offsets into the source, also for the markup in labels and attribute values (and over the escapes of a quoted string: `pieceOffset`). The story-start check and `collectPassageReferences` read the same pieces, so the latter now also finds the passages named in labels (#451).
+
 ### Changed
 
 - **Breaking:** `{link}`'s target is a passage name as in `{goto}`: a quoted string or an expression, so `{link "Go" $dest}{/link}` navigates to the passage `$dest` names. A quoted name is checked when the story starts; an expression naming a missing passage shows an error in place.

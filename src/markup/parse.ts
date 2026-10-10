@@ -4,13 +4,19 @@
  * as a MarkupError carrying its line and column.
  */
 import { parse as pegParse } from './spindle.peggy';
-import { isBlockMacro, type ASTNode } from './ast';
+import { buildAst, isBlockMacro, isRawMacro, type ASTNode } from './ast';
+import {
+  pairMarkup,
+  type PairedNode,
+  type PairingError,
+  type PairingErrorCode,
+} from './pair';
 import type { Selectors, Token } from './tokens';
 import { isCodeAttribute } from './code-attributes';
 import { defaultCodeEnd, type CodeEnd } from './code-end';
+import { lineColumn } from './line-column';
 
-/** Macros whose body is JavaScript source, kept verbatim. */
-const RAW_BODY_MACROS = new Set(['do']);
+export { lineColumn };
 
 /** What the grammar leaves to code. */
 export interface MarkupHooks extends CodeEnd {
@@ -25,9 +31,23 @@ export interface MarkupHooks extends CodeEnd {
 const defaultHooks: MarkupHooks = {
   ...defaultCodeEnd,
   isBlock: isBlockMacro,
-  isRaw: (name) => RAW_BODY_MACROS.has(name),
+  isRaw: isRawMacro,
   isCodeAttribute,
 };
+
+/** The kinds of malformed markup (see MarkupError.code). */
+export type MarkupErrorCode =
+  | PairingErrorCode
+  | 'syntax'
+  | 'unclosed-link'
+  | 'unclosed-expression'
+  | 'unclosed-macro'
+  | 'invalid-closer'
+  | 'closer-with-selectors'
+  | 'closer-with-arguments'
+  | 'unclosed-tag'
+  | 'unexpected-character'
+  | 'unclosed-attribute';
 
 /** Malformed markup, with where it starts (1-based line and column). */
 export class MarkupError extends Error {
@@ -38,6 +58,15 @@ export class MarkupError extends Error {
     readonly offset: number,
     readonly line: number,
     readonly column: number,
+    /** The kind of error, which stays the same where the wording changes. */
+    readonly code: MarkupErrorCode = 'syntax',
+    /** Where the offending text ends (0-based, exclusive). */
+    readonly end: number = offset,
+    /**
+     * The names involved, by `code`: `name` for an unclosed, mismatched or
+     * stray tag (and `closer`, `parent`, `inside` where there are several).
+     */
+    readonly data: Readonly<Record<string, string>> = {},
   ) {
     super(`${reason} (line ${line}, column ${column})`);
     this.name = 'MarkupError';
@@ -57,24 +86,9 @@ export interface ParseMarkupOptions {
   hooks?: Partial<MarkupHooks>;
 }
 
-/** 1-based line and column of `offset` in `text`. */
-export function lineColumn(
-  text: string,
-  offset: number,
-): { line: number; column: number } {
-  let line = 1;
-  let lineStart = 0;
-  for (let i = text.indexOf('\n'); i !== -1 && i < offset; ) {
-    line++;
-    lineStart = i + 1;
-    i = text.indexOf('\n', lineStart);
-  }
-  return { line, column: offset - lineStart + 1 };
-}
-
 function run(
   source: string,
-  startRule: 'Markup' | 'Tokens' | 'SelectorsPrefix',
+  startRule: 'Tokens' | 'SelectorsPrefix',
   options: ParseMarkupOptions,
 ): unknown {
   const hooks = options.hooks
@@ -83,26 +97,103 @@ function run(
   try {
     return pegParse(source, { startRule, text: options.text === true, hooks });
   } catch (err) {
-    const location = (err as { location?: { start: { offset: number } } })
-      .location;
+    const { location, code } = err as {
+      location?: { start: { offset: number }; end: { offset: number } };
+      code?: MarkupErrorCode;
+    };
     if (err instanceof Error && err.name === 'SyntaxError' && location) {
       const { offset } = location.start;
       const { line, column } = lineColumn(source, offset);
-      throw new MarkupError(err.message, offset, line, column);
+      throw new MarkupError(
+        err.message,
+        offset,
+        line,
+        column,
+        code,
+        location.end.offset,
+      );
     }
     throw err;
   }
 }
 
+/** What tolerant parsing makes of markup (see analyzeMarkup). */
+export interface MarkupAnalysis {
+  tokens: Token[];
+  /** The tokens paired into elements (see pair.ts). */
+  nodes: PairedNode[];
+  /**
+   * Every problem, in the order a parser reading from left to right notices
+   * them: the first is the one parseMarkup throws.
+   */
+  errors: MarkupError[];
+}
+
+/**
+ * Read markup that may be malformed: its tokens, their pairing and every
+ * error (malformed tags, and closers and branches that pair with nothing),
+ * with offsets in `source`. Markup inside a malformed tag is not read as such,
+ * so it has no errors of its own.
+ */
+export function analyzeMarkup(
+  source: string,
+  options: ParseMarkupOptions = {},
+): MarkupAnalysis {
+  const { tokens, errors, damage } = scan(source, options);
+  const hooks = { ...defaultHooks, ...options.hooks };
+  const paired = pairMarkup(tokens, {
+    isBlock: hooks.isBlock,
+    isRaw: hooks.isRaw,
+    source,
+  });
+  if (errors.length === 0 && paired.errors.length === 0) {
+    return { tokens, nodes: paired.nodes, errors };
+  }
+  // A malformed tag is noticed where it starts, an unpaired tag where its
+  // problem shows (see PairingError.noticedAt). Within a malformed tag the
+  // markup is no markup: what the recovery pairs there is dropped.
+  const inDamage = (start: number) =>
+    errors.some((e, i) => start >= damage[i]! && start <= e.offset);
+  const noticed: [number, MarkupError][] = errors.map((e, i) => [
+    damage[i]! + 0.5,
+    e,
+  ]);
+  for (const error of paired.errors) {
+    if (!inDamage(error.start)) {
+      noticed.push([error.noticedAt, pairingError(source, error)]);
+    }
+  }
+  // Array.prototype.sort is stable: equal ones stay in the order found
+  noticed.sort((a, b) => a[0] - b[0]);
+  return { tokens, nodes: paired.nodes, errors: noticed.map(([, e]) => e) };
+}
+
 /**
  * Parse markup into its AST: macros with their bodies and branches, HTML
- * elements with their children. Throws a MarkupError for malformed markup.
+ * elements with their children. Throws a MarkupError for malformed markup:
+ * the first problem a parser reading from left to right meets.
  */
 export function parseMarkup(
   source: string,
   options: ParseMarkupOptions = {},
 ): ASTNode[] {
-  return run(source, 'Markup', options) as ASTNode[];
+  const { nodes, errors } = analyzeMarkup(source, options);
+  if (errors.length > 0) throw errors[0];
+  return buildAst(nodes);
+}
+
+/** A pairing problem as the MarkupError it is for `source`. */
+function pairingError(source: string, error: PairingError): MarkupError {
+  const { line, column } = lineColumn(source, error.start);
+  return new MarkupError(
+    error.message,
+    error.start,
+    line,
+    column,
+    error.code,
+    error.end,
+    error.data,
+  );
 }
 
 /**
@@ -151,8 +242,22 @@ export function tokenizeMarkupTolerant(
   source: string,
   options: ParseMarkupOptions = {},
 ): TolerantTokens {
+  const { tokens, errors } = scan(source, options);
+  return { tokens, errors };
+}
+
+/**
+ * The tokens of tolerant tokenizing, the errors, and where the damage of
+ * each error starts: the tag that is malformed, which an error inside it
+ * (an attribute value) is after.
+ */
+function scan(
+  source: string,
+  options: ParseMarkupOptions,
+): TolerantTokens & { damage: number[] } {
   const tokens: Token[] = [];
   const errors: MarkupError[] = [];
+  const damage: number[] = [];
   // The code of a tag ends at a }: with none after it, the tag is unclosed
   // without reading its code to the end of the source, which every
   // unclosed tag would do again (#265).
@@ -169,7 +274,7 @@ export function tokenizeMarkupTolerant(
     };
     try {
       return tokenizeMarkup(text, { ...options, hooks }).map((token) =>
-        shift(token, base),
+        shiftOffsets(token, base),
       );
     } catch (error) {
       if (!(error instanceof MarkupError)) throw error;
@@ -186,7 +291,16 @@ export function tokenizeMarkupTolerant(
     }
     const at = base + result.offset;
     const { line, column } = lineColumn(source, at);
-    errors.push(new MarkupError(result.reason, at, line, column));
+    errors.push(
+      new MarkupError(
+        result.reason,
+        at,
+        line,
+        column,
+        result.code,
+        base + result.end,
+      ),
+    );
     // The longest prefix that tokenizes: the error may be inside a tag
     // (an attribute value) of which the prefix is itself malformed
     let cut = result.offset;
@@ -196,6 +310,7 @@ export function tokenizeMarkupTolerant(
       prefix = attempt(rest.slice(0, cut), base);
     }
     tokens.push(...prefix);
+    damage.push(base + cut);
     // The character that started the damage is text
     if (cut < rest.length) {
       const start = base + cut;
@@ -208,16 +323,31 @@ export function tokenizeMarkupTolerant(
     }
     base += cut + 1;
   }
-  return { tokens, errors };
+  return { tokens, errors, damage };
 }
 
-/** `token` with its offsets moved `by` on. */
-function shift(token: Token, by: number): Token {
-  if (by === 0) return token;
-  const moved = { ...token, start: token.start + by, end: token.end + by };
-  if (moved.type === 'link') {
-    moved.targetStart += by;
-    moved.targetEnd += by;
+/** The offset fields of a token (and of an attribute): `start`, `nameEnd`… */
+const OFFSET_FIELD = /^(start|end|[A-Za-z]*(Start|End))$/;
+
+/** `token` (or an attribute of it) with each of its offsets turned by `map`. */
+export function mapOffsets<T extends object>(
+  token: T,
+  map: (offset: number) => number,
+): T {
+  const moved: Record<string, unknown> = {
+    ...(token as Record<string, unknown>),
+  };
+  for (const [key, value] of Object.entries(moved)) {
+    if (typeof value === 'number' && OFFSET_FIELD.test(key)) {
+      moved[key] = map(value);
+    } else if (key === 'attributeSpans') {
+      moved[key] = (value as object[]).map((span) => mapOffsets(span, map));
+    }
   }
-  return moved;
+  return moved as T;
+}
+
+/** `token` (or an attribute of it) with its offsets moved `by` on. */
+export function shiftOffsets<T extends object>(token: T, by: number): T {
+  return by === 0 ? token : mapOffsets(token, (offset) => offset + by);
 }

@@ -2,10 +2,10 @@
 // compiled to its parser on load (scripts/peggy.ts); parse.ts wraps it.
 //
 // Start rules:
-//   Markup  the nested AST (ast.ts): macros with their bodies and branches,
-//           HTML elements with their children, links, variables, text.
-//   Tokens  the flat token stream (tokens.ts Token), without nesting:
-//           what the variable checker scans.
+//   Tokens  the flat token stream (tokens.ts Token), without nesting. The
+//           nesting (which closer closes which opener) is pair.ts; the AST
+//           is built from the paired tokens (ast.ts).
+//   SelectorsPrefix  the selectors that start the input.
 //
 // options.text selects text mode (HTML attribute values, labels): no links
 // or HTML, and a backslash run before a brace is paired up.
@@ -28,7 +28,6 @@ const RB = String.fromCharCode(125);
 const { SIGIL_SCOPES, withSelectors } = shared;
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const BRANCH_PARENT = { elseif: 'if', else: 'if', case: 'switch', default: 'switch', next: 'timed' };
-const BRANCHING = new Set(['if', 'switch', 'timed']);
 const LINK_SEPARATORS = [['|', false], ['->', false], ['<-', true]];
 const NO_SELECTORS = {};
 /**
@@ -56,14 +55,10 @@ function parseLink(inner, at, indexOf) {
     const before = part(0, idx);
     const after = part(idx + separator.length, inner.length);
     const [display, target] = targetFirst ? [after, before] : [before, after];
-    return { display: display.value, target: target.value, targetStart: target.start, targetEnd: target.end };
+    return { display: display.value, displayStart: display.start, displayEnd: display.end, target: target.value, targetStart: target.start, targetEnd: target.end };
   }
   const whole = part(0, inner.length);
-  return { display: whole.value, target: whole.value, targetStart: whole.start, targetEnd: whole.end };
-}
-
-function quoteArg(value) {
-  return '"' + value.replace(/[\\"]/g, '\\$&') + '"';
+  return { display: whole.value, displayStart: whole.start, displayEnd: whole.end, target: whole.value, targetStart: whole.start, targetEnd: whole.end };
 }
 
 function selectorsOf(parts) {
@@ -82,16 +77,6 @@ function label(tag) {
   if (tag.lex === 'html') return (tag.isClose ? '</' : '<') + tag.tag + '>';
   return LB + (tag.isClose ? '/' : '') + tag.name + RB;
 }
-function closerOf(tag) {
-  return tag.lex === 'html' ? '</' + tag.tag + '>' : LB + '/' + tag.name + RB;
-}
-function at(loc) {
-  return 'line ' + loc.start.line + ', column ' + loc.start.column;
-}
-function sameName(open, close) {
-  return open.lex === close.lex && open.lower === close.lower;
-}
-
 /** A lexeme: what one token of the flat stream holds, with its span. */
 function lexeme(lex, loc, fields) {
   fields.lex = lex;
@@ -101,38 +86,22 @@ function lexeme(lex, loc, fields) {
   return fields;
 }
 
-/** The AST node of a lexeme that stands alone (not a macro or element). */
-function nodeOf(x) {
-  switch (x.lex) {
-    case 'text':
-      return x.comment ? { type: 'text', value: x.value, comment: true } : { type: 'text', value: x.value };
-    case 'link':
-      return withSelectors({ type: 'macro', name: 'link', rawArgs: quoteArg(x.display) + ' ' + quoteArg(x.target), children: [] }, x);
-    case 'variable':
-      return withSelectors({ type: 'variable', name: x.name, scope: x.scope }, x);
-    case 'expression':
-      return withSelectors({ type: 'expression', expression: x.expression }, x);
-    default:
-      return x; // already a node
-  }
-}
-
 /** The token of a lexeme (tokens.ts Token). */
 function tokenOf(x) {
   const span = { start: x.start, end: x.end };
   switch (x.lex) {
     case 'text':
-      return { type: 'text', value: x.value, ...span };
+      return x.comment ? { type: 'text', value: x.value, comment: true, ...span } : { type: 'text', value: x.value, ...span };
     case 'link':
-      return withSelectors({ type: 'link', display: x.display, target: x.target, targetStart: x.targetStart, targetEnd: x.targetEnd, ...span }, x);
+      return withSelectors({ type: 'link', display: x.display, displayStart: x.displayStart, displayEnd: x.displayEnd, target: x.target, targetStart: x.targetStart, targetEnd: x.targetEnd, ...x.selectorSpan, ...span }, x);
     case 'variable':
-      return withSelectors({ type: 'variable', name: x.name, scope: x.scope, ...span }, x);
+      return withSelectors({ type: 'variable', name: x.name, nameStart: x.nameStart, nameEnd: x.nameEnd, scope: x.scope, ...x.selectorSpan, ...span }, x);
     case 'expression':
-      return withSelectors({ type: 'expression', expression: x.expression, ...span }, x);
+      return withSelectors({ type: 'expression', expression: x.expression, expressionStart: x.expressionStart, expressionEnd: x.expressionEnd, ...x.selectorSpan, ...span }, x);
     case 'macro':
-      return withSelectors({ type: 'macro', name: x.name, rawArgs: x.rawArgs, isClose: x.isClose, ...span }, x);
+      return withSelectors({ type: 'macro', name: x.name, nameStart: x.nameStart, nameEnd: x.nameEnd, rawArgs: x.rawArgs, argsStart: x.argsStart, argsEnd: x.argsEnd, isClose: x.isClose, ...x.selectorSpan, ...span }, x);
     case 'html':
-      return { type: 'html', tag: x.tag, attributes: x.attributes, isClose: x.isClose, isSelfClose: x.isSelfClose, ...span };
+      return { type: 'html', tag: x.tag, tagNameStart: x.tagNameStart, tagNameEnd: x.tagNameEnd, attributes: x.attributes, attributeSpans: x.attributeSpans, isClose: x.isClose, isSelfClose: x.isSelfClose, ...span };
   }
 }
 
@@ -140,7 +109,7 @@ function tokenOf(x) {
  * Flatten items (lexemes, nodes, arrays of them, nulls) and join adjacent
  * text, except escaped braces and comments, which stay a text item of their own.
  */
-function joinText(items, convert) {
+function joinText(items) {
   const out = [];
   let last = null;
   const add = (item) => {
@@ -155,7 +124,7 @@ function joinText(items, convert) {
     last = item;
   };
   add(items);
-  return convert ? out.map(convert) : out;
+  return out.map(tokenOf);
 }
 }}
 
@@ -192,17 +161,32 @@ function linkSeparatorIndex(inner, at, separator) {
   }
   return -1;
 }
+/**
+ * Where the selectors `s` are written, from `start` up to `after`, the end of
+ * what Selectors consumed (the one space that may follow them is not part of
+ * them): the fields of a token; none without selectors.
+ */
+function selectorSpan(s, start, after) {
+  if (s === NO_SELECTORS) return {};
+  return { selectorsStart: start, selectorsEnd: input.charAt(after - 1) === ' ' ? after - 1 : after };
+}
 function skipTo(end) {
   skipEnd = end;
   return end >= 0;
 }
-function fail(message, loc) {
-  error(message, loc);
+/** Fail with `message` at `loc`; `code` tells the kind of error apart (MarkupError). */
+function fail(message, loc, code) {
+  try {
+    error(message, loc);
+  } catch (e) {
+    e.code = code;
+    throw e;
+  }
 }
 function attrs(list) {
   const attributes = {};
   const seen = new Set();
-  for (const [name, value] of list) {
+  for (const { name, value } of list) {
     const lower = name.toLowerCase();
     if (seen.has(lower)) continue;
     seen.add(lower);
@@ -210,114 +194,12 @@ function attrs(list) {
   }
   return attributes;
 }
-
-/** Check the body of a macro or element against its opening tag. */
-function checkBody(open, body) {
-  for (const branch of body.branches) {
-    const parent = BRANCH_PARENT[branch.tag.lower];
-    if (open.lex !== 'macro' || open.lower !== parent) {
-      fail(label(branch.tag) + ' must be directly inside ' + LB + parent + RB + ', not inside ' + label(open), branch.tag.loc);
-    }
-  }
-  if (!body.end) {
-    fail('Unclosed ' + label(open) + ': no ' + closerOf(open) + ' closes it', open.loc);
-  }
-  if (!sameName(open, body.end)) {
-    fail(label(body.end) + ' found where ' + closerOf(open) + ' should close the ' + label(open) + ' opened at ' + at(open.loc), body.end.loc);
-  }
 }
-
-function macroNode(tag, body) {
-  const node = { type: 'macro', name: tag.lower, rawArgs: tag.rawArgs, children: [] };
-  if (!body) return withSelectors(node, tag);
-  checkBody(tag, body);
-  node.children = body.children;
-  if (BRANCHING.has(tag.lower)) {
-    node.branches = [withSelectors({ rawArgs: tag.rawArgs, children: body.children }, tag)];
-    for (const b of body.branches) {
-      node.branches.push(withSelectors({ rawArgs: b.tag.rawArgs, children: b.children }, b.tag));
-    }
-    node.children = [];
-  } else {
-    withSelectors(node, tag);
-  }
-  return node;
-}
-}
-
-// ---------------------------------------------------------------- structure
-
-Markup
-  = nodes:Content Tail { return nodes; }
-
-/** What ends the top level: the end, or a closer or branch with no opener. */
-Tail
-  = !.
-  / tag:BranchTag { fail(label(tag) + ' must be directly inside ' + LB + BRANCH_PARENT[tag.lower] + RB, tag.loc); }
-  / tag:CloseTag { fail(label(tag) + ' closes nothing: no ' + (tag.lex === 'html' ? '<' + tag.tag + '>' : LB + tag.name + RB) + ' is open here', tag.loc); }
-
-Content
-  = items:Item* { return joinText(items, nodeOf); }
-
-Item
-  = TextRun
-  / Escape
-  / Comment
-  / LinkLexeme
-  / EmailAutolink
-  / HtmlElement
-  / VoidCloser
-  / Value
-  / MacroElement
-  / Literal
-
-MacroElement
-  = tag:MacroTag &{ return tag.kind === 'open'; }
-    body:( &{ rawName = tag.lower; return hooks.isRaw(rawName); } b:RawBody { return b; }
-         / &{ return hooks.isBlock(tag.lower); } b:BlockBody { return b; }
-         / "" { return null; } )
-    { return macroNode(tag, body); }
-
-HtmlElement
-  = &{ return !textMode; } open:HtmlOpen
-    body:( &{ return !open.isSelfClose; } b:BlockBody { return b; } )?
-    {
-      const node = { type: 'html', tag: open.tag, attributes: open.attributes, children: [] };
-      if (body) {
-        checkBody(open, body);
-        node.children = body.children;
-      }
-      return node;
-    }
-
-BlockBody
-  = children:Content branches:BranchPart* end:BlockEnd { return { children, branches, end }; }
-
-BranchPart
-  = tag:BranchTag children:Content { return { tag, children }; }
-
-BlockEnd
-  = CloseTag
-  / !. { return null; }
-
-BranchTag
-  = tag:MacroTag &{ return tag.kind === 'branch'; } { return tag; }
-
-CloseTag
-  = tag:MacroTag &{ return tag.kind === 'close'; } { return tag; }
-  / &{ return !textMode; } tag:HtmlClose { return tag; }
-
-/** A raw body ({do}): JavaScript up to its closer, kept as one text node. */
-RawBody
-  = start:Here &{ return skipTo(hooks.rawBodyEnd(input, start, rawName)); }
-    body:$(.|{ return skipEnd - offset(); }|) end:CloseTag
-    { return { children: body ? [{ type: 'text', value: body }] : [], branches: [], end }; }
-  / "" { return { children: [], branches: [], end: null }; }
 
 // ------------------------------------------------------------- flat tokens
 
 Tokens
-  = items:TokenItem* { return joinText(items, tokenOf); }
+  = items:TokenItem* { return joinText(items); }
 
 TokenItem
   = TextRun
@@ -332,6 +214,11 @@ TokenItem
     body:( &{ rawName = tag.lower; return tag.kind === 'open' && hooks.isRaw(rawName); } b:RawTokens { return b; } )?
     { return body ? [tag, body] : tag; }
   / Literal
+
+/** The closing tag that ends a raw body. */
+CloseTag
+  = tag:MacroTag &{ return tag.kind === 'close'; } { return tag; }
+  / &{ return !textMode; } tag:HtmlClose { return tag; }
 
 /** A raw body and its closer, as tokens; nothing if it is unclosed. */
 RawTokens
@@ -392,10 +279,12 @@ Literal
   / "[" { return lexeme('text', location(), { value: '[' }); }
 
 LinkLexeme
-  = &{ return !textMode; } "[[" s:Selectors at:Here inner:$LinkText "]]" {
-      return withSelectors(lexeme('link', location(), parseLink(inner, at, (separator) => linkSeparatorIndex(inner, at, separator))), s);
+  = &{ return !textMode; } "[[" ss:Here s:Selectors at:Here inner:$LinkText "]]" {
+      const link = lexeme('link', location(), parseLink(inner, at, (separator) => linkSeparatorIndex(inner, at, separator)));
+      link.selectorSpan = selectorSpan(s, ss, at);
+      return withSelectors(link, s);
     }
-  / &{ return !textMode; } "[[" { fail('Unclosed link: [[ without ]]', location()); }
+  / &{ return !textMode; } "[[" { fail('Unclosed link: [[ without ]]', location(), 'unclosed-link'); }
 
 /**
  * A link's text, up to the first ]]. (Nested [[…]] pairs, as the
@@ -423,13 +312,17 @@ SelectorChar
 
 /** A variable `{$a.b}` or expression `{$a + 1}`, `{(…)}`, `{!…}`. */
 Value
-  = "{" s:Selectors sigil:[$_@%] name:$[a-zA-Z0-9_.]* "}" {
-      return withSelectors(lexeme('variable', location(), { name, scope: SIGIL_SCOPES[sigil] }), s);
+  = "{" ss:Here s:Selectors sigil:[$_@%] nameStart:Here name:$[a-zA-Z0-9_.]* "}" {
+      const variable = lexeme('variable', location(), { name, nameStart, nameEnd: nameStart + name.length, scope: SIGIL_SCOPES[sigil] });
+      variable.selectorSpan = selectorSpan(s, ss, nameStart - 1);
+      return withSelectors(variable, s);
     }
-  / "{" s:Selectors &[$_@%(!] expression:CodeToBrace "}" {
-      return withSelectors(lexeme('expression', location(), { expression }), s);
+  / "{" ss:Here s:Selectors after:Here &[$_@%(!] expression:CodeToBrace "}" {
+      const node = lexeme('expression', location(), { expression, expressionStart: after, expressionEnd: after + expression.length });
+      node.selectorSpan = selectorSpan(s, ss, after);
+      return withSelectors(node, s);
     }
-  / "{" Selectors &[$_@%(!] { fail('Unclosed ' + LB + input.substr(location().end.offset, 1) + '…: no ' + RB + ' ends it', location()); }
+  / "{" Selectors &[$_@%(!] { fail('Unclosed ' + LB + input.substr(location().end.offset, 1) + '…: no ' + RB + ' ends it', location(), 'unclosed-expression'); }
 
 /** JavaScript up to the } that ends it: where is up to options.hooks. */
 CodeToBrace
@@ -437,16 +330,21 @@ CodeToBrace
 
 /** A macro tag: `{name args}`, `{/name}`, with selectors on an opener. */
 MacroTag
-  = "{" s:Selectors start:Here close:"/"? name:MacroName nameEnd:Here
+  = "{" ss:Here s:Selectors start:Here close:"/"? name:MacroName nameEnd:Here
     tail:( &{ return skipTo(hooks.closeBrace(input, nameEnd, start)); } args:$(.|{ return skipEnd - offset(); }|) "}" { return args; } )? {
       const loc = location();
       const lower = name.toLowerCase();
       const tag = lexeme('macro', loc, { name, lower, rawArgs: '', isClose: !!close });
-      if (tail === null) fail('Unclosed ' + LB + (close ? '/' : '') + name + '…: no ' + RB + ' ends the macro', loc);
+      tag.nameStart = nameEnd - name.length;
+      tag.nameEnd = nameEnd;
+      tag.selectorSpan = selectorSpan(s, ss, start);
+      if (tail === null) fail('Unclosed ' + LB + (close ? '/' : '') + name + '…: no ' + RB + ' ends the macro', loc, 'unclosed-macro');
       tag.rawArgs = tail.trim();
+      tag.argsStart = tag.rawArgs ? nameEnd + tail.length - tail.trimStart().length : nameEnd;
+      tag.argsEnd = tag.argsStart + tag.rawArgs.length;
       if (close) {
-        if (s !== NO_SELECTORS) fail('A closing tag takes no selectors: ' + label(tag), loc);
-        if (tag.rawArgs) fail('A closing tag takes no arguments: ' + LB + '/' + name + ' ' + tag.rawArgs + RB, loc);
+        if (s !== NO_SELECTORS) fail('A closing tag takes no selectors: ' + label(tag), loc, 'closer-with-selectors');
+        if (tag.rawArgs) fail('A closing tag takes no arguments: ' + LB + '/' + name + ' ' + tag.rawArgs + RB, loc, 'closer-with-arguments');
         tag.kind = 'close';
       } else {
         withSelectors(tag, s);
@@ -454,7 +352,7 @@ MacroTag
       }
       return tag;
     }
-  / "{" s:Selectors "/" { fail('A closing tag starts with a letter after ' + LB + '/', location()); }
+  / "{" s:Selectors "/" { fail('A closing tag starts with a letter after ' + LB + '/', location(), 'invalid-closer'); }
 
 /** A macro name: a letter, then anything up to whitespace or }. */
 MacroName
@@ -471,27 +369,23 @@ EmailAutolink
     &{ return EMAIL_AUTOLINK.test(value); }
     { return lexeme('text', location(), { value }); }
 
-/** A redundant closer of a void element (</br>), which is dropped. */
-VoidCloser
-  = &{ return !textMode; } tag:HtmlClose &{ return VOID_TAGS.has(tag.lower); } { return null; }
-
 HtmlOpen
-  = "<" tag:TagName list:Attribute* _ slash:"/"? ">" {
+  = "<" tagStart:Here tag:TagName list:Attribute* _ slash:"/"? ">" {
       const lower = tag.toLowerCase();
-      return lexeme('html', location(), { tag, lower, attributes: attrs(list), isClose: false, isSelfClose: !!slash || VOID_TAGS.has(lower) });
+      return lexeme('html', location(), { tag, lower, tagNameStart: tagStart, tagNameEnd: tagStart + tag.length, attributes: attrs(list), attributeSpans: list, isClose: false, isSelfClose: !!slash || VOID_TAGS.has(lower) });
     }
   / "<" tag:TagName &(_c / "/" / ">" / !.) Attribute* _ bad:Here {
       // Only the offset of a location is used (parse.ts reads line and
       // column from it).
       const c = input.charAt(bad);
-      if (!c) fail('Unclosed tag <' + tag + ': no > ends it (write &lt; for a < that starts no tag)', location());
+      if (!c) fail('Unclosed tag <' + tag + ': no > ends it (write &lt; for a < that starts no tag)', location(), 'unclosed-tag');
       const at = { source: location().source, start: { offset: bad, line: 0, column: 0 }, end: { offset: bad + 1, line: 0, column: 0 } };
-      fail('Unexpected ' + JSON.stringify(c) + ' in the tag <' + tag + '>: expected an attribute, or > to end the tag', at);
+      fail('Unexpected ' + JSON.stringify(c) + ' in the tag <' + tag + '>: expected an attribute, or > to end the tag', at, 'unexpected-character');
     }
 
 HtmlClose
-  = "</" tag:TagName _ ">" {
-      return lexeme('html', location(), { tag, lower: tag.toLowerCase(), attributes: {}, isClose: true, isSelfClose: false });
+  = "</" tagStart:Here tag:TagName _ ">" {
+      return lexeme('html', location(), { tag, lower: tag.toLowerCase(), tagNameStart: tagStart, tagNameEnd: tagStart + tag.length, attributes: {}, attributeSpans: [], isClose: true, isSelfClose: false });
     }
 
 TagName
@@ -502,15 +396,22 @@ TagName
  * `>`, `/` or `=`; and not `<`, `{` or `}`, which markup can't use there.
  */
 Attribute
-  = _ name:$(!(_c / ["'>/=<{}]) .)+ &{ attrCode = hooks.isCodeAttribute(name); return true; } value:(_ "=" _ v:AttrValue { return v; })? {
-      return [name, value ?? ''];
+  = _ nameStart:Here name:$(!(_c / ["'>/=<{}]) .)+ &{ attrCode = hooks.isCodeAttribute(name); return true; } value:(_ "=" _ v:AttrValue { return v; })? {
+      const attribute = { name, value: value ? value.value : '', nameStart, nameEnd: nameStart + name.length };
+      if (value) {
+        attribute.valueStart = value.start;
+        attribute.valueEnd = value.end;
+        if (value.quote) attribute.quote = value.quote;
+      }
+      return attribute;
     }
 
+/** An attribute value: its text, where that is written and its quote, if any. */
 AttrValue
-  = '"' v:$(ValuePart / [^"])* '"' { return v; }
-  / "'" v:$(ValuePart / [^'])* "'" { return v; }
-  / q:["'] { fail('Unclosed attribute value: the ' + q + ' here has no closing ' + q, location()); }
-  / $[^ \t\n\r\x0B\x0C\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF>]*
+  = '"' start:Here value:$(ValuePart / [^"])* end:Here '"' { return { value, start, end, quote: '"' }; }
+  / "'" start:Here value:$(ValuePart / [^'])* end:Here "'" { return { value, start, end, quote: "'" }; }
+  / q:["'] { fail('Unclosed attribute value: the ' + q + ' here has no closing ' + q, location(), 'unclosed-attribute'); }
+  / start:Here value:$[^ \t\n\r\x0B\x0C\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF>]* end:Here { return { value, start, end }; }
 
 /** Markup in a quoted value, whose quotes don't end the value. */
 ValuePart

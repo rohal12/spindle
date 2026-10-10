@@ -156,10 +156,46 @@ export interface MarkupDiagnostic {
   /** 1-based column (UTF-16 code units). */
   column: number;
   message: string;
+  /** The kind of error, which tools tell apart without reading `message`. */
+  code: MarkupDiagnosticCode;
+  /**
+   * Where the offending text is in the passage's content: from `start` up to
+   * `end` (UTF-16 offsets). `line` and `column` are those of `start`.
+   */
+  start: number;
+  end: number;
+  /** What the diagnostic names, by `code`: the macro, the passage, what to try. */
+  data?: MarkupDiagnosticData;
   /** The source file and line, when the passage says where it came from. */
   file?: string;
   fileLine?: number;
 }
+
+/**
+ * The kinds of diagnostic, which stay the same where the wording of the
+ * message changes (they are covered by semver, with the data they carry).
+ * The kinds of malformed markup are those of {@link MarkupErrorCode}.
+ *
+ * | code | `data` |
+ * | --- | --- |
+ * | `unknown-macro` | `name`, `suggestions` (the closest known macro, if close) |
+ * | `unknown-passage` | `name`, `macro` (`link` for `[[…]]`), `suggestions` |
+ * | `unquoted-passage-name` | `name`, `macro` |
+ * | `argument-error` | `macro` |
+ * | `code-syntax` | `macro`, for a macro argument |
+ */
+export type MarkupDiagnosticCode =
+  | MarkupErrorCode
+  | 'unknown-macro'
+  | 'argument-error'
+  | 'code-syntax'
+  | 'unknown-passage'
+  | 'unquoted-passage-name';
+
+/** What a diagnostic names, by code (see {@link MarkupDiagnosticCode}). */
+export type MarkupDiagnosticData = Readonly<
+  Record<string, string | readonly string[]>
+>;
 
 /**
  * Validate the markup of a story's passages as Spindle does when the story
@@ -308,42 +344,90 @@ interface TokenSpan {
   end: number;
 }
 
+/**
+ * Where the selectors of a token are written: from `selectorsStart` up to
+ * `selectorsEnd`, without the space that may follow them. Both are absent for
+ * a token without selectors.
+ */
+export interface SelectorSpan {
+  selectorsStart?: number;
+  selectorsEnd?: number;
+}
+
 export interface TextToken extends TokenSpan {
   type: 'text';
   value: string;
+  /** A closed HTML comment: markdown drops it, and so does raw rendering. */
+  comment?: true;
 }
 
-export interface LinkToken extends TokenSpan, Selectors {
+export interface LinkToken extends TokenSpan, Selectors, SelectorSpan {
   type: 'link';
   display: string;
+  /** Where the label is written, from `displayStart` to `displayEnd`. */
+  displayStart: number;
+  displayEnd: number;
   target: string;
   /** Where the target is written, from `targetStart` to `targetEnd`. */
   targetStart: number;
   targetEnd: number;
 }
 
-export interface MacroToken extends TokenSpan, Selectors {
+export interface MacroToken extends TokenSpan, Selectors, SelectorSpan {
   type: 'macro';
   name: string;
+  /** Where the name is written (after `{`, `/` and the selectors). */
+  nameStart: number;
+  nameEnd: number;
   rawArgs: string;
+  /**
+   * Where `rawArgs` is written, without the whitespace around it; an empty
+   * span at `nameEnd` when there are none.
+   */
+  argsStart: number;
+  argsEnd: number;
   isClose: boolean;
 }
 
-export interface VariableToken extends TokenSpan, Selectors {
+export interface VariableToken extends TokenSpan, Selectors, SelectorSpan {
   type: 'variable';
   name: string;
+  /** Where the name is written, without the sigil. */
+  nameStart: number;
+  nameEnd: number;
   scope: VariableScope;
 }
 
-export interface ExpressionToken extends TokenSpan, Selectors {
+export interface ExpressionToken extends TokenSpan, Selectors, SelectorSpan {
   type: 'expression';
   expression: string;
+  /** Where `expression` is written, after the `{` and the selectors. */
+  expressionStart: number;
+  expressionEnd: number;
+}
+
+/** An attribute of an HTML tag as it is written, in order. */
+export interface AttributeSpan {
+  name: string;
+  nameStart: number;
+  nameEnd: number;
+  /** Where the value is written, without its quotes; absent with no `=`. */
+  valueStart?: number;
+  valueEnd?: number;
+  /** The quote around the value, if it has one. */
+  quote?: '"' | "'";
 }
 
 export interface HtmlToken extends TokenSpan {
   type: 'html';
   tag: string;
+  /** Where the tag name is written. */
+  tagNameStart: number;
+  tagNameEnd: number;
+  /** The attribute values by name; the first of equal names (any case). */
   attributes: Record<string, string>;
+  /** Every attribute as written, in order, duplicates included. */
+  attributeSpans: AttributeSpan[];
   isClose: boolean;
   isSelfClose: boolean;
 }
@@ -357,12 +441,49 @@ export type Token =
   | ExpressionToken
   | HtmlToken;
 
-/** Malformed markup, with where it starts (0-based offset, 1-based line and column). */
+/**
+ * The kinds of malformed markup. A tag that is malformed: `unclosed-link`
+ * (`[[` with no `]]`), `unclosed-expression` (`{$…` with no `}`),
+ * `unclosed-macro` (`{name…` with no `}`), `invalid-closer` (`{/` and no
+ * name), `closer-with-selectors`, `closer-with-arguments`, `unclosed-tag`
+ * (`<div` with no `>`), `unexpected-character` (in a tag) and
+ * `unclosed-attribute` (a value with no closing quote). Tags that pair with
+ * nothing: `unclosed-block` (`{if}` with no `{/if}`, `<div>` with no
+ * `</div>`), `mismatched-closer`, `stray-closer` and `misplaced-branch`
+ * (`{else}` outside `{if}`). `syntax` is any other.
+ */
+export type MarkupErrorCode =
+  | PairingErrorCode
+  | 'syntax'
+  | 'unclosed-link'
+  | 'unclosed-expression'
+  | 'unclosed-macro'
+  | 'invalid-closer'
+  | 'closer-with-selectors'
+  | 'closer-with-arguments'
+  | 'unclosed-tag'
+  | 'unexpected-character'
+  | 'unclosed-attribute';
+
+/**
+ * Malformed markup, with where it starts (0-based offset, 1-based line and
+ * column).
+ */
 export declare class MarkupError extends Error {
+  /** What is wrong, without the position. */
   reason: string;
   offset: number;
   line: number;
   column: number;
+  /** The kind of error, which stays the same where the wording changes. */
+  code: MarkupErrorCode;
+  /** Where the offending text ends (0-based, exclusive). */
+  end: number;
+  /**
+   * The names involved, by `code`: `name` for an unclosed, mismatched or
+   * stray tag (and `closer`, `parent`, `inside` where there are several).
+   */
+  data: Readonly<Record<string, string>>;
 }
 
 export interface ParseMarkupOptions {
@@ -501,9 +622,330 @@ export interface PassageReference {
  * the passage of `{goto}`, `{include}` and `{link}` (and of macros that
  * declare a `passage` argument), the `goto` and `dialog` actions of
  * `{watch}` (and the `string` and `text` arguments of macros that declare
- * they hold a passage name) and the body of `{dialog}`. Malformed tags are
- * skipped, so half-typed markup reads.
+ * they hold a passage name) and the body of `{dialog}`, also in the labels
+ * and attribute values that hold markup. Malformed tags are skipped, so
+ * half-typed markup reads. It uses the macros registered here; see
+ * {@link collectStoryPassageReferences}.
  */
 export declare function collectPassageReferences(
   source: string,
 ): PassageReference[];
+
+// ---------------------------------------------------------------------------
+// Stateless checks
+//
+// `validateMarkup` and `collectPassageReferences` read the process-global
+// registry (`defineMacro`). The functions below take the macros to check
+// against and keep no state: use them to analyse several projects in one
+// process.
+// ---------------------------------------------------------------------------
+
+/** What tooling knows about a macro (a `MacroMetadata` has all of it). */
+export interface ToolingMacro {
+  name: string;
+  block: boolean;
+  subMacros: string[];
+  /**
+   * Its declared parameters: their types tell which arguments are code, and
+   * what a `string` or `text` argument holds (see `ParameterDef.holds`).
+   */
+  parameters?: readonly ParameterDef[];
+  /** Whether it resolves markup: its strings hold markup by default. */
+  interpolate?: boolean;
+}
+
+/**
+ * The built-in macros, as data: what `getMacroRegistry()` returns before any
+ * `defineMacro`. It is loaded without `fs`, so a bundler inlines it.
+ */
+export declare const builtinMacros: readonly MacroMetadata[];
+
+/**
+ * `validateMarkup` against the given `macros` (the built-in ones are in
+ * `builtinMacros`; add the user-defined ones): the same checks, with no
+ * registry involved.
+ */
+export declare function validateStoryMarkup(
+  passages: Iterable<MarkupPassage>,
+  macros: Iterable<ToolingMacro>,
+  options?: ValidateMarkupOptions,
+): MarkupDiagnostic[];
+
+/**
+ * `collectPassageReferences` against the given `macros`, with no registry
+ * involved.
+ */
+export declare function collectStoryPassageReferences(
+  source: string,
+  macros: Iterable<ToolingMacro>,
+): PassageReference[];
+
+// ---------------------------------------------------------------------------
+// Pieces of a passage
+// ---------------------------------------------------------------------------
+
+/**
+ * What every piece says of where it is: it is at `offset` in the markup
+ * given (UTF-16 code units). A piece in the markup of a text (a label, an
+ * attribute value) is `nested`, with `where` the description of that text.
+ */
+export interface PieceBase {
+  offset: number;
+  nested?: true;
+  where?: string;
+  /**
+   * For the code or text of a quoted string with escapes (a `\"`), whose
+   * characters are not where `offset` plus their index says: the offset of
+   * each character in the source, and of the end of the text, so that
+   * `sourceOffsets[i]` is where character `i` of `code` or `text` is. Absent
+   * when `offset + i` is (see {@link pieceOffset}).
+   */
+  sourceOffsets?: readonly number[];
+}
+
+/** Where character `index` of the code or text of `piece` is in the source. */
+export declare function pieceOffset(piece: PieceBase, index: number): number;
+
+/**
+ * A piece of code: a `{$expr}` display, a `{do}` body, a condition, a macro
+ * argument of an `expression`, `statements` or `passage` parameter, a string
+ * that holds code, or an attribute that holds code (`onclick`).
+ */
+export interface CodePiece extends PieceBase {
+  kind: 'code';
+  code: string;
+  goal: JsGoal;
+  /** The markup it is in, for an error: `{print $a +}`. */
+  label: string;
+  /**
+   * Whether it names a passage: a `passage` argument that is an expression
+   * (one that is a string literal is a PassagePiece).
+   */
+  passage?: boolean;
+  /** Whether it is the code in a quoted string, as in `{watch}`. */
+  inString?: boolean;
+  /** The macro it is the argument of, for a `passage` argument. */
+  macro?: string;
+}
+
+/** A passage name written out: in a link, or a quoted `passage` argument. */
+export interface PassagePiece extends PieceBase {
+  kind: 'passage';
+  name: string;
+  /** The markup it is in, for an error: `[[Go->Hall]]`. */
+  label: string;
+  /** How much of the markup is the name, as written (quotes included). */
+  length: number;
+  /** The macro it is the argument of; `link` for `[[…]]` links. */
+  macro: string;
+}
+
+/** Macro arguments that don't have their parameters' forms. */
+export interface ArgumentErrorPiece extends PieceBase {
+  kind: 'argument-error';
+  message: string;
+  /** How much of the markup the arguments are. */
+  length: number;
+  /** The markup it is in, for an error: `{link Go}`. */
+  label: string;
+  /** The macro whose arguments they are. */
+  macro: string;
+}
+
+/**
+ * A text that may hold markup of its own: a label, an attribute value. The
+ * pieces of that markup follow it, `nested`.
+ */
+export interface TextPiece extends PieceBase {
+  kind: 'text';
+  text: string;
+  /** Where it is, for an error: `In the label of {button}: `. */
+  where: string;
+  /**
+   * The tokens of the markup in it, with offsets in the source given (none
+   * for a text with no `{`, which has no markup in it).
+   */
+  tokens: Token[];
+  /**
+   * Its malformed markup, in the order a parser reading from left to right
+   * meets it, with offsets in the source given.
+   */
+  errors: MarkupError[];
+}
+
+/** What a passage runs and names, and where (see {@link passagePieces}). */
+export type Piece = CodePiece | TextPiece | PassagePiece | ArgumentErrorPiece;
+
+/**
+ * What a passage's markup runs and names, and where: the pieces of code
+ * (`{$expr}` displays, `{do}` bodies, conditions, macro arguments by their
+ * declared parameter types, strings that hold code), the passage names
+ * written out (links, `passage` arguments, `{dialog}` bodies), the texts that
+ * hold markup of their own (labels, attribute values) and the arguments that
+ * don't have their parameters' forms, in source order with offsets (UTF-16)
+ * into `source`. The markup in a text follows it, as pieces marked `nested`
+ * with offsets into `source` too. Malformed tags are skipped, so it reads
+ * half-typed markup. `macros` are those the markup may use (see
+ * `builtinMacros`); without them only the code that needs no declaration is
+ * found.
+ */
+export declare function passagePieces(
+  source: string,
+  macros?: Iterable<ToolingMacro>,
+): Piece[];
+
+// ---------------------------------------------------------------------------
+// Pairing
+// ---------------------------------------------------------------------------
+
+/** What is wrong with the pairing of tags (a subset of {@link MarkupErrorCode}). */
+export type PairingErrorCode =
+  | 'unclosed-block'
+  | 'mismatched-closer'
+  | 'stray-closer'
+  | 'misplaced-branch';
+
+/** A problem in the pairing of the tokens. */
+export interface PairingError {
+  code: PairingErrorCode;
+  /** What is wrong, without the position. */
+  message: string;
+  /** The token it is at: from `start` up to `end` (offsets in the source). */
+  start: number;
+  end: number;
+  /**
+   * The offset a parser reading left to right notices it at: where the
+   * closer ends, or past the end of the markup for what is left open there.
+   */
+  noticedAt: number;
+  /** The names involved, by code (see {@link MarkupError.data}). */
+  data: Record<string, string>;
+}
+
+/** A branch (`{else}`, `{case}`, …) of a macro, with what follows it. */
+export interface PairedBranch {
+  tag: MacroToken;
+  children: PairedNode[];
+}
+
+/** What a macro or element holds, up to its closer. */
+export interface PairedBody {
+  children: PairedNode[];
+  branches: PairedBranch[];
+  /** The closing tag; absent if it is never closed. */
+  close?: MacroToken | HtmlToken;
+}
+
+/**
+ * A node of the tree: a token that stands alone (text, a link, a variable, an
+ * expression, a macro without a body, a self-closing element), or the opening
+ * tag of a macro or element with its `body`.
+ */
+export interface PairedNode {
+  /** The token, or the opening tag of the element. */
+  token: Token;
+  body?: PairedBody;
+  /** From the start of the token to the end of the closer (or of the body). */
+  start: number;
+  end: number;
+}
+
+export interface PairMarkupOptions {
+  /** Whether a macro takes a body (default: {@link isBlockMacro}). */
+  isBlock?(name: string): boolean;
+  /**
+   * Whether a macro's body is JavaScript, kept verbatim as one text token
+   * (default: `{do}`). One that is never closed is a problem at its opening
+   * tag, and the markup after it is not its body.
+   */
+  isRaw?(name: string): boolean;
+  /**
+   * The markup the tokens are of: lets a message say at which line and column
+   * an element was opened (else it says at which offset).
+   */
+  source?: string;
+}
+
+export interface PairedMarkup {
+  nodes: PairedNode[];
+  errors: PairingError[];
+}
+
+/**
+ * Pair the flat `tokens` of markup: which closer closes which opener, which
+ * branches belong to which macro, as the runtime reads them (it builds its
+ * AST from this). It never throws: a problem is an entry of `errors`, in the
+ * order a parser reading from left to right notices them, and the tree is
+ * recovered around it. A closer closes the innermost open element, or, when
+ * it names one further out, that one, leaving what is open inside it
+ * unclosed.
+ */
+export declare function pairMarkup(
+  tokens: readonly Token[],
+  options?: PairMarkupOptions,
+): PairedMarkup;
+
+/**
+ * Whether a macro takes a body closed by `{/name}`: the built-in block
+ * macros. Pass the block macros of your story to `pairMarkup` instead when it
+ * defines others (see `ToolingMacro.block`, and `{widget}`).
+ */
+export declare function isBlockMacro(name: string): boolean;
+
+// ---------------------------------------------------------------------------
+// Declarations
+// ---------------------------------------------------------------------------
+
+/** What is wrong with a declaration (see {@link DeclarationError}). */
+export type DeclarationErrorCode =
+  | 'invalid-declaration'
+  | 'invalid-name'
+  | 'duplicate-declaration'
+  | 'unsupported-value';
+
+/** A declaration of a `StoryVariables` or `StoryTransients` passage. */
+export interface Declaration {
+  name: string;
+  /** Where the name is written, without the sigil (UTF-16 offsets). */
+  nameStart: number;
+  nameEnd: number;
+  /** Where the initializer expression is written, without surrounding space. */
+  valueStart: number;
+  valueEnd: number;
+  /**
+   * The shape of the initializer when it is static: a literal, or an array or
+   * object literal of them. Absent when it is not (a call, a reference, an
+   * operator…).
+   */
+  schema?: FieldSchema;
+}
+
+/** An invalid line of a `StoryVariables` or `StoryTransients` passage. */
+export interface DeclarationError {
+  code: DeclarationErrorCode;
+  /** From `offset` up to `end` (UTF-16 offsets into the content). */
+  offset: number;
+  end: number;
+  /** What is wrong, as `parseStoryVariables` throws it after the passage name. */
+  message: string;
+}
+
+/**
+ * Read the declarations of a `StoryVariables` (`$name = value`) or
+ * `StoryTransients` (`%name = value`, pass `sigil: '%'`) passage, without
+ * evaluating them and without throwing: every valid declaration, and every
+ * invalid line as an error. It is the grammar `parseStoryVariables` reads
+ * with.
+ *
+ * What is static: `number`, `string` (no template with `${}`), `boolean` and
+ * `null` literals (also signed numbers), arrays of them, and objects with
+ * identifier, string or number keys and static values. The `schema` of an
+ * array is `{ type: 'array' }`, as `parseStoryVariables` makes it. Anything
+ * else (`Math.PI`, `new Date()`, `1 + 2`, a reference, a spread, a computed
+ * key) has no `schema`, and is no error: only a value that no variable can
+ * hold is, a function (`function`, `=>`, `class`) or `undefined`.
+ */
+export declare function parseDeclarations(
+  content: string,
+  sigil?: '$' | '%',
+): { declarations: Declaration[]; errors: DeclarationError[] };

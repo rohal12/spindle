@@ -1,15 +1,21 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import {
   checkParameterTypes,
   collectStoryPassageReferences,
   validateStoryMarkup,
 } from './story-variables.js';
+// The built-in macros, generated at build time (scripts/dump-macro-registry.ts)
+// as a module, not read from a file: a bundler inlines it.
+import builtinList from './macro-registry.js';
 
 export {
+  validateStoryMarkup,
+  collectStoryPassageReferences,
+  passagePieces,
+  pieceOffset,
+  pairMarkup,
+  isBlockMacro,
   parseStoryVariables,
+  parseDeclarations,
   formatDiagnostic,
   findCodeEnd,
   lexJs,
@@ -33,17 +39,15 @@ export {
   splitIncludeFlag,
 } from './story-variables.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+/**
+ * The built-in macros: what `getMacroRegistry()` returns before any
+ * `defineMacro`. Pass them (and your own) to `validateStoryMarkup`,
+ * `collectStoryPassageReferences` and `passagePieces`, which take the macros
+ * they check against and keep no state.
+ */
+export const builtinMacros = Object.freeze([...builtinList]);
 
-// Load built-in macro metadata generated at build time
-const registryPath = join(__dirname, 'macro-registry.json');
-let builtins = [];
-try {
-  builtins = JSON.parse(readFileSync(registryPath, 'utf-8'));
-} catch {
-  // macro-registry.json not yet built — empty builtins
-}
-
+const builtins = builtinMacros;
 const metadata = new Map();
 for (const m of builtins) metadata.set(m.name.toLowerCase(), m);
 
@@ -80,14 +84,16 @@ export function getMacroRegistry() {
  * Validate the markup of a story's passages as Spindle does when the story
  * starts: malformed markup and unknown macros (checked against the built-in
  * macros and those registered with defineMacro), with passage, line and
- * column.
+ * column. It reads the process-global registry; `validateStoryMarkup` takes
+ * the macros to check against instead.
  */
 export function validateMarkup(passages, options) {
   return validateStoryMarkup(passages, metadata.values(), options);
 }
 
 /**
- * The passages the markup of `source` names, with where each is written:
+ * The passages the markup of `source` names, with where each is written (the
+ * process-global registry; `collectStoryPassageReferences` takes the macros):
  * `[[…]]` links and the passage of `{goto}`, `{include}`, `{link}`,
  * `{watch}` and `{dialog}`, as the macros registered here declare them.
  * Malformed tags are skipped, so half-typed markup reads.

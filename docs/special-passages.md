@@ -74,6 +74,8 @@ parseStoryVariables(storyTransientsContent, '%');
 
 It returns a `Map` from variable name to `{ name, type, default, fields? }` and throws the same errors Spindle reports at startup.
 
+An editor wants every declaration and every error, with where each is, and must not run the initializers (they are project code). `parseDeclarations` reads the same lines without evaluating or throwing; see [Declarations](tooling.md#declarations).
+
 ### Checking markup in tests
 
 Spindle also checks the markup of every passage, and the [code](variables.md#code-in-passages) in it, at startup (see [Markup errors](markup.md#markup-errors)). The tooling entry point runs the same check, against the built-in macros and those registered with its `defineMacro`:
@@ -92,12 +94,14 @@ const diagnostics = validateMarkup([
   { name: 'Hall', content: '{alert}Careful!{/alert}' },
 ]);
 // [{ passage: 'Start', line: 1, column: 4,
-//    message: 'Unknown macro {sett}. Did you mean {set}?' }]
+//    message: 'Unknown macro {sett}. Did you mean {set}?',
+//    code: 'unknown-macro', start: 3, end: 16,
+//    data: { name: 'sett', suggestions: ['set'] } }]
 diagnostics.map(formatDiagnostic);
 // ['Passage "Start", line 1, column 4: Unknown macro {sett}. Did you mean {set}?']
 ```
 
-Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)). To check only some passages, pass `{ checkPassageNames: false }` as the second argument; everything else is still checked.
+Each diagnostic has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (see [Diagnostics](tooling.md#diagnostics)). Each passage is `{ name, content, tags?, metadata? }`. With `data-source-file` and `data-source-line` (the line of its `::` header) in `metadata`, a diagnostic also has the `file` and `fileLine` it is at. The widgets the passages define count as known macros. Pass every passage of the story: links and passage names written out must name one of them (see [Links](markup.md#links)). To check only some passages, pass `{ checkPassageNames: false }` as the second argument; everything else is still checked.
 
 ## `StoryInterface`
 

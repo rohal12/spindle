@@ -5,9 +5,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
+import { build } from 'esbuild';
 
 const projectRoot = resolve(import.meta.dirname!, '../..');
 const packageJson = JSON.parse(
@@ -119,6 +121,13 @@ describe('@rohal12/spindle/tooling', async () => {
       'passageTarget',
       'evaluatePassageName',
       'collectPassageReferences',
+      'validateStoryMarkup',
+      'collectStoryPassageReferences',
+      'passagePieces',
+      'pieceOffset',
+      'pairMarkup',
+      'isBlockMacro',
+      'parseDeclarations',
       'isSigil',
       'splitArgs',
       'splitTopLevel',
@@ -144,6 +153,65 @@ describe('@rohal12/spindle/tooling', async () => {
         .collectPassageReferences('[[Go->Hall]] {goto "Roof"}')
         .map((r: { macro: string }) => r.macro),
     ).toEqual(['link', 'goto']);
+  });
+
+  it('validates against the macros it is given, with no state', () => {
+    const passages = [
+      { name: 'Start', content: '{shout "hi"}x{/shout} {set $a = 1}' },
+    ];
+    const shout = { name: 'shout', block: true, subMacros: [] };
+    const codes = (macros: unknown[]): string[] =>
+      tooling
+        .validateStoryMarkup(passages, macros)
+        .map((d: { code: string }) => d.code);
+    // Two sets in one process: what one knows does not leak into the other
+    expect(codes([...tooling.builtinMacros, shout])).toEqual([]);
+    // Not a block macro for them: its closer closes nothing
+    expect(codes(tooling.builtinMacros)).toEqual(['stray-closer']);
+    expect(codes([...tooling.builtinMacros, shout])).toEqual([]);
+    // The global registry is for the convenience functions only
+    expect(tooling.validateMarkup(passages).length).toBeGreaterThan(0);
+  });
+
+  it('exports the built-in macros as data', () => {
+    expect(Array.isArray(tooling.builtinMacros)).toBe(true);
+    expect(Object.isFrozen(tooling.builtinMacros)).toBe(true);
+    expect(
+      tooling.builtinMacros.some((m: { name: string }) => m.name === 'set'),
+    ).toBe(true);
+    expect(tooling.getMacroRegistry()).toHaveLength(
+      tooling.builtinMacros.length,
+    );
+  });
+
+  it('still sees the built-in macros when a bundler bundles it', async () => {
+    // A bundle reads no file next to it: it has its own directory
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-bundle-'));
+    try {
+      const outfile = join(dir, 'bundle.mjs');
+      await build({
+        entryPoints: [
+          resolve(projectRoot, packageJson.exports['./tooling'].import),
+        ],
+        bundle: true,
+        format: 'esm',
+        platform: 'node',
+        outfile,
+        logLevel: 'silent',
+      });
+      const bundled = await import(pathToFileURL(outfile).href);
+      expect(bundled.builtinMacros.length).toBeGreaterThan(0);
+      expect(
+        bundled
+          .getMacroRegistry()
+          .some((m: { name: string }) => m.name === 'set'),
+      ).toBe(true);
+      expect(
+        bundled.validateMarkup([{ name: 'P', content: '{set $a = 1}' }]),
+      ).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('does not load or bundle the runtime', () => {

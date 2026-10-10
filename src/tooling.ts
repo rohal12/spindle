@@ -12,14 +12,25 @@ import {
 import { isBlockMacro } from './markup/ast';
 import { tokenizeMarkupTolerant } from './markup/parse';
 import {
-  collectPassageReferences,
   parameterLookup,
+  passagePiecesOf,
+  pieceOffset,
+  referencesOf,
   type PassageReference,
+  type Piece,
 } from './code-check';
 import { blockWidgetNames } from './widgets/widget-def';
 import type { ParameterDef } from './registry';
 
-export { parseStoryVariables } from './story-variables';
+export { parseDeclarations, parseStoryVariables } from './story-variables';
+export type {
+  Declaration,
+  DeclarationError,
+  DeclarationErrorCode,
+  FieldSchema,
+  VarType,
+  VariableSchema,
+} from './story-variables';
 export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
 
@@ -40,7 +51,32 @@ export {
 } from './markup/parse';
 export type { ParseMarkupOptions, TolerantTokens } from './markup/parse';
 export { SIGIL_SCOPES, isSigil } from './markup/tokens';
-export type { Selectors, Token, VariableScope } from './markup/tokens';
+export type {
+  AttributeSpan,
+  ExpressionToken,
+  HtmlToken,
+  LinkToken,
+  MacroToken,
+  SelectorSpan,
+  Selectors,
+  TextToken,
+  Token,
+  VariableScope,
+  VariableToken,
+} from './markup/tokens';
+export { pairMarkup } from './markup/pair';
+export { pieceOffset };
+export type {
+  PairedBody,
+  PairedBranch,
+  PairedMarkup,
+  PairedNode,
+  PairingError,
+  PairingErrorCode,
+  PairMarkupOptions,
+} from './markup/pair';
+export { isBlockMacro } from './markup/ast';
+export type { MarkupErrorCode } from './markup/parse';
 export {
   endsWithOperator,
   readQuoted,
@@ -56,8 +92,21 @@ export {
 } from './components/macros/macro-args';
 export type { PassageTarget } from './components/macros/macro-args';
 export { transform } from './transform';
-export type { PassageReference } from './code-check';
-export type { MarkupDiagnostic, MarkupPassage } from './markup/validate';
+export type {
+  ArgumentErrorPiece,
+  CodePiece,
+  PassagePiece,
+  PassageReference,
+  Piece,
+  PieceBase,
+  TextPiece,
+} from './code-check';
+export type {
+  MarkupDiagnostic,
+  MarkupDiagnosticCode,
+  MarkupDiagnosticData,
+  MarkupPassage,
+} from './markup/validate';
 
 /** What tooling knows about a macro (see MacroMetadata). */
 /** Options for validating markup from tooling. */
@@ -117,15 +166,47 @@ export function validateStoryMarkup(
   });
 }
 
+/** Whether a macro takes a body, among `macros` and the built-in ones. */
+function blockLookup(macros: readonly ToolingMacro[]) {
+  const blocks = new Set(
+    macros.filter((m) => m.block).map((m) => m.name.toLowerCase()),
+  );
+  return (name: string) => blocks.has(name.toLowerCase()) || isBlockMacro(name);
+}
+
+/**
+ * What a passage's markup runs and names, and where: the pieces of code
+ * (`{$expr}` displays, `{do}` bodies, conditions, macro arguments by their
+ * declared parameter types, strings that hold code), the passage names written
+ * out (links, `passage` arguments), the texts that hold markup of their own
+ * (labels, attribute values) and the arguments that don't have their
+ * parameters' forms, in source order with offsets (UTF-16) into `source`. The
+ * markup in a text follows it, as pieces marked `nested` with offsets into
+ * `source` too. Malformed tags are skipped, so it reads half-typed markup.
+ * The macros are those the markup may use, built-in and user-defined.
+ */
+export function passagePieces(
+  source: string,
+  macros: Iterable<ToolingMacro> = [],
+): Piece[] {
+  const all = [...macros];
+  const { tokens } = tokenizeMarkupTolerant(source);
+  return [
+    ...passagePiecesOf(source, tokens, parameterLookup(all), {
+      isBlock: blockLookup(all),
+    }),
+  ];
+}
+
 /**
  * The passages the markup of `source` names (see PassageReference), against
  * the given macros: what the story-start check looks up. Malformed tags are
- * skipped, so it reads half-typed markup.
+ * skipped, so it reads half-typed markup. It is `passagePieces`, less what
+ * names no passage.
  */
 export function collectStoryPassageReferences(
   source: string,
   macros: Iterable<ToolingMacro>,
 ): PassageReference[] {
-  const { tokens } = tokenizeMarkupTolerant(source);
-  return collectPassageReferences(source, tokens, parameterLookup(macros));
+  return referencesOf(passagePieces(source, macros));
 }

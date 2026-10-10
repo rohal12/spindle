@@ -26,8 +26,14 @@
  * The arguments of macros that declare no parameters may be anything:
  * they are not checked.
  */
-import type { Token } from './markup/tokens';
+import type { HtmlToken, Token } from './markup/tokens';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
+import {
+  analyzeMarkup,
+  lineColumn,
+  MarkupError,
+  mapOffsets,
+} from './markup/parse';
 import { CodeSyntaxError, parseCode, type JsGoal } from './js-lexer';
 import type { ParsedCode } from './js-lexer';
 import type { ParameterDef, StringHolds } from './registry';
@@ -76,14 +82,51 @@ export function parseOrError(
   return result;
 }
 
+/**
+ * What every piece says of where it is: it is at `offset` in the markup (all
+ * offsets are UTF-16 code units into the source given). A piece in the markup
+ * of a text (a label, an attribute value) is `nested`, with `where` the
+ * description of that text, as in TextPiece.
+ */
+export interface PieceBase {
+  offset: number;
+  nested?: true;
+  where?: string;
+  /**
+   * For the code or text of a quoted string with escapes (a `\"`), whose
+   * characters are not where `offset` plus their index says: the offset of
+   * each character in the source, and of the end of the text, so that
+   * `sourceOffsets[i]` is where character `i` of `code` or `text` is. Absent
+   * when `offset + i` is (see {@link pieceOffset}).
+   */
+  sourceOffsets?: readonly number[];
+}
+
+/** Where character `index` of the code or text of `piece` is in the source. */
+export function pieceOffset(piece: PieceBase, index: number): number {
+  return piece.sourceOffsets?.[index] ?? piece.offset + index;
+}
+
+/** How much of a piece's own text or code there is (not its source extent). */
+function extentOf(piece: Piece): number {
+  return piece.kind === 'code'
+    ? piece.code.length
+    : piece.kind === 'text'
+      ? piece.text.length
+      : piece.length;
+}
+
+/** A piece found in a markup that is written out, for an error to point at. */
+interface LabeledPiece extends PieceBase {
+  /** The markup it is in, for the error: `{print $a +}`, `[[Go->Hall]]`. */
+  label: string;
+}
+
 /** A piece of code in markup, at `offset` in it. */
-export interface CodePiece {
+export interface CodePiece extends LabeledPiece {
   kind: 'code';
   code: string;
-  offset: number;
   goal: JsGoal;
-  /** The markup it is in, for the error: `{print $a +}`. */
-  label: string;
   /**
    * Whether it names a passage: a `passage` argument that is an
    * expression (one that is a string literal is a PassagePiece).
@@ -95,35 +138,47 @@ export interface CodePiece {
   macro?: string;
 }
 
-/** A passage name written out in markup, at `offset` in it. */
-export interface PassagePiece {
-  kind: 'passage';
-  name: string;
-  offset: number;
-  /** The markup it is in, for the error: `[[Go->Hall]]`. */
-  label: string;
-  /** How much of the markup is the name, as written (quotes included). */
+/** A piece that takes `length` of the markup, as written, for macro `macro`. */
+interface MacroPiece extends LabeledPiece {
   length: number;
-  /** The macro it is the argument of; `link` for `[[…]]` links. */
   macro: string;
 }
 
-/** Macro arguments that don't have their parameters' forms. */
-export interface ArgumentErrorPiece {
+/**
+ * A passage name written out in markup, at `offset` in it: `length` of the
+ * markup is the name as written (quotes included), and `macro` the macro it
+ * is the argument of; `link` for `[[…]]` links.
+ */
+export interface PassagePiece extends MacroPiece {
+  kind: 'passage';
+  name: string;
+}
+
+/**
+ * Macro arguments that don't have their parameters' forms: `length` of the
+ * markup is the arguments, of `macro`.
+ */
+export interface ArgumentErrorPiece extends MacroPiece {
   kind: 'argument-error';
   message: string;
-  offset: number;
-  /** The markup it is in, for the error: `{link Go}`. */
-  label: string;
 }
 
 /** Text in markup that may hold markup of its own, at `offset` in it. */
-export interface TextPiece {
+export interface TextPiece extends PieceBase {
   kind: 'text';
   text: string;
-  offset: number;
   /** Where it is, for the error: `In the label of {button}: `. */
   where: string;
+  /**
+   * The tokens of the markup in it, with offsets in the source given (none
+   * for a text with no `{`, which has no markup in it).
+   */
+  tokens: Token[];
+  /**
+   * Its malformed markup, in the order a parser reading from left to right
+   * meets it, with offsets in the source given.
+   */
+  errors: MarkupError[];
 }
 
 /** Macros whose whole argument text is one expression: branch conditions. */
@@ -132,7 +187,8 @@ const CONDITION_MACROS = new Set(['if', 'elseif', 'case']);
 /** Block macros whose body is the name of a passage. */
 const PASSAGE_BODIES = new Set(['dialog']);
 
-type Piece = CodePiece | TextPiece | PassagePiece | ArgumentErrorPiece;
+/** What a passage runs and names, and where (see passagePieces). */
+export type Piece = CodePiece | TextPiece | PassagePiece | ArgumentErrorPiece;
 
 /** The declared parameters of a macro, if it has any. */
 export type ParametersOf = (
@@ -251,34 +307,28 @@ export function* codeAndText(
       };
       // The label is markup too (the link renders as `{link}`)
       if (token.display.includes('{')) {
-        yield {
-          kind: 'text',
-          text: token.display,
-          offset: locate(src, token.display, token.start),
-          where: 'In the label of a link: ',
-        };
+        yield textPiece(
+          token.display,
+          token.displayStart,
+          'In the label of a link: ',
+        );
       }
     } else if (token.type === 'expression') {
       yield {
         kind: 'code',
         code: token.expression,
-        offset: token.end - 1 - token.expression.length,
+        offset: token.expressionStart,
         goal: 'expression',
         label: `{${token.expression}}`,
       };
     } else if (token.type === 'html') {
-      // The values are the source text between their quotes, in order
-      let cursor = token.start;
-      for (const [name, value] of Object.entries(token.attributes)) {
-        const at = locate(src, value, cursor);
-        cursor = at + value.length;
+      for (const { name, value, at } of attributeValues(src, token)) {
         if (!isCodeAttribute(name)) {
-          yield {
-            kind: 'text',
-            text: value,
-            offset: at,
-            where: `In the ${name} attribute of <${token.tag}>: `,
-          };
+          yield textPiece(
+            value,
+            at,
+            `In the ${name} attribute of <${token.tag}>: `,
+          );
           continue;
         }
         let from = 0;
@@ -331,9 +381,7 @@ export function* codeAndText(
       }
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
-      // The arguments end the tag, but for the whitespace before its }
-      const tag = src.slice(token.start, token.end - 1);
-      const argsAt = token.start + tag.trimEnd().length - args.length;
+      const argsAt = token.argsStart;
       if (CONDITION_MACROS.has(name)) {
         yield {
           kind: 'code',
@@ -350,6 +398,136 @@ export function* codeAndText(
   }
 }
 
+/** What reading the pieces of a passage depends on. */
+export interface PieceOptions {
+  /**
+   * Whether a macro takes a body, for the markup in labels and attribute
+   * values (default: the registered block macros).
+   */
+  isBlock?(name: string): boolean;
+}
+
+/**
+ * `codeAndText`, with the markup in the texts read too: a text piece (a label,
+ * an attribute value) with a `{` in it carries its tokens and errors, and is
+ * followed by the pieces of that markup, `nested`, in the offsets of the whole
+ * `src`. In source order, a nested piece after the text it is in.
+ */
+export function* passagePiecesOf(
+  src: string,
+  tokens: readonly Token[],
+  parametersOf: ParametersOf,
+  options: PieceOptions = {},
+): Generator<Piece> {
+  yield* expand(src, src, tokens, parametersOf, options, (i) => i, undefined);
+}
+
+/**
+ * The pieces of `tokens`, the tokens of `src`, which is the text described by
+ * `where` (none for `root`, the markup of the whole passage), and whose
+ * offsets `toRoot` turns into offsets in `root`.
+ */
+function* expand(
+  root: string,
+  src: string,
+  tokens: readonly Token[],
+  parametersOf: ParametersOf,
+  options: PieceOptions,
+  toRoot: (offset: number) => number,
+  where: string | undefined,
+): Generator<Piece> {
+  for (const flat of codeAndText(src, tokens, parametersOf)) {
+    const piece = where ? nestedPiece(flat, toRoot, where) : flat;
+    if (flat.kind !== 'text' || !flat.text.includes('{')) {
+      yield piece;
+      continue;
+    }
+    // The text may not be where its length says: a string with escapes
+    const toText = (i: number) => toRoot(pieceOffset(flat, i));
+    const inner = analyzeMarkup(flat.text, {
+      text: true,
+      hooks: options.isBlock && { isBlock: options.isBlock },
+    });
+    yield {
+      ...(piece as TextPiece),
+      tokens: inner.tokens.map((t) => mapOffsets(t, toText)),
+      errors: inner.errors.map((e) => {
+        const { line, column } = lineColumn(root, toText(e.offset));
+        return new MarkupError(
+          e.reason,
+          toText(e.offset),
+          line,
+          column,
+          e.code,
+          toText(e.end),
+          e.data,
+        );
+      }),
+    };
+    yield* expand(
+      root,
+      flat.text,
+      inner.tokens,
+      parametersOf,
+      options,
+      toText,
+      flat.where,
+    );
+  }
+}
+
+/** `piece`, of a text in another, with its offsets turned by `toRoot`. */
+function nestedPiece(
+  piece: Piece,
+  toRoot: (offset: number) => number,
+  where: string,
+): Piece {
+  const offset = toRoot(piece.offset);
+  const nested = { offset, nested: true as const, where };
+  if (piece.kind === 'passage' || piece.kind === 'argument-error') {
+    const length = toRoot(piece.offset + piece.length) - offset;
+    return { ...piece, ...nested, length };
+  }
+  const extent = extentOf(piece);
+  const sourceOffsets = piece.sourceOffsets
+    ? piece.sourceOffsets.map(toRoot)
+    : toRoot(piece.offset + extent) - offset !== extent
+      ? Array.from({ length: extent + 1 }, (_, i) => toRoot(piece.offset + i))
+      : undefined;
+  return sourceOffsets
+    ? { ...piece, ...nested, sourceOffsets }
+    : { ...piece, ...nested };
+}
+
+/**
+ * Where each character of `value`, the unescaped text of a quoted string
+ * written as `raw` from `at` on (a backslash before a quote or a backslash
+ * is dropped), is
+ * in the source, and where the text ends. None when the text is where its
+ * length says, or is not that string.
+ */
+function escapeOffsets(
+  raw: string,
+  at: number,
+  value: string,
+): number[] | undefined {
+  const offsets: number[] = [];
+  let escaped = false;
+  let i = 0;
+  while (offsets.length < value.length) {
+    if (i >= raw.length) return undefined;
+    offsets.push(at + i);
+    if (raw[i] === '\\' && /["'\\]/.test(raw.charAt(i + 1))) {
+      escaped = true;
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  offsets.push(at + i);
+  return escaped ? offsets : undefined;
+}
+
 /** The code and text in the arguments `args` (at `offset`) of `macro`. */
 export function* argPieces(
   args: string,
@@ -358,16 +536,23 @@ export function* argPieces(
   macro: string,
   label: string,
 ): Generator<Piece> {
+  const name = macro.toLowerCase();
   let values: Record<string, unknown>;
   const spans: ArgSpans = new Map();
   try {
     values = parseMacroArgs(args, params, spans) as Record<string, unknown>;
   } catch (error) {
     if (!(error instanceof MacroArgumentError)) throw error;
-    yield { kind: 'argument-error', message: error.message, offset, label };
+    yield {
+      kind: 'argument-error',
+      message: error.message,
+      offset,
+      length: args.length,
+      label,
+      macro: name,
+    };
     return;
   }
-  const name = macro.toLowerCase();
   /** The pieces of the parameters `list`, with their values in `from`. */
   function* visit(
     list: readonly ParameterDef[],
@@ -423,8 +608,9 @@ export function* argPieces(
       const at =
         offset + start + (value !== written && /^["']/.test(written) ? 1 : 0);
       const holds = stringHolds(param);
+      const sourceOffsets = escapeOffsets(args.slice(at - offset), at, value);
       if (holds === 'expression' || holds === 'statements') {
-        yield {
+        const piece: CodePiece = {
           kind: 'code',
           code: value,
           offset: at,
@@ -432,20 +618,66 @@ export function* argPieces(
           label,
           inString: true,
         };
+        if (sourceOffsets) piece.sourceOffsets = sourceOffsets;
+        yield piece;
       } else if (holds === 'passage') {
         yield passage(value);
       } else if (holds === 'markup') {
-        yield {
-          kind: 'text',
-          text: value,
-          offset: at,
-          where: `In the ${param.name} of {${macro}}: `,
-        };
+        const piece = textPiece(
+          value,
+          at,
+          `In the ${param.name} of {${macro}}: `,
+        );
+        if (sourceOffsets) piece.sourceOffsets = sourceOffsets;
+        yield piece;
       }
     }
   }
   // Options are visited in metadata order, which is not the order written
   yield* [...visit(params, values)].sort((a, b) => a.offset - b.offset);
+}
+
+/** A text that may hold markup, at `offset`; read when it is expanded. */
+const textPiece = (text: string, offset: number, where: string): TextPiece => ({
+  kind: 'text',
+  text,
+  offset,
+  where,
+  tokens: [],
+  errors: [],
+});
+
+/**
+ * The attributes of an HTML tag by the values as written, with where each
+ * value is: the first of equal names, which is the one in effect. A token
+ * with no spans (made from an AST) has them found in `src`, in order.
+ */
+function attributeValues(
+  src: string,
+  token: HtmlToken,
+): { name: string; value: string; at: number }[] {
+  if (token.attributeSpans.length === 0) {
+    let cursor = token.start;
+    return Object.entries(token.attributes).map(([name, value]) => {
+      const at = locate(src, value, cursor);
+      cursor = at + value.length;
+      return { name, value, at };
+    });
+  }
+  const seen = new Set<string>();
+  const values = [];
+  for (const span of token.attributeSpans) {
+    const lower = span.name.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    if (span.valueStart === undefined) continue;
+    values.push({
+      name: span.name,
+      value: src.slice(span.valueStart, span.valueEnd),
+      at: span.valueStart,
+    });
+  }
+  return values;
 }
 
 /**
@@ -475,17 +707,22 @@ export interface PassageReference {
  * `[[…]]` links, the passage argument of `{goto}`, `{include}` and `{link}`
  * (and of macros that declare one), the `goto` and `dialog` actions of
  * `{watch}` (and the `string` and `text` arguments of macros that declare
- * they hold one) and the body of `{dialog}`, in source order. A name written
- * out is a literal; the others are expressions, which name a passage when
- * they run.
+ * they hold one) and the body of `{dialog}`, in source order, also in the
+ * labels and attribute values that hold markup. A name written out is a
+ * literal; the others are expressions, which name a passage when they run.
  */
 export function collectPassageReferences(
   src: string,
   tokens: readonly Token[],
   parametersOf: ParametersOf,
 ): PassageReference[] {
+  return referencesOf(passagePiecesOf(src, tokens, parametersOf));
+}
+
+/** The passage references among `pieces` (see collectPassageReferences). */
+export function referencesOf(pieces: Iterable<Piece>): PassageReference[] {
   const refs: PassageReference[] = [];
-  for (const piece of codeAndText(src, tokens, parametersOf)) {
+  for (const piece of pieces) {
     if (piece.kind === 'passage') {
       refs.push({
         macro: piece.macro,
