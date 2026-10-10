@@ -22,8 +22,9 @@ export interface WidgetDef {
 
 /**
  * The widget a {widget} definition's arguments declare: its name and its
- * parameters, the words after it that start with `@` (docs/widgets.md).
- * Other words, such as `$name`, are not parameters.
+ * parameters, the words after it that start with `@` (docs/widgets.md),
+ * separated by spaces or commas (`@a, @b`). Other words, such as `$name`, are
+ * not parameters.
  */
 export function widgetDef({
   name = '',
@@ -31,7 +32,7 @@ export function widgetDef({
 }: MacroArgs<typeof WIDGET_PARAMETERS>): WidgetDef {
   return {
     name,
-    params: parameters.split(/\s+/).filter((word) => word.startsWith('@')),
+    params: parameters.split(/[\s,]+/).filter((word) => word.startsWith('@')),
   };
 }
 
@@ -114,7 +115,7 @@ export function widgetDefinitions(
         ((token.type === 'variable' &&
           token.scope === 'local' &&
           token.name === 'children') ||
-          tokenTextContainsChildren(token, parametersOf))
+          tokenTextContainsChildren(token, parametersOf, passage.content))
       ) {
         open[open.length - 1]!.isBlock = true;
       }

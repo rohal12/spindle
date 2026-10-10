@@ -23,9 +23,15 @@ import {
   type ParametersOf,
 } from './code-check';
 import { getMacroParameters, type ParameterDef } from './registry';
+import {
+  MacroArgumentError,
+  parseMacroArgs,
+  type ArgSpans,
+} from './components/macros/macro-args';
 import { NOT_MARKUP } from './markup/validate';
 import { createNamespace, variableNameError } from './utils/namespace';
 import { staticLiteral, type LiteralShape } from './static-literal';
+import { parse } from 'acorn';
 
 /**
  * The tokens of markup, or none if it is malformed (validateMarkup reports
@@ -115,7 +121,8 @@ export type DeclarationErrorCode =
   | 'invalid-declaration'
   | 'invalid-name'
   | 'duplicate-declaration'
-  | 'unsupported-value';
+  | 'unsupported-value'
+  | 'syntax';
 
 /**
  * A declaration of a StoryVariables or StoryTransients passage: the name
@@ -155,6 +162,31 @@ function shapeSchema(shape: LiteralShape): FieldSchema {
 }
 
 /**
+ * What is wrong with the syntax of an initializer, as it is evaluated
+ * (`return (expr)` in a function body), or `undefined`. `pos` is where, as an
+ * index into `expr` (it may be past its end, for an unexpected end).
+ */
+function initializerSyntaxError(
+  expr: string,
+): { message: string; pos: number } | undefined {
+  const prefix = 'return (';
+  try {
+    parse(prefix + expr + ')', {
+      ecmaVersion: 'latest',
+      allowReturnOutsideFunction: true,
+    });
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    const { pos } = err as SyntaxError & { pos: number };
+    return {
+      message: err.message.replace(/ \(\d+:\d+\)$/, ''),
+      pos: Math.max(0, pos - prefix.length),
+    };
+  }
+  return undefined;
+}
+
+/**
  * Read the declarations of a StoryVariables (`$name = value`) or
  * StoryTransients (`%name = value`) passage, without evaluating them and
  * without throwing: every valid declaration, and every invalid line as an
@@ -162,9 +194,10 @@ function shapeSchema(shape: LiteralShape): FieldSchema {
  *
  * A declaration is a line of the form `$name = expression`; blank lines are
  * skipped. A line that is not, and a name that cannot be a variable, are
- * errors. So is an initializer that no variable can hold (a function,
- * `undefined`), when it is a literal; whether any other initializer can only
- * be known by running it. A name declared again is an error too, but both
+ * errors. So is an initializer with a syntax error, and one that no variable
+ * can hold (a function, `undefined`) when it is a literal, or one that throws
+ * when it is a literal (`+1n`); whether any other initializer can only be
+ * known by running it. A name declared again is an error too, but both
  * declarations are returned (the later wins when evaluated).
  */
 export function parseDeclarations(
@@ -225,18 +258,39 @@ export function parseDeclarations(
       );
     }
     seen.add(name);
+    declarations.push(declaration);
+    const failed = `Failed to evaluate "${sigil}${name} = ${expr}"`;
+    const syntax = initializerSyntaxError(expr);
+    if (syntax) {
+      // At the problem; at the last character for an unexpected end
+      const at = Math.min(syntax.pos, expr.length - 1);
+      error(
+        'syntax',
+        declaration.valueStart + at,
+        declaration.valueStart + at + 1,
+        `${failed}: ${syntax.message}`,
+      );
+      continue;
+    }
     const literal = staticLiteral(expr);
-    if (literal && 'shape' in literal) {
+    if (!literal) continue;
+    if ('shape' in literal) {
       declaration.schema = shapeSchema(literal.shape);
-    } else if (literal) {
+    } else if ('throws' in literal) {
       error(
         'unsupported-value',
         declaration.valueStart,
         valueEnd,
-        `Unsupported type "${literal.unsupported}" for value ${expr}. ${UNSUPPORTED_TYPE}`,
+        `${failed}: ${literal.throws}`,
+      );
+    } else {
+      error(
+        'unsupported-value',
+        declaration.valueStart,
+        valueEnd,
+        `Unsupported type "${literal.unsupported}" for value ${literal.value}. ${UNSUPPORTED_TYPE}`,
       );
     }
-    declarations.push(declaration);
   }
   return { declarations, errors };
 }
@@ -425,6 +479,13 @@ interface ReferenceOptions {
   parametersOf: ParametersOf;
   /** Read half-typed markup: skip its malformed tags (default: none read). */
   tolerant?: boolean;
+  /**
+   * Also report the references the story start does not check: the variable
+   * a macro writes to, such as the target of `{unset}` and `{computed}`
+   * (a `variable` parameter), and those in the selectors of a link,
+   * `{$var}` display or expression.
+   */
+  all?: boolean;
 }
 
 /** Where index `i` of a text is in the markup being read. */
@@ -544,6 +605,9 @@ function scanArgs(
 ): void {
   if (!token.rawArgs) return;
   if (params) {
+    if (options.all && !options.storeVarMacros.has(token.name.toLowerCase())) {
+      scanVariableParameters(token, params, at, emit);
+    }
     const pieces = [
       ...argPieces(token.rawArgs, token.argsStart, params, token.name, ''),
     ];
@@ -565,6 +629,58 @@ function scanArgs(
   scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
 }
 
+/**
+ * Report the variables the `variable` parameters of a macro name
+ * (`{unset $x}`, `{computed $x = …}`), when they are `$` or `%` variables.
+ * Arguments that do not parse hold none.
+ */
+function scanVariableParameters(
+  token: Extract<Token, { type: 'macro' }>,
+  params: readonly ParameterDef[],
+  at: At,
+  emit: Emit,
+): void {
+  const spans: ArgSpans = new Map();
+  try {
+    parseMacroArgs(token.rawArgs, params, spans);
+  } catch (err) {
+    if (err instanceof MacroArgumentError) return;
+    throw err;
+  }
+  for (const param of params) {
+    const span = spans.get(param);
+    if (param.type !== 'variable' || !span) continue;
+    const ref = referenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
+      at(token.argsStart + span[0] + i),
+    );
+    if (ref) emit(ref);
+  }
+}
+
+/** Report the references in the selectors of a token, which are interpolated. */
+function scanSelectors(
+  content: string,
+  token: Token,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
+): void {
+  if (
+    !('selectorsStart' in token) ||
+    token.selectorsStart === undefined ||
+    token.selectorsEnd === undefined
+  ) {
+    return;
+  }
+  const from = token.selectorsStart;
+  scanInterpolations(
+    content.slice(from, token.selectorsEnd),
+    (i) => at(from + i),
+    emit,
+    { ...options, storeVarMacros: NO_STORE_VAR_MACROS },
+  );
+}
+
 /** Report the `$var` references in the tokens of `content`. */
 function collectTokenRefs(
   content: string,
@@ -576,6 +692,14 @@ function collectTokenRefs(
   const { storeVarMacros, parametersOf } = options;
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
+    if (
+      options.all &&
+      token.type !== 'macro' &&
+      token.type !== 'html' &&
+      token.type !== 'text'
+    ) {
+      scanSelectors(content, token, at, emit, options);
+    }
     if (token.type === 'variable') {
       if (
         (token.scope === 'variable' || token.scope === 'transient') &&
@@ -611,18 +735,7 @@ function collectTokenRefs(
     } else if (token.type === 'macro' && !token.isClose) {
       scanArgs(token, parametersOf(token.name), at, emit, options);
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
-      if (
-        token.selectorsStart !== undefined &&
-        token.selectorsEnd !== undefined
-      ) {
-        const from = token.selectorsStart;
-        scanInterpolations(
-          content.slice(from, token.selectorsEnd),
-          (i) => at(from + i),
-          emit,
-          { ...options, storeVarMacros: NO_STORE_VAR_MACROS },
-        );
-      }
+      scanSelectors(content, token, at, emit, options);
 
       if (storeVarMacros.has(token.name.toLowerCase())) {
         const lead = token.rawArgs.length - token.rawArgs.trimStart().length;

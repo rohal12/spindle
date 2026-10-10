@@ -34,6 +34,8 @@ import {
 import type { ParameterDef } from './registry';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
+export { discoverMacros } from './macro-discovery';
+export type { DiscoveredMacro } from './macro-discovery';
 export type {
   VariableDeclarations,
   VariableDiagnostic,
@@ -136,6 +138,14 @@ export interface ValidateMarkupOptions {
    * validate only part of a story.
    */
   checkPassageNames?: boolean;
+  /**
+   * Report every problem of a passage, not only the first malformed or
+   * unpaired tag (default: false, which is the story-start check). The
+   * macros, code, arguments and passage names are checked in the markup
+   * that could be read around the malformed tags, so an unclosed `{if}` does
+   * not hide the unknown macro, broken link and bad expression after it.
+   */
+  tolerant?: boolean;
 }
 
 export interface ToolingMacro {
@@ -184,6 +194,7 @@ export function validateStoryMarkup(
     isBlockMacro: (name) =>
       blocks.has(name.toLowerCase()) || isBlockMacro(name),
     checkPassageNames: options.checkPassageNames,
+    tolerant: options.tolerant,
   });
 }
 
@@ -251,13 +262,14 @@ export function widgetDefinitions(
 const NOT_MARKUP_TAGS = ['script', 'stylesheet'];
 
 /** What reading the variable references of markup depends on. */
-function referenceOptions(macros: Iterable<ToolingMacro>) {
-  const all = [...macros];
+function referenceOptions(macros: Iterable<ToolingMacro>, all = false) {
+  const list = [...macros];
   return {
+    all,
     storeVarMacros: new Set(
-      all.filter((m) => m.storeVar).map((m) => m.name.toLowerCase()),
+      list.filter((m) => m.storeVar).map((m) => m.name.toLowerCase()),
     ),
-    parametersOf: parameterLookup(all),
+    parametersOf: parameterLookup(list),
     tolerant: true,
   };
 }
@@ -270,12 +282,23 @@ function referenceOptions(macros: Iterable<ToolingMacro>) {
  * bound by input macros, and the markup in labels and HTML attributes. Prose
  * is literal text. Malformed tags are skipped, so it reads half-typed markup.
  * The macros are those the markup may use, built-in and user-defined.
+ *
+ * These are the references the story start checks. With `all: true`, the
+ * list is complete (the checked ones are among it, in source order): it also
+ * has the variable a macro names in a `variable` parameter, such as the
+ * target of `{unset}` and `{computed}`, and the `{$name}` in the selectors of
+ * a link, display or expression (`[[.c{$name} Go->T]]`). A rename or a find
+ * of references needs these too.
  */
 export function variableReferences(
   source: string,
   macros: Iterable<ToolingMacro> = [],
+  options: { all?: boolean } = {},
 ): VariableReference[] {
-  return collectVariableReferences(source, referenceOptions(macros));
+  return collectVariableReferences(
+    source,
+    referenceOptions(macros, options.all),
+  );
 }
 
 /**

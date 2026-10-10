@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tooling: `widgetDefinitions(passages, macros?)` lists the widgets a story defines as the runtime registers them (name, `@` parameters, whether the body renders `{@children}`, and the offsets of the opening tag, the name and the closer), tolerant of half-typed definitions; `parseWidgetDef(rawArgs)` is exported. The runtime's startup reads definitions with the same code (#462).
 
 - Tooling: `variableReferences(source, macros?)` returns the `$`/`%` variable references a passage evaluates with their dotted path and span, and `validateVariableReferences(passages, declarations, macros?)` checks them as the story start does (undeclared variables, fields of primitives), with codes and offsets. The story start reads references with the same code, with its messages unchanged (#464).
+- Tooling: `discoverMacros(source)` reads what the `defineMacro` and `Story.defineMacro` calls in JavaScript declare (name and its offsets, `block`, `subMacros`, typed `parameters`, `interpolate`, `storeVar`) without running it, tolerant of half-typed code (#468).
+- Tooling: `variableReferences(source, macros, { all: true })` also returns the variable named by a `variable` parameter (the target of `{unset}` and `{computed}`) and the `{$name}` in the selectors of a link, display or expression, which rename and find-references need; the default list, which the story start checks, is unchanged (#468).
+- Tooling: `validateStoryMarkup(passages, macros, { tolerant: true })` reports every problem of a passage (all malformed and unpaired tags, and the unknown macros, code syntax errors, argument errors and unknown passages in the markup around them), not only the first malformed or unpaired tag; without the option nothing changes (#469).
+- Tooling: `parseDeclarations` reports a `syntax` error, with the offset of the problem, for an initializer the runtime cannot compile (#466).
 
 ### Changed
 
@@ -27,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `parseDeclarations` agrees with the runtime on initializers: `{ a: undefined, a: 1 }` and a call such as `function () { return 1 }()` are no longer reported as unsupported; `void 0` is `undefined`; `+1n` is reported as the evaluation error it is; a message names the value the runtime finds, as `parseStoryVariables` throws it; and an object with a spread, a computed key or a later member that is not static has no field a later member can replace (#466).
+- `widgetDefinitions` reports `block: true` for a widget whose `{@children}` is in an HTML attribute value (`<p title="{@children}">`), as the runtime and the docs do (#467).
+- Parameters of a `{widget}` separated by commas (`{widget "Box" @a, @b}`) are read as `@a` and `@b` by the runtime and by tooling, instead of `@a,` (#470).
 - Tab in a dialog steps through the segments of a native date, time, datetime-local, month or week input before moving on (#461), and enters the controls of an iframe, at its first (or last, with Shift) control, instead of its empty body (#460).
 - Dialogs have an accessible name: the built-in Saves and Settings dialogs their label, a story dialog its first heading, or else its passage name (#456).
 - A `{button}` or `{link}` click body made of plain macros is released once it has run, instead of being kept, with its detached nodes, until the control goes away; bodies that may still be working (a `{timed}`, a widget) are kept as before (#458).

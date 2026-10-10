@@ -40,6 +40,7 @@ export {
   parseWidgetDef,
   widgetDefinitions,
   variableReferences,
+  discoverMacros,
   validateVariableReferences,
 } from './story-variables.js';
 

@@ -4,6 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getMacroRegistry } from '../../src/registry';
+import { parseMarkup } from '../../src/markup/parse';
+import { astContainsChildren } from '../../src/widgets/ast-scanner';
 import {
   parseStoryVariables,
   validatePassages,
@@ -35,6 +37,8 @@ import {
   variableReferences,
   validateVariableReferences,
   parseDeclarations,
+  discoverMacros,
+  validateStoryMarkup,
 } from '../../src/tooling';
 
 describe('tooling API: the JavaScript lexer', () => {
@@ -459,6 +463,44 @@ describe('widgetDefinitions (#462)', () => {
   it('parseWidgetDef reads the arguments alone', () => {
     expect(parseWidgetDef('"Box" @a')).toEqual({ name: 'Box', params: ['@a'] });
   });
+
+  it.each([
+    ['spaces', '"Box" @a @b'],
+    ['commas', '"Box" @a, @b'],
+    ['commas and no spaces', '"Box" @a,@b,'],
+  ])('reads parameters separated by %s (#470)', (_, rawArgs) => {
+    expect(parseWidgetDef(rawArgs)).toEqual({
+      name: 'Box',
+      params: ['@a', '@b'],
+    });
+    // The {widget} macro registers what parseWidgetDef reads
+    const [def] = widgets(`{widget ${rawArgs}}{@a}{/widget}`);
+    expect(def!.params).toEqual(['@a', '@b']);
+  });
+
+  it('counts a {@children} in an attribute value, as the docs say (#467)', () => {
+    const macros = getMacroRegistry();
+    const block = (content: string) =>
+      widgetDefinitions(
+        [{ name: 'Widgets', tags: ['widget'], content }],
+        macros,
+      )[0]!.block;
+    expect(block('{widget "A"}<p title="{@children}">x</p>{/widget}')).toBe(
+      true,
+    );
+    expect(block('{widget "A"}<p title=\'{@children}\'>x</p>{/widget}')).toBe(
+      true,
+    );
+    expect(block('{widget "A"}<p title={@children}>x</p>{/widget}')).toBe(true);
+    expect(block('{widget "B"}{button "{@children}"}x{/button}{/widget}')).toBe(
+      true,
+    );
+    expect(block('{widget "C"}<p title="plain">x</p>{/widget}')).toBe(false);
+    // The runtime reads the same markup the same way
+    expect(
+      astContainsChildren(parseMarkup('<p title="{@children}">x</p>')),
+    ).toBe(true);
+  });
 });
 
 describe('variable references (#464)', () => {
@@ -625,5 +667,247 @@ describe('variable references (#464)', () => {
         e.replace('Passage "P": ', ''),
       ),
     ).toEqual(messages);
+  });
+});
+
+describe('all variable references (#468)', () => {
+  const macros = getMacroRegistry();
+  const texts = (source: string, all?: boolean) =>
+    variableReferences(source, macros, { all }).map((r) =>
+      source.slice(r.start, r.end),
+    );
+
+  it('has the receivers of {unset} and {computed} with all', () => {
+    const source =
+      '{unset $a}{unset $b.c}{unset _t}{unset %tr}{computed $d = $e + 1}{computed _u = $f}';
+    expect(texts(source)).toEqual(['$e', '$f']);
+    expect(texts(source, true)).toEqual([
+      '$a',
+      '$b.c',
+      '%tr',
+      '$d',
+      '$e',
+      '$f',
+    ]);
+  });
+
+  it('has the references in the selectors of links, displays and expressions', () => {
+    const source =
+      '[[.c{$a} Go->T]] {.k{$b} $v} {.q{$d} $e + 1} {.{$cls} button "x"}y{/button}';
+    expect(texts(source)).toEqual(['$v', '$e', '$cls']);
+    expect(texts(source, true)).toEqual(['$a', '$b', '$v', '$d', '$e', '$cls']);
+  });
+
+  it('is the story start list, in order, as a part of the whole', () => {
+    const source =
+      '{unset $x}{$a} [[.c{$s} Go->T]] {set $b = 1} {computed $z = $a}';
+    const checked = variableReferences(source, macros);
+    const all = variableReferences(source, macros, { all: true });
+    expect(all.length).toBeGreaterThan(checked.length);
+    let from = 0;
+    for (const ref of checked) {
+      from = all.findIndex(
+        (other, i) => i >= from && other.start === ref.start,
+      );
+      expect(from).toBeGreaterThanOrEqual(0);
+    }
+    expect(all.map((r) => r.start)).toEqual(
+      [...all.map((r) => r.start)].sort((a, b) => a - b),
+    );
+  });
+
+  it('is not what validateVariableReferences checks', () => {
+    const declared = { variables: new Map([['a', undefined]]) };
+    expect(
+      validateVariableReferences(
+        [{ name: 'P', content: '{unset $gone} [[.c{$gone2} Go->T]]' }],
+        declared,
+        macros,
+      ),
+    ).toEqual([]);
+  });
+
+  it('reads no receiver from arguments that do not parse', () => {
+    expect(texts('{unset}{unset "$a"}', true)).toEqual([]);
+  });
+});
+
+describe('discoverMacros (#468)', () => {
+  const source = `
+// Story.defineMacro({ name: "commented" })
+const s = 'Story.defineMacro({ name: "in-a-string" })';
+Story.defineMacro({
+  name: "alert",
+  block: true,
+  interpolate: true,
+  description: \`A box\`,
+  subMacros: ["a", 'b', x, "c"],
+  parameters: [
+    { name: "label", type: "string", holds: "markup", required: true },
+    { name: 'opts', type: 'options', parameters: [{ name: 'size', type: 'number' }] },
+    { name: "code", type: "expression" }
+  ],
+  render(props, ctx) { return ctx.h("div", { class: "x" }, "}"); },
+});
+const counter = { name: 'counter', storeVar: true, parameters: [{ name: 'v', type: 'variable' }], render: (p) => null };
+defineMacro(counter);
+Story.defineMacro({ name: dynamic, block: true });
+Story.defineMacro({ name: "bad", parameters: [{ name: "x", type: "nope" }] });
+Story.defineMacro({ name: "dyn", parameters: [{ name: n, type: "text" }], block: false, subMacros: ["z"] });
+function f() { Story.defineMacro({ name: "nested", subMacros: ["inner"] }) }
+Story.defineMacro({ name: "half", block: tr
+`;
+
+  it('reads the literal parts of each call, in order', () => {
+    const macros = discoverMacros(source);
+    expect(macros.map((m) => m.name)).toEqual([
+      'alert',
+      'counter',
+      'bad',
+      'dyn',
+      'nested',
+    ]);
+    expect(macros[0]).toMatchObject({
+      name: 'alert',
+      block: true,
+      interpolate: true,
+      description: 'A box',
+      subMacros: ['a', 'b', 'c'],
+      parameters: [
+        { name: 'label', type: 'string', holds: 'markup', required: true },
+        {
+          name: 'opts',
+          type: 'options',
+          parameters: [{ name: 'size', type: 'number' }],
+        },
+        { name: 'code', type: 'expression' },
+      ],
+    });
+    expect(macros[1]).toMatchObject({
+      name: 'counter',
+      block: false,
+      storeVar: true,
+      parameters: [{ name: 'v', type: 'variable' }],
+    });
+  });
+
+  it('says where the name is written', () => {
+    for (const macro of discoverMacros(source)) {
+      expect(source.slice(macro.nameStart, macro.nameEnd)).toBe(macro.name);
+    }
+  });
+
+  it('skips what is not static', () => {
+    const [, , bad, dyn, nested] = discoverMacros(source);
+    // A parameter defineMacro refuses, or that is not written out: none
+    expect(bad!.parameters).toBeUndefined();
+    expect(dyn!.parameters).toBeUndefined();
+    expect(dyn).toMatchObject({ block: false, subMacros: ['z'] });
+    // Sub-macros make a macro a block unless it says it is not
+    expect(nested!.block).toBe(true);
+  });
+
+  it('gives macros that validateStoryMarkup takes', () => {
+    const macros = discoverMacros(
+      'Story.defineMacro({ name: "alert", block: true, render() {} })',
+    );
+    const passages = [{ name: 'P', content: '{alert}x{/alert}' }];
+    expect(validateStoryMarkup(passages, macros)).toEqual([]);
+    // Without it, the closer closes nothing
+    expect(validateStoryMarkup(passages, []).map((d) => d.code)).toEqual([
+      'stray-closer',
+    ]);
+  });
+
+  it('reads nothing from text without a call, and never throws', () => {
+    for (const text of [
+      '',
+      'defineMacro',
+      'defineMacro(',
+      'defineMacro({',
+      'defineMacro({ name: ',
+      'defineMacro({ name: "x", parameters: [ {',
+      'Story.defineMacro(config)',
+      'defineMacro({ ...base, name: "x" })',
+      '`${defineMacro({ name: "t" })}`',
+    ]) {
+      expect(() => discoverMacros(text)).not.toThrow();
+    }
+    expect(discoverMacros('defineMacro({ name: "t" })')).toHaveLength(1);
+    expect(discoverMacros('{ ...base, name: "x" }')).toEqual([]);
+  });
+});
+
+describe('validateStoryMarkup tolerant (#469)', () => {
+  const macros = getMacroRegistry();
+  const content = [
+    '{if $a}', // 1: unclosed block
+    'hi',
+    '{nosuch}', // 3: unknown macro
+    '[[Gone]]', // 4: unknown passage
+    '{print $x + }', // 5: bad expression
+  ].join('\n');
+  const codes = (
+    passages: { name: string; content: string }[],
+    tolerant?: boolean,
+  ) =>
+    validateStoryMarkup(passages, macros, { tolerant }).map(
+      (d) => `${d.line}:${d.code}`,
+    );
+
+  it('reports every problem of a passage', () => {
+    expect(codes([{ name: 'P', content }], true)).toEqual(
+      expect.arrayContaining([
+        '1:unclosed-block',
+        '3:unknown-macro',
+        '4:unknown-passage',
+        '5:code-syntax',
+      ]),
+    );
+    expect(codes([{ name: 'P', content }], true)).toHaveLength(4);
+  });
+
+  it('changes nothing without the option', () => {
+    expect(codes([{ name: 'P', content }])).toEqual(['1:unclosed-block']);
+    expect(codes([{ name: 'P', content }], false)).toEqual([
+      '1:unclosed-block',
+    ]);
+  });
+
+  it('goes past a malformed tag, with the same codes and spans', () => {
+    const text = 'a {$x\n{nosuch}\n<div>';
+    const strict = validateStoryMarkup([{ name: 'P', content: text }], macros);
+    expect(strict.map((d) => d.code)).toEqual(['unclosed-expression']);
+    const all = validateStoryMarkup([{ name: 'P', content: text }], macros, {
+      tolerant: true,
+    });
+    expect(all[0]).toEqual(strict[0]);
+    expect(all.map((d) => d.code).sort()).toEqual([
+      'unclosed-block',
+      'unclosed-expression',
+      'unknown-macro',
+    ]);
+  });
+
+  it('gives the same diagnostics for well-formed markup', () => {
+    const passages = [
+      { name: 'P', content: '{nosuch} [[Q]] {print 1 +}' },
+      { name: 'Q', content: '{if $a}x{/if}' },
+    ];
+    expect(validateStoryMarkup(passages, macros, { tolerant: true })).toEqual(
+      validateStoryMarkup(passages, macros),
+    );
+  });
+
+  it('reads the widgets of a passage with a malformed tag', () => {
+    const passages = [
+      {
+        name: 'W',
+        tags: ['widget'],
+        content: '{widget "Box"}x{/widget} {oops',
+      },
+      { name: 'P', content: '{Box}' },
+    ];
+    expect(codes(passages, true)).toEqual(['1:unclosed-macro']);
   });
 });
