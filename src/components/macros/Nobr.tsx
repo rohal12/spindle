@@ -4,6 +4,7 @@ import { NobrContext } from '../../markup/render';
 defineMacro({
   name: 'nobr',
   block: true,
+  interpolate: true,
   render({ children = [] }, ctx) {
     return ctx.wrap(
       ctx.h(

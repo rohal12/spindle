@@ -91,6 +91,11 @@ describe('dialog accessibility', () => {
             'Media',
             '<button id="before">Before</button><audio id="audio" controls tabindex="0"></audio><button id="after">After</button>',
           ),
+          makePassage(
+            11,
+            'Editable',
+            '<button id="before">Before</button><div id="readonly" contenteditable="false" tabindex="0">Read-only</div><div id="plain" contenteditable="false">Plain</div><div id="host" contenteditable="true"><p id="nested" contenteditable="true">Nested</p><p id="tabbable" contenteditable="true" tabindex="0">Tabbable</p></div><button id="after">After</button>',
+          ),
         ]),
       );
     installStoryAPI();
@@ -115,6 +120,7 @@ describe('dialog accessibility', () => {
 
   const panels = () => container.querySelectorAll<HTMLElement>('.dialog-panel');
   const byId = (id: string) => document.getElementById(id)!;
+  const noClose = { showCloseButton: false, dismissible: false };
 
   it('marks the panel as a modal dialog and labels the close button', () => {
     act(() => window.Story.openDialog('Plain'));
@@ -142,6 +148,41 @@ describe('dialog accessibility', () => {
     expect(document.activeElement).not.toBe(opener);
     act(() => window.Story.closeDialog());
     expect(document.activeElement).toBe(opener);
+  });
+
+  it('returns focus to a focusable SVG opener (#483)', () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const link = document.createElementNS('http://www.w3.org/2000/svg', 'a');
+    link.setAttribute('href', '#');
+    svg.appendChild(link);
+    document.body.appendChild(svg);
+    try {
+      link.focus();
+      expect(document.activeElement).toBe(link);
+      act(() => window.Story.openDialog('Form'));
+      expect(document.activeElement).not.toBe(link);
+      act(() => window.Story.closeDialog());
+      expect(document.activeElement).toBe(link);
+    } finally {
+      svg.remove();
+    }
+  });
+
+  it('honors an explicit tabindex on contenteditable elements (#507)', () => {
+    act(() => window.Story.openDialog('Editable', noClose));
+    // Without a tabindex a read-only element and content nested in an
+    // editing host are no tab stops of their own
+    byId('before').focus();
+    const order: (string | undefined)[] = [];
+    for (let i = 0; i < 5; i++) {
+      press('Tab');
+      order.push(document.activeElement?.id);
+    }
+    expect(order).toEqual(['readonly', 'host', 'tabbable', 'after', 'before']);
+    press('Tab', true);
+    expect(document.activeElement).toBe(byId('after'));
+    press('Tab', true);
+    expect(document.activeElement).toBe(byId('tabbable'));
   });
 
   it('skips unavailable autofocus elements (#426)', () => {
@@ -233,8 +274,6 @@ describe('dialog accessibility', () => {
     press('Tab', true);
     expect(document.activeElement).toBe(byId('last'));
   });
-
-  const noClose = { showCloseButton: false, dismissible: false };
 
   it('wraps from the summary of a closed details element (#389)', () => {
     act(() => window.Story.openDialog('Hint', noClose));

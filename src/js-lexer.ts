@@ -53,9 +53,17 @@ export interface JsLexHandlers {
   literal?(text: string, index: number, nesting: number): void;
   /**
    * A sigil variable reference — `$name`, `_name`, `@name` or `%name` —
-   * covering the sigil and `name`.
+   * covering the sigil and `name`, which is the name JavaScript reads (one
+   * written with an escape, `$fo\u006f`, is `foo`). It is written from
+   * `index` up to `end` (the sigil and the name as written).
    */
-  variable?(sigil: Sigil, name: string, index: number, nesting: number): void;
+  variable?(
+    sigil: Sigil,
+    name: string,
+    index: number,
+    nesting: number,
+    end: number,
+  ): void;
 }
 
 /**
@@ -1055,9 +1063,10 @@ function walkTokens(
       if (sigil && !property) {
         handlers.variable?.(
           sigil,
-          src.slice(tok.start + 1, tok.end),
+          (tok.value as string).slice(1),
           tok.start,
           nesting,
+          tok.end,
         );
       } else code(tok.start, tok.end);
     } else if (

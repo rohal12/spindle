@@ -4,6 +4,7 @@ import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
 defineMacro({
   name: 'radiobutton',
+  interpolate: true,
   storeVar: true,
   parameters: [
     VARIABLE_PARAMETER,

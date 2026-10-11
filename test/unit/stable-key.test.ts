@@ -113,8 +113,37 @@ describe('stableKey', () => {
 
   it('distinguishes a sparse array from a shorter one', () => {
     expect(stableKey([,])).not.toBe(stableKey([]));
-    // A hole reads as undefined, as deepClone fills it.
-    expect(stableKey([, 1])).toBe(stableKey([undefined, 1]));
+  });
+
+  it('distinguishes a hole from an undefined element (#497)', () => {
+    expect(stableKey([,])).not.toBe(stableKey([undefined]));
+    expect(stableKey([, 1])).not.toBe(stableKey([undefined, 1]));
+    expect(stableKey([1, , 2])).not.toBe(stableKey([1, undefined, 2]));
+    expect(stableKey([[,]])).not.toBe(stableKey([[undefined]]));
+    expect(stableKey([, 1])).toBe(stableKey([, 1]));
+    // Also in a registered Array subclass
+    class Bag extends Array {}
+    registerClass('Bag', Bag);
+    const sparse = new Bag(2);
+    sparse[1] = 1;
+    const dense = new Bag(2);
+    dense[0] = undefined;
+    dense[1] = 1;
+    expect(stableKey(sparse)).not.toBe(stableKey(dense));
+  });
+
+  it('distinguishes -0 from 0 (#498)', () => {
+    expect(stableKey(-0)).not.toBe(stableKey(0));
+    expect(stableKey([-0])).not.toBe(stableKey([0]));
+    expect(stableKey({ a: -0 })).not.toBe(stableKey({ a: 0 }));
+    expect(stableKey(-0)).toBe(stableKey(-0));
+    expect(stableKey(new Map([[1, -0]]))).not.toBe(
+      stableKey(new Map([[1, 0]])),
+    );
+    expect(stableKey(Object(-0))).not.toBe(stableKey(Object(0)));
+    // Other numbers are unchanged
+    expect(stableKey(0)).toBe('0');
+    expect(stableKey(1.5)).toBe('1.5');
   });
 
   it('keeps a symbol description from reading as other symbols', () => {

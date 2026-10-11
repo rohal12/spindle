@@ -50,7 +50,7 @@ export function atomicName(value: object): string | undefined {
 export const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
 
 /** Whether `key` is an index of an array element. */
-const isIndexKey = (key: string): boolean =>
+export const isIndexKey = (key: string): boolean =>
   key !== '4294967295' && String(Number(key) >>> 0) === key;
 
 /**
@@ -61,6 +61,43 @@ const isIndexKey = (key: string): boolean =>
 export function extraKeys(collection: object): string[] {
   const keys = Object.keys(collection);
   return Array.isArray(collection) ? keys.filter((k) => !isIndexKey(k)) : keys;
+}
+
+// A subclass of RegExp may override `source`, `flags` and the getter of each
+// flag (`global`, `sticky`, ...), and the built-in `flags` getter reads those
+// getters, so a pattern is read with the built-in getters one by one (#391,
+// #491). What a RegExp holds is its source and the flags in its slots.
+
+/** The built-in getter of each flag, with the letter `flags` lists it by. */
+const FLAG_GETTERS: [string, (this: RegExp) => boolean][] = (
+  [
+    ['hasIndices', 'd'],
+    ['global', 'g'],
+    ['ignoreCase', 'i'],
+    ['multiline', 'm'],
+    ['dotAll', 's'],
+    ['unicode', 'u'],
+    ['unicodeSets', 'v'],
+    ['sticky', 'y'],
+  ] as const
+).flatMap(([name, letter]) => {
+  const get = Object.getOwnPropertyDescriptor(RegExp.prototype, name)?.get;
+  return get ? [[letter, get] as [string, (this: RegExp) => boolean]] : [];
+});
+
+/** The pattern of a RegExp and its flags, as its slots hold them. */
+export function regExpParts(re: RegExp): [source: string, flags: string] {
+  const source = Reflect.get(RegExp.prototype, 'source', re) as string;
+  const flags = FLAG_GETTERS.map(([letter, get]) =>
+    get.call(re) ? letter : '',
+  ).join('');
+  return [source, flags];
+}
+
+/** `/source/flags` of a RegExp, as its slots hold them (see regExpParts). */
+export function regExpText(re: RegExp): string {
+  const [source, flags] = regExpParts(re);
+  return `/${source}/${flags}`;
 }
 
 // A subclass of Map or Set may override how it is iterated, read or written

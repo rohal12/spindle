@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Generated namespace bindings are `__variables`, `__temporary`, `__locals` and `__transient` (and `__fns`), so an authored `variables`, `locals`, `random` etc. no longer captures a `$`/`_`/`@` reference or clashes with the generated function. The public `transform()` output from `@rohal12/spindle/tooling` changes from `variables["x"]` to `__variables["x"]` (#492).
+- Tooling: `discoverMacros` skips regex literals (`/}/`, `/[)]/`) and ends a line comment at any JavaScript line terminator (CR, U+2028, U+2029 too), so a macro whose method contains one is still found with its `block` (#493); a config variable is the declaration its call sees (the innermost, in scope, before the call unless the call is in another function), and a parameter, pattern, assignment or second declaration of the name makes it unknown instead of reading another declaration's config (#494).
+- Tooling: `parseDeclarations` gives a `number` schema to an unsigned `Infinity` and to a signed `NaN` (#509), and keeps object fields whose numeric key has a decimal point, a signed exponent, a separator or a radix (`{ 1.5: 1 }`, `{ 1e+2: 1 }`), named as the runtime names them (#510).
 - `parseDeclarations` agrees with the runtime on initializers: `{ a: undefined, a: 1 }` and a call such as `function () { return 1 }()` are no longer reported as unsupported; `void 0` is `undefined`; `+1n` is reported as the evaluation error it is; a message names the value the runtime finds, as `parseStoryVariables` throws it; and an object with a spread, a computed key or a later member that is not static has no field a later member can replace (#466).
 - `widgetDefinitions` reports `block: true` for a widget whose `{@children}` is in an HTML attribute value (`<p title="{@children}">`), as the runtime and the docs do (#467).
 - Parameters of a `{widget}` separated by commas (`{widget "Box" @a, @b}`) are read as `@a` and `@b` by the runtime and by tooling, instead of `@a,` (#470).
@@ -155,6 +158,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Saves and history keep the shared references and cycles of variables: `shareEqual()` no longer splits aliases when it reuses an earlier moment's subtree, and history records the variables a navigation changes together. ([#269](https://github.com/rohal12/spindle/issues/269), [#270](https://github.com/rohal12/spindle/issues/270))
 - IndexedDB writes and deletes resolve when their transaction completes and reject if it aborts, so a save no longer reports success for data that was not committed. ([#271](https://github.com/rohal12/spindle/issues/271))
 - Automation `assert.variables` compares arrays and objects by value. ([#276](https://github.com/rohal12/spindle/issues/276))
+- An automation `assert.actions` matcher honors `disabled` (`disabled: true` no longer matches an enabled Back button) (#484).
+- `parseAutomationYaml` rejects a malformed step with its number instead of running it as a passing test: an empty or non-object `assert`, `assert: {score: 100}` without `variables:`, an unknown field in a step, assertion, action matcher or action, a value of the wrong type, a `start` that is not a string, a negative `wait` (#485).
+- `Story.performAction()` returns the promise of an action that finishes later (`{quicksave}`, `{quickload}`), `Story.waitForActions()` waits for such actions, and the automation runner awaits them, so a step after `load:quickload` no longer sees the old passage (#504).
 - `collectStoryPassageReferences()` returns references in source order whatever the order of a macro's keyword arguments. ([#277](https://github.com/rohal12/spindle/issues/277))
 
 ### Added

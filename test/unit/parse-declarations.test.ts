@@ -145,7 +145,12 @@ describe('parseDeclarations (#449)', () => {
       '1_000',
       '.5',
       'NaN',
+      'Infinity',
+      '+Infinity',
       '-Infinity',
+      '-NaN',
+      '+NaN',
+      '{ a: Infinity, b: -NaN }',
       '"text"',
       "'it\\'s'",
       '`plain`',
@@ -158,6 +163,10 @@ describe('parseDeclarations (#449)', () => {
       '{}',
       '{ a: 1, b: "x", c: [1], d: { e: true, f: null } }',
       '{ "quoted key": 1, 2: "n", $d: 3 }',
+      '{ 1.5: 1 }',
+      '{ 1e+2: 1, 1E-2: 2, .5: 3, 1.: 4 }',
+      '{ 0b11: 1, 0o17: 2, 0XfF: 3, 1_000.5: 4, 1_0e1_0: 5 }',
+      '{ 0.1: true, 2.50: null, 5n: "s", 0x1Fn: 1 }',
       '{ a: 1, // trailing comment\n b: 2, }',
       '{ a: 1 + 2, b: foo(), c: 3 }',
       '{ ...other, a: 1 }',
@@ -231,6 +240,34 @@ describe('parseDeclarations (#449)', () => {
       ['a later member that is not static', '{ a: 1, a: foo() }', {}],
       ['an accessor', '{ a: 1, get a() { return {} } }', {}],
     ])('has no field a later member can replace: %s (#466)', (_, v, fields) => {
+      const [d] = parseDeclarations(`$o = ${v}`).declarations;
+      expect(plain(d!.schema)).toEqual({
+        type: 'object',
+        fields: Object.fromEntries(
+          Object.entries(fields).map(([k, type]) => [k, { type }]),
+        ),
+      });
+    });
+
+    it.each([
+      ['Infinity', 'number'],
+      ['+Infinity', 'number'],
+      ['-NaN', 'number'],
+    ])('is a number: %s (#509)', (value, type) => {
+      const [d] = parseDeclarations(`$limit = ${value}`).declarations;
+      expect(plain(d!.schema)).toEqual({ type });
+    });
+
+    it.each([
+      ['{ 1.5: 1 }', { '1.5': 'number' }],
+      ['{ 1e+2: 1 }', { '100': 'number' }],
+      ['{ .5: "s", 1.: true }', { '0.5': 'string', '1': 'boolean' }],
+      [
+        '{ 1_0.5: 1, 0b11: 2, 0o7: 3 }',
+        { '10.5': 'number', '3': 'number', '7': 'number' },
+      ],
+      ['{ 1e-7: null, 0x1Fn: 1 }', { '1e-7': 'null', '31': 'number' }],
+    ])('keeps the decimal and exponent keys of %s (#510)', (v, fields) => {
       const [d] = parseDeclarations(`$o = ${v}`).declarations;
       expect(plain(d!.schema)).toEqual({
         type: 'object',

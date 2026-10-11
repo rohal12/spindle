@@ -38,6 +38,10 @@ export function checkVariableName(name: string, label = name): void {
   if (error) throw new TypeError(`spindle: ${error}`);
 }
 
+/** Whether a property key is an array index (`"0"`, `"12"`; not `"01"`). */
+export const isArrayIndex = (key: string): boolean =>
+  /^(?:0|[1-9]\d*)$/.test(key);
+
 /** Whether `obj` holds `key` as an own property. */
 export const hasOwn = (obj: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(obj, key);

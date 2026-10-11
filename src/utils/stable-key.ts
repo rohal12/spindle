@@ -6,6 +6,7 @@ import {
   isBoxed,
   isTemporal,
   mapEntries,
+  regExpText,
   setMembers,
   toStringTag,
 } from './value-kinds';
@@ -24,7 +25,9 @@ import {
  * built-ins (see isAtomic) have their contents in the key: the bytes of a
  * buffer, the place of a view in its buffer, the text of a URL or
  * URLSearchParams, the class, message, cause and errors of an Error, the
- * value of a boxed primitive (#418). A hole in an array reads as undefined.
+ * value of a boxed primitive (#418). As for deepEqual and a save, -0 is not
+ * 0 (#498) and a hole in an array is not an undefined element (#497), so
+ * only the keys of -0 and of arrays with holes differ from JSON.stringify.
  *
  * An object met again, through a cycle or a second reference to it, is a
  * marker naming where it was first met rather than another copy of its
@@ -39,6 +42,9 @@ export function stableKey(value: unknown): string {
   }
 }
 
+/** The key of an array slot that holds no element. */
+const HOLE = '<hole>';
+
 /**
  * The key of `val`. `seen` numbers the objects keyed so far, in the order
  * they were first met.
@@ -48,6 +54,8 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     case 'string':
       return JSON.stringify(val);
     case 'number':
+      // JSON.stringify and String() read -0 as 0: the key does not (#498)
+      if (Object.is(val, -0)) return '-0';
       return Number.isFinite(val) ? JSON.stringify(val) : String(val);
     case 'boolean':
       return String(val);
@@ -89,16 +97,19 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     return withFields(
       val instanceof Date
         ? `Date(${Date.prototype.getTime.call(val)})`
-        : `RegExp(${RegExp.prototype.toString.call(val)}@${val.lastIndex})`,
+        : `RegExp(${regExpText(val)}@${val.lastIndex})`,
     );
   }
 
   seen.set(obj, seen.size);
   if (Array.isArray(val)) {
-    // Array.from reads a hole as undefined (map would skip it, giving
-    // `[,]` the key of `[]`): as JSON.stringify, a key does not tell a
-    // hole from an undefined element (deepEqual does)
-    return withFields(`[${Array.from(val, (v) => keyOf(v, seen)).join(',')}]`);
+    // A hole is no element, not an undefined one (#497), as for deepEqual
+    // and a save; a plain `map` would skip it, giving `[,]` the key of `[]`
+    const items: string[] = [];
+    for (let i = 0; i < val.length; i++) {
+      items.push(i in val ? keyOf(val[i], seen) : HOLE);
+    }
+    return withFields(`[${items.join(',')}]`);
   }
   const atomic = atomicKey(obj, seen);
   if (atomic !== undefined) return named(atomic);

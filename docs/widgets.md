@@ -96,7 +96,7 @@ A widget passes its arguments on: to `Story.goto`, a `{link}`, a `data-` attribu
 {choice "Leave" "NoSuchPassage"}
 ```
 
-The story does not start: there is no passage named "NoSuchPassage". The kinds are `passage`, `expression`, `statements`, `markup` and `text`, as for a macro; an unknown one is an error in the `{widget}` definition. Only an argument written as one quoted string is checked (`{choice "Leave" "Hall"}`); `{choice "Leave" $where}` is whatever `$where` is when the widget renders. Parameters without a colon, and calls that pass fewer arguments, behave as before.
+The story does not start: there is no passage named "NoSuchPassage". The kinds are `passage`, `expression`, `statements`, `markup` and `text`, as for a macro; an unknown one is an error in the `{widget}` definition. Only an argument written as one quoted string is checked (`{choice "Leave" "Hall"}`); `{choice "Leave" $where}` is whatever `$where` is when the widget renders. An argument that holds `expression`, `statements` or `markup` has its variable references checked too (`{run "$missing = 1"}` for `@code:statements` stops the story when `$missing` is not declared). Parameters without a colon, and calls that pass fewer arguments, behave as before.
 
 ## Block Widgets (Wrapping Content)
 

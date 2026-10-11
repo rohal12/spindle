@@ -4,6 +4,7 @@ import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 defineMacro({
   name: 'cycle',
   block: true,
+  interpolate: true,
   storeVar: true,
   parameters: [VARIABLE_PARAMETER],
   render({ children = [] }, ctx) {

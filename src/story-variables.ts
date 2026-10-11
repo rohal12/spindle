@@ -19,8 +19,10 @@ import {
   sigilExpressions,
   parseOrError,
   pieceOffset,
+  widgetPieces,
   withParseCache,
   type ParametersOf,
+  type Piece,
 } from './code-check';
 import { getMacroParameters, type ParameterDef } from './registry';
 import {
@@ -29,7 +31,11 @@ import {
   type ArgSpans,
 } from './components/macros/macro-args';
 import { NOT_MARKUP } from './markup/validate';
-import { createNamespace, variableNameError } from './utils/namespace';
+import {
+  createNamespace,
+  isArrayIndex,
+  variableNameError,
+} from './utils/namespace';
 import { staticLiteral, type LiteralShape } from './static-literal';
 import { parse } from 'acorn';
 
@@ -437,6 +443,11 @@ function checkReference(
 
     // Primitives expose their wrapper's built-ins (length, toUpperCase,
     // toFixed, etc.). Keep validating past properties of primitive type.
+    // Strings also have the character at each index below their length,
+    // which the empty sample has none of (the default may not be the value)
+    if (current.type === 'string' && isArrayIndex(part)) {
+      continue;
+    }
     const sample = PRIMITIVE_SAMPLES[current.type];
     if (sample && part in sample) {
       const member: unknown = sample[part as keyof typeof sample];
@@ -495,14 +506,41 @@ type Emit = (ref: VariableReference) => void;
 
 const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
-/** A reference written at `index` of `code`, with its dot path. */
+/** A `.field` path written right after a reference, which may be empty. */
+const FIELD_PATH_RE = /(?:\.\w+)*/y;
+
+/**
+ * The reference to variable `name`, which JavaScript reads at `[start, end)`
+ * of `code` (the sigil and the name as written, which may be spelled with
+ * escapes), with the dot path written after it.
+ */
 function referenceAt(
   code: string,
+  sigil: string,
+  name: string,
+  start: number,
+  end: number,
+  at: At,
+): VariableReference {
+  FIELD_PATH_RE.lastIndex = end;
+  const fields = FIELD_PATH_RE.exec(code)![0];
+  return {
+    sigil: sigil as '$' | '%',
+    name,
+    path: fields ? fields.slice(1).split('.') : [],
+    start: at(start),
+    end: at(end + fields.length),
+  };
+}
+
+/** A reference written at `index` of `term`, a `variable` parameter as written. */
+function termReferenceAt(
+  term: string,
   index: number,
   at: At,
 ): VariableReference | undefined {
   VAR_PATH_RE.lastIndex = index;
-  const match = VAR_PATH_RE.exec(code);
+  const match = VAR_PATH_RE.exec(term);
   if (!match) return undefined;
   const [name, ...path] = match[2]!.split('.');
   return {
@@ -562,8 +600,7 @@ function scanCode(
   }
   for (const ref of parsed.refs) {
     if (ref.sigil !== '$' && ref.sigil !== '%') continue;
-    const found = referenceAt(code, ref.start, at);
-    if (found) emit(found);
+    emit(referenceAt(code, ref.sigil, ref.name, ref.start, ref.end, at));
   }
 }
 
@@ -577,10 +614,9 @@ function scanCodeLeniently(
   lexJs(
     code,
     {
-      variable(sigil, _name, index) {
+      variable(sigil, name, index, _nesting, end) {
         if (sigil !== '$' && sigil !== '%') return;
-        const found = referenceAt(code, index, at);
-        if (found) emit(found);
+        emit(referenceAt(code, sigil, name, index, end, at));
       },
       // Strings, regex literals and comments hold no references
       literal() {},
@@ -589,21 +625,44 @@ function scanCodeLeniently(
   );
 }
 
+/** Report the references in the pieces of code and markup text of arguments. */
+function scanPieces(
+  pieces: Iterable<Piece>,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
+): void {
+  for (const piece of pieces) {
+    const pieceAt: At = (i) => at(pieceOffset(piece, i));
+    if (piece.kind === 'code') {
+      scanCode(piece.code, pieceAt, emit, piece.goal);
+    } else if (piece.kind === 'text') {
+      scanInterpolations(piece.text, pieceAt, emit, {
+        ...options,
+        storeVarMacros: NO_STORE_VAR_MACROS,
+      });
+    }
+  }
+}
+
 /**
  * Report the references in the arguments of a macro by what its parameters
  * say each holds (see ParameterDef.holds): code is scanned as code and
  * markup as markup, but literal text (a placeholder, a passage name) holds
  * none. A macro without declared parameters, or arguments that do not
- * parse, are scanned as code.
+ * parse, are scanned as code. The arguments of a widget that declares what
+ * some parameters hold are also read by those (see widgetPieces).
  */
 function scanArgs(
   token: Extract<Token, { type: 'macro' }>,
-  params: readonly ParameterDef[] | undefined,
+  parametersOf: ParametersOf,
   at: At,
   emit: Emit,
   options: ReferenceOptions,
 ): void {
   if (!token.rawArgs) return;
+  const params = parametersOf(token.name);
+  let byParameters = false;
   if (params) {
     if (options.all && !options.storeVarMacros.has(token.name.toLowerCase())) {
       scanVariableParameters(token, params, at, emit);
@@ -611,22 +670,23 @@ function scanArgs(
     const pieces = [
       ...argPieces(token.rawArgs, token.argsStart, params, token.name, ''),
     ];
-    if (!pieces.some((piece) => piece.kind === 'argument-error')) {
-      for (const piece of pieces) {
-        const pieceAt: At = (i) => at(pieceOffset(piece, i));
-        if (piece.kind === 'code') {
-          scanCode(piece.code, pieceAt, emit, piece.goal);
-        } else if (piece.kind === 'text') {
-          scanInterpolations(piece.text, pieceAt, emit, {
-            ...options,
-            storeVarMacros: NO_STORE_VAR_MACROS,
-          });
-        }
-      }
-      return;
-    }
+    byParameters = !pieces.some((piece) => piece.kind === 'argument-error');
+    if (byParameters) scanPieces(pieces, at, emit, options);
   }
-  scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
+  // The arguments of a widget are code: the strings among them hold none,
+  // but those that declare they hold code or markup are scanned as that
+  if (!byParameters) {
+    scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
+  }
+  const widget = parametersOf.widget?.(token.name);
+  if (widget) {
+    scanPieces(
+      widgetPieces(token.rawArgs, token.argsStart, widget, token.name, ''),
+      at,
+      emit,
+      options,
+    );
+  }
 }
 
 /**
@@ -650,7 +710,7 @@ function scanVariableParameters(
   for (const param of params) {
     const span = spans.get(param);
     if (param.type !== 'variable' || !span) continue;
-    const ref = referenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
+    const ref = termReferenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
       at(token.argsStart + span[0] + i),
     );
     if (ref) emit(ref);
@@ -733,7 +793,7 @@ function collectTokenRefs(
         else scanInterpolations(value, valueIn, emit, options);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanArgs(token, parametersOf(token.name), at, emit, options);
+      scanArgs(token, parametersOf, at, emit, options);
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
@@ -804,7 +864,10 @@ export function collectVariableReferences(
       options,
     ),
   );
-  return found;
+  // The scan visits a macro's arguments before its selectors, and bindings
+  // after its arguments: the order of the source is the contract. (Stable,
+  // so references written at one place keep the order they were found in.)
+  return found.sort((a, b) => a.start - b.start);
 }
 
 /**

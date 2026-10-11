@@ -22,6 +22,8 @@ import {
   mapEntries,
   mapGet,
   mapSet,
+  regExpParts,
+  regExpText,
   setMembers,
 } from './utils/value-kinds';
 
@@ -116,10 +118,7 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       return builtin(val, new Date(Date.prototype.getTime.call(val)));
     }
     if (val instanceof RegExp) {
-      const copy = new RegExp(
-        Reflect.get(RegExp.prototype, 'source', val) as string,
-        Reflect.get(RegExp.prototype, 'flags', val) as string,
-      );
+      const copy = new RegExp(...regExpParts(val));
       copy.lastIndex = val.lastIndex; // the scanning cursor of g/y patterns
       return builtin(val, copy);
     }
@@ -406,9 +405,8 @@ function equalBuiltin(
     );
   }
   if (a instanceof RegExp) {
-    const text = RegExp.prototype.toString;
     return (
-      text.call(a) === text.call(b as RegExp) &&
+      regExpText(a) === regExpText(b as RegExp) &&
       a.lastIndex === (b as RegExp).lastIndex &&
       equalExtraKeys(a, b, assumed)
     );
@@ -473,14 +471,18 @@ const BUILTIN_PROTOS: ReadonlySet<object | null> = new Set([
 ]);
 
 /**
- * Equality of the extra keys (see extraKeys) of two built-ins of one
- * class: those of a subclass instance are part of its value.
+ * The extra keys (see extraKeys) of a built-in that is an instance of a
+ * subclass: those are part of its value. A plain built-in has none.
  */
+function subclassFields(obj: object): string[] {
+  return BUILTIN_PROTOS.has(Object.getPrototypeOf(obj) as object | null)
+    ? []
+    : extraKeys(obj);
+}
+
+/** Equality of the fields (see subclassFields) of two built-ins of one class. */
 function equalExtraKeys(a: object, b: object, assumed: Pairs): boolean {
-  return (
-    BUILTIN_PROTOS.has(Object.getPrototypeOf(a) as object | null) ||
-    equalKeys(a, b, assumed, extraKeys)
-  );
+  return equalKeys(a, b, assumed, subclassFields);
 }
 
 /** `assumed` tracks the pairs of objects met (see Pairs). */
@@ -619,6 +621,8 @@ export function keyChanges(
     }
   };
 
+  // Elements are compared by index, then the fields of a subclass instance
+  // (#490) like the keys of an object
   if (Array.isArray(after)) {
     const b = before as unknown as unknown[];
     const a = after as unknown[];
@@ -648,14 +652,14 @@ export function keyChanges(
     if (a.length > next) {
       changes.push({ key: 'length', kind: 'holes', after: a.length - next });
     }
-    return changes;
   }
 
-  for (const key of Object.keys(after)) {
+  const keysOf = Array.isArray(after) ? subclassFields : Object.keys;
+  for (const key of keysOf(after)) {
     if (hasOwn(before, key)) compare(key, before[key], after[key]);
     else changes.push({ key, kind: 'added', after: after[key] });
   }
-  for (const key of Object.keys(before)) {
+  for (const key of keysOf(before)) {
     if (!hasOwn(after, key)) changes.push({ key, kind: 'deleted' });
   }
   return changes;

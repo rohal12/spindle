@@ -1,4 +1,10 @@
-import { useState, useCallback, useRef, useMemo } from 'preact/hooks';
+import {
+  useState,
+  useCallback,
+  useContext,
+  useRef,
+  useMemo,
+} from 'preact/hooks';
 import {
   LocalsValuesContext,
   LocalsUpdateContext,
@@ -13,17 +19,15 @@ import {
 } from '../../utils/namespace';
 
 /**
- * Render `body` in a new locals scope: the locals of `parentValues`, with
- * `ownKeys` (an iteration's loop variables, a widget's parameters) on top.
- * Locals the body assigns are kept in this scope.
+ * Render `body` in a new locals scope: the locals of the enclosing scope,
+ * with `ownKeys` (an iteration's loop variables, a widget's parameters) on
+ * top. Locals the body assigns are kept in this scope.
  */
 export function LocalsScope({
   body,
-  parentValues,
   ownKeys,
 }: {
   body: ASTNode[];
-  parentValues: Record<string, unknown>;
   ownKeys: Record<string, unknown>;
 }) {
   const options = useRenderOptions();
@@ -31,9 +35,16 @@ export function LocalsScope({
     {},
   );
 
+  // The enclosing scope as it is now: a local assigned before this scope
+  // renders is in it, while the context value only gains it in the re-render
+  // that follows (and the body may have acted on its absence by then).
+  const enclosing = useContext(LocalsUpdateContext).getValues();
+  const parentValues = useContext(LocalsValuesContext);
   const localState = useMemo(
-    () => createNamespace(parentValues, ownKeys, localMutations),
-    [parentValues, ownKeys, localMutations],
+    () => createNamespace(enclosing, ownKeys, localMutations),
+    // `parentValues` renews the scope when the enclosing one re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enclosing, parentValues, ownKeys, localMutations],
   );
 
   const valuesRef = useRef(localState);

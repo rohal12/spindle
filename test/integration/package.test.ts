@@ -152,7 +152,7 @@ describe('@rohal12/spindle/tooling', async () => {
     });
     expect(tooling.tokenizeMarkup('{$x}')[0].type).toBe('variable');
     expect(tooling.tokenizeMarkupTolerant('{$x} {if').errors).toHaveLength(1);
-    expect(tooling.transform('$x')).toBe('variables["x"]');
+    expect(tooling.transform('$x')).toBe('__variables["x"]');
     expect(
       tooling
         .collectPassageReferences('[[Go->Hall]] {goto "Roof"}')

@@ -93,6 +93,7 @@ the job and extend it; most fixes then land in one place. The shared modules:
 | Macro arguments: declared `parameters`, `ctx.args`       | `src/components/macros/macro-args.ts`                              |
 | Quoting, splitting, string scanning                      | `src/components/macros/arg-utils.ts`                               |
 | JavaScript scanning (`findCodeEnd`, `lexJs`)             | `src/js-lexer.ts`                                                  |
+| Which declaration a variable names (`Bindings`)          | `src/js-bindings.ts`                                               |
 | Sigils and scopes (`SIGIL_SCOPES`, `SCOPE_SIGILS`)       | `src/markup/tokens.ts`                                             |
 | Passage markup (`parseMarkup`, `tokenizeMarkup`)         | `src/markup/parse.ts` (grammar: `src/markup/spindle.peggy`)        |
 | Where code in `{…}` ends (`closeBrace`, `rawBodyEnd`)    | `src/markup/code-end.ts`                                           |

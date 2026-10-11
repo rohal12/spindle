@@ -1,6 +1,5 @@
 import { useStoryStore } from '../../store';
-import { useContext } from 'preact/hooks';
-import { LocalsValuesContext } from '../../markup/render';
+import { useLiveLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { ownValue, variableNameError } from '../../utils/namespace';
 import { SCOPE_SIGILS } from '../../markup/tokens';
@@ -19,7 +18,7 @@ export function VarDisplay({ node }: { node: VariableNode }) {
   const resolve = useInterpolate();
   const className = resolve(node.className);
   const id = resolve(node.id);
-  const localsValues = useContext(LocalsValuesContext);
+  const localsValues = useLiveLocals();
   const parts = name.split('.');
   const root = parts[0]!;
   // Own entries only, as the expression engine reads them

@@ -15,7 +15,11 @@ interface MenubarActionConfig {
   title?: string;
   confirm?: string;
   hidden?: () => boolean;
-  setup?: () => { perform: () => void; disabled?: boolean; title?: string };
+  setup?: () => {
+    perform: () => void | Promise<void>;
+    disabled?: boolean;
+    title?: string;
+  };
   dialog?: {
     passageName: string;
     fallbackMarkup?: string;
@@ -31,6 +35,7 @@ function hotkeyTitle(label: string, key: string | null): string {
 export function defineMenubarAction(config: MenubarActionConfig) {
   defineMacro({
     name: config.name,
+    interpolate: true,
     render(_, ctx) {
       if (config.hidden?.()) return null;
 

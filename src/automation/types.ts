@@ -1,9 +1,11 @@
-export interface ActionMatcher {
+import type { StoryAction } from '../action-registry';
+
+export interface ActionMatcher extends Partial<
+  Pick<StoryAction, 'id' | 'target' | 'variable' | 'label'>
+> {
   type?: string;
-  id?: string;
-  target?: string;
-  variable?: string;
-  label?: string;
+  /** `true` matches only disabled actions, `false` only enabled ones. */
+  disabled?: boolean;
 }
 
 export interface AssertStep {

@@ -68,11 +68,20 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   }
 }
 
-function SettingsControlsContent() {
+function SettingsControlsContent({
+  className,
+  id,
+}: {
+  className?: string;
+  id?: string;
+}) {
   const defs = settings.getDefinitions();
 
   return (
-    <div class="settings-controls">
+    <div
+      id={id}
+      class={className ? `settings-controls ${className}` : 'settings-controls'}
+    >
       {Array.from(defs.entries()).map(([name, def]) => (
         <SettingControl
           key={name}
@@ -86,7 +95,13 @@ function SettingsControlsContent() {
 
 defineMacro({
   name: 'settings-controls',
-  render() {
-    return <SettingsControlsContent />;
+  interpolate: true,
+  render(_props, ctx) {
+    return (
+      <SettingsControlsContent
+        className={ctx.className}
+        id={ctx.id}
+      />
+    );
   },
 });

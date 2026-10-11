@@ -546,30 +546,66 @@ function nestedPiece(
     : { ...piece, ...nested };
 }
 
+/** How the string of an argument is unescaped, which its escapes depend on. */
+type Escapes =
+  /** A macro's text: a backslash before a quote or a backslash is dropped. */
+  | 'quotes'
+  /** A widget's argument: a JavaScript string literal, with all its escapes. */
+  | 'javascript';
+
+/** An escape sequence of a JavaScript string literal (with its backslash). */
+const JS_ESCAPE_RE =
+  /\\(?:u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[0-3][0-7]{0,2}|[4-7][0-7]?|\r\n|[^])/y;
+
+/**
+ * The escape written at `raw[i]` (a backslash): how long it is as written and
+ * what it stands for, or none when it is not one under these `escapes`.
+ */
+function escapeAt(
+  raw: string,
+  i: number,
+  escapes: Escapes,
+): { length: number; text: string } | undefined {
+  if (escapes === 'quotes') {
+    const next = raw.charAt(i + 1);
+    return /["'\\]/.test(next) ? { length: 2, text: next } : undefined;
+  }
+  JS_ESCAPE_RE.lastIndex = i;
+  const written = JS_ESCAPE_RE.exec(raw)?.[0];
+  const text = written && stringLiteralValue(`"${written}"`);
+  return typeof text === 'string'
+    ? { length: written!.length, text }
+    : undefined;
+}
+
 /**
  * Where each character of `value`, the unescaped text of a quoted string
- * written as `raw` from `at` on (a backslash before a quote or a backslash
- * is dropped), is
- * in the source, and where the text ends. None when the text is where its
- * length says, or is not that string.
+ * written as `raw` from `at` on (its escapes are those of `escapes`), is in
+ * the source, and where the text ends. A character that an escape stands for
+ * is where the escape begins. None when the text is where its length says, or
+ * is not that string.
  */
 function escapeOffsets(
   raw: string,
   at: number,
   value: string,
+  escapes: Escapes,
 ): number[] | undefined {
   const offsets: number[] = [];
   let escaped = false;
   let i = 0;
   while (offsets.length < value.length) {
     if (i >= raw.length) return undefined;
-    offsets.push(at + i);
-    if (raw[i] === '\\' && /["'\\]/.test(raw.charAt(i + 1))) {
-      escaped = true;
-      i += 2;
-    } else {
-      i++;
+    const escape = raw[i] === '\\' ? escapeAt(raw, i, escapes) : undefined;
+    if (!escape) {
+      offsets.push(at + i++);
+      continue;
     }
+    // What the escape stands for is what the text has there
+    if (!value.startsWith(escape.text, offsets.length)) return undefined;
+    for (let k = 0; k < escape.text.length; k++) offsets.push(at + i);
+    escaped = true;
+    i += escape.length;
   }
   offsets.push(at + i);
   return escaped ? offsets : undefined;
@@ -599,7 +635,16 @@ export function* argPieces(
     };
     return;
   }
-  yield* valuePieces(args, offset, params, values, spans, macro, label);
+  yield* valuePieces(
+    args,
+    offset,
+    params,
+    values,
+    spans,
+    macro,
+    label,
+    'quotes',
+  );
 }
 
 /**
@@ -608,7 +653,7 @@ export function* argPieces(
  * is checked when it is one quoted string, as a `string` parameter with that
  * `holds` of a macro is; any other expression is its value at run time.
  */
-function* widgetPieces(
+export function* widgetPieces(
   args: string,
   offset: number,
   params: readonly WidgetParameter[],
@@ -628,12 +673,22 @@ function* widgetPieces(
     values[name] = value;
     spans.set(param, span!);
   });
-  yield* valuePieces(args, offset, declared, values, spans, macro, label);
+  yield* valuePieces(
+    args,
+    offset,
+    declared,
+    values,
+    spans,
+    macro,
+    label,
+    'javascript',
+  );
 }
 
 /**
  * The pieces of the `params` of `macro` with the `values` read from `args`
- * (at `offset`), whose `spans` tell where each was written.
+ * (at `offset`), whose `spans` tell where each was written and whose strings
+ * are unescaped as `escapes` says.
  */
 function* valuePieces(
   args: string,
@@ -643,6 +698,7 @@ function* valuePieces(
   spans: ArgSpans,
   macro: string,
   label: string,
+  escapes: Escapes,
 ): Generator<Piece> {
   const name = macro.toLowerCase();
   /** The pieces of the parameters `list`, with their values in `from`. */
@@ -700,7 +756,12 @@ function* valuePieces(
       const at =
         offset + start + (value !== written && /^["']/.test(written) ? 1 : 0);
       const holds = stringHolds(param);
-      const sourceOffsets = escapeOffsets(args.slice(at - offset), at, value);
+      const sourceOffsets = escapeOffsets(
+        args.slice(at - offset),
+        at,
+        value,
+        escapes,
+      );
       if (holds === 'expression' || holds === 'statements') {
         const piece: CodePiece = {
           kind: 'code',
@@ -774,7 +835,10 @@ export function attributeValues(
 
 /**
  * The `{$…}` expressions in the value of a code attribute (`onclick`, see
- * isCodeAttribute), with where each is in the value.
+ * isCodeAttribute), with where each is in the value. The parts of the value
+ * are written out as they are (splitSigilTemplate decodes nothing), so each
+ * starts where the one before it ends: an expression is not found by its
+ * text, which a string of the code may repeat.
  */
 export function sigilExpressions(
   value: string,
@@ -782,10 +846,13 @@ export function sigilExpressions(
   const found = [];
   let from = 0;
   for (const part of splitSigilTemplate(value)) {
-    if (!('expr' in part)) continue;
-    const at = locate(value, part.expr, from);
-    from = at + part.expr.length;
-    found.push({ expr: part.expr, at });
+    if ('expr' in part) {
+      // Inside its braces
+      found.push({ expr: part.expr, at: from + 1 });
+      from += part.expr.length + 2;
+    } else {
+      from += ('text' in part ? part.text : part.verbatim).length;
+    }
   }
   return found;
 }

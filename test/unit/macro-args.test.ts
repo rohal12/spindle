@@ -76,6 +76,60 @@ describe('parseMacroArgs', () => {
     });
   });
 
+  // #499: a flag with no positional argument beside it is the whole text
+  it('takes flags when nothing else is given', () => {
+    const one = [{ name: 'compact', type: 'flag' }] as const;
+    expect(parseMacroArgs('compact', one)).toEqual({ compact: true });
+    expect(parseMacroArgs('', one)).toEqual({ compact: false });
+    expect(parseMacroArgs('other', one)).toEqual({ compact: false });
+
+    const two = [
+      { name: 'compact', type: 'flag' },
+      { name: 'muted', type: 'flag' },
+    ] as const;
+    expect(parseMacroArgs('compact', two)).toEqual({
+      compact: true,
+      muted: false,
+    });
+    expect(parseMacroArgs('muted', two)).toEqual({
+      compact: false,
+      muted: true,
+    });
+    expect(parseMacroArgs('compact muted', two)).toEqual({
+      compact: true,
+      muted: true,
+    });
+    expect(parseMacroArgs('muted compact', two)).toEqual({
+      compact: true,
+      muted: true,
+    });
+  });
+
+  it('takes a lone flag beside an optional argument only', () => {
+    const optional = [
+      { name: 'compact', type: 'flag' },
+      { name: 'label', type: 'expression' },
+    ] as const;
+    expect(parseMacroArgs('compact', optional)).toEqual({
+      compact: true,
+      label: undefined,
+    });
+    // A required argument takes the lone word: {include inline} includes
+    // the passage held by the variable `inline`
+    const required = [
+      { name: 'inline', type: 'flag' },
+      { name: 'passage', type: 'passage', required: true },
+    ] as const;
+    expect(parseMacroArgs('inline', required)).toEqual({
+      inline: false,
+      passage: 'inline',
+    });
+    expect(parseMacroArgs('inline inline', required)).toEqual({
+      inline: true,
+      passage: 'inline',
+    });
+  });
+
   it('splits at separators', () => {
     const loop = [
       { name: 'variables', type: 'names' },

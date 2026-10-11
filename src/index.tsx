@@ -77,6 +77,15 @@ function orStop<T>(parse: () => T, where = ''): T {
 }
 
 /**
+ * What reading arguments depends on, with the macros and widgets known now:
+ * the declared parameters of macros and what the parameters of widgets hold.
+ * (The markup and the variable references are read by the same.)
+ */
+function knownParameters() {
+  return parameterLookup([...getMacroRegistry(), ...widgetMacros()]);
+}
+
+/**
  * The undeclared variables the passages refer to, with the macros known now:
  * the input macros that bind a variable (registered by author JS or
  * StoryInit) and the roles of their parameters decide what is a reference.
@@ -88,7 +97,12 @@ function variableErrors(
   const storeVarMacros = getMacroRegistry()
     .filter((m) => m.storeVar)
     .map((m) => m.name);
-  return validatePassages(storyData.passages, schema, storeVarMacros);
+  return validatePassages(
+    storyData.passages,
+    schema,
+    storeVarMacros,
+    knownParameters(),
+  );
 }
 
 /**
@@ -100,12 +114,11 @@ function markupErrors(
   storyData: StoryData,
   only: (passage: MarkupPassage) => boolean,
 ): string[] {
-  const macros = getMacroRegistry();
   return validateMarkup(storyData.passages.values(), {
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
-    macroNames: macros.map((m) => m.name),
-    parametersOf: parameterLookup([...macros, ...widgetMacros()]),
+    macroNames: getMacroRegistry().map((m) => m.name),
+    parametersOf: knownParameters(),
     only,
   }).map(formatDiagnostic);
 }
@@ -265,13 +278,10 @@ export function boot() {
 
   render(<App />, root);
 
-  const pending = getReadyPromise();
-  if (pending) {
-    // The event follows the render of the passage the story is at (#430)
-    pending.then(passageShown).then(() => {
-      document.dispatchEvent(new CustomEvent(':storyready'));
-    });
-  } else {
+  // The event follows the render of the passage the story is at: after
+  // `ready()` when rendering is deferred (#430), and after a `{goto}` made
+  // while the first passage rendered has shown its destination (#505)
+  (getReadyPromise() ?? Promise.resolve()).then(passageShown).then(() => {
     document.dispatchEvent(new CustomEvent(':storyready'));
-  }
+  });
 }

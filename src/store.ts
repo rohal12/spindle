@@ -61,6 +61,7 @@ import {
   type PathChange,
 } from './structural';
 import { getByPath } from './utils/object-path';
+import { isIndexKey } from './utils/value-kinds';
 import { noPassageError, showRuntimeError } from './runtime-errors';
 import {
   snapshotPRNG,
@@ -865,7 +866,9 @@ function writeKey(
   change?: PathChange,
 ): void {
   const deleted = change?.deleted ?? false;
-  if (Array.isArray(holder)) {
+  // The elements of an array and its length; its other keys are the fields of
+  // a subclass instance (#490)
+  if (Array.isArray(holder) && (key === 'length' || isIndexKey(key))) {
     const index = Number(key);
     if (deleted) {
       // A hole stays where it was; anything else was cut off

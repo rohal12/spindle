@@ -577,7 +577,7 @@ IDs are generated automatically from the action type and a content-based key:
 
 When multiple actions share the same base ID (e.g. two links to the same passage), a suffix is added: `link:Forest`, `link:Forest:2`, `link:Forest:3`.
 
-Suffixes are counted afresh on every navigation, so a passage's actions get the same IDs each time it is shown. Controls that stay mounted across navigations, such as those in `StoryInterface`, keep their IDs, and the passage's actions skip them: with `[[Forest]]` in both `StoryInterface` and the passage, the interface link is `link:Forest` and the passage link `link:Forest:2`.
+Suffixes are counted afresh on every navigation, so a passage's actions get the same IDs each time it is shown. Controls that stay mounted across navigations, such as those in `StoryInterface`, keep their IDs, and the passage's actions skip them: with `[[Forest]]` in both `StoryInterface` and the passage, the interface link is `link:Forest` and the passage link `link:Forest:2`. A generated ID is never one another control has, so a link to a passage named `Forest:2` is `link:Forest:2:2` when two links to `Forest` come first.
 
 Authors can override the generated ID using the `#id` syntax: `[[#my-link Go|Forest]]`. Author IDs should be unique among the controls on screen: when two mounted controls share one, a warning is logged and `Story.getActions()` lists only the newer.
 
@@ -592,6 +592,16 @@ Story.performAction('cycle:$weapon'); // cycle to next option
 ```
 
 When called via `performAction`, `{restart}` and `{quickload}` skip their confirmation dialogs.
+
+An action that finishes later, such as `{quicksave}` and `{quickload}` (they wait for storage), makes `performAction` return a `Promise` that settles when it has finished (and rejects if it fails). `await` it, or call [`Story.waitForActions()`](#storywaitforactions), which also waits for every action performed this way that is still running:
+
+```js
+Story.performAction('load:quickload');
+await Story.waitForActions();
+console.log(Story.passage); // the loaded passage
+```
+
+A custom action registered with `ctx.useAction()` takes part the same way when its `perform` returns a promise. Its own code should not await `Story.waitForActions()`, which would wait for the action itself.
 
 ### `Story.on(event, callback)`
 
@@ -664,7 +674,7 @@ Content that re-renders _inside_ a passage or dialog because a variable changed 
 
 ### `Story.waitForActions()`
 
-Returns a `Promise` that resolves with the current actions after the UI has settled: two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. This includes a navigation to the passage already shown, which mounts it anew. Useful in scripts that navigate and then need to inspect the new passage's actions.
+Returns a `Promise` that resolves with the current actions after the UI has settled: every action performed with `performAction` that is still running (such as a `{quickload}`) has finished, then two animation frames, and, if a navigation is still being rendered (for example during a `fade-through` transition), until the current passage has been mounted. This includes a navigation to the passage already shown, which mounts it anew. Useful in scripts that navigate and then need to inspect the new passage's actions.
 
 ```js
 Story.goto('Forest');

@@ -26,7 +26,13 @@ export interface StoryAction {
   options?: string[];
   value?: unknown;
   disabled?: boolean;
-  perform: (value?: unknown) => void;
+  /**
+   * What the control does. An action that finishes later (QuickSave and
+   * QuickLoad wait for storage) returns a promise that settles when it has
+   * finished; `Story.performAction()` passes it on and
+   * `Story.waitForActions()` waits for it (#504).
+   */
+  perform: (value?: unknown) => void | Promise<void>;
 }
 
 /** The fields of a StoryAction that are left out when unset. */
@@ -60,19 +66,30 @@ interface Entry {
  */
 const actions = new Map<string, Entry[]>();
 const idCounters = new Map<string, number>();
+/**
+ * IDs handed out and not yet registered, or registered: a control registers
+ * in a layout effect, after every control of the same render has allocated its
+ * ID, so the registry alone can't tell that "link:Room:2" is taken (#486).
+ * Released when the last registration of an ID goes.
+ */
+const reserved = new Set<string>();
 
 /**
  * The counters reset on every navigation, so a passage's controls get the
  * same IDs each time it is shown. Controls that stay mounted across
  * navigations (e.g. in StoryInterface) keep theirs, so allocation skips every
- * ID still registered (#233).
+ * ID still registered (#233) and every one allocated but not registered yet
+ * (#486).
  */
 export function generateActionId(
   type: ActionType,
   key: string,
   authorId?: string,
 ): string {
-  if (authorId) return authorId;
+  if (authorId) {
+    reserved.add(authorId);
+    return authorId;
+  }
 
   const base = `${type}:${key}`;
   let count = idCounters.get(base) ?? 0;
@@ -80,8 +97,9 @@ export function generateActionId(
   do {
     count++;
     id = count === 1 ? base : `${base}:${count}`;
-  } while (actions.has(id));
+  } while (actions.has(id) || reserved.has(id));
   idCounters.set(base, count);
+  reserved.add(id);
   return id;
 }
 
@@ -113,10 +131,43 @@ export function registerAction(action: StoryAction): ActionRegistration {
       const index = current ? current.indexOf(entry) : -1;
       if (!current || index === -1) return;
       current.splice(index, 1);
-      if (current.length === 0) actions.delete(id);
+      if (current.length === 0) {
+        actions.delete(id);
+        reserved.delete(id);
+      }
       if (index === current.length) notify(); // it was the listed one
     },
   };
+}
+
+/** The promises of the performed actions that have not settled yet. */
+const running = new Set<Promise<void>>();
+
+/**
+ * Perform an action, as `Story.performAction()` does. One that returns a
+ * promise is tracked until it settles, for `settleRunningActions()`, and the
+ * promise is returned for the caller to await (its rejection stays the
+ * caller's to handle).
+ */
+export function performRegisteredAction(
+  action: StoryAction,
+  value?: unknown,
+): void | Promise<void> {
+  const result = action.perform(value);
+  if (!result || typeof result.then !== 'function') return result;
+
+  const done = () => void running.delete(result);
+  running.add(result);
+  result.then(done, done);
+  return result.then((v) => v);
+}
+
+/** Wait until every performed action has finished, whether or not it failed. */
+export async function settleRunningActions(): Promise<void> {
+  // An action can perform another while it finishes
+  while (running.size > 0) {
+    await Promise.allSettled(running);
+  }
 }
 
 export function getActions(): StoryAction[] {
@@ -134,11 +185,14 @@ function listed(entries: Entry[]): StoryAction {
 
 export function clearActions(): void {
   actions.clear();
+  reserved.clear();
   notify();
 }
 
 export function resetIdCounters(): void {
   idCounters.clear();
+  // Only what is registered stays taken; the rest was never mounted
+  for (const id of reserved) if (!actions.has(id)) reserved.delete(id);
 }
 
 function notify(): void {

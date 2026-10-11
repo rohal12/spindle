@@ -5,6 +5,7 @@ import {
   clearExpressionCache,
   transform,
 } from '../../src/expression';
+import { BINDINGS } from '../../src/transform';
 import { executeMutation } from '../../src/execute-mutation';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
@@ -789,7 +790,7 @@ describe('division and modulo after closing braces (property tests)', () => {
 
   it('ends a return statement at a line break', () => {
     expect(transform('return\nfunction f() {}\n++%a', 'statements')).toBe(
-      'return\nfunction f() {}\n++transient["a"]',
+      `return\nfunction f() {}\n++${BINDINGS['%']}["a"]`,
     );
   });
 

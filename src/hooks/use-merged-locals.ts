@@ -1,6 +1,21 @@
 import { useContext, useMemo } from 'preact/hooks';
 import { useStoryFields } from './use-story-fields';
-import { LocalsValuesContext } from '../markup/render';
+import { LocalsUpdateContext, LocalsValuesContext } from '../markup/render';
+import { liveLocalsView } from '../utils/live-locals';
+
+/**
+ * The locals in scope, read as they are when code looks (a local the
+ * preceding {set} assigned in this pass included, which the context value
+ * only gains in the re-render that follows). The returned view is renewed
+ * whenever the context value changes, so what depends on it re-renders and
+ * recomputes as before.
+ */
+export function useLiveLocals(): Record<string, unknown> {
+  const values = useContext(LocalsValuesContext);
+  const { getValues } = useContext(LocalsUpdateContext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `values` renews the view
+  return useMemo(() => liveLocalsView(getValues), [getValues, values]);
+}
 
 /**
  * Return store variables, temporary, locals from context, and transient.
@@ -20,7 +35,7 @@ export function useMergedLocals(): readonly [
     'transient',
     'renderCounts',
   );
-  const localsValues = useContext(LocalsValuesContext);
+  const localsValues = useLiveLocals();
 
   return useMemo(() => {
     return [variables, temporary, localsValues, transient] as const;
