@@ -123,25 +123,21 @@ async function executeStep(
   }
 }
 
+/** The matcher fields compared with the action field of the same name. */
+const MATCHED_FIELDS = ['id', 'type', 'target', 'variable', 'label'] as const;
+
 function findMatchingAction(
   actions: StoryAction[],
   matcher: ActionMatcher,
 ): StoryAction | undefined {
-  return actions.find((action) => {
-    if (matcher.id !== undefined && action.id !== matcher.id) return false;
-    if (matcher.type !== undefined && action.type !== matcher.type)
-      return false;
-    if (matcher.target !== undefined && action.target !== matcher.target)
-      return false;
-    if (matcher.variable !== undefined && action.variable !== matcher.variable)
-      return false;
-    if (matcher.label !== undefined && action.label !== matcher.label)
-      return false;
-    if (
-      matcher.disabled !== undefined &&
-      !!action.disabled !== matcher.disabled
-    )
-      return false;
-    return true;
-  });
+  return actions.find(
+    (action) =>
+      MATCHED_FIELDS.every(
+        (field) =>
+          matcher[field] === undefined || action[field] === matcher[field],
+      ) &&
+      // An action that does not set `disabled` is enabled
+      (matcher.disabled === undefined ||
+        !!action.disabled === matcher.disabled),
+  );
 }
