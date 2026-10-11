@@ -19,8 +19,10 @@ import {
   sigilExpressions,
   parseOrError,
   pieceOffset,
+  widgetPieces,
   withParseCache,
   type ParametersOf,
+  type Piece,
 } from './code-check';
 import { getMacroParameters, type ParameterDef } from './registry';
 import {
@@ -623,21 +625,44 @@ function scanCodeLeniently(
   );
 }
 
+/** Report the references in the pieces of code and markup text of arguments. */
+function scanPieces(
+  pieces: Iterable<Piece>,
+  at: At,
+  emit: Emit,
+  options: ReferenceOptions,
+): void {
+  for (const piece of pieces) {
+    const pieceAt: At = (i) => at(pieceOffset(piece, i));
+    if (piece.kind === 'code') {
+      scanCode(piece.code, pieceAt, emit, piece.goal);
+    } else if (piece.kind === 'text') {
+      scanInterpolations(piece.text, pieceAt, emit, {
+        ...options,
+        storeVarMacros: NO_STORE_VAR_MACROS,
+      });
+    }
+  }
+}
+
 /**
  * Report the references in the arguments of a macro by what its parameters
  * say each holds (see ParameterDef.holds): code is scanned as code and
  * markup as markup, but literal text (a placeholder, a passage name) holds
  * none. A macro without declared parameters, or arguments that do not
- * parse, are scanned as code.
+ * parse, are scanned as code. The arguments of a widget that declares what
+ * some parameters hold are also read by those (see widgetPieces).
  */
 function scanArgs(
   token: Extract<Token, { type: 'macro' }>,
-  params: readonly ParameterDef[] | undefined,
+  parametersOf: ParametersOf,
   at: At,
   emit: Emit,
   options: ReferenceOptions,
 ): void {
   if (!token.rawArgs) return;
+  const params = parametersOf(token.name);
+  let byParameters = false;
   if (params) {
     if (options.all && !options.storeVarMacros.has(token.name.toLowerCase())) {
       scanVariableParameters(token, params, at, emit);
@@ -645,22 +670,23 @@ function scanArgs(
     const pieces = [
       ...argPieces(token.rawArgs, token.argsStart, params, token.name, ''),
     ];
-    if (!pieces.some((piece) => piece.kind === 'argument-error')) {
-      for (const piece of pieces) {
-        const pieceAt: At = (i) => at(pieceOffset(piece, i));
-        if (piece.kind === 'code') {
-          scanCode(piece.code, pieceAt, emit, piece.goal);
-        } else if (piece.kind === 'text') {
-          scanInterpolations(piece.text, pieceAt, emit, {
-            ...options,
-            storeVarMacros: NO_STORE_VAR_MACROS,
-          });
-        }
-      }
-      return;
-    }
+    byParameters = !pieces.some((piece) => piece.kind === 'argument-error');
+    if (byParameters) scanPieces(pieces, at, emit, options);
   }
-  scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
+  // The arguments of a widget are code: the strings among them hold none,
+  // but those that declare they hold code or markup are scanned as that
+  if (!byParameters) {
+    scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
+  }
+  const widget = parametersOf.widget?.(token.name);
+  if (widget) {
+    scanPieces(
+      widgetPieces(token.rawArgs, token.argsStart, widget, token.name, ''),
+      at,
+      emit,
+      options,
+    );
+  }
 }
 
 /**
@@ -767,7 +793,7 @@ function collectTokenRefs(
         else scanInterpolations(value, valueIn, emit, options);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanArgs(token, parametersOf(token.name), at, emit, options);
+      scanArgs(token, parametersOf, at, emit, options);
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
