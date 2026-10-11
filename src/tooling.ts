@@ -192,7 +192,7 @@ export function validateStoryMarkup(
   );
   const parametersOf = parameterLookup([
     ...all,
-    ...widgets.map((widget) => ({ name: widget.name, widget })),
+    ...definedWidgetMacros(widgets),
   ]);
   for (const macro of all) {
     const name = macro.name.toLowerCase();
@@ -209,6 +209,11 @@ export function validateStoryMarkup(
     checkPassageNames: options.checkPassageNames,
     tolerant: options.tolerant,
   });
+}
+
+/** The widgets as macros that declare what their parameters hold. */
+function definedWidgetMacros(widgets: readonly WidgetDefinition[]) {
+  return widgets.map((widget) => ({ name: widget.name, widget }));
 }
 
 /** Whether a macro takes a body, among `macros` and the built-in ones. */
@@ -274,15 +279,24 @@ export function widgetDefinitions(
 /** Passages tagged so hold code or styles, not markup. */
 const NOT_MARKUP_TAGS = ['script', 'stylesheet'];
 
-/** What reading the variable references of markup depends on. */
-function referenceOptions(macros: Iterable<ToolingMacro>, all = false) {
+/**
+ * What reading the variable references of markup depends on: the `macros`,
+ * and the widgets of the `passages` that are given (the calls of those that
+ * declare what their parameters hold are read by them).
+ */
+function referenceOptions(
+  macros: Iterable<ToolingMacro>,
+  all = false,
+  passages: readonly MarkupPassage[] = [],
+) {
   const list = [...macros];
+  const widgets = readWidgetDefinitions(passages, parameterLookup(list));
   return {
     all,
     storeVarMacros: new Set(
       list.filter((m) => m.storeVar).map((m) => m.name.toLowerCase()),
     ),
-    parametersOf: parameterLookup(list),
+    parametersOf: parameterLookup([...list, ...definedWidgetMacros(widgets)]),
     tolerant: true,
   };
 }
@@ -326,11 +340,10 @@ export function validateVariableReferences(
   declarations: VariableDeclarations,
   macros: Iterable<ToolingMacro> = [],
 ): VariableDiagnostic[] {
+  const list = [...passages];
   return checkVariableReferences(
-    [...passages].filter(
-      (p) => !p.tags?.some((t) => NOT_MARKUP_TAGS.includes(t)),
-    ),
+    list.filter((p) => !p.tags?.some((t) => NOT_MARKUP_TAGS.includes(t))),
     declarations,
-    referenceOptions(macros),
+    referenceOptions(macros, false, list),
   );
 }

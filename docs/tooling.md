@@ -80,7 +80,7 @@ const { nodes, errors } = pairMarkup(tokens, { source });
 - `{ kind: 'text', text, where, tokens, errors }`: text that holds markup of its own (labels, attribute values). Its `tokens` and `errors` (a `MarkupError` for each malformed tag and unpaired tag, the first being what the story-start check reports) have offsets into `source`. **The pieces of that markup follow it**, with `nested: true` and `where` (the text's description, as in an error message), also with offsets into `source`: no caller needs to tokenize again and add offsets.
 - `{ kind: 'argument-error', message, length, macro, label }`: macro arguments that don't have their parameters' forms.
 
-`macros` are those the markup may use (`builtinMacros` and your own, as for `validateStoryMarkup`): their declared parameters tell which arguments are code. In a quoted string with escapes (`"say \"hi\" {$x + }"`), the text is the unescaped value, so a character is not at `offset + index`: such a piece has `sourceOffsets`, and `pieceOffset(piece, index)` gives where character `index` of its `code` or `text` is in `source` (it is `offset + index` when there is no `sourceOffsets`). A nested piece's `length` and `sourceOffsets` count the source's characters.
+`macros` are those the markup may use (`builtinMacros` and your own, as for `validateStoryMarkup`): their declared parameters tell which arguments are code. In a quoted string with escapes (`"say \"hi\" {$x + }"`; in the argument of a widget, any JavaScript escape: `A`, `\x41`, `\n`), the text is the unescaped value, so a character is not at `offset + index`: such a piece has `sourceOffsets`, and `pieceOffset(piece, index)` gives where character `index` of its `code` or `text` is in `source` (it is `offset + index` when there is no `sourceOffsets`). A nested piece's `length` and `sourceOffsets` count the source's characters.
 
 ## Stateless checks and the built-in macros
 
@@ -133,9 +133,10 @@ const [def] = widgetDefinitions(
 `validateVariableReferences(passages, declarations, macros?)` checks them, as the story start does, and returns `VariableDiagnostic`s: `{ passage, code, name, path?, start, end, message }`, with offsets into the passage's content and the story start's `message`.
 
 - `declarations` is `{ variables, transients? }`, maps from name to schema: from `parseDeclarations`, `new Map(declarations.map((d) => [d.name, d.schema]))`. A variable with no `schema` (a non-static initializer) is declared and its fields are not checked. `transients` is checked only when given.
-- `undeclared-variable` and `undeclared-transient`: the variable is not declared. `primitive-field`: a field a number, string or boolean has no member of (`$hp.nope`; `$hp.toFixed` and `$name.length` are fine). `reserved-name`: `$__proto__`.
+- `undeclared-variable` and `undeclared-transient`: the variable is not declared. `primitive-field`: a field a number, string or boolean has no member of (`$hp.nope`; `$hp.toFixed`, `$name.length` and a character of a string, `$name.0`, are fine). `reserved-name`: `$__proto__`.
 - Not errors, as at story start: an unknown field of an object (a registered class can add members), any field of an array or of a `null` default.
 - Passages tagged `script` or `stylesheet`, and the declaration passages, are skipped.
+- The widgets the `passages` define are read as `validateStoryMarkup` reads them: a call of one whose parameter holds `expression`, `statements` or `markup` has the references in that argument checked (`variableReferences` finds them too, given the `widget` metadata of the macro).
 
 ```js
 import {
