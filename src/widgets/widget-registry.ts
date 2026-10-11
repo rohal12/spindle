@@ -1,4 +1,4 @@
-import type { ASTNode } from '../markup/ast';
+import { clearBlockWidgets, setBlockWidget, type ASTNode } from '../markup/ast';
 import { checkVariableName } from '../utils/namespace';
 import { NameMap } from '../utils/macro-names';
 import type { StringHolds } from '../registry';
@@ -15,7 +15,9 @@ interface WidgetEntry {
 const widgets = new NameMap<WidgetEntry>();
 
 /**
- * Register a widget. Its `@` parameters become locals of its body, so one
+ * Register a widget. A widget whose body renders {@children} takes a closing
+ * tag, so it is a block macro to the parser too, for the passages parsed
+ * later; the latest definition decides. Its `@` parameters become locals of its body, so one
  * that no namespace can hold (`@__proto__`) throws a TypeError and the
  * widget is not registered.
  */
@@ -36,6 +38,7 @@ export function registerWidget(
     holds,
     isBlock,
   });
+  setBlockWidget(name, isBlock);
 }
 
 export function getWidget(name: string): WidgetEntry | undefined {
@@ -56,4 +59,5 @@ export function isBlockWidget(name: string): boolean {
 
 export function clearWidgets(): void {
   widgets.clear();
+  clearBlockWidgets();
 }

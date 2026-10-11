@@ -230,11 +230,36 @@ async function ensurePlaythrough(
   id: string,
   createdAt: string,
 ): Promise<void> {
-  const backend = await getBackend();
-  const playthroughs = await backend.getPlaythroughsByIfid(ifid);
-  if (!playthroughs.some((p) => p.id === id)) {
-    await backend.putPlaythrough({ id, ifid, createdAt, label: 'Imported' });
+  if (!(await hasPlaythroughNow(ifid, id))) {
+    await (
+      await getBackend()
+    ).putPlaythrough({ id, ifid, createdAt, label: 'Imported' });
   }
+}
+
+/** Whether the story has a record of the playthrough `id`. */
+async function hasPlaythroughNow(ifid: string, id: string): Promise<boolean> {
+  const backend = await getBackend();
+  return (await backend.getPlaythroughsByIfid(ifid)).some((p) => p.id === id);
+}
+
+/**
+ * The playthrough a save of a game in `id` belongs to: `id` if it has a
+ * record. Another tab may have deleted it since this tab cached it (#527),
+ * and a save in a playthrough without a record is grouped as "Unknown" for
+ * good. The save then joins the story's current playthrough (the one that
+ * tab went on in), or a new one if that has no record either; callers hand
+ * the result to the live game (see followSavedPlaythrough in the store).
+ */
+async function livePlaythroughNow(ifid: string, id: string): Promise<string> {
+  if (await hasPlaythroughNow(ifid, id)) return id;
+  const backend = await getBackend();
+  const current = await backend.getMeta<string>(currentPlaythroughKey(ifid));
+  if (current && (await hasPlaythroughNow(ifid, current))) {
+    saveSessionPlaythrough(ifid, current);
+    return current;
+  }
+  return startNewPlaythroughNow(ifid);
 }
 
 /**
@@ -251,9 +276,7 @@ export function establishPlaythrough(
     // the shared current one is the default for a visit with no session,
     // and may belong to what another tab has done since (#356).
     const own = loadSessionPlaythrough(ifid);
-    const ownExists =
-      own !== undefined &&
-      (await backend.getPlaythroughsByIfid(ifid)).some((p) => p.id === own);
+    const ownExists = own !== undefined && (await hasPlaythroughNow(ifid, own));
     const id = ownExists
       ? own
       : ((await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
@@ -321,8 +344,9 @@ async function createSaveNow(
   payload: SavePayload,
   custom: Record<string, unknown> = {},
 ): Promise<SaveRecord> {
-  const playthroughId = await playthroughPromise;
-  if (!playthroughId) throw new Error('No playthrough');
+  const requested = await playthroughPromise;
+  if (!requested) throw new Error('No playthrough');
+  const playthroughId = await livePlaythroughNow(ifid, requested);
   const now = new Date().toISOString();
   const meta: SaveMeta = {
     id: randomUUID(),
@@ -369,10 +393,13 @@ async function overwriteSaveNow(
   custom?: Record<string, unknown>,
   playthroughPromise?: string | PromiseLike<string>,
 ): Promise<SaveRecord | undefined> {
-  const playthroughId = await playthroughPromise;
+  const requested = await playthroughPromise;
   const backend = await getBackend();
   const existing = await backend.getSave(saveId);
   if (!existing) return undefined;
+  const playthroughId = requested
+    ? await livePlaythroughNow(existing.meta.ifid, requested)
+    : undefined;
 
   const updated = storedRecord(
     {

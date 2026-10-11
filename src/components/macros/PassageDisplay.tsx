@@ -15,12 +15,25 @@ import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
 
+/** Input types whose `value` is not what the user sees or edits. */
+const VALUELESS_INPUTS = new Set([
+  'checkbox',
+  'radio',
+  'file', // its value can not be set
+  'hidden',
+  'button',
+  'submit',
+  'reset',
+  'image',
+]);
+
 /**
  * Copy the live state cloneNode drops from `source` into its clone: the
- * pixels of each canvas and the values of form controls (cloneNode keeps
- * attributes only, and a canvas's bitmap is not one). Source and clone have
- * the same structure, so elements pair up by position. Best effort: a canvas
- * that can not be drawn from stays as cloned.
+ * pixels of each canvas, the state of form controls (cloneNode keeps
+ * attributes only, and a canvas's bitmap is not one), and the visible frame
+ * and position of media. Source and clone have the same structure, so
+ * elements pair up by position. Best effort: a canvas or video that can not
+ * be drawn from stays as cloned.
  */
 function copyLiveState(source: Element, clone: Element): void {
   const pairs = <T extends Element>(
@@ -43,15 +56,92 @@ function copyLiveState(source: Element, clone: Element): void {
     }
   });
 
-  pairs<HTMLInputElement>('input, textarea, select', (from, to) => {
-    if (from instanceof HTMLInputElement && to instanceof HTMLInputElement) {
-      to.checked = from.checked;
+  pairs<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    'input, textarea, select',
+    (from, to) => {
+      if (from instanceof HTMLSelectElement) {
+        // `select.value` is the first selected option only: it loses the other
+        // selections of a multiple select (and the pick among options of one
+        // value), so a multiple select goes option by option
+        const select = to as HTMLSelectElement;
+        if (!from.multiple) {
+          select.selectedIndex = from.selectedIndex;
+        } else {
+          for (let i = 0; i < from.options.length; i++) {
+            const option = select.options[i];
+            if (option) option.selected = from.options[i]!.selected;
+          }
+        }
+      } else if (from instanceof HTMLInputElement) {
+        const input = to as HTMLInputElement;
+        input.checked = from.checked;
+        input.indeterminate = from.indeterminate;
+        if (!VALUELESS_INPUTS.has(from.type)) input.value = from.value;
+      } else {
+        to.value = from.value;
+      }
+    },
+  );
+
+  pairs<HTMLMediaElement>('audio, video', (from, to) => {
+    // The snapshot is a picture: silent, still, and not started by autoplay
+    to.pause?.();
+    to.muted = true;
+    to.removeAttribute('autoplay');
+    try {
+      // Applied once the metadata is there: the progress of native controls
+      to.currentTime = from.currentTime;
+    } catch {
+      // no such position yet: the snapshot shows the start
     }
-    // A file input's value can not be set
-    if (!(from instanceof HTMLInputElement && from.type === 'file')) {
-      to.value = from.value;
+    if (!(from instanceof HTMLVideoElement && to instanceof HTMLVideoElement)) {
+      return;
+    }
+    // A fresh clone decodes nothing, so it would show its first frame (or
+    // the poster). Draw the frame on screen now into the poster, which is
+    // shown at once and needs no load or seek to finish.
+    if (from.readyState < 2 || !from.videoWidth || !from.videoHeight) return;
+    try {
+      const frame = document.createElement('canvas');
+      frame.width = from.videoWidth;
+      frame.height = from.videoHeight;
+      frame.getContext('2d')?.drawImage(from, 0, 0);
+      to.setAttribute('poster', frame.toDataURL('image/jpeg', 0.92));
+    } catch {
+      // a cross-origin video without CORS taints the canvas: keeps its poster
     }
   });
+}
+
+type ScrollOffset = [element: Element, top: number, left: number];
+
+/**
+ * Scroll offsets of the elements of `source` (itself included) that are
+ * scrolled, keyed by the matching element of `clone`. Applied once the clone
+ * is in the page: a detached element has nothing to scroll.
+ */
+function scrollOffsets(source: Element, clone: Element): ScrollOffset[] {
+  const from = [source, ...source.querySelectorAll('*')];
+  const to = [clone, ...clone.querySelectorAll('*')];
+  const offsets: ScrollOffset[] = [];
+  from.forEach((el, i) => {
+    if (to[i] && (el.scrollTop || el.scrollLeft)) {
+      offsets.push([to[i]!, el.scrollTop, el.scrollLeft]);
+    }
+  });
+  return offsets;
+}
+
+const pendingScrolls = new WeakMap<Element, ScrollOffset[]>();
+
+/** Add `snapshot` to `container`, scrolled as what it shows was. */
+function appendSnapshot(container: Element, snapshot: HTMLElement): void {
+  container.appendChild(snapshot);
+  for (const [el, top, left] of pendingScrolls.get(snapshot) ?? []) {
+    el.scrollTop = top;
+    el.scrollLeft = left;
+  }
+  pendingScrolls.delete(snapshot);
 }
 
 /**
@@ -59,8 +149,9 @@ function copyLiveState(source: Element, clone: Element): void {
  * - Strips `id` attributes from the clone tree
  * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
  * - Pauses/mutes any <audio>/<video>
- * - Copies what cloneNode leaves behind: canvas pixels and the values of
- *   form controls (#512)
+ * - Copies what cloneNode leaves behind: canvas pixels, the state of form
+ *   controls, the visible frame of videos (#512, #525, #536) and, through
+ *   `appendSnapshot`, scroll offsets
  * - Adds `.passage-snapshot` class and `data-transition` attribute
  */
 function createSnapshot(
@@ -69,6 +160,7 @@ function createSnapshot(
 ): HTMLElement {
   const clone = passageEl.cloneNode(true) as HTMLElement;
   copyLiveState(passageEl, clone);
+  pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
   // Strip id attributes to avoid duplicates
   clone.removeAttribute('id');
@@ -84,14 +176,6 @@ function createSnapshot(
   // controls (copied with their inline handlers) can not be activated
   clone.setAttribute('inert', '');
   clone.setAttribute('aria-hidden', 'true');
-
-  // Pause/mute media
-  const mediaEls = clone.querySelectorAll('audio, video');
-  for (let i = 0; i < mediaEls.length; i++) {
-    const media = mediaEls[i] as HTMLMediaElement;
-    media.pause?.();
-    media.muted = true;
-  }
 
   // Mark as snapshot
   clone.classList.remove('passage');
@@ -333,7 +417,7 @@ defineMacro({
 
       if (config.type === 'fade-through') {
         // idle → outgoing (fade out snapshot) → paused → incoming (mount new, fade in) → idle
-        containerEl.appendChild(snapshot);
+        appendSnapshot(containerEl, snapshot);
 
         // Hide the current passage during outgoing phase by setting empty key
         setDisplayedPassage('');
@@ -361,7 +445,7 @@ defineMacro({
 
       // Use CSS grid stacking for crossfade
       containerEl.classList.add('passage-container--crossfading');
-      containerEl.appendChild(snapshot);
+      appendSnapshot(containerEl, snapshot);
 
       // Mount new passage immediately alongside snapshot
       setDisplayedPassage(currentPassage);

@@ -41,7 +41,7 @@ interface StoryOptions {
 async function boot({ passages, script = '' }: StoryOptions) {
   await page?.close();
   page = await browser.newPage();
-  const all = { ...passages, StoryVariables: '' };
+  const all = { ...passages, StoryVariables: passages.StoryVariables ?? '' };
   const data =
     '<tw-storydata name="Probe" startnode="1" ifid="00000000-0000-4000-8000-000000000000" format="spindle" format-version="0">' +
     `<script role="script" id="twine-user-script" type="text/twine-javascript">${script}</script>` +
@@ -157,5 +157,134 @@ describe('passage data', () => {
     expect(await attributeOf('a', 'title')).toBe('say "hi"');
     expect(await attributeOf('b', 'title')).toBe(`it's "x"`);
     expect(await attributeOf('c', 'title')).toBe(`pq it's`);
+  });
+
+  it('keeps literal entities in text and attributes as written (#526)', async () => {
+    await boot({
+      passages: {
+        // The browser's parse gives title and text the string `&lt;`
+        Start: '<span id="example" title="&amp;lt;">&amp;lt;</span>',
+      },
+    });
+    expect(await page.textContent('[data-passage] #example')).toBe('&lt;');
+    expect(await attributeOf('example', 'title')).toBe('&lt;');
+  });
+
+  it('keeps escaped markup lookalikes as text, and bare ampersands (#526)', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<p id="a">&lt;b&gt;x&lt;/b&gt; &amp;amp; Tom &amp; Jerry</p>' +
+          '<i id="c" title="&amp;quot; &amp; {print 1 + 1}">c</i>',
+      },
+    });
+    expect(await page.textContent('[data-passage] #a')).toBe(
+      '<b>x</b> &amp; Tom & Jerry',
+    );
+    expect(await page.locator('[data-passage] #a b').count()).toBe(0);
+    expect(await attributeOf('c', 'title')).toBe('&quot; & 2');
+  });
+
+  it('leaves the text of a style element as written (#526)', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<style>#s::after { content: "&amp;lt;" }</style><b id="s">s</b>',
+      },
+    });
+    const content = await page.evaluate(
+      () => getComputedStyle(document.querySelector('#s')!, '::after').content,
+    );
+    expect(content).toBe('"&amp;lt;"');
+  });
+
+  it('keeps literal entities in preformatted, SVG and raw-text elements (#526)', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<pre id="p">&amp;lt; &amp; &lt;</pre>' +
+          '<textarea id="t">&amp;lt; &amp; &lt;</textarea>' +
+          '<svg><text id="v">&amp;lt; &amp; &lt;</text></svg>' +
+          '<script id="s">a &amp;lt; b && c</script>' +
+          '<iframe id="f">&amp;lt; &amp;</iframe>',
+      },
+    });
+    const text = (id: string) =>
+      page.evaluate(
+        (sel) => document.querySelector(`[data-passage] #${sel}`)!.textContent,
+        id,
+      );
+    expect(await text('p')).toBe('&lt; & <');
+    expect(await text('t')).toBe('&lt; & <');
+    expect(await text('v')).toBe('&lt; & <');
+    expect(await text('s')).toBe('a &amp;lt; b && c');
+    expect(await text('f')).toBe('&amp;lt; &amp;');
+  });
+
+  it('keeps the arguments of macros in text as written (#526)', async () => {
+    await boot({
+      passages: {
+        Start: '<p id="m">{if 2 < 3 && 3 > 2}yes{/if}</p>',
+      },
+    });
+    expect(await page.textContent('[data-passage] #m')).toBe('yes');
+  });
+});
+
+describe('native form defaults and edits (#528)', () => {
+  it('restores the passage defaults on reset', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<form><input id="text" value="Guest"><input id="check" type="checkbox" checked><button id="reset" type="reset">Reset</button></form>',
+      },
+    });
+    expect(
+      await page.evaluate(() => {
+        const text = document.querySelector<HTMLInputElement>('#text')!;
+        const check = document.querySelector<HTMLInputElement>('#check')!;
+        return [text.defaultValue, text.value, check.defaultChecked];
+      }),
+    ).toEqual(['Guest', 'Guest', true]);
+    await page.fill('#text', 'Alice');
+    await page.uncheck('#check');
+    await page.click('#reset');
+    expect(await page.inputValue('#text')).toBe('Guest');
+    expect(await page.isChecked('#check')).toBe(true);
+  });
+
+  it('keeps the reader edits after the store updates', async () => {
+    await boot({
+      passages: {
+        Start:
+          `<input id="text" value="Guest" oninput="Story.set('typed', this.value)">` +
+          `<input id="check" type="checkbox" checked onchange="Story.set('flag', this.checked)">` +
+          '<span id="out">{$typed}|{$flag}</span>',
+        StoryVariables: '$typed = ""\n$flag = true',
+      },
+    });
+    await page.fill('#text', 'Alice');
+    await page.uncheck('#check');
+    await page.waitForFunction(
+      () => document.querySelector('#out')?.textContent === 'Alice|false',
+    );
+    expect(await page.inputValue('#text')).toBe('Alice');
+    expect(await page.isChecked('#check')).toBe(false);
+  });
+
+  it('keeps an interpolated value bound to its variable', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<input id="text" value="{$name}"><button id="b" onclick="Story.set(\'name\', \'Bob\')">Go</button>',
+        StoryVariables: '$name = "Ann"',
+      },
+    });
+    expect(await page.inputValue('#text')).toBe('Ann');
+    await page.fill('#text', 'typed');
+    await page.click('#b');
+    await page.waitForFunction(
+      () => document.querySelector<HTMLInputElement>('#text')!.value === 'Bob',
+    );
   });
 });

@@ -804,6 +804,15 @@ describe('division and modulo after closing braces (property tests)', () => {
   it('divides after a unicode identifier', () => {
     expect(evaluate('((é) => é / $x / 1)(6)', { x: 2 }, {})).toBe(3);
   });
+
+  it('divides and takes the modulo after an optional ?.of member (#521)', () => {
+    expect(evaluate('({of: 10})?.of /$p', { p: 2 }, {})).toBe(5);
+    const vars: Record<string, unknown> = { n: 0 };
+    execute('const p = 3;\n$n = ({of: 10})?.of\n%p;', vars, {});
+    expect(vars.n).toBe(1);
+    execute('const q = 2;\n$n = ({of: 10})?.of /q', vars, {});
+    expect(vars.n).toBe(5);
+  });
 });
 
 describe('line terminators (property tests)', () => {

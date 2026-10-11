@@ -122,8 +122,10 @@ function relex(src: string, g: JsGoal): string {
     {
       code: (ch, i, nesting) => add(ch, i, nesting, ch.length === 1),
       literal: (text, i, nesting) => add(text, i, nesting),
-      variable: (sigil, name, i, nesting) =>
-        add(sigil + name, i, nesting, /^\w+$/.test(name)),
+      // The name is the one JavaScript reads (`$\u0041` is `A`): the source
+      // it covers runs from the index to `end`
+      variable: (_sigil, name, i, nesting, end) =>
+        add(src.slice(i, end), i, nesting, end > i && /^\w+$/.test(name)),
     },
     g,
   );

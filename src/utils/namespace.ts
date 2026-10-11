@@ -115,10 +115,19 @@ export function withEntry(
 /** An empty namespace that cannot change. */
 export const EMPTY_NAMESPACE: Namespace = Object.freeze(createNamespace());
 
-/** The names whose own entries differ between `a` and `b`, `a`'s first. */
+/**
+ * The names whose own entries differ between `a` and `b`, `a`'s first: an
+ * entry one holds and the other lacks (also one holding `undefined`), or
+ * values that are not the same by SameValue (#519): an unchanged NaN is no
+ * change, 0 and -0 differ.
+ */
 export function changedNames(a: object, b: object): string[] {
   const names = new Set([...Object.keys(a), ...Object.keys(b)]);
-  return [...names].filter((name) => ownValue(a, name) !== ownValue(b, name));
+  return [...names].filter(
+    (name) =>
+      hasOwn(a, name) !== hasOwn(b, name) ||
+      !Object.is(ownValue(a, name), ownValue(b, name)),
+  );
 }
 
 /**

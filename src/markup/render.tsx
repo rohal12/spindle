@@ -188,8 +188,11 @@ function expandPlaceholderText(
   );
 }
 
-/** An attribute: its name, value and value as written (see splitAttributes). */
-type Attribute = [name: string, value: string, written: string];
+/**
+ * An attribute: its name, value, value as written and whether the value is
+ * bound to variables (see splitAttributes).
+ */
+type Attribute = [name: string, value: string, written: string, bound: boolean];
 
 /**
  * An element of markdown output whose attributes contain placeholders (a
@@ -214,12 +217,12 @@ function PlaceholderAttributes({
   const errors: AttributeError[] = [];
   const resolved = attributes.map(([name, value, written]): Attribute => {
     const nodes = placeholders[name];
-    if (!nodes) return [name, value, written];
+    if (!nodes) return [name, value, written, false];
     const result = renderText(nodes, scope);
     for (const error of result.errors) errors.push([name, error]);
-    return [name, result.text, written];
+    return [name, result.text, written, true];
   });
-  const { props, direct } = splitAttributes(resolved, svg);
+  const { props, direct } = splitAttributes(resolved, svg, tag);
   const ref = useDirectAttributes(direct);
   return withAttributeErrors(
     errors,
@@ -349,7 +352,7 @@ function convertDomNode(
     const attributes: Attribute[] = [];
     let placeholders: Record<string, ASTNode[]> | undefined;
     for (const { name, value } of Array.from(el.attributes)) {
-      attributes.push([name, value, value]);
+      attributes.push([name, value, value, false]);
       const parts = splitPlaceholderText(value, ph);
       if (parts.every((part) => typeof part === 'string')) continue;
       placeholders ??= {};
@@ -377,7 +380,7 @@ function convertDomNode(
         />
       );
     }
-    const { props, direct } = splitAttributes(attributes, svg);
+    const { props, direct } = splitAttributes(attributes, svg, tag);
     if (direct.length > 0) {
       return (
         <DirectAttributes
@@ -447,11 +450,18 @@ const INLINE_ELEMENTS = new Set([
 ]);
 
 /**
- * Attributes that Preact keeps as DOM properties on author HTML elements:
- * the live state of form controls and media, which then follows its
- * variable even after the reader changed it. Boolean ones written bare or
- * as `=""` are passed as `true`, since '' is falsy (#177); one that only
- * resolves to '' through an interpolation stays ''.
+ * Attributes that Preact keeps as DOM properties on author HTML elements
+ * when their value is bound to variables (`value="{$name}"`): the live state
+ * of form controls and media, which then follows its variable even after the
+ * reader changed it. Boolean ones written bare or as `=""` are passed as
+ * `true`, since '' is falsy (#177); one that only resolves to '' through an
+ * interpolation stays ''.
+ *
+ * A static `value`, `checked` or `selected` is the control's default, as in
+ * HTML: set as an attribute, so a reset restores it and a rerender leaves
+ * what the reader entered alone (#528). Not so for `muted`, which as an
+ * attribute is ignored on an element made by script, nor for the `value` of
+ * the controls that have no attribute for it.
  */
 const LIVE_PROPERTIES = new Set(['value', 'checked', 'selected', 'muted']);
 
@@ -522,6 +532,15 @@ function setRawAttribute(el: Element, name: string, value: string) {
 }
 
 /**
+ * Whether the static `name` attribute of `tag` is its default (#528). HTML has
+ * no `value` attribute on `select` and `textarea`, so theirs stays a property.
+ */
+function isNativeDefault(tag: string, name: string): boolean {
+  if (name === 'muted') return false;
+  return name !== 'value' || (tag !== 'select' && tag !== 'textarea');
+}
+
+/**
  * Split author attributes into Preact props and attributes to set directly.
  *
  * Author HTML means attributes, but as props Preact assigns names of DOM
@@ -541,15 +560,23 @@ function setRawAttribute(el: Element, name: string, value: string) {
 function splitAttributes(
   attributes: Attribute[],
   svg: boolean,
+  tag: string,
 ): { props: Record<string, unknown>; direct: [string, string][] } {
   const props: Record<string, unknown> = {};
   const direct: [string, string][] = [];
-  for (const [name, value, written] of attributes) {
+  // Set after the other attributes, as Preact does for a live control: a
+  // range's value is clamped by the min and max it has by then
+  const defaults: [string, string][] = [];
+  for (const [name, value, written, bound] of attributes) {
     const lower = name.toLowerCase();
     if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
       continue;
     } else if (!svg && LIVE_PROPERTIES.has(lower)) {
-      props[lower] = lower !== 'value' && written === '' ? true : value;
+      if (!bound && isNativeDefault(tag, lower)) {
+        defaults.push([name.toUpperCase(), lower === 'value' ? value : '']);
+      } else {
+        props[lower] = lower !== 'value' && written === '' ? true : value;
+      }
     } else if (
       !SETTABLE_NAME.test(name) ||
       lower.startsWith('on') ||
@@ -561,6 +588,7 @@ function splitAttributes(
       props[svg ? name : name.toUpperCase()] = value;
     }
   }
+  for (const [name, value] of defaults) props[name] = value;
   return { props, direct };
 }
 
@@ -731,8 +759,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     k,
     resolveAttributeValue(k, v, scope, errors),
     v,
+    hasInterpolation(v),
   ]);
-  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot);
+  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot, tag);
   const ref = useDirectAttributes(direct);
   if (ref) props.ref = ref;
   const isInline = INLINE_ELEMENTS.has(tag);
