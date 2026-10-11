@@ -257,8 +257,18 @@ export interface JsLexHandlers {
    * comment, or a piece of a template literal.
    */
   literal?(text: string, index: number, nesting: number): void;
-  /** A sigil variable reference (`$name`), covering the sigil and name. */
-  variable?(sigil: Sigil, name: string, index: number, nesting: number): void;
+  /**
+   * A sigil variable reference (`$name`), covering the sigil and name, which
+   * is the name JavaScript reads (an escaped spelling is decoded). It is
+   * written from `index` up to `end`.
+   */
+  variable?(
+    sigil: Sigil,
+    name: string,
+    index: number,
+    nesting: number,
+    end: number,
+  ): void;
 }
 
 /**
