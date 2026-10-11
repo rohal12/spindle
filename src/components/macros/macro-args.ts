@@ -182,10 +182,16 @@ const LEADING_OPERATOR_RE = /^(?:[-+*/&|^=<>?:,.]|%(?![A-Za-z_]))/;
  * Where the rest of `src` is without the flag `word` as its last or first
  * term, or `null` if it has no such flag. Next to a binary operator the
  * word is an operand (`"a" + inline`), not a flag; the closing `/` of a
- * regex literal is not one.
+ * regex literal is not one. A word with nothing else beside it is the flag
+ * only when `alone` says no argument is waiting for it (#499).
  */
-function takeFlag(src: string, word: string): Span | null {
+function takeFlag(src: string, word: string, alone: boolean): Span | null {
   const spans = terms(src);
+  if (spans.length === 1) {
+    return alone && slice(src, spans[0]!) === word
+      ? [src.length, src.length]
+      : null;
+  }
   if (spans.length < 2) return null;
   if (slice(src, spans[spans.length - 1]!) === word) {
     const rest: Span = [0, spans[spans.length - 2]![1]];
@@ -249,8 +255,10 @@ function readGroup(
   { at: srcAt, spans }: Place,
 ): void {
   let [text, at] = trimmed(src ?? '', srcAt);
+  // A lone word is the passage of {include inline}, not its flag
+  const alone = !params.some((p) => p.type !== 'flag' && p.required);
   for (const flag of params.filter((p) => p.type === 'flag')) {
-    const rest = src === null ? null : takeFlag(text, flag.name);
+    const rest = src === null ? null : takeFlag(text, flag.name, alone);
     args[flag.name] = rest !== null;
     if (rest) [text, at] = trimmed(slice(text, rest), at + rest[0]);
   }

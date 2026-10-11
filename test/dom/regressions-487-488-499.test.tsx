@@ -178,3 +178,24 @@ describe('checkbox toggles from the current value (#488)', () => {
     expect(vars().agree).toBe(false);
   });
 });
+
+describe('a custom macro with only flags (#499)', () => {
+  it('sees the flag that is its whole argument text', () => {
+    window.Story.defineMacro({
+      name: 'badge',
+      parameters: [
+        { name: 'compact', type: 'flag' },
+        { name: 'muted', type: 'flag' },
+      ],
+      render(_props, ctx) {
+        return `${ctx.args.compact ? 'compact' : 'normal'}/${ctx.args.muted ? 'muted' : 'loud'}`;
+      },
+    });
+    expect(renderMarkup('{badge compact}').textContent).toBe('compact/loud');
+    expect(renderMarkup('{badge muted}').textContent).toBe('normal/muted');
+    expect(renderMarkup('{badge compact muted}').textContent).toBe(
+      'compact/muted',
+    );
+    expect(renderMarkup('{badge}').textContent).toBe('normal/loud');
+  });
+});
