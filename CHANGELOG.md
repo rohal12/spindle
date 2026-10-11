@@ -162,6 +162,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `parseAutomationYaml` rejects a malformed step with its number instead of running it as a passing test: an empty or non-object `assert`, `assert: {score: 100}` without `variables:`, an unknown field in a step, assertion, action matcher or action, a value of the wrong type, a `start` that is not a string, a negative `wait` (#485).
 - `Story.performAction()` returns the promise of an action that finishes later (`{quicksave}`, `{quickload}`), `Story.waitForActions()` waits for such actions, and the automation runner awaits them, so a step after `load:quickload` no longer sees the old passage (#504).
 - `collectStoryPassageReferences()` returns references in source order whatever the order of a macro's keyword arguments. ([#277](https://github.com/rohal12/spindle/issues/277))
+- The automation runner waits for the UI to render after a `set` step (also one combined with an `action`), so a conditional choice the step shows or removes is registered or gone before the next assert or action (#514).
+- `{repeat}` renders its body in a keyed fragment instead of a `<span>` per tick, so table rows, list items and the like stay direct children of their parent (#520).
+- Passage data that is not HTML-encoded keeps literal character references in parsed elements: `<span title="&amp;lt;">&amp;lt;</span>` shows `&lt;` in both, not `<` (#526).
+- A static `value`, `checked` or `selected` on a native control is its HTML default (reset restores it) and no longer overwrites what the reader entered on each rerender; a value bound to variables (`value="{$name}"`) is still live (#528).
 
 ### Added
 

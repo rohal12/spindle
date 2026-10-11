@@ -40,7 +40,8 @@ function renderPassage(content: string): HTMLElement {
   return container;
 }
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 afterEach(() => {
   for (const container of mounted.splice(0)) {
