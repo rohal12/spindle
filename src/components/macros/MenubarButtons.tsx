@@ -15,7 +15,11 @@ interface MenubarActionConfig {
   title?: string;
   confirm?: string;
   hidden?: () => boolean;
-  setup?: () => { perform: () => void; disabled?: boolean; title?: string };
+  setup?: () => {
+    perform: () => void | Promise<void>;
+    disabled?: boolean;
+    title?: string;
+  };
   dialog?: {
     passageName: string;
     fallbackMarkup?: string;
