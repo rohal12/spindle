@@ -290,7 +290,17 @@ describe('stableKey', () => {
     },
   );
 
-  test.prop([fc.jsonValue()], fcOptions)(
+  // -0 is the one JSON value with a key of its own (#498)
+  const hasNegativeZero = (v: unknown) => {
+    let found = false;
+    JSON.stringify(v, (_, x) => {
+      if (Object.is(x, -0)) found = true;
+      return x;
+    });
+    return found;
+  };
+
+  test.prop([fc.jsonValue().filter((v) => !hasNegativeZero(v))], fcOptions)(
     'JSON values keep their JSON.stringify form (#45)',
     (v) => {
       expect(stableKey(v)).toBe(JSON.stringify(v));

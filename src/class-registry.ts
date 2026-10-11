@@ -2,7 +2,12 @@
 
 import { parse, stringify } from 'devalue';
 import { hasOwn } from './utils/namespace';
-import { extraKeys, mapEntries, setMembers } from './utils/value-kinds';
+import {
+  extraKeys,
+  mapEntries,
+  regExpParts,
+  setMembers,
+} from './utils/value-kinds';
 
 type Constructor = new (...args: any[]) => any;
 
@@ -229,9 +234,7 @@ function classData(value: object): unknown {
     return ['Date', Date.prototype.getTime.call(value), extra()];
   }
   if (value instanceof RegExp) {
-    const source = Reflect.get(RegExp.prototype, 'source', value) as string;
-    const flags = Reflect.get(RegExp.prototype, 'flags', value) as string;
-    return ['RegExp', [source, flags, value.lastIndex], extra()];
+    return ['RegExp', [...regExpParts(value), value.lastIndex], extra()];
   }
   return savedData(ownData(value));
 }
@@ -297,7 +300,7 @@ function reducers(): Record<string, (value: unknown) => unknown> {
   };
   out[REGEXP_TAG] = (v) =>
     v instanceof RegExp &&
-    v.lastIndex !== 0 && [v.source, v.flags, v.lastIndex];
+    v.lastIndex !== 0 && [...regExpParts(v), v.lastIndex];
   if (GUARD_V8_KEYS) {
     out[KEYS_TAG] = (v) => {
       return isPlainData(v) && keyEntries(v);
