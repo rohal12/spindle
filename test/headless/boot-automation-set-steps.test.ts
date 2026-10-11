@@ -20,10 +20,10 @@ describe('runAutomation set steps with a conditional link (#514)', () => {
   it('waits for the controls a set step shows or removes', async () => {
     const Story = await bootStory({ html: STORY_HTML });
     Story.setTransition({ type: 'none' });
-    await Story.waitForActions();
-    const without = Story.getActions().length;
 
-    // The issue's walkthrough
+    // The issue's walkthrough, straight after boot: the components' effects
+    // (their store subscriptions) have not run yet, so the update the set
+    // makes re-renders them late, after the frames waitForActions() waits for
     const result = await runAutomation(Story, {
       name: 'Open door',
       steps: [
@@ -40,6 +40,7 @@ describe('runAutomation set steps with a conditional link (#514)', () => {
     Story.goto('Start');
     await Story.waitForActions();
     expect(Story.get('key')).toBe(true);
+    const without = Story.getActions().filter((a) => a.type !== 'link').length;
     const removed = await runAutomation(Story, {
       name: 'Remove',
       steps: [

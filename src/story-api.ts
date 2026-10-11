@@ -449,6 +449,12 @@ function createStoryAPI(): StoryAPI {
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });
+      // Preact runs a component's effects a frame and a timer after it
+      // renders, and a store subscription made in one (useSyncExternalStore)
+      // only then sees an update made before it: the re-render it triggers is
+      // ahead of what the frames above wait for. A timer queued now runs after
+      // the one Preact queued in its frame.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       // A navigation can still be rendering: the passage display mounts the
       // new passage from an effect, after a fade-through's outgoing phase.
       // Its actions exist only once it is mounted, so wait for that. Compare
