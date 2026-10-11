@@ -6,6 +6,7 @@ import {
   isBoxed,
   isTemporal,
   mapEntries,
+  regExpText,
   setMembers,
   toStringTag,
 } from './value-kinds';
@@ -89,7 +90,7 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     return withFields(
       val instanceof Date
         ? `Date(${Date.prototype.getTime.call(val)})`
-        : `RegExp(${RegExp.prototype.toString.call(val)}@${val.lastIndex})`,
+        : `RegExp(${regExpText(val)}@${val.lastIndex})`,
     );
   }
 
