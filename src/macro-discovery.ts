@@ -34,6 +34,20 @@ type Datum =
 const CALL_RE = /(?<![\w$])defineMacro\s*\(\s*/g;
 const IDENTIFIER_ARGUMENT_RE = /^([A-Za-z_$][\w$]*)\s*[,)]/;
 const WORD_RE = /[A-Za-z_]+/y;
+/** Before the key of a member that is an accessor, an async method or a generator. */
+const MODIFIER_RE = /^(?:get|set|async)?$/;
+const KEY_START_RE = /[\w$'"[.*]/;
+/** The properties of a config that its macro is read from. */
+const CONFIG_KEYS: ReadonlySet<string> = new Set([
+  'name',
+  'block',
+  'subMacros',
+  'parameters',
+  'interpolate',
+  'storeVar',
+  'merged',
+  'description',
+]);
 
 /** The literals of a config object, read to the end of what is static. */
 class ConfigReader extends Reader {
@@ -138,18 +152,50 @@ class ConfigReader extends Reader {
 
   private record(): Datum | undefined {
     const props = new Map<string, Datum | undefined>();
-    const ok = this.elements('}', () => {
-      const key = this.key();
+    const ok = this.elements('}', () => this.property(props));
+    return ok ? { type: 'object', props } : undefined;
+  }
+
+  /**
+   * A member: what it sets replaces an earlier member of the key. One that is
+   * not a literal (a method, an accessor, a shorthand) sets its key to a
+   * value not known; a spread of an object literal sets the members of it, a
+   * spread of anything else or a computed key can set any key.
+   */
+  private property(props: Map<string, Datum | undefined>): void {
+    const { src } = this;
+    if (src.startsWith('...', this.i)) {
+      this.i += 3;
       this.space();
-      if (key !== undefined && this.src.charAt(this.i) === ':') {
+      const spread = src.charAt(this.i) === '{' ? this.record() : undefined;
+      this.space();
+      if (spread?.type === 'object' && this.atElementEnd()) {
+        for (const [key, value] of spread.props) props.set(key, value);
+        return;
+      }
+      props.clear();
+    } else {
+      let key = this.key();
+      this.space();
+      if (key !== undefined && src.charAt(this.i) === ':') {
         this.i++;
         props.set(key, this.member());
-      } else if (!this.skipMember()) {
-        // A method, a shorthand member, a spread: not a literal
-        this.fail();
+        return;
       }
-    });
-    return ok ? { type: 'object', props } : undefined;
+      // `get name() {}`, `async name() {}`, `*name() {}`: the key follows
+      if (
+        MODIFIER_RE.test(key ?? '') &&
+        KEY_START_RE.test(src.charAt(this.i))
+      ) {
+        if (src.charAt(this.i) === '*') this.i++;
+        this.space();
+        key = this.key();
+      }
+      if (key === undefined) props.clear();
+      else props.set(key, undefined);
+    }
+    // The rest of the member: not a literal
+    if (!this.skipMember()) this.fail();
   }
 
   /** Stop reading: the text cannot be skipped through. */
@@ -268,14 +314,16 @@ function macroOf(config: Datum): DiscoveredMacro | undefined {
  * file) declare, in source order, read from the text without running it. A
  * call whose config is an object literal (or a variable declared as one with
  * `const`, `let` or `var` that the call sees, see Bindings: not a parameter, a
- * pattern or an assignment of the name) and whose `name` is a string is found,
+ * pattern or an assignment of the name, or a write to a property the macro
+ * is read from) and whose `name` is a string is found,
  * wherever it is, even inside a function. Only what is written out is read: a `block`,
  * `interpolate`, `storeVar` or `merged` that is a boolean literal, the
  * strings of `subMacros`, and `parameters` when every one is an object
  * literal with a string `name` and `type` (and `holds`, `required`,
  * `description` and nested `parameters` of options when written out as such);
- * a list with a parameter that is not, or that `defineMacro` would refuse,
- * declares none. It is tolerant: text it cannot read is skipped, and it
+ * a later member that sets one of these again (a spread, a method, an
+ * accessor, a computed key) replaces it; a list with a parameter that is not,
+ * or that `defineMacro` would refuse, declares none. It is tolerant: text it cannot read is skipped, and it
  * throws for none.
  */
 export function discoverMacros(source: string): DiscoveredMacro[] {
@@ -288,7 +336,7 @@ export function discoverMacros(source: string): DiscoveredMacro[] {
       const variable = IDENTIFIER_ARGUMENT_RE.exec(code.slice(at))?.[1];
       if (!variable) continue;
       bindings ??= new Bindings(code);
-      const object = bindings.objectOf(variable, call.index);
+      const object = bindings.objectOf(variable, call.index, CONFIG_KEYS);
       if (object === undefined) continue;
       at = object;
     }

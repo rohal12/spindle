@@ -1096,6 +1096,486 @@ Story.defineMacro(config);`),
   });
 });
 
+describe('discoverMacros keeps its scope model honest (#531 #532 #533 #534 #537 #538)', () => {
+  /** The (name, block) of each macro found. */
+  const found = (source: string) =>
+    discoverMacros(source).map((m) => [m.name, m.block]);
+
+  describe('declarations in a list (#531)', () => {
+    it('reads a config declared after the first item', () => {
+      const macros = discoverMacros(`const a = 1, config = {
+  name: 'Card', block: true,
+  parameters: [{name: 'target', type: 'passage'}],
+  render: () => null,
+};
+Story.defineMacro(config);`);
+      expect(macros).toMatchObject([
+        {
+          name: 'Card',
+          block: true,
+          parameters: [{ name: 'target', type: 'passage' }],
+        },
+      ]);
+    });
+
+    it.each(['let', 'var'])('reads a config in a %s list', (keyword) => {
+      expect(
+        found(`${keyword} a, b = 2, config = {name: 'C'}, d;
+Story.defineMacro(config);`),
+      ).toEqual([['C', false]]);
+    });
+
+    it('goes past initializers with commas of their own', () => {
+      expect(
+        found(`const a = f(1, 2), b = [3, 4], c = {x: 1, y: 2}, d = (e, g) => { h(), i() },
+  config = {name: 'Deep', block: true};
+Story.defineMacro(config);`),
+      ).toEqual([['Deep', true]]);
+    });
+
+    it('reads the first item of a list that has others after it', () => {
+      expect(
+        found(`const config = {name: 'First'}, a = 1;
+Story.defineMacro(config);`),
+      ).toEqual([['First', false]]);
+    });
+
+    it('keeps the scope of the list', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+function f() {
+  let a = 1, config = {name: 'inner', block: true};
+  Story.defineMacro(config);
+}
+if (x) { const a = 1, config = {name: 'blk'}; }
+Story.defineMacro(config);`),
+      ).toEqual([
+        ['inner', true],
+        ['outer', false],
+      ]);
+    });
+
+    it.each([
+      [
+        'a list item that is not an object literal',
+        "const config = {name: 'outer'};\nfunction f() { const a = 1, config = make(); Story.defineMacro(config); }",
+      ],
+      [
+        'a list item without a value',
+        "const config = {name: 'outer'};\nfunction f() { let a, config; Story.defineMacro(config); }",
+      ],
+      [
+        'a list item that is a pattern',
+        "const config = {name: 'outer'};\nfunction f() { const a = 1, { config } = make(); Story.defineMacro(config); }",
+      ],
+    ])('reads no config for %s', (_, source) => {
+      expect(found(source)).toEqual([]);
+    });
+
+    it('does not take a comma in a call or an update for a list', () => {
+      expect(
+        found(`const config = {name: 'real'};
+const a = 1;
+run(a, config = make());
+Story.defineMacro(config);`),
+      ).toEqual([]);
+      expect(
+        found(`const a = 1;
+const config = {name: 'real'};
+for (let i = 0; i < 2; i++, x = 1) {}
+Story.defineMacro(config);`),
+      ).toEqual([['real', false]]);
+    });
+  });
+
+  describe('for-loop headers (#532)', () => {
+    it.each([
+      ['let', 'for (let config of []) {}'],
+      ['const', 'for (const config of []) {}'],
+      ['const in', 'for (const config in {}) {}'],
+      ['let with a pattern', 'for (const [config] of []) {}'],
+      ['an object pattern', 'for (const { config } of []) {}'],
+      [
+        'let in a classic loop',
+        'for (let config = 0; config < 2; config++) {}',
+      ],
+      ['let in a list', 'for (let i = 0, config = 1; i < 2; i++) {}'],
+      [
+        'an await loop',
+        'async function f() { for await (const config of []) {} }',
+      ],
+      ['an unbraced body', 'for (const config of []) run(config);'],
+      ['an unbraced body on a line', 'for (const config of [])\n  run(config)'],
+      [
+        'a nested unbraced body',
+        'for (const config of []) for (;;) if (a) run(); else run2();',
+      ],
+    ])('ends the binding of %s with the loop', (_, loop) => {
+      expect(
+        found(`const config = {name: 'Card', block: true};
+${loop}
+Story.defineMacro(config);`),
+      ).toEqual([['Card', true]]);
+    });
+
+    it('still shadows the config in the loop', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+for (const config of []) { Story.defineMacro(config); }
+for (const config of []) Story.defineMacro(config);`),
+      ).toEqual([]);
+    });
+
+    it('reads a var of a loop header in the function, as a var is', () => {
+      expect(
+        found(`function f() {
+  for (var config = {name: 'V'}; ;) { break; }
+  Story.defineMacro(config);
+}`),
+      ).toEqual([['V', false]]);
+      expect(
+        found(`const config = {name: 'outer'};
+for (var config of []) {}
+Story.defineMacro(config);`),
+      ).toEqual([]);
+    });
+
+    it('is not confused by a for loop body that is a function or a block', () => {
+      expect(
+        found(`const config = {name: 'Card'};
+for (const x of []) { const config = 1; }
+for (const x of []) Story.defineMacro(config);
+for (const y of []) { Story.defineMacro(config); }
+Story.defineMacro(config);`),
+      ).toEqual([
+        ['Card', false],
+        ['Card', false],
+        ['Card', false],
+      ]);
+    });
+  });
+
+  describe('assignments (#533)', () => {
+    it.each([
+      [
+        'a destructuring assignment',
+        "let config = {name: 'old'};\n({config} = {config: {name: 'new'}});\nStory.defineMacro(config);",
+      ],
+      [
+        'a renamed destructuring assignment',
+        "let config = {name: 'old'};\n({ a: { b: config } } = other);\nStory.defineMacro(config);",
+      ],
+      [
+        'an array destructuring assignment',
+        "let config = {name: 'old'};\n[config] = [{name: 'new'}];\nStory.defineMacro(config);",
+      ],
+      [
+        'a destructuring assignment with a default',
+        "let config = {name: 'old'};\n({config = 1} = other);\nStory.defineMacro(config);",
+      ],
+      [
+        'a rest in a destructuring assignment',
+        "let config = {name: 'old'};\n[a, ...config] = other;\nStory.defineMacro(config);",
+      ],
+      [
+        'a logical assignment',
+        "let config = {name: 'old'};\nconfig &&= {name: 'new'};\nStory.defineMacro(config);",
+      ],
+      [
+        'a nullish assignment',
+        "let config = {name: 'old'};\nconfig ??= {name: 'new'};\nStory.defineMacro(config);",
+      ],
+      [
+        'an or assignment',
+        "let config = {name: 'old'};\nconfig ||= {name: 'new'};\nStory.defineMacro(config);",
+      ],
+      [
+        'a compound assignment',
+        "let config = {name: 'old'};\nconfig += 1;\nStory.defineMacro(config);",
+      ],
+      [
+        'an increment',
+        "let config = {name: 'old'};\nconfig++;\nStory.defineMacro(config);",
+      ],
+      [
+        'a prefix decrement',
+        "let config = {name: 'old'};\n--config;\nStory.defineMacro(config);",
+      ],
+      [
+        'a for-of target',
+        "let config = {name: 'old'};\nfor (config of list) {}\nStory.defineMacro(config);",
+      ],
+      [
+        'a destructuring for-of target',
+        "let config = {name: 'old'};\nfor ({ config } of list) {}\nStory.defineMacro(config);",
+      ],
+      [
+        'an assignment in a block',
+        "let config = {name: 'old'};\nif (x) { config = other; }\nStory.defineMacro(config);",
+      ],
+      [
+        'an assignment in a function',
+        "let config = {name: 'old'};\nfunction reset() { config = other; }\nreset();\nStory.defineMacro(config);",
+      ],
+      [
+        'an assignment in an expression',
+        "let config = {name: 'old'};\nconst x = (config = other);\nStory.defineMacro(config);",
+      ],
+    ])('reads no config for %s', (_, source) => {
+      expect(found(source)).toEqual([]);
+    });
+
+    it('reads the config before it is assigned', () => {
+      expect(
+        found(`let config = {name: 'old'};
+Story.defineMacro(config);
+({config} = {config: {name: 'new'}});`),
+      ).toEqual([['old', false]]);
+    });
+
+    it('reads a config of another scope than the assignment', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+function f() { let config = 1; ({config} = x); config &&= 2; }
+Story.defineMacro(config);`),
+      ).toEqual([['outer', false]]);
+    });
+
+    it('keeps reading a config that only appears as an element or an index', () => {
+      expect(
+        found(`const config = {name: 'real'};
+const a = [config] == b, c = { config }, d = config >= 1, e = config <= 2, f = config != 3, g = config === 4;
+const h = x[config], i = [config, 2], k = config ? 1 : 2;
+Story.defineMacro(config);`),
+      ).toEqual([['real', false]]);
+    });
+
+    it('takes a class field of the name for no assignment', () => {
+      expect(
+        found(`const config = {name: 'real'};
+class A { config = 1; static config = 2; }
+Story.defineMacro(config);`),
+      ).toEqual([['real', false]]);
+    });
+  });
+
+  describe('members that overwrite each other (#534)', () => {
+    const read = (members: string) =>
+      discoverMacros(`Story.defineMacro({ ${members} });`).map((m) => [
+        m.name,
+        m.block,
+      ]);
+
+    it('reads the override of a spread of an object literal', () => {
+      expect(read("name: 'Old', ...{name: 'New'}, render: () => null")).toEqual(
+        [['New', false]],
+      );
+      expect(read("...{name: 'Spread'}, name: 'Own'")).toEqual([
+        ['Own', false],
+      ]);
+      expect(read("block: true, ...{block: false}, name: 'x'")).toEqual([
+        ['x', false],
+      ]);
+    });
+
+    it('drops what an unknown spread can overwrite', () => {
+      expect(read("name: 'Old', ...base")).toEqual([]);
+      expect(read("name: 'Old', ...f({name: 'New'})")).toEqual([]);
+      expect(read("...base, name: 'Own', block: true")).toEqual([
+        ['Own', true],
+      ]);
+      // A spread does not undo what comes after it
+      expect(read("block: true, ...base, name: 'x'")).toEqual([['x', false]]);
+    });
+
+    it('drops a property that a later accessor overwrites', () => {
+      expect(read("name: 'Old', get name() { return 'New'; }")).toEqual([]);
+      expect(read("name: 'Old', set name(v) {}")).toEqual([]);
+      expect(
+        read("name: 'x', block: false, get block() { return true; }"),
+      ).toEqual([['x', false]]);
+      expect(
+        read("name: 'x', block: true, get block() { return false; }"),
+      ).toEqual([['x', false]]);
+    });
+
+    it('drops a property that a later method or shorthand replaces', () => {
+      expect(read("name: 'Old', name() {}")).toEqual([]);
+      expect(read("name: 'Old', async name() {}")).toEqual([]);
+      expect(read("name: 'Old', *name() {}")).toEqual([]);
+      expect(read("name: 'Old', async *name() {}")).toEqual([]);
+      expect(read("name: 'Old', name")).toEqual([]);
+      expect(read("name: 'Old', 'name': other")).toEqual([]);
+      expect(read("name: 'x', block: true, block")).toEqual([['x', false]]);
+    });
+
+    it('drops what a computed key can overwrite', () => {
+      expect(read("name: 'Old', [key]: 'New'")).toEqual([]);
+      expect(read("name: 'Old', ['name']: 'New'")).toEqual([]);
+      expect(read("name: 'Old', get [key]() { return 1; }")).toEqual([]);
+      expect(read("[key]: 1, name: 'Own'")).toEqual([['Own', false]]);
+    });
+
+    it('reads a later literal that sets a property again', () => {
+      expect(read("name: 'Old', name: 'New'")).toEqual([['New', false]]);
+      expect(read("name: 'x', get other() { return 1; }, block: true")).toEqual(
+        [['x', true]],
+      );
+      expect(read("name: 'x', get(a) {}, set: 1, async: 2")).toEqual([
+        ['x', false],
+      ]);
+    });
+
+    it('drops a parameter option that is overwritten', () => {
+      const [macro] = discoverMacros(`Story.defineMacro({
+  name: 'x',
+  parameters: [{ name: 'a', type: 'string', ...override }, { name: 'b', type: 'number' }],
+});`);
+      expect(macro!.name).toBe('x');
+      expect(macro!.parameters).toBeUndefined();
+      const [kept] = discoverMacros(`Story.defineMacro({
+  name: 'x',
+  parameters: [{ name: 'a', type: 'string', ...{type: 'number'} }],
+});`);
+      expect(kept!.parameters).toMatchObject([{ name: 'a', type: 'number' }]);
+    });
+  });
+
+  describe('class static blocks (#537)', () => {
+    it('gives a var of a static block its own scope', () => {
+      expect(
+        found(`const config = {name: 'Card', render: () => null};
+class C {
+  static {
+    var config = {name: 'Unused', render: () => null};
+  }
+}
+Story.defineMacro(config);`),
+      ).toEqual([['Card', false]]);
+    });
+
+    it('reads a call in the static block with the var of it', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+class C {
+  static {
+    var config = {name: 'inner', block: true};
+    Story.defineMacro(config);
+  }
+}
+Story.defineMacro(config);`),
+      ).toEqual([
+        ['inner', true],
+        ['outer', false],
+      ]);
+    });
+
+    it('reads the var of a static block in a class expression and with other members', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+const K = class extends B {
+  static x = 1;
+  static() {}
+  static { if (a) { var config = {name: 'in'}; } }
+};
+Story.defineMacro(config);`),
+      ).toEqual([['outer', false]]);
+    });
+
+    it('still reads a var of an ordinary block in the function', () => {
+      expect(
+        found(`const config = {name: 'outer'};
+if (x) { var config = {name: 'in'}; }
+Story.defineMacro(config);`),
+      ).toEqual([]);
+    });
+  });
+
+  describe('writes to the properties of a config (#538)', () => {
+    it('reads no config whose name or block is set', () => {
+      const macros =
+        discoverMacros(`const config = {name: 'Old', block: false, render: () => null};
+config.name = 'New';
+config.block = true;
+Story.defineMacro(config);`);
+      expect(macros).toEqual([]);
+    });
+
+    it.each([
+      ['a property', 'config.name = "x";'],
+      ['a block', 'config.block = true;'],
+      ['a computed property', 'config[key] = true;'],
+      ['a string key', 'config["block"] = true;'],
+      ['a compound assignment', 'config.name += "x";'],
+      ['a logical assignment', 'config.block ||= true;'],
+      ['an increment', 'config.block++;'],
+      ['a deletion', 'delete config.block;'],
+      ['a nested write', 'config.parameters[0].type = "number";'],
+      [
+        'a nested push',
+        'config.parameters.push({ name: "a", type: "string" });',
+      ],
+      ['a splice', 'config.subMacros.splice(0, 1);'],
+      ['an assign', 'Object.assign(config, { name: "x" });'],
+      [
+        'a defineProperty',
+        'Object.defineProperty(config, "block", { value: true });',
+      ],
+      ['a reflect set', 'Reflect.set(config, "name", "x");'],
+      ['an optional chain push', 'config?.parameters.push(p);'],
+      [
+        'a write in a function',
+        'function tweak() { config.block = true; }\ntweak();',
+      ],
+      ['a write in a block', 'if (x) { config.name = "x"; }'],
+    ])('reads no config for %s', (_, write) => {
+      expect(
+        found(`const config = {name: 'Old', block: false, parameters: [], subMacros: []};
+${write}
+Story.defineMacro(config);`),
+      ).toEqual([]);
+    });
+
+    it('reads a config whose other properties are set, or that is only read', () => {
+      expect(
+        found(`const config = {name: 'Old', block: true};
+config.render = () => null;
+config.extra = 1;
+config.render.displayName = 'x';
+console.log(config.name, config.block, config.name.length);
+const copy = { ...config };
+const n = config.name + 'x', o = config.name === 'Old', p = config.block == true;
+if (config.name) run(config.block);
+const s = Object.assign({}, config);
+Object.keys(config).push(1);
+config.name.toUpperCase();
+config.parameters.map((p) => p);
+Story.defineMacro(config);`),
+      ).toEqual([['Old', true]]);
+    });
+
+    it('reads the config before it is written', () => {
+      expect(
+        found(`const config = {name: 'Old'};
+Story.defineMacro(config);
+config.name = 'New';
+Story.defineMacro(config);`),
+      ).toEqual([['Old', false]]);
+    });
+
+    it('does not take the write to another object for the config', () => {
+      expect(
+        found(`const config = {name: 'real'};
+function f(config) { config.name = 'x'; }
+const other = { config };
+other.config.name = 'x';
+x.config = 1;
+Story.defineMacro(config);`),
+      ).toEqual([['real', false]]);
+    });
+  });
+});
+
 describe('validateStoryMarkup tolerant (#469)', () => {
   const macros = getMacroRegistry();
   const content = [

@@ -34,6 +34,11 @@ interface Binding {
   ordered: boolean;
   /** The `{` of the object literal it is declared as, if it is. */
   object?: number;
+  /**
+   * Not a declaration but a write to the value of one (an assignment, a
+   * property of it set): `scope` is then that of the declaration it writes to.
+   */
+  write?: true;
 }
 
 const CLOSERS: Record<string, Kind> = { '}': '{', ')': '(', ']': '[' };
@@ -41,6 +46,23 @@ const CLOSERS: Record<string, Kind> = { '}': '{', ')': '(', ']': '[' };
 const BLOCK_WORDS = new Set(['if', 'for', 'while', 'switch', 'with', 'catch']);
 const NOT_PARAMETERS = new Set(['if', 'for', 'while', 'switch', 'with']);
 const DECLARATIONS = new Set(['const', 'let', 'var']);
+/** After a name: `=`, `+=`, `&&=`, `++` and the other ways to give it a value. */
+const WRITE_RE =
+  /(?:(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])=(?!=)|=(?![=>])|\+\+|--)/y;
+/** A call of these on `x.list` changes `x`; as does one of these on `x` itself. */
+const MUTATORS = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse',
+  'fill',
+  'copyWithin',
+]);
+const MUTATING_CALL_RE =
+  /(?:Object|Reflect)\s*\.\s*(?:assign|defineProperty|defineProperties|setPrototypeOf|set|deleteProperty)\s*$/;
 /** Before a name in a pattern or parameter list, by the group around it. */
 const BEFORE_BINDING: Record<Kind, string> = {
   '{': '{,:',
@@ -67,18 +89,41 @@ export class Bindings {
    * (`const`, `let` or `var`), when that is the declaration it names: the
    * innermost one in the scope of the use, that comes before it unless the
    * use is in a function of its own. `undefined` if it names another value,
-   * or more than one declaration is the innermost.
+   * more than one declaration is the innermost, or the value is written to
+   * (given another, or one of its `properties` set) where the use can follow.
    */
-  objectOf(name: string, at: number): number | undefined {
+  objectOf(
+    name: string,
+    at: number,
+    properties: ReadonlySet<string>,
+  ): number | undefined {
     const { code } = this;
     const escaped = name.replace(/\$/g, '\\$');
     const bindings: Binding[] = [];
     for (const m of code.matchAll(
       new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'g'),
     )) {
-      const binding = this.bindingAt(m.index, name.length);
+      const binding = this.bindingAt(m.index, name.length, properties);
       if (binding) bindings.push(binding);
     }
+    // A write is to the declaration it sees: in the scope of that one
+    const declarations = bindings.filter((b) => !b.write);
+    for (const b of bindings) {
+      if (b.write) {
+        b.scope =
+          this.innermostVisible(declarations, b.at)[0]?.scope ?? this.top;
+      }
+    }
+    const found = this.innermostVisible(bindings, at);
+    return found.length === 1 ? found[0]!.object : undefined;
+  }
+
+  /**
+   * Of the `bindings` the use at `at` can see, those in the innermost scope:
+   * the scope is the use's, and a binding comes before it, unless the use is
+   * in a function of its own.
+   */
+  private innermostVisible(bindings: Binding[], at: number): Binding[] {
     const useFunction = this.functionStart(at);
     const visible = bindings.filter(
       (b) =>
@@ -87,8 +132,7 @@ export class Bindings {
         (!b.ordered || b.at < at || this.functionStart(b.at) !== useFunction),
     );
     const innermost = Math.max(...visible.map((b) => b.scope.start));
-    const found = visible.filter((b) => b.scope.start === innermost);
-    return found.length === 1 ? found[0]!.object : undefined;
+    return visible.filter((b) => b.scope.start === innermost);
   }
 
   // -- the brackets ---------------------------------------------------------
@@ -133,7 +177,21 @@ export class Bindings {
     return undefined;
   }
 
-  /** Whether the `{` group is the body of a function (or method). */
+  /**
+   * The word before a `(` group (`if`, `for`, `catch`, a function's name…);
+   * `for await` is `for`.
+   */
+  private ownerWord(paren: Group): string {
+    const word = this.wordBefore(this.backFrom(paren.open) + 1);
+    if (word.text !== 'await') return word.text;
+    const before = this.wordBefore(this.backFrom(word.start) + 1).text;
+    return before === 'for' ? before : word.text;
+  }
+
+  /**
+   * Whether the `{` group is the body of a function (or method), or of a
+   * class static block, which has the scope of a `var` of its own.
+   */
   private isFunctionBody(group: Group): boolean {
     if (group.kind !== '{') return false;
     let known = this.functions.get(group);
@@ -142,9 +200,12 @@ export class Bindings {
       const { code } = this;
       if (code.charAt(before) === ')') {
         const params = this.byClose.get(before);
-        const word = params && this.wordBefore(this.backFrom(params.open) + 1);
-        known = !!params && !BLOCK_WORDS.has(word!.text);
-      } else known = code.slice(before - 1, before + 1) === '=>';
+        known = !!params && !BLOCK_WORDS.has(this.ownerWord(params));
+      } else {
+        known =
+          code.slice(before - 1, before + 1) === '=>' ||
+          this.wordBefore(before + 1).text === 'static';
+      }
       this.functions.set(group, known);
     }
     return known;
@@ -175,11 +236,65 @@ export class Bindings {
     return start < 0 ? this.top : this.scopeOf(this.byOpen.get(start));
   }
 
-  /** What the declaration keyword `word` (`var`, `let`, `const`) declares for. */
+  /**
+   * What the declaration keyword `word` (`var`, `let`, `const`) declares for:
+   * the function for `var`, the block for the others, or the `for` statement,
+   * header and body, when the declaration is in its header.
+   */
   private declaredIn(word: { text: string; start: number }): Scope {
-    return word.text === 'var'
-      ? this.functionAt(word.start)
-      : this.blockAt(word.start);
+    if (word.text === 'var') return this.functionAt(word.start);
+    const group = this.innermost(word.start);
+    if (group?.kind === '(' && this.ownerWord(group) === 'for') {
+      return { start: group.open, end: this.statementEnd(group.close + 1) };
+    }
+    return this.blockAt(word.start);
+  }
+
+  /**
+   * Where the statement that starts at `from` ends: a block, the body of an
+   * `if`, `for`, `while` or `with` (and the `else` of an `if`), or else up to
+   * a `;`, the closer of the group it is in, or a line break that is followed
+   * by a statement of its own.
+   */
+  private statementEnd(from: number): number {
+    const { code } = this;
+    const start = this.forward(from);
+    const block = this.byOpen.get(start);
+    if (block?.kind === '{') return Math.min(block.close + 1, code.length);
+    const word = this.wordAt(start);
+    if (/^(?:if|for|while|with)$/.test(word)) {
+      let paren = this.forward(start + word.length);
+      if (word === 'for' && this.wordAt(paren) === 'await') {
+        paren = this.forward(paren + 5);
+      }
+      const header = this.byOpen.get(paren);
+      if (header) {
+        const end = this.statementEnd(header.close + 1);
+        const next = this.forward(end);
+        return word === 'if' && this.wordAt(next) === 'else'
+          ? this.statementEnd(next + 4)
+          : end;
+      }
+    }
+    for (let end = start; end < code.length; end++) {
+      const c = code.charAt(end);
+      if (c === ';') return end + 1;
+      if (CLOSERS[c]) return end;
+      const group = this.byOpen.get(end);
+      if (group) end = group.close;
+      else if (c === '\n' && this.startsStatement(end)) return end;
+    }
+    return code.length;
+  }
+
+  /** Whether the line break at `index` ends a statement, and one follows. */
+  private startsStatement(index: number): boolean {
+    const next = this.forward(index);
+    return (
+      /[\w$)\]}]/.test(this.code.charAt(this.backFrom(index))) &&
+      isWordChar(this.code.charAt(next)) &&
+      !/^(?:in|of|instanceof|else)$/.test(this.wordAt(next))
+    );
   }
 
   /** What a parameter list, whose `)` is `close`, is the scope of: the body. */
@@ -221,6 +336,11 @@ export class Bindings {
     return i;
   }
 
+  /** The word that starts at `index` (empty if there is none). */
+  private wordAt(index: number): string {
+    return this.code.slice(index, this.nameEnd(index));
+  }
+
   /** The word that ends before `end`, and where it starts. */
   private wordBefore(end: number): { text: string; start: number } {
     let start = end;
@@ -230,8 +350,15 @@ export class Bindings {
 
   // -- the declarations -----------------------------------------------------
 
-  /** What the name of `length` characters at `at` declares, if it does. */
-  private bindingAt(at: number, length: number): Binding | undefined {
+  /**
+   * What the name of `length` characters at `at` declares, or writes to, if it
+   * does. A write to a `properties` of it counts, one to another does not.
+   */
+  private bindingAt(
+    at: number,
+    length: number,
+    properties: ReadonlySet<string>,
+  ): Binding | undefined {
     const { code } = this;
     let before = this.backFrom(at);
     const spread = code.slice(before - 2, before + 1) === '...';
@@ -242,17 +369,21 @@ export class Bindings {
       this.declarationAt(at, before, spread) ??
       this.patternAt(at, before, after) ??
       this.arrowParameterAt(at, after) ??
-      this.assignmentAt(at, before, after)
+      (spread ? undefined : this.writeAt(at, before, after, properties))
     );
   }
 
-  /** `const x`, `let x`, `var x`, `function x`, `class x`. */
+  /** `const x`, `let x`, `var x`, a later `y` of `let x, y`, `function x`, `class x`. */
   private declarationAt(
     at: number,
     before: number,
     spread: boolean,
   ): Binding | undefined {
-    const word = spread ? undefined : this.wordBefore(before + 1);
+    if (spread) return undefined;
+    const word =
+      this.code.charAt(before) === ','
+        ? this.listKeyword(before)
+        : this.wordBefore(before + 1);
     if (!word || this.code.charAt(word.start - 1) === '.') return undefined;
     if (DECLARATIONS.has(word.text)) {
       const scope = this.declaredIn(word);
@@ -271,41 +402,99 @@ export class Bindings {
     return undefined;
   }
 
+  /**
+   * The `const`, `let` or `var` of the declaration list that the `,` at
+   * `comma` is in (`let a = 1, b`, also in a `for` header): the nearest one
+   * before it in the same brackets, that no `;` is between.
+   */
+  private listKeyword(
+    comma: number,
+  ): { text: string; start: number } | undefined {
+    const { code } = this;
+    const floor = this.innermost(comma)?.open ?? -1;
+    for (let i = comma - 1; i > floor; i--) {
+      const c = code.charAt(i);
+      if (c === ';') return undefined;
+      const group = CLOSERS[c] ? this.byClose.get(i) : undefined;
+      if (group) i = group.open;
+      else if (isWordChar(c)) {
+        const word = this.wordBefore(i + 1);
+        if (
+          DECLARATIONS.has(word.text) &&
+          code.charAt(word.start - 1) !== '.'
+        ) {
+          return word;
+        }
+        i = word.start;
+      }
+    }
+    return undefined;
+  }
+
   private nameEnd(at: number): number {
     let end = at;
     while (isWordChar(this.code.charAt(end))) end++;
     return end;
   }
 
-  /** A name in a pattern (`const { x } = …`) or a parameter list. */
+  /**
+   * A name in a pattern (`const { x } = …`) or a parameter list; or one a
+   * pattern assigns to (`({ x } = …)`).
+   */
   private patternAt(
     at: number,
     before: number,
     after: number,
   ): Binding | undefined {
     const { code } = this;
-    let group = this.innermost(at);
-    if (!group || !BEFORE_BINDING[group.kind].includes(code.charAt(before))) {
+    const inner = this.innermost(at);
+    if (!inner || !BEFORE_BINDING[inner.kind].includes(code.charAt(before))) {
       return undefined;
     }
-    if (group.kind === '{' && code.charAt(after) === ':') return undefined; // a key
-    for (; group; group = group.parent) {
+    if (inner.kind === '{' && code.charAt(after) === ':') return undefined; // a key
+    // The outermost pattern, to see whether it is assigned to
+    let pattern: Group | undefined;
+    for (let group: Group | undefined = inner; group; group = group.parent) {
       if (group.kind === '(') {
-        const word = this.wordBefore(this.backFrom(group.open) + 1).text;
-        const scope = NOT_PARAMETERS.has(word)
+        const scope = NOT_PARAMETERS.has(this.ownerWord(group))
           ? undefined
           : this.bodyAfter(group.close);
-        return scope && { scope, at, ordered: false };
+        return scope
+          ? { scope, at, ordered: false }
+          : this.patternWriteAt(at, pattern);
       }
+      pattern = group;
       const open = this.backFrom(group.open);
-      const word = this.wordBefore(open + 1);
-      if (DECLARATIONS.has(word.text)) {
+      const word =
+        code.charAt(open) === ','
+          ? this.listKeyword(open)
+          : this.wordBefore(open + 1);
+      if (word && DECLARATIONS.has(word.text)) {
         return { scope: this.declaredIn(word), at, ordered: true };
       }
       // Inside another pattern or list
-      if (!'({[,:'.includes(code.charAt(open))) return undefined;
+      if (!'({[,:'.includes(code.charAt(open))) break;
     }
-    return undefined;
+    return this.patternWriteAt(at, pattern);
+  }
+
+  /** `[x] = …`, `({ x } = …)`, `for ({ x } of …)`: a name that is assigned to. */
+  private patternWriteAt(
+    at: number,
+    pattern: Group | undefined,
+  ): Binding | undefined {
+    if (!pattern) return undefined;
+    const { code } = this;
+    const open = this.backFrom(pattern.open);
+    if (/[\w$)\]]/.test(code.charAt(open))) return undefined; // `a[x] = …`
+    const next = this.forward(pattern.close + 1);
+    const inForHead =
+      pattern.parent?.kind === '(' &&
+      this.ownerWord(pattern.parent) === 'for' &&
+      /^(?:of|in)(?![\w$])/.test(code.slice(next));
+    return inForHead || this.isWriteOperator(next)
+      ? { scope: this.top, at, ordered: true, write: true }
+      : undefined;
   }
 
   /** `x => …`. */
@@ -315,18 +504,91 @@ export class Bindings {
       : undefined;
   }
 
-  /** `x = …`: a declaration in a list, or an assignment: a value not known. */
-  private assignmentAt(
+  /** Whether an assignment, `++` or `--` operator is at `index`. */
+  private isWriteOperator(index: number): boolean {
+    WRITE_RE.lastIndex = index;
+    return WRITE_RE.test(this.code);
+  }
+
+  /**
+   * `x = …`, `x += …`, `x++`, `for (x of …)`, and the writes to what it
+   * holds that change the config it is (`x.name = …`, `delete x.name`,
+   * `x.parameters.push(…)`, `Object.assign(x, …)`): a value not known.
+   */
+  private writeAt(
     at: number,
     before: number,
     after: number,
+    properties: ReadonlySet<string>,
   ): Binding | undefined {
     const { code } = this;
-    if (code.charAt(after) !== '=' || '=>'.includes(code.charAt(after + 1))) {
-      return undefined;
+    if (this.isClassBody(this.innermost(at))) return undefined; // a field
+    const { keys, end } = this.memberChain(after);
+    const prefix = ['++', '--'].includes(code.slice(before - 1, before + 1));
+    const written =
+      prefix ||
+      this.isWriteOperator(end) ||
+      (keys.length > 0 &&
+        (this.wordBefore(before + 1).text === 'delete' ||
+          (keys.length > 1 &&
+            code.charAt(end) === '(' &&
+            MUTATORS.has(keys[keys.length - 1]!)))) ||
+      (keys.length === 0 && this.isForTarget(before, end)) ||
+      (keys.length === 0 && this.isMutatedArgument(before, end));
+    // A property that is not a part of the macro's config does not matter
+    const first = keys[0];
+    if (!written || (first && !properties.has(first))) return undefined;
+    return { scope: this.top, at, ordered: true, write: true };
+  }
+
+  /** Whether the group is the body of a class: its members are its own. */
+  private isClassBody(group: Group | undefined): boolean {
+    if (group?.kind !== '{') return false;
+    let start = group.open;
+    while (start > 0 && !'{};'.includes(this.code.charAt(start - 1))) start--;
+    return /(?<![\w$.])class(?![\w$])/.test(this.code.slice(start, group.open));
+  }
+
+  /**
+   * The properties read from a name at `from` (`.a.b[c]`, a key is null if
+   * computed), and where the chain ends.
+   */
+  private memberChain(from: number): { keys: (string | null)[]; end: number } {
+    const { code } = this;
+    const keys: (string | null)[] = [];
+    let end = from;
+    for (;;) {
+      let i = end;
+      if (code.startsWith('?.', i)) i += 2;
+      else if (code.charAt(i) === '.' && code.charAt(i + 1) !== '.') i++;
+      else if (code.charAt(i) !== '[') break;
+      i = this.forward(i);
+      const bracket = code.charAt(i) === '[' ? this.byOpen.get(i) : undefined;
+      const key = bracket ? '' : this.wordAt(i);
+      if (!bracket && !key) break;
+      keys.push(bracket ? null : key);
+      end = this.forward(bracket ? bracket.close + 1 : i + key.length);
     }
-    const scope =
-      code.charAt(before) === ',' ? this.functionAt(at) : this.blockAt(at);
-    return { scope, at, ordered: true };
+    return { keys, end };
+  }
+
+  /** `for (x of …)`: the name is assigned each item. */
+  private isForTarget(before: number, end: number): boolean {
+    const group = this.byOpen.get(before);
+    return (
+      group?.kind === '(' &&
+      this.ownerWord(group) === 'for' &&
+      /^(?:of|in)(?![\w$])/.test(this.code.slice(end))
+    );
+  }
+
+  /** `Object.assign(x, …)` and the like: the name is the first argument. */
+  private isMutatedArgument(before: number, end: number): boolean {
+    const group = this.byOpen.get(before);
+    return (
+      group?.kind === '(' &&
+      ',)'.includes(this.code.charAt(end)) &&
+      MUTATING_CALL_RE.test(this.code.slice(0, group.open))
+    );
   }
 }
