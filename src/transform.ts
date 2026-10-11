@@ -9,19 +9,34 @@ import { variableNameError } from './utils/namespace';
 
 const TRANSFORM_CACHE_MAX = 500;
 
-const NAMESPACES: Record<Sigil, string> = {
-  $: 'variables',
-  _: 'temporary',
-  '@': 'locals',
-  '%': 'transient',
+/**
+ * The identifiers generated code reads the namespaces through, and the
+ * compiled function takes them under (see src/expression.ts). Authored
+ * JavaScript may declare identifiers of its own (`const variables = {}` in
+ * a helper), so these are ones it cannot: an identifier that starts with
+ * `_` or `$` and has more word characters after it is a sigil reference,
+ * and the lexer refuses to declare one (`__variables` is the temporary
+ * variable `_variables`, rewritten like any other). No declaration or
+ * parameter of the author's can then capture a reference or clash with the
+ * generated bindings.
+ */
+export const BINDINGS: Record<Sigil, string> = {
+  $: '__variables',
+  _: '__temporary',
+  '@': '__locals',
+  '%': '__transient',
 };
+
+/** The identifier the functions that compiled code may call come under. */
+export const FNS_BINDING = '__fns';
 
 /** Ends with an identifier character. */
 const IDENT_END_RE = /[\p{ID_Continue}$\u200c\u200d]$/u;
 
 /**
  * Transform expression: $var → variables["var"], _var → temporary["var"],
- * @var → locals["var"], %var → transient["var"].
+ * @var → locals["var"], %var → transient["var"], where `variables` and the
+ * others stand for the generated names in BINDINGS.
  * The lexer (`lexJs`) finds the references: only in code (string, template
  * and regex literal text and comments are left untouched), only where an
  * identifier starts (not in `a$b`, nor as the property name in `obj._x`),
@@ -45,7 +60,7 @@ export function transform(expr: string, goal: JsGoal = 'expression'): string {
     if (ref.shorthand) result += `${ref.name}: `;
     // `typeof%x` needs a space once `%x` turns into an identifier.
     else if (IDENT_END_RE.test(result.slice(-2))) result += ' ';
-    result += `${NAMESPACES[ref.sigil]}["${ref.name}"]`;
+    result += `${BINDINGS[ref.sigil]}["${ref.name}"]`;
     at = ref.end;
   }
   result += expr.slice(at);

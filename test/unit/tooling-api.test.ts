@@ -270,10 +270,10 @@ describe('tooling API: passage targets', () => {
 
   it('transforms sigil references into namespace lookups', () => {
     expect(transform('$a + _b + @c + %d + "$e"')).toBe(
-      'variables["a"] + temporary["b"] + locals["c"] + transient["d"] + "$e"',
+      `__variables["a"] + __temporary["b"] + __locals["c"] + __transient["d"] + "$e"`,
     );
     expect(transform('$a = 1; _b++', 'statements')).toBe(
-      'variables["a"] = 1; temporary["b"]++',
+      `__variables["a"] = 1; __temporary["b"]++`,
     );
     expect(() => transform('$__proto__')).toThrow(SyntaxError);
   });
