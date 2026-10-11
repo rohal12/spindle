@@ -83,11 +83,12 @@ function mockStoryAPI(overrides: Partial<StoryAPI> = {}): StoryAPI {
       if (!action) throw new Error(`spindle: Action "${id}" not found.`);
       if (action.disabled)
         throw new Error(`spindle: Action "${id}" is disabled.`);
-      action.perform(v);
+      const result = action.perform(v);
       // Simulate navigation for link actions
       if (action.target) {
         passage = action.target;
       }
+      return result;
     },
     on() {
       return () => {};
@@ -280,6 +281,42 @@ describe('automation runner', () => {
     expect(
       (await run([{ ...enabledBack, disabled: false }], false)).success,
     ).toBe(true);
+  });
+
+  it('waits for an asynchronous action before the next step (#504)', async () => {
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    const api = mockStoryAPI();
+    (api as any)._setActions([
+      mockAction({
+        id: 'load:quickload',
+        type: 'load',
+        perform: () => finished.then(() => api.goto('Room')),
+      }),
+    ]);
+
+    const running = runAutomation(api, {
+      name: 'test',
+      steps: [{ action: 'load:quickload' }, { assert: { passage: 'Room' } }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    finish();
+
+    expect(await running).toEqual({ success: true, stepsRun: 2, errors: [] });
+  });
+
+  it('reports a rejecting asynchronous action as the step error', async () => {
+    const api = mockStoryAPI();
+    (api as any)._setActions([
+      mockAction({ id: 'load:quickload', perform: () => Promise.reject('no') }),
+    ]);
+
+    const result = await runAutomation(api, {
+      name: 'test',
+      steps: [{ action: 'load:quickload' }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.errors[0]!.message).toBe('no');
   });
 
   it('navigates to start passage if specified', async () => {

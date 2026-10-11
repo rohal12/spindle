@@ -66,6 +66,8 @@ Perform a registered action by ID. Can be a simple string or an object with a va
 
 See [Action IDs](story-api.md#action-ids) for the ID format.
 
+The runner waits for the action to finish, including one that completes later such as `load:quickload` (a slow storage read), before the step's `wait` and `assert`. A rejected action is reported as that step's error.
+
 ### `assert`
 
 Check that the story is in an expected state. Multiple assertions can be combined in a single step. All are checked; each failure is reported separately.

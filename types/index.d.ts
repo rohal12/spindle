@@ -215,7 +215,7 @@ export interface StoryAction {
   options?: string[];
   value?: unknown;
   disabled?: boolean;
-  perform: (value?: unknown) => void;
+  perform: (value?: unknown) => void | Promise<void>;
 }
 
 /**
@@ -425,7 +425,7 @@ export interface UseActionOptions {
   options?: string[];
   value?: unknown;
   disabled?: boolean;
-  perform: (value?: unknown) => void;
+  perform: (value?: unknown) => void | Promise<void>;
 }
 
 /**
@@ -825,8 +825,11 @@ export interface StoryAPI {
   /** Return all registered interactive actions. */
   getActions(): StoryAction[];
 
-  /** Perform a registered action by ID. */
-  performAction(id: string, value?: unknown): void;
+  /**
+   * Perform a registered action by ID. An action that finishes later
+   * (`{quicksave}`, `{quickload}`) returns a promise that settles when it has.
+   */
+  performAction(id: string, value?: unknown): void | Promise<void>;
 
   /** Subscribe to a story event. Returns an unsubscribe function. */
   on<E extends StoryEvent>(
@@ -834,7 +837,11 @@ export interface StoryAPI {
     callback: StoryEventCallback<E>,
   ): () => void;
 
-  /** Wait for the next frame's actions to be registered, then return them. */
+  /**
+   * Wait for the actions performed with `performAction()` that are still
+   * running, then for the next frame's actions to be registered, and return
+   * them.
+   */
   waitForActions(): Promise<StoryAction[]>;
 
   /** Register a trigger that fires when a condition expression becomes truthy. Returns an unsubscribe function. */

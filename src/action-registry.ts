@@ -26,7 +26,13 @@ export interface StoryAction {
   options?: string[];
   value?: unknown;
   disabled?: boolean;
-  perform: (value?: unknown) => void;
+  /**
+   * What the control does. An action that finishes later (QuickSave and
+   * QuickLoad wait for storage) returns a promise that settles when it has
+   * finished; `Story.performAction()` passes it on and
+   * `Story.waitForActions()` waits for it (#504).
+   */
+  perform: (value?: unknown) => void | Promise<void>;
 }
 
 /** The fields of a StoryAction that are left out when unset. */
@@ -117,6 +123,36 @@ export function registerAction(action: StoryAction): ActionRegistration {
       if (index === current.length) notify(); // it was the listed one
     },
   };
+}
+
+/** The promises of the performed actions that have not settled yet. */
+const running = new Set<Promise<void>>();
+
+/**
+ * Perform an action, as `Story.performAction()` does. One that returns a
+ * promise is tracked until it settles, for `settleRunningActions()`, and the
+ * promise is returned for the caller to await (its rejection stays the
+ * caller's to handle).
+ */
+export function performRegisteredAction(
+  action: StoryAction,
+  value?: unknown,
+): void | Promise<void> {
+  const result = action.perform(value);
+  if (!result || typeof result.then !== 'function') return result;
+
+  const done = () => void running.delete(result);
+  running.add(result);
+  result.then(done, done);
+  return result.then((v) => v);
+}
+
+/** Wait until every performed action has finished, whether or not it failed. */
+export async function settleRunningActions(): Promise<void> {
+  // An action can perform another while it finishes
+  while (running.size > 0) {
+    await Promise.allSettled(running);
+  }
 }
 
 export function getActions(): StoryAction[] {

@@ -34,7 +34,13 @@ import { defineMacro } from './define-macro';
 import type { MacroDefinition } from './define-macro';
 import { getMacroRegistry as _getMacroRegistry } from './registry';
 import type { MacroMetadata } from './registry';
-import { getActions, getAction, type StoryAction } from './action-registry';
+import {
+  getActions,
+  getAction,
+  performRegisteredAction,
+  settleRunningActions,
+  type StoryAction,
+} from './action-registry';
 import { getRenderedNavigationId } from './passage-render-state';
 import {
   initPRNG,
@@ -156,7 +162,7 @@ export interface StoryAPI {
     readonly backend: 'indexeddb' | 'localstorage' | 'memory';
   };
   getActions(): StoryAction[];
-  performAction(id: string, value?: unknown): void;
+  performAction(id: string, value?: unknown): void | Promise<void>;
   on<E extends StoryEvent>(
     event: E,
     callback: StoryEventCallback<E>,
@@ -411,7 +417,7 @@ function createStoryAPI(): StoryAPI {
       return getActions();
     },
 
-    performAction(id: string, value?: unknown): void {
+    performAction(id: string, value?: unknown): void | Promise<void> {
       const action = getAction(id);
       if (!action) {
         throw new Error(`spindle: Action "${id}" not found.`);
@@ -419,7 +425,7 @@ function createStoryAPI(): StoryAPI {
       if (action.disabled) {
         throw new Error(`spindle: Action "${id}" is disabled.`);
       }
-      action.perform(value);
+      return performRegisteredAction(action, value);
     },
 
     on<E extends StoryEvent>(
@@ -435,6 +441,9 @@ function createStoryAPI(): StoryAPI {
     },
 
     async waitForActions(): Promise<StoryAction[]> {
+      // An action that finishes later (QuickLoad) has not changed what the
+      // checks below look at until it has (#504)
+      await settleRunningActions();
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });

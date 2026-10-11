@@ -370,6 +370,61 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('asynchronous actions (#504)', () => {
+    function registerSlow(finish: Promise<void>, order: string[]) {
+      registerAction({
+        id: 'slow',
+        type: 'load',
+        label: 'Slow',
+        perform: async () => {
+          await finish;
+          order.push('performed');
+        },
+      });
+    }
+
+    it('performAction returns what the action returns', async () => {
+      const order: string[] = [];
+      let done!: () => void;
+      registerSlow(new Promise<void>((r) => (done = r)), order);
+
+      const result = Story.performAction('slow');
+      expect(result).toBeInstanceOf(Promise);
+      done();
+      await result;
+      expect(order).toEqual(['performed']);
+    });
+
+    it('waitForActions waits for an action still running', async () => {
+      const order: string[] = [];
+      let done!: () => void;
+      registerSlow(new Promise<void>((r) => (done = r)), order);
+
+      Story.performAction('slow');
+      const waited = Story.waitForActions().then(() => order.push('waited'));
+      // Well past the two animation frames it otherwise waits for
+      await new Promise((r) => setTimeout(r, 100));
+      expect(order).toEqual([]);
+
+      done();
+      await waited;
+      expect(order).toEqual(['performed', 'waited']);
+    });
+
+    it('waitForActions still resolves when the action rejects', async () => {
+      registerAction({
+        id: 'failing',
+        type: 'load',
+        label: 'Failing',
+        perform: () => Promise.reject(new Error('boom')),
+      });
+
+      const result = Story.performAction('failing');
+      await expect(result).rejects.toThrow('boom');
+      await expect(Story.waitForActions()).resolves.toBeInstanceOf(Array);
+    });
+  });
+
   describe('save/load/hasSave', () => {
     it('hasSave returns false initially', () => {
       expect(useStoryStore.getState().hasSave()).toBe(false);

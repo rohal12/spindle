@@ -66,7 +66,8 @@ async function executeStep(
     const id = typeof step.action === 'string' ? step.action : step.action.id;
     const value =
       typeof step.action === 'string' ? undefined : step.action.value;
-    story.performAction(id, value);
+    // An action that finishes later (QuickLoad) is awaited, then the UI
+    await story.performAction(id, value);
     await story.waitForActions();
   }
 
