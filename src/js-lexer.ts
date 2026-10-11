@@ -521,6 +521,14 @@ export function parseCode(
   src: string,
   goal: JsGoal = 'expression',
 ): ParsedCode {
+  return parseWithAst(src, goal).out;
+}
+
+/** What parseCode finds in `src`, and the syntax tree it is in. */
+function parseWithAst(
+  src: string,
+  goal: JsGoal,
+): { out: ParsedCode; ast: AnyNode } {
   // Whether `%name` is a transient or `%` modulo is guessed from the tokens
   // before it, as acorn guesses whether `/` opens a regex. Where the guess
   // makes the parser fail at a `%`, the other reading is tried, and the
@@ -533,7 +541,7 @@ export function parseCode(
       const out: ParsedCode = { refs: [], strings: [] };
       walk(ast, src, out, false, false);
       out.refs.sort((a, b) => a.start - b.start);
-      return out;
+      return { out, ast };
     } catch (error) {
       const pos = (error as { pos?: number }).pos ?? -1;
       if (!(error instanceof SyntaxError) || percentAt.has(pos)) throw error;
@@ -542,6 +550,39 @@ export function parseCode(
       percentAt.set(pos, !transientsRead.has(pos));
     }
   }
+}
+
+/** The variable at the root of a reference path, and whether it has members. */
+export interface ReferencePath {
+  sigil: Sigil;
+  name: string;
+  /** The path goes on past the variable (`$a.b`, `$a["b"]`, `$a[i]`). */
+  nested: boolean;
+}
+
+/**
+ * Read `src` as a reference path: a variable with any number of `.name` and
+ * `[expression]` members after it (`$data["field"]`, `@list[_i].x`), and
+ * nothing else. Returns null for any other code (`$a + 1`, `$a.b()`, `$a,
+ * $b`, `$a = 1`), and throws a `CodeSyntaxError` for code that is not
+ * well-formed.
+ */
+export function parseReferencePath(src: string): ReferencePath | null {
+  const { ast } = parseWithAst(src, 'expression');
+  // `$a?.b` is a chain expression around the members
+  let node: AnyNode =
+    ast.type === 'ChainExpression' ? (ast.expression as AnyNode) : ast;
+  let nested = false;
+  while (node.type === 'MemberExpression') {
+    node = node.object as AnyNode;
+    nested = true;
+  }
+  if (node.type !== 'Identifier') return null;
+  const sigil = sigilOf(node, src);
+  // Parentheses around the variable or a member (`($a).b`) are not part of
+  // a path as written
+  if (!sigil || node.start !== 0) return null;
+  return { sigil: sigil[0], name: sigil[1], nested };
 }
 
 /**

@@ -176,6 +176,103 @@ describe('{unset} with a nested path', () => {
   });
 });
 
+describe('{unset} with a bracket path (#524)', () => {
+  it('deletes a quoted field and an array element', () => {
+    state().init(
+      makeStoryData(),
+      { data: { field: 1, other: 2 }, arr: ['one', 'two'] },
+      {},
+    );
+    renderMarkup('{unset $data["field"]}{unset $arr[0]}');
+    expect(vars().data).toEqual({ other: 2 });
+    expect(0 in (vars().arr as unknown[])).toBe(false);
+    expect(vars().arr).toHaveLength(2);
+    expect((vars().arr as unknown[])[1]).toBe('two');
+  });
+
+  it('deletes through single quotes, spaces, nesting and mixed paths', () => {
+    state().init(
+      makeStoryData(),
+      { d: { 'a b': 1, c: { e: 2, f: [{ g: 3, h: 4 }] }, k: 5 } },
+      {},
+    );
+    renderMarkup("{unset $d['a b']}{unset $d.c['e']}{unset $d.c.f[0].g}");
+    expect(vars().d).toEqual({ c: { f: [{ h: 4 }] }, k: 5 });
+  });
+
+  it('deletes the field a dynamic index names', () => {
+    state().init(
+      makeStoryData(),
+      { d: { x: 1, y: 2, z: 3 }, k: 'x', a: ['p', 'q', 'r'], i: 1 },
+      {},
+    );
+    state().setTemporary('t', 'y');
+    renderMarkup(
+      '{unset $d[$k]}{unset $d[_t]}{unset $d["z"+""]}{unset $a[$i]}',
+    );
+    expect(vars().d).toEqual({});
+    expect(1 in (vars().a as unknown[])).toBe(false);
+    expect(vars().a).toHaveLength(3);
+  });
+
+  it('deletes the field in every namespace', () => {
+    state().init(makeStoryData(), { obj: { x: 1, y: 2 } }, {});
+    state().setTemporary('t', { x: 1, y: 2 });
+    state().setTransient('r', { x: 1, y: 2 });
+    renderMarkup(
+      '{unset $obj["x"]}{unset _t["x"]}{unset %r["x"]}{for @l of [{ x: 1, y: 2 }]}{unset @l["x"]}{set $local = Object.keys(@l)}{/for}',
+    );
+    expect(vars().obj).toEqual({ y: 2 });
+    expect(state().temporary.t).toEqual({ y: 2 });
+    expect(state().transient.r).toEqual({ y: 2 });
+    expect(vars().local).toEqual(['y']);
+  });
+
+  it('does nothing for a field that is absent', () => {
+    state().init(makeStoryData(), { data: { a: 1 } }, {});
+    const el = renderMarkup('{unset $data["nope"]}{unset $data["a"]["b"]}');
+    expect(el.querySelector('.error')).toBeNull();
+    expect(vars().data).toEqual({ a: 1 });
+  });
+
+  it('does not delete a top-level key spelled like the path', () => {
+    state().init(
+      makeStoryData(),
+      { 'data["field"]': 1, data: { field: 2 } },
+      {},
+    );
+    renderMarkup('{unset $data["field"]}');
+    expect(vars()).toHaveProperty(['data["field"]'], 1);
+    expect(vars().data).toEqual({});
+  });
+
+  it.each([
+    '$data["field"] + 1',
+    '$data["field"], $other',
+    '$data["field"]()',
+    '$data[',
+    '$data[]',
+    '$data["field"] = 1',
+    '$data["field"]++',
+    '$data["a"]["b"].',
+    '$data.@x',
+    '$["field"]',
+    '$data[$k] ?? 1',
+  ])('rejects %s with a macro error and deletes nothing', (target) => {
+    state().init(
+      makeStoryData(),
+      { data: { field: 1, a: { b: 1 } }, other: 1, k: 'field' },
+      {},
+    );
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const el = renderMarkup(`{unset ${target}}`);
+    spy.mockRestore();
+    expect(el.querySelector('.error')?.textContent).toContain('{unset');
+    expect(vars().data).toEqual({ field: 1, a: { b: 1 } });
+    expect(vars().other).toBe(1);
+  });
+});
+
 describe('macros reacting synchronously to mutation code', () => {
   const performAll = (type: string, value?: unknown) => {
     for (const action of window.Story.getActions()) {

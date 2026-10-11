@@ -5,6 +5,7 @@ import {
   lexJs,
   lexTemplate,
   parseCode,
+  parseReferencePath,
   scanStringLiteral,
 } from '../../src/js-lexer';
 import type { JsGoal } from '../../src/js-lexer';
@@ -576,5 +577,47 @@ describe('parseCode', () => {
     expect(() => parseCode('function () {} / 2')).not.toThrow();
     expect(() => parseCode('p ? 1 : {} / 2', 'statements')).not.toThrow();
     expect(() => parseCode('{ a: 1 }')).not.toThrow();
+  });
+});
+
+describe('parseReferencePath', () => {
+  it('reads a variable with members after it', () => {
+    expect(parseReferencePath('$a')).toEqual({
+      sigil: '$',
+      name: 'a',
+      nested: false,
+    });
+    for (const [src, sigil] of [
+      ['$d["f"]', '$'],
+      ["_d['a b'].c[0]", '_'],
+      ['%r[$k][_i + 1]', '%'],
+      ['@l?.x', '@'],
+    ] as const) {
+      expect(parseReferencePath(src)).toMatchObject({ sigil, nested: true });
+    }
+  });
+
+  it('returns null for anything else', () => {
+    for (const src of [
+      'a',
+      'a.b',
+      '$a + 1',
+      '$a, $b',
+      '$a.b()',
+      '$a[0] = 1',
+      '$a[0]++',
+      '($a).b',
+      '($a.b)',
+      '$a ?? $b',
+      '"x"',
+    ]) {
+      expect(parseReferencePath(src), src).toBeNull();
+    }
+  });
+
+  it('throws for code that is not well-formed', () => {
+    for (const src of ['$a[', '$a[]', '$a.', '$a.@x']) {
+      expect(() => parseReferencePath(src), src).toThrow(CodeSyntaxError);
+    }
   });
 });
