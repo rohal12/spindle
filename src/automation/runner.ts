@@ -136,6 +136,11 @@ function findMatchingAction(
       return false;
     if (matcher.label !== undefined && action.label !== matcher.label)
       return false;
+    if (
+      matcher.disabled !== undefined &&
+      !!action.disabled !== matcher.disabled
+    )
+      return false;
     return true;
   });
 }

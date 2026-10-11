@@ -4,6 +4,8 @@ export interface ActionMatcher {
   target?: string;
   variable?: string;
   label?: string;
+  /** `true` matches only disabled actions, `false` only enabled ones. */
+  disabled?: boolean;
 }
 
 export interface AssertStep {

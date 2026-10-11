@@ -256,6 +256,32 @@ describe('automation runner', () => {
     expect(result.success).toBe(true);
   });
 
+  it('honors the disabled field of an action matcher (#484)', async () => {
+    const enabledBack = mockAction({ id: 'back:back', type: 'back' });
+    const disabledBack = mockAction({
+      id: 'back:back',
+      type: 'back',
+      disabled: true,
+    });
+    const run = async (actions: StoryAction[], disabled: boolean) => {
+      const api = mockStoryAPI();
+      (api as any)._setActions(actions);
+      return runAutomation(api, {
+        name: 'test',
+        steps: [{ assert: { actions: [{ type: 'back', disabled }] } }],
+      });
+    };
+
+    expect((await run([enabledBack], true)).success).toBe(false);
+    expect((await run([disabledBack], true)).success).toBe(true);
+    // An action that does not set `disabled` is enabled
+    expect((await run([enabledBack], false)).success).toBe(true);
+    expect((await run([disabledBack], false)).success).toBe(false);
+    expect(
+      (await run([{ ...enabledBack, disabled: false }], false)).success,
+    ).toBe(true);
+  });
+
   it('navigates to start passage if specified', async () => {
     const api = mockStoryAPI();
     const gotoSpy = vi.spyOn(api, 'goto');

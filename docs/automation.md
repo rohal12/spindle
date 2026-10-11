@@ -93,13 +93,14 @@ Check that the story is in an expected state. Multiple assertions can be combine
 
 Action matchers support these fields:
 
-| Field      | Description         |
-| ---------- | ------------------- |
-| `id`       | Exact action ID     |
-| `type`     | Action type         |
-| `target`   | Destination passage |
-| `variable` | Bound variable name |
-| `label`    | Display text        |
+| Field      | Description                                                     |
+| ---------- | --------------------------------------------------------------- |
+| `id`       | Exact action ID                                                 |
+| `type`     | Action type                                                     |
+| `target`   | Destination passage                                             |
+| `variable` | Bound variable name                                             |
+| `label`    | Display text                                                    |
+| `disabled` | `true` matches only disabled actions, `false` only enabled ones |
 
 ### `set`
 
