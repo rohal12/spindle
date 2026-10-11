@@ -76,9 +76,11 @@ function tabIndexAttr(el: HTMLElement): number | null {
 function isTabStop(el: HTMLElement): boolean {
   const tabIndex = tabIndexAttr(el);
   if (tabIndex !== null && tabIndex < 0) return false;
-  // Only an editing host takes focus, not `contenteditable="false"` or
-  // content nested in a host
+  // Only an editing host takes focus of its own, not `contenteditable="false"`
+  // or content nested in a host; an explicit tabindex makes any of them a
+  // stop (#507)
   if (
+    tabIndex === null &&
     el.hasAttribute('contenteditable') &&
     !el.matches('a[href], button, input, select, textarea, iframe, summary') &&
     (!el.isContentEditable || el.parentElement?.isContentEditable)
@@ -184,9 +186,12 @@ export function useModalFocus(
     const panel = panelRef.current;
     if (!panel) return;
 
+    // A focusable SVG element (a link in an illustration) is an opener too
+    // (#483)
+    const focused = document.activeElement;
     const opener =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
+      focused instanceof HTMLElement || focused instanceof SVGElement
+        ? focused
         : null;
     const entry: ModalEntry = { panel };
     openModals.push(entry);
