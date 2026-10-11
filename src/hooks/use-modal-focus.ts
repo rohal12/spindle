@@ -97,15 +97,18 @@ function isTabStop(el: HTMLElement): boolean {
       return tabIndex !== null;
     }
   }
-  if (el instanceof HTMLInputElement && el.type === 'radio' && el.name) {
+  // localName, not instanceof: elements of an embedded document are of
+  // another realm's classes
+  const input = el as HTMLInputElement;
+  if (el.localName === 'input' && input.type === 'radio' && input.name) {
     const group = Array.from(
       (
-        el.form ?? (el.getRootNode() as ParentNode)
+        input.form ?? (el.getRootNode() as ParentNode)
       ).querySelectorAll<HTMLInputElement>('input[type="radio"]'),
     ).filter(
       (r) =>
-        r.name === el.name &&
-        r.form === el.form &&
+        r.name === input.name &&
+        r.form === input.form &&
         // Of the members Tab can reach (#390)
         (tabIndexAttr(r) ?? 0) >= 0 &&
         isAvailable(r),
@@ -117,10 +120,11 @@ function isTabStop(el: HTMLElement): boolean {
 }
 
 /**
- * The elements of `root` in the order Tab visits them: positive tabindexes
- * first, ascending, then the others in document order.
+ * The elements of `root` (the dialog panel, or an embedded document) in the
+ * order Tab visits them: positive tabindexes first, ascending, then the
+ * others in document order.
  */
-function focusables(root: HTMLElement): HTMLElement[] {
+function focusables(root: ParentNode): HTMLElement[] {
   const stops = Array.from(
     root.querySelectorAll<HTMLElement>(FOCUSABLE),
   ).filter((el) => isAvailable(el) && isTabStop(el));
@@ -160,20 +164,63 @@ const SEGMENTED_INPUTS = new Set([
 
 /** Whether the element has native tab stops inside it, in its shadow tree. */
 function hasNativeStops(el: Element | null): el is HTMLElement {
-  if (el instanceof HTMLMediaElement) return el.controls;
+  if (!el) return false;
+  if (el.localName === 'audio' || el.localName === 'video') {
+    return (el as HTMLMediaElement).controls;
+  }
+  const input = el as HTMLInputElement;
   return (
-    el instanceof HTMLInputElement &&
-    SEGMENTED_INPUTS.has(el.type) &&
-    !el.readOnly
+    el.localName === 'input' &&
+    SEGMENTED_INPUTS.has(input.type) &&
+    !input.readOnly
   );
 }
 
-/** The tab stops of an embedded document, in tab order. */
-function frameStops(doc: Document | null): HTMLElement[] {
-  if (!doc) return [];
-  return Array.from(doc.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => isAvailable(el) && isTabStop(el),
-  );
+/** Whether `el` is an iframe element, of this realm or of an embedded one. */
+function isFrame(el: Element): el is HTMLIFrameElement {
+  return el.localName === 'iframe';
+}
+
+/** The document of a frame, or null when it is not accessible. */
+function frameDocument(frame: HTMLIFrameElement): Document | null {
+  try {
+    return frame.contentDocument;
+  } catch {
+    return null;
+  }
+}
+
+/** The iframe element that holds `doc`, null for the top document. */
+function frameOf(doc: Document): HTMLElement | null {
+  try {
+    return doc.defaultView?.frameElement as HTMLElement | null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The stop after (or before) `from` among `items`, the tab stops of `root`,
+ * undefined past the end. `from` may be no stop of its own: then the next one
+ * in document order. Outside `root`, the first (or last) stop.
+ */
+function nextStop(
+  items: HTMLElement[],
+  root: ParentNode,
+  from: Element | null,
+  backwards: boolean,
+): HTMLElement | undefined {
+  const at = from ? items.indexOf(from as HTMLElement) : -1;
+  if (at !== -1) return items[at + (backwards ? -1 : 1)];
+  if (from && from !== root && root.contains(from)) {
+    // Inside the root but not a tab stop: continue from its position
+    const after = (el: HTMLElement) =>
+      !!(from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return backwards
+      ? items.filter((el) => !after(el)).pop()
+      : items.find(after);
+  }
+  return backwards ? items[items.length - 1] : items[0];
 }
 
 export function useModalFocus(
@@ -225,32 +272,36 @@ export function useModalFocus(
 
     const top = () => openModals[openModals.length - 1]?.panel === panel;
 
-    /**
-     * Move focus to the next (or previous) modal control from `from`. The
-     * order is computed here, never left to the browser: its positive-tabindex
-     * sequence spans the whole document and would lead out of the modal
-     * (#424). `from` may be an element of an embedded document, whose frame
-     * element then stands in for it.
-     */
     /** Focus `el`; a frame is entered at its first (or last) control (#460). */
     const enter = (el: HTMLElement, backwards: boolean) => {
-      if (el instanceof HTMLIFrameElement) {
-        let inner: HTMLElement[] = [];
-        try {
-          inner = frameStops(el.contentDocument);
-        } catch {
-          // Not accessible: the frame itself takes focus
-        }
+      if (isFrame(el)) {
+        const doc = frameDocument(el);
+        const inner = doc ? focusables(doc) : [];
         const edge = backwards ? inner[inner.length - 1] : inner[0];
-        if (edge) {
-          edge.focus();
-          return;
-        }
+        // A frame inside the frame is entered in turn
+        if (edge) return enter(edge, backwards);
+        // Not accessible or without controls: the frame itself takes focus
       }
       el.focus();
     };
 
+    /**
+     * Move focus to the next (or previous) modal control from `from`. The
+     * order is computed here, never left to the browser: its positive-tabindex
+     * sequence spans the whole document and would lead out of the modal
+     * (#424). `from` is an element of the dialog, or of an embedded document;
+     * past the last control of a frame, focus goes on after the frame element
+     * in the document that holds it.
+     */
     const moveFocus = (from: Element | null, backwards: boolean) => {
+      const doc = from?.ownerDocument;
+      const frame = doc && doc !== document ? frameOf(doc) : null;
+      if (doc && frame) {
+        const next = nextStop(focusables(doc), doc, from, backwards);
+        if (next) enter(next, backwards);
+        else moveFocus(frame, backwards);
+        return;
+      }
       const items = focusables(panel);
       const first = items[0];
       const last = items[items.length - 1];
@@ -258,98 +309,65 @@ export function useModalFocus(
         panel.focus();
         return;
       }
-      const at = from ? items.indexOf(from as HTMLElement) : -1;
-      let next: HTMLElement | undefined;
-      if (at !== -1) {
-        next = items[at + (backwards ? -1 : 1)];
-      } else if (from && from !== panel && panel.contains(from)) {
-        // Inside the panel but not a tab stop: continue from its position
-        const after = (el: HTMLElement) =>
-          !!(
-            from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
-          );
-        next = backwards
-          ? items.filter((el) => !after(el)).pop()
-          : items.find(after);
-      } else {
-        next = backwards ? last : first;
-      }
+      const next = nextStop(items, panel, from, backwards);
       enter(next ?? (backwards ? last : first), backwards);
     };
 
     // The element whose native inner controls (a media element's, a date
-    // input's segments) Tab is stepping through
-    let steppingNative: { el: HTMLElement; backwards: boolean } | null = null;
+    // input's segments) Tab is stepping through, and the element of the
+    // dialog it stands in for (its frame element, for one in an embedded
+    // document)
+    let steppingNative: {
+      el: HTMLElement;
+      from: Element;
+      backwards: boolean;
+    } | null = null;
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!top()) return;
+    // Key events inside an embedded document never reach this one (#425), so
+    // every document of the dialog, the top one and the frames in it (#508),
+    // gets the handler. Escape closes the dialog. Tab moves on natively
+    // within a frame and is taken over at its first and last controls; `frame`
+    // is the frame element of an embedded `doc`.
+    const keyHandler = (doc: Document, frame: HTMLElement | null) => {
+      return (e: KeyboardEvent) => {
+        if (!top()) return;
 
-      if (e.key === 'Escape') {
-        if (!dismissible) return;
+        if (e.key === 'Escape') {
+          if (!dismissible) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+          return;
+        }
+
+        if (e.key !== 'Tab') return;
+        const active = doc.activeElement;
+        if (frame) {
+          steppingNative = null;
+          const inner = focusables(doc);
+          const edge = e.shiftKey ? inner[0] : inner[inner.length - 1];
+          if (edge && active !== edge && active !== doc.body) return;
+        }
+        // The controls of a media element and the segments of a date input
+        // are in its user-agent shadow tree, where the element stays the
+        // active one: they step through them natively, and onFocusIn takes
+        // over where focus leaves the element (#444, #461, #506).
+        if (hasNativeStops(active)) {
+          steppingNative = {
+            el: active,
+            from: frame ?? active,
+            backwards: e.shiftKey,
+          };
+          return;
+        }
         e.preventDefault();
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-
-      if (e.key !== 'Tab') return;
-      // The controls of a media element and the segments of a date input are
-      // in its user-agent shadow tree, where the element stays the active
-      // one: they step through them natively, and onFocusIn takes over where
-      // focus leaves the element (#444, #461).
-      const active = document.activeElement;
-      if (hasNativeStops(active)) {
-        steppingNative = { el: active, backwards: e.shiftKey };
-        return;
-      }
-      e.preventDefault();
-      moveFocus(active, e.shiftKey);
+        moveFocus(frame ?? active, e.shiftKey);
+      };
     };
     // Clicking elsewhere ends the stepping through the controls
     const onPointerDown = () => {
       steppingNative = null;
     };
-
-    // Key events inside an embedded document never reach this one (#425).
-    // Escape closes the dialog from there too; Tab moves on natively within
-    // the frame and is taken over at its first and last controls.
-    const controller = new AbortController();
-    const { signal } = controller;
-    const frameDocs = new Map<HTMLIFrameElement, Document>();
-    const attachFrame = (frame: HTMLIFrameElement) => {
-      let doc: Document | null = null;
-      try {
-        doc = frame.contentDocument;
-      } catch {
-        // Not accessible
-      }
-      // Already listening to this document
-      if (!doc || frameDocs.get(frame) === doc) return;
-      frameDocs.set(frame, doc);
-      const onFrameKeyDown = (e: KeyboardEvent) => {
-        if (!top()) return;
-        if (e.key !== 'Tab') return onKeyDown(e);
-        const inner = frameStops(doc!);
-        const active = doc!.activeElement;
-        const edge = e.shiftKey ? inner[0] : inner[inner.length - 1];
-        if (!edge || active === edge || active === doc!.body) {
-          e.preventDefault();
-          moveFocus(frame, e.shiftKey);
-        }
-      };
-      doc.addEventListener('keydown', onFrameKeyDown, { signal });
-    };
-    const attachFrames = () => {
-      panel.querySelectorAll('iframe').forEach(attachFrame);
-    };
-    // load doesn't bubble; a frame's document is replaced when it navigates
-    const onLoad = (e: Event) => {
-      if (e.target instanceof HTMLIFrameElement) attachFrame(e.target);
-    };
-    panel.addEventListener('load', onLoad, { capture: true, signal });
-    const frames = new MutationObserver(attachFrames);
-    frames.observe(panel, { childList: true, subtree: true });
-    attachFrames();
 
     // Focus that lands outside the dialog anyway, e.g. leaving a frame whose
     // document can't be reached, is brought back in.
@@ -357,9 +375,9 @@ export function useModalFocus(
       const target = e.target;
       if (steppingNative && target !== steppingNative.el && top()) {
         // Focus left the media controls: on to the modal's next control
-        const { el, backwards } = steppingNative;
+        const { from, backwards } = steppingNative;
         steppingNative = null;
-        moveFocus(el, backwards);
+        moveFocus(from, backwards);
         return;
       }
       if (!top() || !(target instanceof Node) || panel.contains(target)) return;
@@ -369,11 +387,6 @@ export function useModalFocus(
       moveFocus(null, false);
     };
 
-    document.addEventListener('keydown', onKeyDown, { signal });
-    document.addEventListener('pointerdown', onPointerDown, {
-      capture: true,
-      signal,
-    });
     // Focus that leaves the media element for nothing (past its last control,
     // with no tab stop after it in the document) sends no focusin: the
     // modal's next control takes it at once.
@@ -383,13 +396,56 @@ export function useModalFocus(
         return;
       }
       steppingNative = null;
-      moveFocus(pending.el, pending.backwards);
+      moveFocus(pending.from, pending.backwards);
     };
-    document.addEventListener('focusout', onFocusOut, { signal });
+
+    const controller = new AbortController();
+    const { signal } = controller;
+    // The listeners of the dialog's document and of each embedded one
+    const listen = (doc: Document, frame: HTMLElement | null) => {
+      doc.addEventListener('keydown', keyHandler(doc, frame), { signal });
+      doc.addEventListener('pointerdown', onPointerDown, {
+        capture: true,
+        signal,
+      });
+      doc.addEventListener('focusout', onFocusOut, { signal });
+    };
+    const frameDocs = new Map<HTMLIFrameElement, Document>();
+    const observers: MutationObserver[] = [];
+    const attachFrame = (frame: HTMLIFrameElement) => {
+      const doc = frameDocument(frame);
+      // Already listening to this document
+      if (!doc || frameDocs.get(frame) === doc) return;
+      frameDocs.set(frame, doc);
+      listen(doc, frame);
+      watchFrames(doc);
+    };
+    // Attach to the frames in `root`, now and as they come and navigate.
+    // load doesn't bubble; a frame's document is replaced when it navigates
+    const watchFrames = (root: HTMLElement | Document) => {
+      const attachAll = () =>
+        root.querySelectorAll('iframe').forEach(attachFrame);
+      root.addEventListener(
+        'load',
+        (e) => {
+          if (e.target instanceof Node && isFrame(e.target as Element)) {
+            attachFrame(e.target as HTMLIFrameElement);
+          }
+        },
+        { capture: true, signal },
+      );
+      const observer = new MutationObserver(attachAll);
+      observer.observe(root, { childList: true, subtree: true });
+      observers.push(observer);
+      attachAll();
+    };
+    watchFrames(panel);
+
+    listen(document, null);
     document.addEventListener('focusin', onFocusIn, { signal });
     return () => {
       controller.abort();
-      frames.disconnect();
+      observers.forEach((o) => o.disconnect());
     };
   }, [dismissible, onClose]);
 }
