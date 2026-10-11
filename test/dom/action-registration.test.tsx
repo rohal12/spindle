@@ -83,6 +83,26 @@ describe('action registration', () => {
       ]);
     });
 
+    // #486: the second link to Room and the link to the passage "Room:2"
+    // both generate "link:Room:2" before either is registered
+    it('registers a distinct action for each of three links (#486)', () => {
+      useStoryStore
+        .getState()
+        .init(
+          makeStoryData([
+            makePassage(1, 'Start', 'Start'),
+            makePassage(2, 'Room', 'Room'),
+            makePassage(3, 'Room:2', 'Other room'),
+          ]),
+        );
+      const el = renderPassage('[[Room]] [[Room]] [[Room:2]]');
+      expect(el.querySelectorAll('a')).toHaveLength(3);
+      const links = getActions().filter((a) => a.type === 'link');
+      expect(links.map((a) => a.target)).toEqual(['Room', 'Room', 'Room:2']);
+      expect(new Set(links.map((a) => a.id)).size).toBe(3);
+      expect(links[2]!.id).not.toBe('link:Room:2');
+    });
+
     it('unregisters on unmount', () => {
       const container = document.createElement('div');
       const passage = makePassage(1, 'Test', '[[Forest]]');

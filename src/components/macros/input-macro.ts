@@ -45,6 +45,7 @@ export function defineInputMacro(
 ): void {
   defineMacro({
     name,
+    interpolate: true,
     storeVar: true,
     parameters: [
       VARIABLE_PARAMETER,

@@ -66,19 +66,30 @@ interface Entry {
  */
 const actions = new Map<string, Entry[]>();
 const idCounters = new Map<string, number>();
+/**
+ * IDs handed out and not yet registered, or registered: a control registers
+ * in a layout effect, after every control of the same render has allocated its
+ * ID, so the registry alone can't tell that "link:Room:2" is taken (#486).
+ * Released when the last registration of an ID goes.
+ */
+const reserved = new Set<string>();
 
 /**
  * The counters reset on every navigation, so a passage's controls get the
  * same IDs each time it is shown. Controls that stay mounted across
  * navigations (e.g. in StoryInterface) keep theirs, so allocation skips every
- * ID still registered (#233).
+ * ID still registered (#233) and every one allocated but not registered yet
+ * (#486).
  */
 export function generateActionId(
   type: ActionType,
   key: string,
   authorId?: string,
 ): string {
-  if (authorId) return authorId;
+  if (authorId) {
+    reserved.add(authorId);
+    return authorId;
+  }
 
   const base = `${type}:${key}`;
   let count = idCounters.get(base) ?? 0;
@@ -86,8 +97,9 @@ export function generateActionId(
   do {
     count++;
     id = count === 1 ? base : `${base}:${count}`;
-  } while (actions.has(id));
+  } while (actions.has(id) || reserved.has(id));
   idCounters.set(base, count);
+  reserved.add(id);
   return id;
 }
 
@@ -119,7 +131,10 @@ export function registerAction(action: StoryAction): ActionRegistration {
       const index = current ? current.indexOf(entry) : -1;
       if (!current || index === -1) return;
       current.splice(index, 1);
-      if (current.length === 0) actions.delete(id);
+      if (current.length === 0) {
+        actions.delete(id);
+        reserved.delete(id);
+      }
       if (index === current.length) notify(); // it was the listed one
     },
   };
@@ -170,11 +185,14 @@ function listed(entries: Entry[]): StoryAction {
 
 export function clearActions(): void {
   actions.clear();
+  reserved.clear();
   notify();
 }
 
 export function resetIdCounters(): void {
   idCounters.clear();
+  // Only what is registered stays taken; the rest was never mounted
+  for (const id of reserved) if (!actions.has(id)) reserved.delete(id);
 }
 
 function notify(): void {

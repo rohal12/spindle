@@ -428,20 +428,22 @@ The declared parameters are also how your macro reads its arguments: `ctx.args` 
 
 Every declared parameter needs a `type`; there is no default. `Story.defineMacro()` throws when a parameter (or an option of an `options` parameter) has none, or one not in this table, naming the macro and the parameter. A macro that declares no `parameters` reads `props.rawArgs` itself, as `{shout}` does in [Reading Arguments](#reading-arguments).
 
-| `type`         | Reads                                                                                           |
-| -------------- | ----------------------------------------------------------------------------------------------- |
-| `"expression"` | Code, as written                                                                                |
-| `"statements"` | Code run as statements (`{set}`), as written                                                    |
-| `"passage"`    | A passage name: a quoted string or an expression, as written (`{goto "Bob's room"}`)            |
-| `"variable"`   | A variable reference such as `$name` or `"$name"`, as written                                   |
-| `"string"`     | One quoted string, unquoted; anything else leaves the argument `undefined`                      |
-| `"text"`       | One quoted string, or text with any loose quotes stripped                                       |
-| `"names"`      | A comma-separated list of names, as an array (`@item, @i`)                                      |
-| `"delay"`      | A duration (`2s`, `500ms`, `300`) in milliseconds                                               |
-| `"number"`     | A number                                                                                        |
-| `"flag"`       | The parameter's name as a keyword at the start or end of the arguments: `true` or `false`       |
-| `"separator"`  | A word such as `of` (or `=`) between the parameters before and after it: `true` or `false`      |
-| `"options"`    | Keywords named by its own `parameters`, each followed by a quoted string or a number: an object |
+| `type`         | Reads                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| `"expression"` | Code, as written                                                                                             |
+| `"statements"` | Code run as statements (`{set}`), as written                                                                 |
+| `"passage"`    | A passage name: a quoted string or an expression, as written (`{goto "Bob's room"}`)                         |
+| `"variable"`   | A variable reference such as `$name` or `"$name"`, as written                                                |
+| `"string"`     | One quoted string, unquoted; anything else leaves the argument `undefined`                                   |
+| `"text"`       | One quoted string, or text with any loose quotes stripped                                                    |
+| `"names"`      | A comma-separated list of names, as an array (`@item, @i`)                                                   |
+| `"delay"`      | A duration (`2s`, `500ms`, `300`) in milliseconds                                                            |
+| `"number"`     | A number                                                                                                     |
+| `"flag"`       | The parameter's name as a keyword at the start or end of the arguments, or as all of them: `true` or `false` |
+| `"separator"`  | A word such as `of` (or `=`) between the parameters before and after it: `true` or `false`                   |
+| `"options"`    | Keywords named by its own `parameters`, each followed by a quoted string or a number: an object              |
+
+A flag needs no other argument: with only `flag` parameters, `{badge compact muted}` and `{badge compact}` set the flags they name. A lone word is the flag unless a `required` argument is waiting for it (`{include inline}` includes the passage held by `inline`).
 
 For example, `{loot "Gold" 50 rare}` with these parameters gives `ctx.args` `{ rare: true, item: "Gold", amount: "50" }`:
 

@@ -54,7 +54,13 @@ function formatDate(iso: string): string {
   });
 }
 
-export function SaveManagerContent() {
+export function SaveManagerContent({
+  className,
+  id,
+}: {
+  className?: string;
+  id?: string;
+}) {
   const [mode, setMode] = useState<'save' | 'load'>('load');
   const [groups, setGroups] = useState<PlaythroughGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -307,7 +313,10 @@ export function SaveManagerContent() {
   const totalSaves = groups.reduce((n, g) => n + g.saves.length, 0);
 
   return (
-    <div class="save-manager">
+    <div
+      id={id}
+      class={className ? `save-manager ${className}` : 'save-manager'}
+    >
       <div class="saves-header">
         <div class="saves-header-left">
           <div class="saves-mode-toggle">
@@ -512,7 +521,13 @@ export function SaveManagerContent() {
 
 defineMacro({
   name: 'save-manager',
-  render() {
-    return <SaveManagerContent />;
+  interpolate: true,
+  render(_props, ctx) {
+    return (
+      <SaveManagerContent
+        className={ctx.className}
+        id={ctx.id}
+      />
+    );
   },
 });

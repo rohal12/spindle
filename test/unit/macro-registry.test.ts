@@ -341,4 +341,26 @@ describe('builtin macros have metadata', () => {
     const textboxMacro = registry.find((m) => m.name === 'textbox');
     expect(textboxMacro!.storeVar).toBe(true);
   });
+
+  // #487: selectors resolve only on macros with `interpolate`, so each
+  // built-in that renders something must have it. A new built-in that renders
+  // nothing goes in this list; any other fails here until it resolves them.
+  it('every built-in that renders output resolves selectors', () => {
+    const rendersNothing = [
+      'computed',
+      'do',
+      'goto',
+      'set',
+      'stop',
+      'unset',
+      'unwatch',
+      'watch',
+      'widget',
+    ];
+    const without = builtinSnapshot
+      .filter((m) => m.source === 'builtin' && !m.interpolate)
+      .map((m) => m.name)
+      .sort();
+    expect(without).toEqual(rendersNothing);
+  });
 });
