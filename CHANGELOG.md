@@ -174,6 +174,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Story.performAction()` returns the promise of an action that finishes later (`{quicksave}`, `{quickload}`), `Story.waitForActions()` waits for such actions, and the automation runner awaits them, so a step after `load:quickload` no longer sees the old passage (#504).
 - A widget that defines a block widget (`{widget "inner"}{@children}{/widget}` in its body) is an inline widget: the nested `{@children}` belongs to the innermost definition, in the runtime, the startup scan and `widgetDefinitions()` alike, so `{outer}` needs no closer (#522). A widget redefined as inline stops being a block macro: the parser follows the latest definition (the widget passages register before StoryInit), while a block macro registered under the same name stays one (#523).
 - `collectStoryPassageReferences()` returns references in source order whatever the order of a macro's keyword arguments. ([#277](https://github.com/rohal12/spindle/issues/277))
+- The automation runner waits for the UI to render after a `set` step (also one combined with an `action`), so a conditional choice the step shows or removes is registered or gone before the next assert or action (#514).
+- `{repeat}` renders its body in a keyed fragment instead of a `<span>` per tick, so table rows, list items and the like stay direct children of their parent (#520).
+- Passage data that is not HTML-encoded keeps literal character references in parsed elements: `<span title="&amp;lt;">&amp;lt;</span>` shows `&lt;` in both, not `<` (#526).
+- A static `value`, `checked` or `selected` on a native control is its HTML default (reset restores it) and no longer overwrites what the reader entered on each rerender; a value bound to variables (`value="{$name}"`) is still live (#528).
 
 ### Added
 

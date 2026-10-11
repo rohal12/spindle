@@ -57,11 +57,18 @@ const VOID_ELEMENTS = new Set([
  * early, while text it leaves unescaped (in `<style>`, comments) would be
  * decoded wrongly.
  */
-function passageMarkup(parent: ParentNode): string {
+function passageMarkup(parent: ParentNode, inElement = false): string {
+  // Text of the passage itself is its source. Text in a parsed element is
+  // what the browser decoded, so a reference it left (`&amp;lt;`, now `&lt;`)
+  // is written again as one, or rendering would decode it a second time.
+  const escapeText = inElement && !isLiteralTextElement(parent);
   let markup = '';
   for (const node of Array.from(parent.childNodes)) {
     if (node.nodeType === Node.TEXT_NODE) {
-      markup += (node as Text).data;
+      const { data } = node as Text;
+      markup += escapeText
+        ? escapeMarkupText(data, false, escapeTextReferences)
+        : data;
     } else if (node.nodeType === Node.COMMENT_NODE) {
       markup += `<!--${(node as Comment).data}-->`;
     } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -84,7 +91,7 @@ function elementMarkup(el: Element): string {
   }
   const content =
     name === 'template' ? (el as HTMLTemplateElement).content : el;
-  return `${markup}${passageMarkup(content)}</${name}>`;
+  return `${markup}${passageMarkup(content, true)}</${name}>`;
 }
 
 /**
@@ -112,19 +119,43 @@ function quoteAttribute(name: string, value: string): string {
       tag.attributes[probe] === quoted.slice(1, -1)
     );
   };
+  // Rendering decodes the references in the value, so one the browser
+  // already decoded is written again as one
+  const text = escapeMarkupText(value, code, escapeAttributeReferences);
   return (
-    [`"${value}"`, `'${value}'`].find(readsBack) ??
-    `"${escapeTextQuotes(value, code)}"`
+    [`"${text}"`, `'${text}'`].find(readsBack) ??
+    `"${escapeMarkupText(text, code, escapeQuotes)}"`
+  );
+}
+
+const escapeQuotes = (text: string) => text.replace(/"/g, '&quot;');
+const escapeAttributeReferences = (text: string) => text.replace(/&/g, '&amp;');
+/** Also `<`, which would start a tag in the passage. */
+const escapeTextReferences = (text: string) =>
+  escapeAttributeReferences(text).replace(/</g, '&lt;');
+
+/**
+ * Elements whose text the renderer shows as written, with no character
+ * references decoded: the one it treats as raw text (`style`, see
+ * HtmlNodeRenderer), for which the browser did not decode any either.
+ */
+function isLiteralTextElement(parent: ParentNode): boolean {
+  return (
+    (parent as Element).localName === 'style' &&
+    (parent as Element).namespaceURI === HTML_NAMESPACE
   );
 }
 
 /**
- * `value` with the double quotes in its text written as `&quot;`, but not
- * those in markup (`{print "a"}`) or, in a code attribute, in sigil
- * references (see splitSigilTemplate), which are code.
+ * `value` with the text in it escaped by `escape`, but not markup
+ * (`{print "a"}`) or, in a code attribute, sigil references (see
+ * splitSigilTemplate), which are code.
  */
-function escapeTextQuotes(value: string, code: boolean): string {
-  const escape = (text: string) => text.replace(/"/g, '&quot;');
+function escapeMarkupText(
+  value: string,
+  code: boolean,
+  escape: (text: string) => string,
+): string {
   if (code) {
     return splitSigilTemplate(value)
       .map((part) =>
