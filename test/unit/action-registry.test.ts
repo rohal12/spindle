@@ -166,6 +166,41 @@ describe('action-registry', () => {
       expect(generateActionId('link', 'Next')).toBe('link:Next');
     });
 
+    // #486: a passage named "Room:2" and a second link to "Room" both want
+    // "link:Room:2", and nothing is registered until the layout effects run
+    it('does not hand out an id twice before either is registered', () => {
+      const ids = [
+        generateActionId('link', 'Room'),
+        generateActionId('link', 'Room'),
+        generateActionId('link', 'Room:2'),
+      ];
+      expect(new Set(ids).size).toBe(3);
+      expect(ids.slice(0, 2)).toEqual(['link:Room', 'link:Room:2']);
+    });
+
+    it('does not hand out an id twice in the other order either', () => {
+      const ids = [
+        generateActionId('link', 'Room:2'),
+        generateActionId('link', 'Room'),
+        generateActionId('link', 'Room'),
+      ];
+      expect(new Set(ids).size).toBe(3);
+    });
+
+    it('skips an author id taken before it is registered', () => {
+      generateActionId('link', 'Next', 'link:Next');
+      expect(generateActionId('link', 'Next')).toBe('link:Next:2');
+    });
+
+    it('releases a reserved id once its registration is gone', () => {
+      const registration = registerAction(
+        makeAction({ id: generateActionId('link', 'Next') }),
+      );
+      registration.unregister();
+      resetIdCounters();
+      expect(generateActionId('link', 'Next')).toBe('link:Next');
+    });
+
     it('skips a registered author id that matches a generated one', () => {
       registerAction(
         makeAction({ id: generateActionId('link', 'Next', 'link:Next') }),
