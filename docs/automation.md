@@ -37,6 +37,8 @@ An automation script is a YAML file with two required fields:
 | `start` | `string?` | Optional passage to navigate to before running steps |
 | `steps` | `array`   | Sequence of steps to execute                         |
 
+`parseAutomationYaml` validates the script and throws an error naming the step (`Invalid automation step 3: …`) for anything it would otherwise ignore: an unknown field in a step, an `assert` or action matcher, a value of the wrong type (such as `assert: {score: 100}`, which needs the `variables:` nesting, or an empty `assert:`), a `start` that is not a passage name, or a negative `wait`.
+
 ## Step Types
 
 Each step is an object with one or more of these fields. Within a single step, they execute in this order: `set` → `action` → `wait` → `assert`.
