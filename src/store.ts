@@ -676,6 +676,24 @@ function switchToLoadedPlaythrough(ifid: string, id: string): void {
   switchToPlaythrough(id, stored);
 }
 
+/**
+ * Move the running game to the playthrough a save it wrote was stored in,
+ * when that is not the one it asked for: another tab deleted the game's
+ * playthrough, and the save took the story's current one (#527). `requested`
+ * is the playthrough the save was issued with (see resolvePlaythroughId). A
+ * game that has switched since (a restart, a load) stays where it is.
+ */
+export async function followSavedPlaythrough(
+  requested: string | PromiseLike<string>,
+  saved: { meta: { playthroughId: string } } | undefined,
+): Promise<void> {
+  const id = saved?.meta.playthroughId;
+  const asked = await requested;
+  if (id && id !== asked && knownPlaythroughId() === asked) {
+    switchToPlaythrough(id, Promise.resolve());
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Superseded loads
 // ---------------------------------------------------------------------------
@@ -1577,7 +1595,14 @@ export const useStoryStore = create<StoryState>()(
             state.saveError = null;
           });
           // Queued now, in call order with other storage operations
-          await quickSave(storyData.ifid, playthrough, payload, slot, custom);
+          const saved = await quickSave(
+            storyData.ifid,
+            playthrough,
+            payload,
+            slot,
+            custom,
+          );
+          await followSavedPlaythrough(playthrough, saved);
           recordKnownSave(set, slot, true);
         }),
         'spindle: failed to save',

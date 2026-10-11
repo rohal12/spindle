@@ -101,9 +101,11 @@ function ensureVariableChangedSubscription(): void {
       prefix: string,
     ) => {
       for (const key of changedNames(prev, next)) {
+        // As Story.get() hands values out: a retained value must not be a
+        // way to change live state or recorded history (#518)
         changed[prefix + key] = {
-          from: ownValue(prev, key),
-          to: ownValue(next, key),
+          from: readOnlyValue(ownValue(prev, key)),
+          to: readOnlyValue(ownValue(next, key)),
         };
       }
     };
