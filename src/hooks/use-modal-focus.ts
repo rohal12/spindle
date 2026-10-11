@@ -138,8 +138,21 @@ function focusables(root: ParentNode): HTMLElement[] {
   ];
 }
 
+/** An element that can take focus: HTML or SVG, of this realm or another. */
+type Focusable = HTMLElement | SVGElement;
+
+/**
+ * The opener of a dialog, outermost first: the focused element of the
+ * document, then the focused element of the frame it is, and so on. The last
+ * is the deepest one; the others are what to fall back on when it is gone
+ * (#530).
+ */
+type OpenerChain = Focusable[];
+
 interface ModalEntry {
   panel: HTMLElement;
+  /** Where focus returns on close; handed down when a lower dialog closes. */
+  opener: OpenerChain;
 }
 
 /** Open modal dialogs, innermost last. Only the topmost handles keys. */
@@ -223,6 +236,43 @@ function nextStop(
   return backwards ? items[items.length - 1] : items[0];
 }
 
+/**
+ * The focused element, through the accessible frame documents: a frame holding
+ * the focus is followed to its own focused element, unless that is its body
+ * (nothing focused in it) or its document can't be reached (then the frame
+ * itself is the deepest). Elements of an embedded document are of another
+ * realm's classes, hence the duck typing. A focusable SVG element (a link in an
+ * illustration) counts (#483).
+ */
+function activeChain(): OpenerChain {
+  const chain: OpenerChain = [];
+  let doc: Document | null = document;
+  while (doc) {
+    const el: Element | null = doc.activeElement;
+    if (!el || (chain.length > 0 && el === doc.body)) break;
+    if (typeof (el as HTMLElement).focus !== 'function') break;
+    chain.push(el as Focusable);
+    doc = isFrame(el) ? frameDocument(el) : null;
+  }
+  return chain;
+}
+
+/** Whether `el` is still part of a live document. */
+function isLive(el: Element): boolean {
+  return el.isConnected && !!el.ownerDocument.defaultView;
+}
+
+/** Focus the deepest element of `chain` that is still there. */
+function restoreOpener(chain: OpenerChain): void {
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const el = chain[i]!;
+    if (isLive(el)) {
+      el.focus();
+      return;
+    }
+  }
+}
+
 export function useModalFocus(
   panelRef: RefObject<HTMLElement | null>,
   bodySelector: string,
@@ -233,14 +283,7 @@ export function useModalFocus(
     const panel = panelRef.current;
     if (!panel) return;
 
-    // A focusable SVG element (a link in an illustration) is an opener too
-    // (#483)
-    const focused = document.activeElement;
-    const opener =
-      focused instanceof HTMLElement || focused instanceof SVGElement
-        ? focused
-        : null;
-    const entry: ModalEntry = { panel };
+    const entry: ModalEntry = { panel, opener: activeChain() };
     openModals.push(entry);
 
     const body = panel.querySelector<HTMLElement>(bodySelector) ?? panel;
@@ -257,12 +300,22 @@ export function useModalFocus(
     return () => {
       const i = openModals.indexOf(entry);
       if (i !== -1) openModals.splice(i, 1);
+      // Dialogs closing together unmount the lower one first, while focus is
+      // still in the upper: it can't restore anything yet, and the upper one's
+      // own opener is in this panel, about to be gone. The upper dialogs take
+      // over this one's opener (#529).
+      for (const upper of openModals.slice(i === -1 ? openModals.length : i)) {
+        const [outer] = upper.opener;
+        if (!outer || panel.contains(outer) || !upper.opener.some(isLive)) {
+          upper.opener = entry.opener;
+        }
+      }
       // Restore focus only if it was inside this dialog (or lost to <body>);
       // don't steal it from somewhere author code moved it on purpose.
       const active = document.activeElement;
       const focusWasHere =
         !active || active === document.body || panel.contains(active);
-      if (focusWasHere && opener?.isConnected) opener.focus();
+      if (focusWasHere) restoreOpener(entry.opener);
     };
   }, []);
 
