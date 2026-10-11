@@ -3,14 +3,14 @@
  * without running it (see discoverMacros): the literal parts of the config
  * object, and nothing else.
  */
-import { lexJs } from './js-lexer';
 import {
   checkParameterTypes,
   type ParameterDef,
   type ParameterType,
   type StringHolds,
 } from './registry';
-import { Reader } from './static-literal';
+import { Bindings } from './js-bindings';
+import { Reader, regexLiterals } from './static-literal';
 import type { ToolingMacro } from './tooling';
 
 /** A macro that a `defineMacro` call declares, and where its name is written. */
@@ -158,19 +158,21 @@ class ConfigReader extends Reader {
   }
 }
 
-/** The text with everything but code (strings, comments, regexes) blanked. */
-function codeOnly(source: string): string {
+/**
+ * The text with everything but code (strings, comments, regexes) blanked, and
+ * where its regex literals are.
+ */
+function codeOnly(source: string): {
+  code: string;
+  regexes: Map<number, number>;
+} {
   const chars = Array.from({ length: source.length }, () => ' ');
-  lexJs(
-    source,
-    {
-      code(ch, index) {
-        for (let k = 0; k < ch.length; k++) chars[index + k] = ch[k]!;
-      },
+  const regexes = regexLiterals(source, 'statements', {
+    code(ch, index) {
+      for (let k = 0; k < ch.length; k++) chars[index + k] = ch[k]!;
     },
-    'statements',
-  );
-  return chars.join('');
+  });
+  return { code: chars.join(''), regexes };
 }
 
 const stringOf = (d: Datum | undefined) =>
@@ -265,8 +267,9 @@ function macroOf(config: Datum): DiscoveredMacro | undefined {
  * `source` (JavaScript: a script passage, the body of a `{do}`, a project
  * file) declare, in source order, read from the text without running it. A
  * call whose config is an object literal (or a variable declared as one with
- * `const`, `let` or `var`) and whose `name` is a string is found, wherever it
- * is, even inside a function. Only what is written out is read: a `block`,
+ * `const`, `let` or `var` that the call sees, see Bindings: not a parameter, a
+ * pattern or an assignment of the name) and whose `name` is a string is found,
+ * wherever it is, even inside a function. Only what is written out is read: a `block`,
  * `interpolate`, `storeVar` or `merged` that is a boolean literal, the
  * strings of `subMacros`, and `parameters` when every one is an object
  * literal with a string `name` and `type` (and `holds`, `required`,
@@ -276,20 +279,20 @@ function macroOf(config: Datum): DiscoveredMacro | undefined {
  * throws for none.
  */
 export function discoverMacros(source: string): DiscoveredMacro[] {
-  const code = codeOnly(source);
+  const { code, regexes } = codeOnly(source);
   const found: DiscoveredMacro[] = [];
+  let bindings: Bindings | undefined;
   for (const call of code.matchAll(CALL_RE)) {
     let at = call.index + call[0].length;
     if (code.charAt(at) !== '{') {
       const variable = IDENTIFIER_ARGUMENT_RE.exec(code.slice(at))?.[1];
       if (!variable) continue;
-      const declaration = new RegExp(
-        `(?<![\\w$.])(?:const|let|var)\\s+${variable.replace(/\$/g, '\\$')}\\s*=\\s*(?=\\{)`,
-      ).exec(code);
-      if (!declaration) continue;
-      at = declaration.index + declaration[0].length;
+      bindings ??= new Bindings(code);
+      const object = bindings.objectOf(variable, call.index);
+      if (object === undefined) continue;
+      at = object;
     }
-    const reader = new ConfigReader(source);
+    const reader = new ConfigReader(source, { goal: 'statements', regexes });
     reader.i = at;
     const config = reader.datum();
     const macro = config && macroOf(config);
