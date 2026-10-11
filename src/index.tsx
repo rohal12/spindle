@@ -278,13 +278,10 @@ export function boot() {
 
   render(<App />, root);
 
-  const pending = getReadyPromise();
-  if (pending) {
-    // The event follows the render of the passage the story is at (#430)
-    pending.then(passageShown).then(() => {
-      document.dispatchEvent(new CustomEvent(':storyready'));
-    });
-  } else {
+  // The event follows the render of the passage the story is at: after
+  // `ready()` when rendering is deferred (#430), and after a `{goto}` made
+  // while the first passage rendered has shown its destination (#505)
+  (getReadyPromise() ?? Promise.resolve()).then(passageShown).then(() => {
     document.dispatchEvent(new CustomEvent(':storyready'));
-  }
+  });
 }

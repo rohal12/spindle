@@ -16,10 +16,51 @@ import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
 
 /**
+ * Copy the live state cloneNode drops from `source` into its clone: the
+ * pixels of each canvas and the values of form controls (cloneNode keeps
+ * attributes only, and a canvas's bitmap is not one). Source and clone have
+ * the same structure, so elements pair up by position. Best effort: a canvas
+ * that can not be drawn from stays as cloned.
+ */
+function copyLiveState(source: Element, clone: Element): void {
+  const pairs = <T extends Element>(
+    selector: string,
+    each: (a: T, b: T) => void,
+  ) => {
+    const from = source.querySelectorAll<T>(selector);
+    const to = clone.querySelectorAll<T>(selector);
+    from.forEach((el, i) => to[i] && each(el, to[i]!));
+  };
+
+  pairs<HTMLCanvasElement>('canvas', (from, to) => {
+    if (!from.width || !from.height) return;
+    try {
+      if (to.width !== from.width) to.width = from.width;
+      if (to.height !== from.height) to.height = from.height;
+      to.getContext('2d')?.drawImage(from, 0, 0);
+    } catch {
+      // tainted, lost or foreign-context canvas: the snapshot shows it blank
+    }
+  });
+
+  pairs<HTMLInputElement>('input, textarea, select', (from, to) => {
+    if (from instanceof HTMLInputElement && to instanceof HTMLInputElement) {
+      to.checked = from.checked;
+    }
+    // A file input's value can not be set
+    if (!(from instanceof HTMLInputElement && from.type === 'file')) {
+      to.value = from.value;
+    }
+  });
+}
+
+/**
  * Create a snapshot clone of a .passage element for outgoing transitions.
  * - Strips `id` attributes from the clone tree
  * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
  * - Pauses/mutes any <audio>/<video>
+ * - Copies what cloneNode leaves behind: canvas pixels and the values of
+ *   form controls (#512)
  * - Adds `.passage-snapshot` class and `data-transition` attribute
  */
 function createSnapshot(
@@ -27,6 +68,7 @@ function createSnapshot(
   transitionType: string,
 ): HTMLElement {
   const clone = passageEl.cloneNode(true) as HTMLElement;
+  copyLiveState(passageEl, clone);
 
   // Strip id attributes to avoid duplicates
   clone.removeAttribute('id');
