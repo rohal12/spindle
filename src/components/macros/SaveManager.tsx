@@ -8,6 +8,7 @@ import {
 import {
   useStoryStore,
   resolvePlaythroughId,
+  followSavedPlaythrough,
   issueStateReplacement,
   isStateReplacementSuperseded,
 } from '../../store';
@@ -154,7 +155,8 @@ export function SaveManagerContent({
     try {
       await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
         // Queued now, in call order with other storage operations
-        return createSave(ifid, playthrough, payload);
+        const saved = await createSave(ifid, playthrough, payload);
+        await followSavedPlaythrough(playthrough, saved);
       });
       showStatus(temporary ? 'Save created (temporary)' : 'Save created');
       await refresh();
@@ -168,9 +170,14 @@ export function SaveManagerContent({
     try {
       await saveWithHooks(undefined, undefined, beginSave, async (payload) => {
         // Only the current playthrough's saves offer "Save Here"
-        if (!(await overwriteSave(saveId, payload, undefined, playthrough))) {
-          throw new Error('Save not found');
-        }
+        const saved = await overwriteSave(
+          saveId,
+          payload,
+          undefined,
+          playthrough,
+        );
+        if (!saved) throw new Error('Save not found');
+        await followSavedPlaythrough(playthrough, saved);
       });
       showStatus('Save overwritten');
       await refresh();
