@@ -681,6 +681,13 @@ export type PathChange =
        * holding equal content there still takes the write.
        */
       alias?: true;
+      /**
+       * Set for a write a caller made explicitly (a `Story.set` of a save
+       * hook), not found by a diff: the value is the one to hold at the
+       * path, also for an array's length and for an index past its end,
+       * which a diff's changes leave to the array they were found in.
+       */
+      absolute?: true;
     }
   | {
       path: string[];

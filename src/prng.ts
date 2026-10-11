@@ -106,19 +106,26 @@ export function resetPRNG(): void {
   generator = null;
 }
 
+/** The position each running withoutDraws() takes its draws back to. */
+const neutralScopes: Array<{ generation: number; seed: string; pull: number }> =
+  [];
+
 /**
  * Run `fn` without its draws advancing the sequence: the draws it makes are
  * taken back afterwards (also when it throws), so the next draws return the
  * same values again. Save and load event handlers run like this, so that
  * saving or loading never shifts the story's random sequence (a load replays
  * the saved passage from its entry state, without the save's handlers). A
- * generator `fn` replaced (a restart or load it started) is kept.
+ * generator `fn` replaced (a restart or load it started) is kept, and so are
+ * the draws made before a navigation `fn` started (see keepDrawsSoFar()).
  */
 export function withoutDraws<T>(fn: () => T): T {
   const start = { generation, seed: currentSeed, pull: currentPull };
+  neutralScopes.push(start);
   try {
     return fn();
   } finally {
+    neutralScopes.splice(neutralScopes.indexOf(start), 1);
     if (
       enabled &&
       generation === start.generation &&
@@ -126,6 +133,22 @@ export function withoutDraws<T>(fn: () => T): T {
     ) {
       moveTo(start.seed, start.pull);
     }
+  }
+}
+
+/**
+ * Make the draws up to now part of the story: the position of the generator
+ * is the one a history moment the story just entered records, and the
+ * moment's passage replays its rolls from there. A running withoutDraws()
+ * takes back only the draws made after this, so that the position the
+ * passage renders from stays the recorded one (#535). Navigation calls this
+ * once it has recorded the moment it enters.
+ */
+export function keepDrawsSoFar(): void {
+  for (const scope of neutralScopes) {
+    scope.generation = generation;
+    scope.seed = currentSeed;
+    scope.pull = currentPull;
   }
 }
 
