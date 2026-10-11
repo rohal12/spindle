@@ -10,6 +10,7 @@ import {
   getPRNGSeed,
   getPRNGPull,
   withoutDraws,
+  keepDrawsSoFar,
 } from '../../src/prng';
 
 beforeEach(() => {
@@ -207,6 +208,17 @@ describe('prng', () => {
 
       withoutDraws(() => resetPRNG());
       expect(isPRNGEnabled()).toBe(false);
+    });
+
+    it('takes back only the draws made after keepDrawsSoFar()', () => {
+      initPRNG('draws', false);
+      withoutDraws(() => {
+        random();
+        keepDrawsSoFar();
+        random();
+        random();
+      });
+      expect(getPRNGPull()).toBe(1);
     });
 
     it('nests', () => {

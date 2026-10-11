@@ -68,6 +68,7 @@ import {
   restorePRNG,
   resetPRNG,
   withoutDraws,
+  keepDrawsSoFar,
   type PRNGSnapshot,
 } from './prng';
 import { errorMessage } from './utils/error-message';
@@ -482,6 +483,17 @@ function enterStart(
 }
 
 /**
+ * Run `fn` (an event's handlers) and tell whether they replaced the game
+ * state (a restart or load): what the caller was about to do to the game it
+ * emitted from is then not to be done to the new one (#516, #517).
+ */
+function replacesState(fn: () => void): boolean {
+  const applied = latestStateApplied;
+  fn();
+  return latestStateApplied !== applied;
+}
+
+/**
  * Move through history by `step` moments (back or forward), restoring the
  * snapshot recorded for the moment moved to: live variables may hold edits
  * made since the current moment was recorded.
@@ -494,7 +506,13 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
 
   const previousPassage = get().currentPassage;
   const targetPassage = history[target]!.passage;
+  // The target is a place in the history as it is now: a callback that went
+  // elsewhere (a restart, a load, a navigation or traversal of its own) took
+  // the game on, and this traversal is dropped rather than applied to a
+  // history that is no longer the one it was computed from (#516)
+  const navigation = get().navigationId;
   emit('beforenavigate', targetPassage);
+  if (get().navigationId !== navigation) return;
 
   const restoredVars = deepClone(reconstructVarsAt(target));
 
@@ -510,6 +528,7 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   reinitTriggerState();
   lastNavigationVars = get().variables;
   restorePRNGFromMoment(get().history[get().historyIndex]);
+  keepDrawsSoFar();
   persistSessionThen(get, () =>
     emit('afternavigate', targetPassage, previousPassage),
   );
@@ -533,6 +552,7 @@ export function recordStoryInitState(): void {
   useStoryStore.setState((state) => {
     state.history[0]!.prng = prng;
   });
+  keepDrawsSoFar();
 }
 
 // ---------------------------------------------------------------------------
@@ -814,7 +834,7 @@ function keepHookWrites(
     keys.add(pathKey(path));
     const value = getByPath(after, path);
     if (deepEqual(getByPath(moment.variables, path), value)) continue;
-    changes.push({ path, deleted: false, value });
+    changes.push({ path, deleted: false, value, absolute: true });
   }
   if (changes.length === 0) return;
   // A copy of its own, so the writes keep the snapshot's references (which
@@ -833,7 +853,8 @@ function keepHookWrites(
  * value of it is written. Into an array, elements removed from the end are
  * removed at the same indices and elements added are appended; changes at
  * indices the array lacks are dropped (it was resized, so its indices do not
- * line up with the live ones).
+ * line up with the live ones). The hooks' explicit writes are not diffs: an
+ * array's length or an element they set is set to that value (#515).
  */
 function writeHookChange(
   work: Record<string, unknown>,
@@ -878,6 +899,11 @@ function writeKey(
       // After the holes it followed
       holder.length += change.gap ?? 0;
       holder.push(value);
+    } else if (change && 'absolute' in change) {
+      // A write the hooks made: the length or element they set, whatever
+      // the snapshot's array looks like
+      if (key === 'length') holder.length = value as number;
+      else holder[index] = value;
     } else if (key === 'length' && change) {
       // Holes added at the end
       holder.length += value as number;
@@ -1364,7 +1390,9 @@ export const useStoryStore = create<StoryState>()(
       }
 
       const previousPassage = get().currentPassage;
-      emit('beforenavigate', passageName);
+      // A callback that restarted or loaded replaced the game this
+      // navigation was requested in: it does not carry on into the new one
+      if (replacesState(() => emit('beforenavigate', passageName))) return;
 
       // Compute variable delta before Immer set(). Read the variables after
       // beforenavigate so changes made by its handlers are recorded.
@@ -1413,8 +1441,16 @@ export const useStoryStore = create<StoryState>()(
       const deferred = deferredNavigations;
       deferredNavigations = [];
       finishEnteredMoment(get, set);
+      // The draws so far are the entered moment's recorded position
+      keepDrawsSoFar();
       persistSessionThen(get, () => {
-        emit('afternavigate', passageName, previousPassage);
+        if (
+          replacesState(() =>
+            emit('afternavigate', passageName, previousPassage),
+          )
+        ) {
+          return;
+        }
         for (const next of deferred) get().navigate(next);
       });
     },
@@ -1740,10 +1776,18 @@ export const useStoryStore = create<StoryState>()(
 
     beginSave: () => {
       const before = get().variables;
+      const replaced = latestStateApplied;
       const writes = new Map<string, string[]>();
       hookWrites = writes;
       return () => {
         if (hookWrites === writes) hookWrites = null;
+        // A restart or load in a hook left the game the save was issued
+        // for (its playthrough) for another: no save describes both
+        if (latestStateApplied !== replaced) {
+          throw new Error(
+            'spindle: a beforesave handler restarted or loaded the game, so the save was not made',
+          );
+        }
         const payload = get().getSavePayload();
         keepHookWrites(payload, before, get().variables, [...writes.values()]);
         return payload;
@@ -1776,6 +1820,10 @@ export const useStoryStore = create<StoryState>()(
       } finally {
         leavingPlaythrough = null;
       }
+      // A restart or load its handlers issued replaced the game after this
+      // load did: the later one wins, as one issued after the load returned
+      // would (#517)
+      if (latestStateApplied !== replacement) return;
 
       // Loading a save moves the game to the save's playthrough, after the
       // `beforeload` handlers (whose saves belong to the game being left).
@@ -1848,6 +1896,7 @@ export const useStoryStore = create<StoryState>()(
       // Replay the passage's random rolls from its entry PRNG state; saves
       // whose moments predate PRNG snapshots use the payload's.
       restorePRNGFrom(entry?.prng !== undefined ? entry.prng : payload.prng);
+      keepDrawsSoFar();
 
       // Write the loaded game to the session so a refresh restores it.
       // Draws made by the handlers would shift the passage's replayed rolls
