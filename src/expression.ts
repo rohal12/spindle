@@ -2,7 +2,13 @@ import type { StoryState } from './store';
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
 import { random, randomInt } from './prng';
-import { clearTransformCache, transform } from './transform';
+import {
+  BINDINGS,
+  FNS_BINDING,
+  clearTransformCache,
+  transform,
+} from './transform';
+import type { JsGoal } from './js-lexer';
 import {
   EMPTY_NAMESPACE,
   asNamespace,
@@ -40,10 +46,31 @@ export { transform };
 const FN_CACHE_MAX = 500;
 const fnCache = new Map<string, CompiledExpression>();
 
-const preamble =
-  'const {currentPassage,previousPassage,visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=__fns;';
+const preamble = `const {currentPassage,previousPassage,visited,hasVisited,hasVisitedAny,hasVisitedAll,rendered,hasRendered,hasRenderedAny,hasRenderedAll,random,randomInt}=${FNS_BINDING};`;
 
-function getOrCompile(key: string, body: string): CompiledExpression {
+/**
+ * Compile `source`: the function takes the namespaces and the function
+ * table under the names the transform uses for the references (see
+ * BINDINGS). The statements are a block of their own, so that they may
+ * declare any name, those of the history functions the preamble declares
+ * included.
+ */
+function compile(source: string, goal: JsGoal): CompiledExpression {
+  const code = transform(source, goal);
+  // The line break keeps a trailing `// comment` from swallowing the closer.
+  const body = goal === 'statements' ? `{${code}\n}` : `return (${code}\n);`;
+  return new Function(
+    BINDINGS.$,
+    BINDINGS._,
+    BINDINGS['@'],
+    FNS_BINDING,
+    BINDINGS['%'],
+    preamble + body,
+  ) as CompiledExpression;
+}
+
+function getOrCompile(source: string, goal: JsGoal): CompiledExpression {
+  const key = (goal === 'statements' ? 's' : 'e') + source;
   const cached = fnCache.get(key);
   if (cached) {
     // Move to end for LRU ordering (Map preserves insertion order)
@@ -51,14 +78,7 @@ function getOrCompile(key: string, body: string): CompiledExpression {
     fnCache.set(key, cached);
     return cached;
   }
-  const fn = new Function(
-    'variables',
-    'temporary',
-    'locals',
-    '__fns',
-    'transient',
-    preamble + body,
-  ) as CompiledExpression;
+  const fn = compile(source, goal);
   fnCache.set(key, fn);
   if (fnCache.size > FN_CACHE_MAX) {
     // Evict oldest entry
@@ -188,10 +208,7 @@ function run(
  * e.g. evaluate("$health + 10", variables, temporary) → number
  */
 export function evaluate(expr: string, ...namespaces: Namespaces): unknown {
-  const transformed = transform(expr);
-  // The line break keeps a trailing `// comment` from swallowing the `)`.
-  const body = `return (${transformed}\n);`;
-  return run(getOrCompile(body, body), ...namespaces);
+  return run(getOrCompile(expr, 'expression'), ...namespaces);
 }
 
 /**
@@ -199,8 +216,7 @@ export function evaluate(expr: string, ...namespaces: Namespaces): unknown {
  * e.g. execute("$health = 100; $name = 'Hero'", variables, temporary)
  */
 export function execute(code: string, ...namespaces: Namespaces): void {
-  const transformed = transform(code, 'statements');
-  run(getOrCompile('exec:' + transformed, transformed), ...namespaces);
+  run(getOrCompile(code, 'statements'), ...namespaces);
 }
 
 /**

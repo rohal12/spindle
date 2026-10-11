@@ -1,5 +1,4 @@
-import { useContext, useMemo } from 'preact/hooks';
-import { LocalsValuesContext } from '../../markup/render';
+import { useMemo } from 'preact/hooks';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
@@ -51,14 +50,12 @@ function loopArgs(
 }
 
 function ForIteration({
-  parentValues,
   itemVar,
   itemValue,
   indexVar,
   indexValue,
   children,
 }: {
-  parentValues: Record<string, unknown>;
   itemVar: string;
   itemValue: unknown;
   indexVar: string | null;
@@ -76,7 +73,6 @@ function ForIteration({
   return (
     <LocalsScope
       body={children}
-      parentValues={parentValues}
       ownKeys={ownKeys}
     />
   );
@@ -101,7 +97,6 @@ defineMacro({
     { name: 'list', type: 'expression', required: true },
   ],
   render({ rawArgs, children = [] }, ctx) {
-    const parentValues = useContext(LocalsValuesContext);
     const keys = ctx.hooks.useRef<IterationKeys>({
       contents: [],
       generations: [],
@@ -154,7 +149,6 @@ defineMacro({
     const content = list.map((item, i) => (
       <ForIteration
         key={`${i}-${generations[i]}`}
-        parentValues={parentValues}
         itemVar={itemVar}
         itemValue={item}
         indexVar={indexVar}

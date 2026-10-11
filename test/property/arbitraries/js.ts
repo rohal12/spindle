@@ -43,6 +43,14 @@ export const NAMESPACE = {
   '%': 'transient',
 } as const;
 
+/** The identifiers `transform` reads the namespaces through (#492). */
+const GENERATED = {
+  $: '__variables',
+  _: '__temporary',
+  '@': '__locals',
+  '%': '__transient',
+} as const;
+
 const NATIVE_PREFIX = { $: 'V$', _: 'T$', '@': 'L$', '%': 'R$' } as const;
 
 export const nativeName = (r: Ref): string => NATIVE_PREFIX[r.ref] + r.name;
@@ -60,7 +68,7 @@ function pieceText(p: Piece, mode: Mode): string {
   if (isLit(p)) return p.lit;
   if (mode === 'sigil') return p.ref + p.name;
   if (mode === 'native') return nativeName(p);
-  return `${NAMESPACE[p.ref]}["${p.name}"]`;
+  return `${GENERATED[p.ref]}["${p.name}"]`;
 }
 
 export function render(doc: Doc, mode: Mode): string {
