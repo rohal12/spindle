@@ -1,4 +1,4 @@
-import { createContext } from 'preact';
+import { createContext, Fragment } from 'preact';
 import { defineMacro } from '../../define-macro';
 import { DELAY_PARAMETER } from './macro-args';
 import { OutgoingContext } from '../../hooks/use-story-fields';
@@ -37,7 +37,9 @@ defineMacro({
 
     const content = (
       <RepeatContext.Provider value={{ stop }}>
-        <span key={count}>{ctx.renderNodes(children)}</span>
+        {/* A keyed Fragment remounts the body each tick without a DOM
+            wrapper that would break `tbody > tr`, `ul > li`, ... (#520) */}
+        <Fragment key={count}>{ctx.renderNodes(children)}</Fragment>
       </RepeatContext.Provider>
     );
 
