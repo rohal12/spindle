@@ -5,7 +5,6 @@ import { evaluate } from '../../expression';
 import type { ASTNode } from '../../markup/ast';
 import { splitArgs } from './arg-utils';
 import { createNamespace } from '../../utils/namespace';
-import { useRenderOptions } from '../../hooks/use-render-options';
 import { LocalsScope } from './locals-scope';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { wrapContent } from './display';
@@ -40,8 +39,6 @@ function WidgetContent({
   rawArgs,
   invocationChildren,
 }: WidgetInvocationProps) {
-  const renderOptions = useRenderOptions();
-  const parentValues = renderOptions.locals;
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -76,6 +73,9 @@ function WidgetContent({
     values.push(value);
   }
 
+  // The names too: the widget may be redefined under a mounted invocation,
+  // with other parameters for the same argument values (#511)
+  const paramsKey = params.join(' ');
   const ownKeys = useMemo(() => {
     const keys = createNamespace();
     for (let i = 0; i < params.length; i++) {
@@ -83,15 +83,14 @@ function WidgetContent({
         values[i];
     }
     return keys;
-    // params is stable per widget instance; values tracks evaluated args
+    // paramsKey stands for params; values tracks evaluated args
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, values);
+  }, [paramsKey, ...values]);
 
   return (
     <WidgetChildrenContext.Provider value={childrenValue}>
       <LocalsScope
         body={body}
-        parentValues={parentValues}
         ownKeys={ownKeys}
       />
     </WidgetChildrenContext.Provider>
