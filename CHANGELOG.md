@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tooling: `discoverMacros` skips regex literals (`/}/`, `/[)]/`) and ends a line comment at any JavaScript line terminator (CR, U+2028, U+2029 too), so a macro whose method contains one is still found with its `block` (#493); a config variable is the declaration its call sees (the innermost, in scope, before the call unless the call is in another function), and a parameter, pattern, assignment or second declaration of the name makes it unknown instead of reading another declaration's config (#494).
+- Tooling: `parseDeclarations` gives a `number` schema to an unsigned `Infinity` and to a signed `NaN` (#509), and keeps object fields whose numeric key has a decimal point, a signed exponent, a separator or a radix (`{ 1.5: 1 }`, `{ 1e+2: 1 }`), named as the runtime names them (#510).
 - `parseDeclarations` agrees with the runtime on initializers: `{ a: undefined, a: 1 }` and a call such as `function () { return 1 }()` are no longer reported as unsupported; `void 0` is `undefined`; `+1n` is reported as the evaluation error it is; a message names the value the runtime finds, as `parseStoryVariables` throws it; and an object with a spread, a computed key or a later member that is not static has no field a later member can replace (#466).
 - `widgetDefinitions` reports `block: true` for a widget whose `{@children}` is in an HTML attribute value (`<p title="{@children}">`), as the runtime and the docs do (#467).
 - Parameters of a `{widget}` separated by commas (`{widget "Box" @a, @b}`) are read as `@a` and `@b` by the runtime and by tooling, instead of `@a,` (#470).

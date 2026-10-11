@@ -967,6 +967,135 @@ describe('discoverMacros skips JavaScript the way it is written (#493)', () => {
   });
 });
 
+describe('discoverMacros resolves a config variable in its scope (#494)', () => {
+  /** The (name, block) of each macro found. */
+  const found = (source: string) =>
+    discoverMacros(source).map((m) => [m.name, m.block]);
+
+  it('reads the declaration the call names, with its own name range', () => {
+    const source = `const config = {name: "outer"};
+function registerInner() {
+  const config = {name: "inner", block: true};
+  Story.defineMacro(config);
+}
+registerInner();`;
+    const macros = discoverMacros(source);
+    expect(macros.map((m) => [m.name, m.block])).toEqual([['inner', true]]);
+    expect(source.slice(macros[0]!.nameStart, macros[0]!.nameEnd)).toBe(
+      'inner',
+    );
+    expect(source.indexOf('inner')).toBe(macros[0]!.nameStart);
+  });
+
+  it('reads each helper its own config', () => {
+    expect(
+      found(`
+function a() { const config = {name: "a"}; Story.defineMacro(config); }
+function b() { const config = {name: "b", block: true}; Story.defineMacro(config); }
+const config = {name: "top"};
+Story.defineMacro(config);`),
+    ).toEqual([
+      ['a', false],
+      ['b', true],
+      ['top', false],
+    ]);
+  });
+
+  it('reads the declaration of an outer scope, also one that follows a function', () => {
+    expect(
+      found(`
+const config = {name: "outer"};
+function register() { Story.defineMacro(config); }
+const later = {name: "later", block: true};
+function late() { Story.defineMacro(later); }
+function closure() {
+  const own = {name: "own"};
+  return () => Story.defineMacro(own);
+}`),
+    ).toEqual([
+      ['outer', false],
+      ['later', true],
+      ['own', false],
+    ]);
+  });
+
+  it('reads a var from the function it is declared in', () => {
+    expect(
+      found(`function f() {
+  if (x) { var config = {name: "v"}; }
+  Story.defineMacro(config);
+}`),
+    ).toEqual([['v', false]]);
+  });
+
+  it.each([
+    [
+      'declared after the call in the same scope',
+      'Story.defineMacro(config);\nconst config = {name: "late"};',
+    ],
+    [
+      'declared in a block it is not in',
+      '{ const config = {name: "blk"}; }\nStory.defineMacro(config);',
+    ],
+    [
+      'declared in another function',
+      'function f() { const config = {name: "f"}; }\nStory.defineMacro(config);',
+    ],
+    [
+      'a parameter of the same name',
+      'const config = {name: "outer"};\nfunction f(config) { Story.defineMacro(config); }',
+    ],
+    [
+      'an arrow parameter of the same name',
+      'const config = {name: "outer"};\nconst f = (a, config) => Story.defineMacro(config);\nconst g = config => Story.defineMacro(config);',
+    ],
+    [
+      'a destructured parameter of the same name',
+      'const config = {name: "outer"};\nfunction f({ config }) { Story.defineMacro(config); }\nfunction g([a, { b: config }]) { Story.defineMacro(config); }',
+    ],
+    [
+      'a local that is not an object literal',
+      'const config = {name: "outer"};\nfunction f() { const config = make(); Story.defineMacro(config); }',
+    ],
+    [
+      'a destructured local',
+      'const config = {name: "outer"};\nfunction f() { const { config } = make(); Story.defineMacro(config); }',
+    ],
+    [
+      'a catch parameter',
+      'const config = {name: "outer"};\ntry { f() } catch (config) { Story.defineMacro(config); }',
+    ],
+    [
+      'a declaration in a list',
+      'const config = {name: "outer"};\nfunction f() { let a = 1, config = make(); Story.defineMacro(config); }',
+    ],
+    [
+      'a function of the same name',
+      'const config = {name: "outer"};\nfunction f() { function config() {} Story.defineMacro(config); }',
+    ],
+    [
+      'a variable that is assigned again',
+      'let config = {name: "a"};\nconfig = make();\nStory.defineMacro(config);',
+    ],
+    [
+      'two declarations in one scope',
+      'var config = {name: "a"};\nvar config = {name: "b"};\nStory.defineMacro(config);',
+    ],
+  ])('reads no config for %s', (_, source) => {
+    expect(found(source)).toEqual([]);
+  });
+
+  it('is not confused by the name as a property or a key', () => {
+    expect(
+      found(`
+const config = {name: "real", block: true};
+const other = { config: 1, x: a.config, y: b?.config, ...rest };
+if (config) { run(config); }
+Story.defineMacro(config);`),
+    ).toEqual([['real', true]]);
+  });
+});
+
 describe('validateStoryMarkup tolerant (#469)', () => {
   const macros = getMacroRegistry();
   const content = [
