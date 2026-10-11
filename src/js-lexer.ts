@@ -152,7 +152,10 @@ const SigilParser = class extends (Parser as unknown as Base) {
   colonEndsTernary = false;
   /** The last `}` closed a block. */
   closedBlock = false;
-  /** The value of the token before the one being finished. */
+  /**
+   * The value of the token before the one being finished, but for a member
+   * name (`a.static`).
+   */
   prevValue: unknown;
   /** The type of the token before the last one. */
   typeBeforeLast: TokenType = tt.eof;
@@ -226,10 +229,11 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // or an object key (`class D { function; }`, `{ class: 1 }`)
     const self = this as unknown as ParserState;
     const prevType = self.type;
-    this.prevValue = self.value;
+    // The word before, unless it is a member name (`a.static`, `a?.let`),
+    // which no contextual keyword is
+    this.prevValue = isMemberDot(this.typeBeforeLast) ? undefined : self.value;
     const property =
-      (type.keyword !== undefined &&
-        (prevType === tt.dot || prevType === tt.questionDot)) ||
+      (type.keyword !== undefined && isMemberDot(prevType)) ||
       ((type === tt._function || type === tt._class) &&
         notABody(self.input, self.pos));
     // acorn takes a `function` or `class` for a statement's (whose `}` a
@@ -249,14 +253,17 @@ const SigilParser = class extends (Parser as unknown as Base) {
     this.typeBeforeLast = prevType;
     // @ts-expect-error acorn internals
     super.finishToken(property ? tt.name : type, value);
-    // A variable named `of` (`const of of list`): acorn takes it for the
-    // `of` of a for-of loop, after which an operand comes
+    // acorn takes a name for a contextual keyword wherever it reads (`of`
+    // of a for-of loop, `yield` in a generator), after which an operand
+    // comes. A member name (`a?.of`, which acorn checks only after `.`) and
+    // a variable named `of` (`const of of list`) are operands.
     if (
       type === tt.name &&
-      value === 'of' &&
-      (prevType === tt._const ||
-        prevType === tt._var ||
-        this.prevValue === 'let')
+      (isMemberDot(prevType) ||
+        (value === 'of' &&
+          (prevType === tt._const ||
+            prevType === tt._var ||
+            this.prevValue === 'let')))
     ) {
       self.exprAllowed = false;
     }
@@ -311,6 +318,11 @@ function transientAssignment(p: ParserState, end: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** Is `type` the `.` or `?.` of a member access? */
+function isMemberDot(type: TokenType): boolean {
+  return type === tt.dot || type === tt.questionDot;
 }
 
 const OPENERS = new Set([tt.parenL, tt.bracketL, tt.braceL, tt.dollarBraceL]);
@@ -509,6 +521,14 @@ export function parseCode(
   src: string,
   goal: JsGoal = 'expression',
 ): ParsedCode {
+  return parseWithAst(src, goal).out;
+}
+
+/** What parseCode finds in `src`, and the syntax tree it is in. */
+function parseWithAst(
+  src: string,
+  goal: JsGoal,
+): { out: ParsedCode; ast: AnyNode } {
   // Whether `%name` is a transient or `%` modulo is guessed from the tokens
   // before it, as acorn guesses whether `/` opens a regex. Where the guess
   // makes the parser fail at a `%`, the other reading is tried, and the
@@ -521,7 +541,7 @@ export function parseCode(
       const out: ParsedCode = { refs: [], strings: [] };
       walk(ast, src, out, false, false);
       out.refs.sort((a, b) => a.start - b.start);
-      return out;
+      return { out, ast };
     } catch (error) {
       const pos = (error as { pos?: number }).pos ?? -1;
       if (!(error instanceof SyntaxError) || percentAt.has(pos)) throw error;
@@ -530,6 +550,39 @@ export function parseCode(
       percentAt.set(pos, !transientsRead.has(pos));
     }
   }
+}
+
+/** The variable at the root of a reference path, and whether it has members. */
+export interface ReferencePath {
+  sigil: Sigil;
+  name: string;
+  /** The path goes on past the variable (`$a.b`, `$a["b"]`, `$a[i]`). */
+  nested: boolean;
+}
+
+/**
+ * Read `src` as a reference path: a variable with any number of `.name` and
+ * `[expression]` members after it (`$data["field"]`, `@list[_i].x`), and
+ * nothing else. Returns null for any other code (`$a + 1`, `$a.b()`, `$a,
+ * $b`, `$a = 1`), and throws a `CodeSyntaxError` for code that is not
+ * well-formed.
+ */
+export function parseReferencePath(src: string): ReferencePath | null {
+  const { ast } = parseWithAst(src, 'expression');
+  // `$a?.b` is a chain expression around the members
+  let node: AnyNode =
+    ast.type === 'ChainExpression' ? (ast.expression as AnyNode) : ast;
+  let nested = false;
+  while (node.type === 'MemberExpression') {
+    node = node.object as AnyNode;
+    nested = true;
+  }
+  if (node.type !== 'Identifier') return null;
+  const sigil = sigilOf(node, src);
+  // Parentheses around the variable or a member (`($a).b`) are not part of
+  // a path as written
+  if (!sigil || node.start !== 0) return null;
+  return { sigil: sigil[0], name: sigil[1], nested };
 }
 
 /**

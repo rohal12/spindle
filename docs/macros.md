@@ -99,11 +99,12 @@ Multiple assignments can be separated with semicolons:
 
 ### `{unset}`
 
-Delete a variable.
+Delete a variable, or a field or array element of one. The path is written as in code, with `.field` and `[expression]` members: `$data["field"]`, `_list[0]`, `$data[$key]`. Deleting an array element leaves a hole, as `delete` does. Anything else after the variable (`$data["a"] + 1`) is an error.
 
 ```
 {unset $oldVar}
 {unset _temp}
+{unset $data["field"]}
 ```
 
 ### `{computed}`

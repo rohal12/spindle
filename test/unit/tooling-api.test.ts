@@ -1169,3 +1169,13 @@ describe('validateStoryMarkup tolerant (#469)', () => {
     expect(codes(passages, true)).toEqual(['1:unclosed-macro']);
   });
 });
+
+describe('discoverMacros after an optional ?.of member (#521)', () => {
+  it('keeps reading code after a division by ?.of', () => {
+    const source = `const p = 2;
+const num = ({of: 10})?.of/p;
+Story.defineMacro({name: 'Card', render: () => null});
+`;
+    expect(discoverMacros(source).map((m) => m.name)).toEqual(['Card']);
+  });
+});
