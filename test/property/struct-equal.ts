@@ -3,10 +3,10 @@
  * (#45, #221) promises, so two values get the same key exactly when
  * `structEqual` says they are equal.
  *
- * - Numbers compare by value with NaN equal to NaN and -0 equal to 0, as
- *   `JSON.stringify` does (#45 compatibility).
- * - Arrays compare index by index; a hole reads as `undefined`, as it does
- *   after `deepClone` (story state never keeps holes).
+ * - Numbers compare by value with NaN equal to NaN; -0 differs from 0, as
+ *   it does for deepEqual and a save (#498).
+ * - Arrays compare index by index; a hole differs from an `undefined`
+ *   element, as it does for deepEqual and a save (#497).
  * - Plain objects compare their own enumerable string keys in order (the
  *   order `JSON.stringify` uses), and registered class instances also
  *   compare their class name; an instance of a registered subclass of a
@@ -47,7 +47,7 @@ function equalIn(
   if (typeof a !== typeof b) return false;
   switch (typeof a) {
     case 'number':
-      return a === b || (Number.isNaN(a) && Number.isNaN(b as number));
+      return Object.is(a, b);
     case 'symbol':
       return a.description === (b as symbol).description;
     case 'function':
@@ -109,8 +109,8 @@ function equalIn(
     if (!Array.isArray(x) || !Array.isArray(y)) return false;
     return (
       x.length === y.length &&
-      Array.from({ length: x.length }, (_, i) => i).every((i) =>
-        eq(x[i], y[i]),
+      Array.from({ length: x.length }, (_, i) => i).every(
+        (i) => i in x === i in y && eq(x[i], y[i]),
       ) &&
       fields()
     );

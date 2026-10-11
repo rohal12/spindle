@@ -98,3 +98,37 @@ describe('{for} iteration keys for non-JSON values (#221)', () => {
     expect(el.textContent).toBe('2');
   });
 });
+
+describe('{for} iteration keys tell apart what a save tells apart (#497, #498)', () => {
+  beforeEach(() => {
+    useStoryStore
+      .getState()
+      .init(makeStoryData([makePassage(1, 'Start', 'Start')]), { items: [] });
+    installStoryAPI();
+  });
+
+  it('remounts when an undefined element becomes an empty slot (#497)', () => {
+    storySet('items', [[undefined]]);
+    const el = renderPassage(
+      '{for @item of $items}{set @occupied = 0 in @item}{print @occupied}{/for}',
+    );
+    expect(el.textContent).toBe('true');
+
+    storySet('items', [new Array(1)]);
+    expect(el.textContent).toBe('false');
+
+    storySet('items', [[undefined]]);
+    expect(el.textContent).toBe('true');
+  });
+
+  it('remounts when 0 becomes -0 (#498)', () => {
+    storySet('items', [0]);
+    const el = renderPassage(
+      '{for @item of $items}{set @inverse = 1 / @item}{print @inverse}{/for}',
+    );
+    expect(el.textContent).toBe('Infinity');
+
+    storySet('items', [-0]);
+    expect(el.textContent).toBe('-Infinity');
+  });
+});
