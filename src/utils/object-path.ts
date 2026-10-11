@@ -1,6 +1,6 @@
 import { current as draftState, isDraft, original } from 'immer';
 import { registeredClassName } from '../class-registry';
-import { hasOwn } from './namespace';
+import { hasOwn, isArrayIndex } from './namespace';
 import { atomicName } from './value-kinds';
 
 /**
@@ -36,7 +36,7 @@ export function getByPath(obj: object, segments: readonly string[]): unknown {
 
 /** Array indices ("0", "1", …) and "length": the keys an array holds. */
 const isArrayKey = (key: string): boolean =>
-  key === 'length' || /^(0|[1-9]\d*)$/.test(key);
+  key === 'length' || isArrayIndex(key);
 
 /**
  * Built-ins whose content is not their properties: a property written into

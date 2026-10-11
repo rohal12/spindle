@@ -29,7 +29,11 @@ import {
   type ArgSpans,
 } from './components/macros/macro-args';
 import { NOT_MARKUP } from './markup/validate';
-import { createNamespace, variableNameError } from './utils/namespace';
+import {
+  createNamespace,
+  isArrayIndex,
+  variableNameError,
+} from './utils/namespace';
 import { staticLiteral, type LiteralShape } from './static-literal';
 import { parse } from 'acorn';
 
@@ -437,6 +441,11 @@ function checkReference(
 
     // Primitives expose their wrapper's built-ins (length, toUpperCase,
     // toFixed, etc.). Keep validating past properties of primitive type.
+    // Strings also have the character at each index below their length,
+    // which the empty sample has none of (the default may not be the value)
+    if (current.type === 'string' && isArrayIndex(part)) {
+      continue;
+    }
     const sample = PRIMITIVE_SAMPLES[current.type];
     if (sample && part in sample) {
       const member: unknown = sample[part as keyof typeof sample];
@@ -495,14 +504,41 @@ type Emit = (ref: VariableReference) => void;
 
 const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
-/** A reference written at `index` of `code`, with its dot path. */
+/** A `.field` path written right after a reference, which may be empty. */
+const FIELD_PATH_RE = /(?:\.\w+)*/y;
+
+/**
+ * The reference to variable `name`, which JavaScript reads at `[start, end)`
+ * of `code` (the sigil and the name as written, which may be spelled with
+ * escapes), with the dot path written after it.
+ */
 function referenceAt(
   code: string,
+  sigil: string,
+  name: string,
+  start: number,
+  end: number,
+  at: At,
+): VariableReference {
+  FIELD_PATH_RE.lastIndex = end;
+  const fields = FIELD_PATH_RE.exec(code)![0];
+  return {
+    sigil: sigil as '$' | '%',
+    name,
+    path: fields ? fields.slice(1).split('.') : [],
+    start: at(start),
+    end: at(end + fields.length),
+  };
+}
+
+/** A reference written at `index` of `term`, a `variable` parameter as written. */
+function termReferenceAt(
+  term: string,
   index: number,
   at: At,
 ): VariableReference | undefined {
   VAR_PATH_RE.lastIndex = index;
-  const match = VAR_PATH_RE.exec(code);
+  const match = VAR_PATH_RE.exec(term);
   if (!match) return undefined;
   const [name, ...path] = match[2]!.split('.');
   return {
@@ -562,8 +598,7 @@ function scanCode(
   }
   for (const ref of parsed.refs) {
     if (ref.sigil !== '$' && ref.sigil !== '%') continue;
-    const found = referenceAt(code, ref.start, at);
-    if (found) emit(found);
+    emit(referenceAt(code, ref.sigil, ref.name, ref.start, ref.end, at));
   }
 }
 
@@ -577,10 +612,9 @@ function scanCodeLeniently(
   lexJs(
     code,
     {
-      variable(sigil, _name, index) {
+      variable(sigil, name, index, _nesting, end) {
         if (sigil !== '$' && sigil !== '%') return;
-        const found = referenceAt(code, index, at);
-        if (found) emit(found);
+        emit(referenceAt(code, sigil, name, index, end, at));
       },
       // Strings, regex literals and comments hold no references
       literal() {},
@@ -650,7 +684,7 @@ function scanVariableParameters(
   for (const param of params) {
     const span = spans.get(param);
     if (param.type !== 'variable' || !span) continue;
-    const ref = referenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
+    const ref = termReferenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
       at(token.argsStart + span[0] + i),
     );
     if (ref) emit(ref);
@@ -804,7 +838,10 @@ export function collectVariableReferences(
       options,
     ),
   );
-  return found;
+  // The scan visits a macro's arguments before its selectors, and bindings
+  // after its arguments: the order of the source is the contract. (Stable,
+  // so references written at one place keep the order they were found in.)
+  return found.sort((a, b) => a.start - b.start);
 }
 
 /**

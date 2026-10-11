@@ -774,7 +774,10 @@ export function attributeValues(
 
 /**
  * The `{$…}` expressions in the value of a code attribute (`onclick`, see
- * isCodeAttribute), with where each is in the value.
+ * isCodeAttribute), with where each is in the value. The parts of the value
+ * are written out as they are (splitSigilTemplate decodes nothing), so each
+ * starts where the one before it ends: an expression is not found by its
+ * text, which a string of the code may repeat.
  */
 export function sigilExpressions(
   value: string,
@@ -782,10 +785,13 @@ export function sigilExpressions(
   const found = [];
   let from = 0;
   for (const part of splitSigilTemplate(value)) {
-    if (!('expr' in part)) continue;
-    const at = locate(value, part.expr, from);
-    from = at + part.expr.length;
-    found.push({ expr: part.expr, at });
+    if ('expr' in part) {
+      // Inside its braces
+      found.push({ expr: part.expr, at: from + 1 });
+      from += part.expr.length + 2;
+    } else {
+      from += ('text' in part ? part.text : part.verbatim).length;
+    }
   }
   return found;
 }

@@ -133,7 +133,7 @@ const [def] = widgetDefinitions(
 `validateVariableReferences(passages, declarations, macros?)` checks them, as the story start does, and returns `VariableDiagnostic`s: `{ passage, code, name, path?, start, end, message }`, with offsets into the passage's content and the story start's `message`.
 
 - `declarations` is `{ variables, transients? }`, maps from name to schema: from `parseDeclarations`, `new Map(declarations.map((d) => [d.name, d.schema]))`. A variable with no `schema` (a non-static initializer) is declared and its fields are not checked. `transients` is checked only when given.
-- `undeclared-variable` and `undeclared-transient`: the variable is not declared. `primitive-field`: a field a number, string or boolean has no member of (`$hp.nope`; `$hp.toFixed` and `$name.length` are fine). `reserved-name`: `$__proto__`.
+- `undeclared-variable` and `undeclared-transient`: the variable is not declared. `primitive-field`: a field a number, string or boolean has no member of (`$hp.nope`; `$hp.toFixed`, `$name.length` and a character of a string, `$name.0`, are fine). `reserved-name`: `$__proto__`.
 - Not errors, as at story start: an unknown field of an object (a registered class can add members), any field of an array or of a `null` default.
 - Passages tagged `script` or `stylesheet`, and the declaration passages, are skipped.
 
