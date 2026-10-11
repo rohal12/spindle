@@ -41,7 +41,7 @@ interface StoryOptions {
 async function boot({ passages, script = '' }: StoryOptions) {
   await page?.close();
   page = await browser.newPage();
-  const all = { ...passages, StoryVariables: '' };
+  const all = { ...passages, StoryVariables: passages.StoryVariables ?? '' };
   const data =
     '<tw-storydata name="Probe" startnode="1" ifid="00000000-0000-4000-8000-000000000000" format="spindle" format-version="0">' +
     `<script role="script" id="twine-user-script" type="text/twine-javascript">${script}</script>` +
@@ -228,5 +228,63 @@ describe('passage data', () => {
       },
     });
     expect(await page.textContent('[data-passage] #m')).toBe('yes');
+  });
+});
+
+describe('native form defaults and edits (#528)', () => {
+  it('restores the passage defaults on reset', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<form><input id="text" value="Guest"><input id="check" type="checkbox" checked><button id="reset" type="reset">Reset</button></form>',
+      },
+    });
+    expect(
+      await page.evaluate(() => {
+        const text = document.querySelector<HTMLInputElement>('#text')!;
+        const check = document.querySelector<HTMLInputElement>('#check')!;
+        return [text.defaultValue, text.value, check.defaultChecked];
+      }),
+    ).toEqual(['Guest', 'Guest', true]);
+    await page.fill('#text', 'Alice');
+    await page.uncheck('#check');
+    await page.click('#reset');
+    expect(await page.inputValue('#text')).toBe('Guest');
+    expect(await page.isChecked('#check')).toBe(true);
+  });
+
+  it('keeps the reader edits after the store updates', async () => {
+    await boot({
+      passages: {
+        Start:
+          `<input id="text" value="Guest" oninput="Story.set('typed', this.value)">` +
+          `<input id="check" type="checkbox" checked onchange="Story.set('flag', this.checked)">` +
+          '<span id="out">{$typed}|{$flag}</span>',
+        StoryVariables: '$typed = ""\n$flag = true',
+      },
+    });
+    await page.fill('#text', 'Alice');
+    await page.uncheck('#check');
+    await page.waitForFunction(
+      () => document.querySelector('#out')?.textContent === 'Alice|false',
+    );
+    expect(await page.inputValue('#text')).toBe('Alice');
+    expect(await page.isChecked('#check')).toBe(false);
+  });
+
+  it('keeps an interpolated value bound to its variable', async () => {
+    await boot({
+      passages: {
+        Start:
+          '<input id="text" value="{$name}"><button id="b" onclick="Story.set(\'name\', \'Bob\')">Go</button>',
+        StoryVariables: '$name = "Ann"',
+      },
+    });
+    expect(await page.inputValue('#text')).toBe('Ann');
+    await page.fill('#text', 'typed');
+    await page.click('#b');
+    await page.waitForFunction(
+      () => document.querySelector<HTMLInputElement>('#text')!.value === 'Bob',
+    );
   });
 });

@@ -49,6 +49,71 @@ afterEach(() => {
   }
 });
 
+describe('static value and checked are native defaults (#528)', () => {
+  beforeEach(() => setup({ typed: '', flag: true, name: 'Ann' }));
+
+  it('sets defaultValue and defaultChecked from the passage', () => {
+    const el = renderPassage(
+      '<input id="text" value="Guest"><input id="check" type="checkbox" checked><select id="s"><option value="a">a</option><option value="b" selected>b</option></select>',
+    );
+    const text = el.querySelector<HTMLInputElement>('#text')!;
+    const check = el.querySelector<HTMLInputElement>('#check')!;
+    expect(text.value).toBe('Guest');
+    expect(text.defaultValue).toBe('Guest');
+    expect(check.checked).toBe(true);
+    expect(check.defaultChecked).toBe(true);
+    expect(el.querySelector<HTMLSelectElement>('#s')!.value).toBe('b');
+  });
+
+  it('keeps what the reader entered when the store updates', () => {
+    const el = renderPassage(
+      '<input id="text" value="Guest"><input id="check" type="checkbox" checked>{$typed}',
+    );
+    const text = el.querySelector<HTMLInputElement>('#text')!;
+    const check = el.querySelector<HTMLInputElement>('#check')!;
+    // happy-dom runs no inline handlers (the e2e tests have them)
+    text.addEventListener('input', () => window.Story.set('typed', text.value));
+    check.addEventListener('change', () =>
+      window.Story.set('flag', check.checked),
+    );
+    act(() => {
+      text.value = 'Alice';
+      text.dispatchEvent(new Event('input', { bubbles: true }));
+      check.checked = false;
+      check.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(window.Story.get('typed')).toBe('Alice');
+    expect(window.Story.get('flag')).toBe(false);
+    expect(text.value).toBe('Alice');
+    expect(check.checked).toBe(false);
+    expect(el.textContent).toContain('Alice');
+  });
+
+  it('keeps a static select and textarea value as a property', () => {
+    const el = renderPassage(
+      '<select id="s" value="b"><option value="a">a</option><option value="b">b</option></select><textarea id="t" value="hi"></textarea>',
+    );
+    expect(el.querySelector<HTMLSelectElement>('#s')!.value).toBe('b');
+    expect(el.querySelector<HTMLTextAreaElement>('#t')!.value).toBe('hi');
+  });
+
+  it('still binds an interpolated value and checked to the variable', () => {
+    const el = renderPassage(
+      '<input id="text" value="{$name}"><input id="check" type="checkbox" checked="{if $flag}checked{/if}">',
+    );
+    const text = el.querySelector<HTMLInputElement>('#text')!;
+    const check = el.querySelector<HTMLInputElement>('#check')!;
+    expect(text.value).toBe('Ann');
+    expect(Boolean(check.checked)).toBe(true);
+    act(() => {
+      window.Story.set('name', 'Bob');
+      window.Story.set('flag', false);
+    });
+    expect(text.value).toBe('Bob');
+    expect(Boolean(check.checked)).toBe(false);
+  });
+});
+
 describe('{repeat} keeps the structure of its body (#520)', () => {
   beforeEach(() => setup({ count: 0 }));
 
