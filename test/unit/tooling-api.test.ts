@@ -920,6 +920,53 @@ Story.defineMacro({ name: "half", block: tr
   });
 });
 
+describe('discoverMacros skips JavaScript the way it is written (#493)', () => {
+  const only = (source: string) => {
+    const macros = discoverMacros(source);
+    expect(macros.map((m) => m.name)).toEqual(['foo']);
+    return macros[0]!;
+  };
+
+  it.each([
+    ['a brace in a regex', 'render() { return /}/.test("}"); }'],
+    ['a parenthesis in a class', 'render() { return /[)]/.test(")"); }'],
+    ['a bracket in a regex', 'render() { return /[\\]}]/.test("]"); }'],
+    ['a regex after a return', 'render() { return /{/; }'],
+    ['a regex in an arrow function', 'render: (x) => /[,}]/.test(x)'],
+    ['a regex in a list', 'extra: [/]/, /}/g]'],
+    ['a regex in a template expression', 'extra: `${/}/.source}`'],
+    ['a regex with flags', 'render() { return /}/giu; }'],
+  ])('is not confused by %s', (_, member) => {
+    const macro = only(
+      `Story.defineMacro({\n  name: "foo",\n  ${member},\n  block: true\n})`,
+    );
+    expect(macro.block).toBe(true);
+  });
+
+  it('still reads a division as one', () => {
+    const macro = only(
+      'Story.defineMacro({ name: "foo", render() { return (a / 2) + b / 3 + "}"; }, block: true })',
+    );
+    expect(macro.block).toBe(true);
+  });
+
+  it.each(['\n', '\r', '\r\n', ' ', ' '])(
+    'ends a line comment at the line terminator %j',
+    (end) => {
+      const macro = only(
+        `Story.defineMacro({name:"foo", // comment${end}block:true})`,
+      );
+      expect(macro.block).toBe(true);
+    },
+  );
+
+  it('keeps going through a comment at the end of the text', () => {
+    expect(
+      discoverMacros('Story.defineMacro({name:"foo"}) // done'),
+    ).toHaveLength(1);
+  });
+});
+
 describe('validateStoryMarkup tolerant (#469)', () => {
   const macros = getMacroRegistry();
   const content = [

@@ -7,7 +7,13 @@
  * an operator, a reference, a spread) is "not static", which is no error: the
  * value is simply not known without running the code.
  */
-import { scanStringLiteral, stringLiteralValue } from './js-lexer';
+import {
+  lexJs,
+  scanStringLiteral,
+  stringLiteralValue,
+  type JsGoal,
+  type JsLexHandlers,
+} from './js-lexer';
 
 /** The type of a variable by its default (see story-variables.ts VarType). */
 type LiteralType =
@@ -45,11 +51,13 @@ export type StaticLiteral =
 type Members = Map<string, LiteralShape | UnsupportedLiteral | null>;
 
 const NUMBER_RE =
-  /(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?)(n?)/y;
+  /(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d[\d_]*)?)(n?)/y;
 const IDENT_RE = /[A-Za-z_$][\w$]*/y;
 const KEY_RE = /[\w$]+/y;
 const ARROW_RE =
   /(?:async\s+)?(?:\((?:[^()]|\([^()]*\))*\)|[A-Za-z_$][\w$]*)\s*=>/y;
+/** The end of a line: the four line terminators of JavaScript. */
+const LINE_END_RE = /[\n\r\u2028\u2029]/g;
 const ARRAY_INDEX_RE = /^(?:0|[1-9]\d{0,8})$/;
 
 const UNSUPPORTED_UNDEFINED: UnsupportedLiteral = {
@@ -78,6 +86,34 @@ function entryOrder(keys: Iterable<string>): string[] {
   return [...indices, ...all.filter((key) => !ARRAY_INDEX_RE.test(key))];
 }
 
+/**
+ * Where the regex literals in `src` are, by their start: JavaScript text
+ * cannot tell a regex from a division without the code before it, which the
+ * lexer reads. `handlers` see the same walk.
+ */
+export function regexLiterals(
+  src: string,
+  goal: JsGoal = 'expression',
+  handlers: JsLexHandlers = {},
+): Map<number, number> {
+  const ends = new Map<number, number>();
+  lexJs(
+    src,
+    {
+      ...handlers,
+      literal(text, index, nesting) {
+        // A comment is `//` or `/*`, which no regex starts with
+        if (text.charAt(0) === '/' && !/^\/[/*]/.test(text)) {
+          ends.set(index, index + text.length);
+        }
+        handlers.literal?.(text, index, nesting);
+      },
+    },
+    goal,
+  );
+  return ends;
+}
+
 /** `String(value)` of a BigInt literal's digits, or `undefined` if they are no BigInt. */
 function bigintValue(digits: string): string | undefined {
   try {
@@ -93,7 +129,20 @@ function bigintValue(digits: string): string | undefined {
  */
 export class Reader {
   i = 0;
-  constructor(protected readonly src: string) {}
+  private regexes: Map<number, number> | undefined;
+  private readonly goal: JsGoal;
+
+  /**
+   * `regexes` (see regexLiterals) are read from `src` when they are first
+   * needed, unless the caller has them already.
+   */
+  constructor(
+    protected readonly src: string,
+    options: { goal?: JsGoal; regexes?: Map<number, number> } = {},
+  ) {
+    this.goal = options.goal ?? 'expression';
+    this.regexes = options.regexes;
+  }
 
   /** Skip whitespace and comments. */
   space(): void {
@@ -101,8 +150,8 @@ export class Reader {
     for (;;) {
       while (/\s/.test(src.charAt(this.i))) this.i++;
       if (src.startsWith('//', this.i)) {
-        const end = src.indexOf('\n', this.i);
-        this.i = end < 0 ? src.length : end;
+        LINE_END_RE.lastIndex = this.i;
+        this.i = LINE_END_RE.test(src) ? LINE_END_RE.lastIndex - 1 : src.length;
       } else if (src.startsWith('/*', this.i)) {
         const end = src.indexOf('*/', this.i + 2);
         this.i = end < 0 ? src.length : end + 2;
@@ -170,10 +219,9 @@ export class Reader {
       i++;
       while (/\s/.test(src.charAt(i))) i++;
     }
-    NUMBER_RE.lastIndex = i;
-    const match = NUMBER_RE.exec(src);
+    const match = this.numberAt(i);
     if (match) {
-      this.i = NUMBER_RE.lastIndex;
+      this.i = i + match[0].length;
       if (!match[1]) return { shape: { type: 'number' } };
       // A BigInt: `+1n` throws, `-1n` and `1n` are values no variable can hold
       if (sign === '+') {
@@ -189,11 +237,17 @@ export class Reader {
     }
     IDENT_RE.lastIndex = i;
     const word = IDENT_RE.exec(src)?.[0];
-    if (word === 'Infinity') {
+    if (word === 'Infinity' || word === 'NaN') {
       this.i = IDENT_RE.lastIndex;
       return { shape: { type: 'number' } };
     }
     return undefined;
+  }
+
+  /** The numeric literal (a BigInt's `n` is `match[1]`) at `at`, if there is one. */
+  private numberAt(at: number): RegExpExecArray | null {
+    NUMBER_RE.lastIndex = at;
+    return NUMBER_RE.exec(this.src);
   }
 
   /** A keyword, a function, or a name (which is not static). */
@@ -216,6 +270,7 @@ export class Reader {
         this.i = end;
         return { shape: { type: 'null' } };
       case 'NaN':
+      case 'Infinity':
         this.i = end;
         return { shape: { type: 'number' } };
       case 'undefined':
@@ -381,17 +436,24 @@ export class Reader {
     const { src } = this;
     const c = src.charAt(this.i);
     if (c === '"' || c === "'") return this.stringValue();
+    if (/[\d.]/.test(c)) return this.numberKey();
     KEY_RE.lastIndex = this.i;
     const found = KEY_RE.exec(src)?.[0];
     if (found === undefined) return undefined;
     this.i = KEY_RE.lastIndex;
-    if (!/^\d/.test(found)) return found;
-    // A number: its key is its value as a string
-    const digits = found.replace(/_/g, '');
-    if (/^0\d/.test(digits)) return undefined;
-    if (digits.endsWith('n') && !/^0[xX]/.test(digits)) {
-      return bigintValue(digits.slice(0, -1));
-    }
+    return found;
+  }
+
+  /** A number as a key: the whole literal, named as the runtime names it. */
+  private numberKey(): string | undefined {
+    const match = this.numberAt(this.i);
+    if (!match) return undefined;
+    this.i += match[0].length;
+    // `1a` is no number
+    if (/[\w$]/.test(this.src.charAt(this.i))) return undefined;
+    const digits = match[0].replace(/_/g, '');
+    if (/^0\d/.test(digits)) return undefined; // legacy octal
+    if (match[1]) return bigintValue(digits.slice(0, -1));
     const value = Number(digits);
     return Number.isNaN(value) ? undefined : String(value);
   }
@@ -432,6 +494,15 @@ export class Reader {
     if (src.startsWith('//', this.i) || src.startsWith('/*', this.i)) {
       this.space();
       return true;
+    }
+    if (c === '/') {
+      // A regex literal, whose brackets and quotes are no JavaScript structure
+      this.regexes ??= regexLiterals(src, this.goal);
+      const end = this.regexes.get(this.i);
+      if (end !== undefined) {
+        this.i = end;
+        return true;
+      }
     }
     if (c === '[' || c === '{' || c === '(') return this.skipBalanced();
     if (c === ']' || c === '}' || c === ')') return false;
