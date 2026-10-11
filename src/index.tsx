@@ -24,9 +24,9 @@ import {
   validateMarkup,
   type MarkupPassage,
 } from './markup/validate';
-import { blockWidgetNames, parseWidgetDef } from './widgets/widget-def';
+import { effectiveWidgets, parseWidgetDef } from './widgets/widget-def';
 import { parseMarkup } from './markup/parse';
-import { registerBlockMacro } from './markup/ast';
+import { setBlockWidget } from './markup/ast';
 import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
@@ -176,14 +176,15 @@ export function boot() {
   }
 
   const schema = orStop(() => parseStoryVariables(storyVarsPassage.content));
-  // Pass 1: Register the block widgets as block macros BEFORE any passage
-  // is parsed (validation and StoryInit included), so that passages
-  // invoking block widgets and widget bodies using other block widgets
-  // parse correctly regardless of passage or definition order.
-  for (const name of orStop(() =>
-    blockWidgetNames(storyData.passages.values()),
+  // Pass 1: Record which widgets are block widgets BEFORE any passage is
+  // parsed (validation and StoryInit included), so that passages invoking
+  // widgets and widget bodies using other block widgets parse correctly
+  // regardless of passage or definition order. A widget defined more than
+  // once is what its latest definition is.
+  for (const { name, block } of orStop(() =>
+    effectiveWidgets(storyData.passages.values()),
   )) {
-    registerBlockMacro(name);
+    setBlockWidget(name, block);
   }
 
   const errors = variableErrors(storyData, schema);

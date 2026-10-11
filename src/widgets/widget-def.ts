@@ -7,6 +7,7 @@ import { STRING_HOLDS, type MacroArgs, type StringHolds } from '../registry';
 import { tokenizeMarkupTolerant } from '../markup/parse';
 import type { MacroToken } from '../markup/tokens';
 import type { ParametersOf } from '../code-check';
+import { NameMap } from '../utils/macro-names';
 import { registeredParameters, tokenTextContainsChildren } from './ast-scanner';
 
 /** A {widget} definition's name, then its `@` parameters. */
@@ -182,16 +183,45 @@ export function widgetDefinitions(
 }
 
 /**
- * The names of the block widgets (those whose body renders `{@children}`)
- * that StoryInit and the passages tagged `widget` define, closed. They must
- * be known as block macros before any passage is parsed, so that passages
- * invoking them nest their content whatever the passage order.
+ * The definitions the runtime ends up with, one per widget name: the closed
+ * ones, the latest winning as registration replaces a widget. The widget
+ * passages register before StoryInit runs, so StoryInit's definitions come
+ * last whatever the passage order. Read with the flat scanner, so a nested
+ * definition owns its own `{@children}`.
  */
+export function effectiveWidgetDefinitions(
+  definitions: readonly WidgetDefinition[],
+): WidgetDefinition[] {
+  const inInit = (def: WidgetDefinition) => def.passage === 'StoryInit';
+  const effective = new NameMap<WidgetDefinition>();
+  for (const def of [
+    ...definitions.filter((def) => !inInit(def)),
+    ...definitions.filter(inInit),
+  ]) {
+    if (def.closeStart !== undefined) effective.set(def.name, def);
+  }
+  return [...effective.values()];
+}
+
+/**
+ * The widgets that StoryInit and the passages tagged `widget` define, as the
+ * runtime ends up with them (see effectiveWidgetDefinitions). Whether each
+ * takes a body must be known before any passage is parsed, so that passages
+ * invoking them nest their content (or don't) whatever the passage order.
+ */
+export function effectiveWidgets(
+  passages: Iterable<WidgetPassage>,
+  parametersOf: ParametersOf = registeredParameters,
+): WidgetDefinition[] {
+  return effectiveWidgetDefinitions(widgetDefinitions(passages, parametersOf));
+}
+
+/** The names of the block widgets among the effectiveWidgets. */
 export function blockWidgetNames(
   passages: Iterable<WidgetPassage>,
   parametersOf: ParametersOf = registeredParameters,
 ): string[] {
-  return widgetDefinitions(passages, parametersOf)
-    .filter((def) => def.block && def.closeStart !== undefined)
+  return effectiveWidgets(passages, parametersOf)
+    .filter((def) => def.block)
     .map((def) => def.name);
 }

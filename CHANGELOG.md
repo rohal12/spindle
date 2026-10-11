@@ -161,6 +161,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An automation `assert.actions` matcher honors `disabled` (`disabled: true` no longer matches an enabled Back button) (#484).
 - `parseAutomationYaml` rejects a malformed step with its number instead of running it as a passing test: an empty or non-object `assert`, `assert: {score: 100}` without `variables:`, an unknown field in a step, assertion, action matcher or action, a value of the wrong type, a `start` that is not a string, a negative `wait` (#485).
 - `Story.performAction()` returns the promise of an action that finishes later (`{quicksave}`, `{quickload}`), `Story.waitForActions()` waits for such actions, and the automation runner awaits them, so a step after `load:quickload` no longer sees the old passage (#504).
+- A widget that defines a block widget (`{widget "inner"}{@children}{/widget}` in its body) is an inline widget: the nested `{@children}` belongs to the innermost definition, in the runtime, the startup scan and `widgetDefinitions()` alike, so `{outer}` needs no closer (#522). A widget redefined as inline stops being a block macro: the parser follows the latest definition (the widget passages register before StoryInit), while a block macro registered under the same name stays one (#523).
 - `collectStoryPassageReferences()` returns references in source order whatever the order of a macro's keyword arguments. ([#277](https://github.com/rohal12/spindle/issues/277))
 
 ### Added

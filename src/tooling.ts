@@ -21,6 +21,7 @@ import {
 } from './code-check';
 import {
   widgetDefinitions as readWidgetDefinitions,
+  effectiveWidgetDefinitions,
   type WidgetDefinition,
 } from './widgets/widget-def';
 import {
@@ -186,8 +187,8 @@ export function validateStoryMarkup(
   // The calls of widgets that declare what their arguments hold are checked
   const widgets = readWidgetDefinitions(list, parameterLookup(all));
   const blocks = new Set(
-    widgets
-      .filter((def) => def.block && def.closeStart !== undefined)
+    effectiveWidgetDefinitions(widgets)
+      .filter((def) => def.block)
       .map((def) => def.name.toLowerCase()),
   );
   const parametersOf = parameterLookup([

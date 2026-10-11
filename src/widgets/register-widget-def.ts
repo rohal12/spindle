@@ -1,13 +1,13 @@
 import { registerWidget } from './widget-registry';
 import { astContainsChildren } from './ast-scanner';
-import { registerBlockMacro, type ASTNode } from '../markup/ast';
+import type { ASTNode } from '../markup/ast';
 import { errorMessage } from '../utils/error-message';
 import { checkWidgetHolds, parseWidgetDef, type WidgetDef } from './widget-def';
 
 /**
  * Register the widget a definition declares, with its body. Widgets whose
  * body renders {@children} take a closing tag, so they are registered as
- * block macros too: passages parsed later nest their content. A parameter
+ * block macros too (see registerWidget). A parameter
  * that no namespace can hold or declares what it holds wrongly throws (see
  * registerWidget and checkWidgetHolds), registering nothing.
  */
@@ -16,7 +16,6 @@ export function registerWidgetDef(def: WidgetDef, body: ASTNode[]): void {
   const { name, params, holds } = def;
   const isBlock = astContainsChildren(body);
   registerWidget(name, body, params, isBlock, holds);
-  if (isBlock) registerBlockMacro(name);
 }
 
 /**
