@@ -168,6 +168,54 @@ describe('dialog accessibility', () => {
     }
   });
 
+  it('returns focus to the original opener when stacked dialogs close together (#529)', () => {
+    act(() => window.Story.openDialog('Form'));
+    act(() => window.Story.openDialog('Plain'));
+    expect(panels()).toHaveLength(2);
+    act(() => window.Story.closeAllDialogs());
+    expect(panels()).toHaveLength(0);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('returns focus to the original opener after two synchronous closes (#529)', () => {
+    act(() => window.Story.openDialog('Form'));
+    act(() => window.Story.openDialog('Plain'));
+    act(() => {
+      window.Story.closeDialog();
+      window.Story.closeDialog();
+    });
+    expect(panels()).toHaveLength(0);
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('hands the opener down through three stacked dialogs (#529)', () => {
+    act(() => window.Story.openDialog('Form'));
+    act(() => window.Story.openDialog('Form'));
+    act(() => window.Story.openDialog('Plain'));
+    act(() => window.Story.closeAllDialogs());
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('does not steal focus author code moved elsewhere when stacked dialogs close (#529)', () => {
+    const elsewhere = document.createElement('button');
+    document.body.appendChild(elsewhere);
+    // Focus that the modal's own guard (focusin on the document) does not see
+    const hide = (e: Event) => e.stopPropagation();
+    window.addEventListener('focusin', hide, true);
+    try {
+      act(() => window.Story.openDialog('Form'));
+      act(() => window.Story.openDialog('Plain'));
+      act(() => {
+        elsewhere.focus();
+        window.Story.closeAllDialogs();
+      });
+      expect(document.activeElement).toBe(elsewhere);
+    } finally {
+      window.removeEventListener('focusin', hide, true);
+      elsewhere.remove();
+    }
+  });
+
   it('honors an explicit tabindex on contenteditable elements (#507)', () => {
     act(() => window.Story.openDialog('Editable', noClose));
     // Without a tabindex a read-only element and content nested in an
