@@ -465,15 +465,6 @@ const INLINE_ELEMENTS = new Set([
  */
 const LIVE_PROPERTIES = new Set(['value', 'checked', 'selected', 'muted']);
 
-/** Controls whose `value` is not set by an attribute, but by a property. */
-const VALUE_PROPERTY_ONLY = new Set(['select', 'textarea']);
-
-/** Whether the static `name` attribute of `tag` is its default (#528). */
-function isNativeDefault(tag: string, name: string): boolean {
-  if (name === 'muted') return false;
-  return name !== 'value' || !VALUE_PROPERTY_ONLY.has(tag);
-}
-
 /**
  * HTML boolean attributes: present means on. Written bare or with a value
  * they are present, as in HTML; one whose interpolation resolves to ''
@@ -538,6 +529,15 @@ function setRawAttribute(el: Element, name: string, value: string) {
   const attr = parsed.cloneNode() as Attr;
   attr.value = value;
   el.setAttributeNode(attr);
+}
+
+/**
+ * Whether the static `name` attribute of `tag` is its default (#528). HTML has
+ * no `value` attribute on `select` and `textarea`, so theirs stays a property.
+ */
+function isNativeDefault(tag: string, name: string): boolean {
+  if (name === 'muted') return false;
+  return name !== 'value' || (tag !== 'select' && tag !== 'textarea');
 }
 
 /**
