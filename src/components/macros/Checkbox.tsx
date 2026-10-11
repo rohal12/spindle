@@ -3,6 +3,7 @@ import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
 defineMacro({
   name: 'checkbox',
+  interpolate: true,
   storeVar: true,
   parameters: [
     VARIABLE_PARAMETER,
@@ -15,7 +16,7 @@ defineMacro({
       type: 'checkbox',
       label: label || ctx.varName || '',
       value: !!ctx.value,
-      perform: (v) => ctx.setValue!(v !== undefined ? !!v : !ctx.value),
+      perform: (v) => ctx.setValue!(v !== undefined ? !!v : !ctx.getValue!()),
     });
 
     return (
@@ -26,7 +27,9 @@ defineMacro({
         <input
           type="checkbox"
           checked={!!ctx.value}
-          onChange={() => ctx.setValue!(!ctx.value)}
+          onChange={(e) =>
+            ctx.setValue!((e.target as HTMLInputElement).checked)
+          }
         />
         {label ? ` ${label}` : null}
       </label>

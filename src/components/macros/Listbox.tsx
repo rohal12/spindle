@@ -4,6 +4,7 @@ import { display } from './display';
 
 defineMacro({
   name: 'listbox',
+  interpolate: true,
   subMacros: ['option'],
   storeVar: true,
   parameters: [VARIABLE_PARAMETER],

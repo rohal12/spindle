@@ -31,6 +31,7 @@ function hotkeyTitle(label: string, key: string | null): string {
 export function defineMenubarAction(config: MenubarActionConfig) {
   defineMacro({
     name: config.name,
+    interpolate: true,
     render(_, ctx) {
       if (config.hidden?.()) return null;
 
