@@ -542,6 +542,35 @@ describe('parseCode', () => {
     expect(pieces('a?.typeof %n')).toEqual([['code', 'a?.typeof %n', 0]]);
   });
 
+  it('reads a contextual name after . or ?. as a completed operand', () => {
+    for (const dot of ['.', '?.']) {
+      for (const name of ['of', 'async', 'get', 'set', 'static', 'let']) {
+        const member = `({${name}: 10})${dot}${name}`;
+        // division, not the start of a regex
+        expect(() => parseCode(`${member} /p`), `${member} /p`).not.toThrow();
+        expect(parseCode(`${member}/2/1`).refs).toEqual([]);
+        // a compact modulo, also across a line break, not a transient
+        expect(parseCode(`${member}\n%p`, 'statements').refs).toEqual([]);
+        expect(parseCode(`${member} %p`).refs).toEqual([]);
+      }
+    }
+    // `yield` is contextual in a generator
+    expect(
+      parseCode('function* g() { yield ({yield: 1})?.yield /p }', 'statements')
+        .refs,
+    ).toEqual([]);
+  });
+
+  it('reads a name before a ?.of member as modulo, not a transient', () => {
+    expect(
+      pieces('const p = 3;\n$n = ({of: 10})?.of\n%p;', 'statements'),
+    ).toEqual([
+      ['code', 'const p = 3;\n', 0],
+      ['variable', '$n', 0],
+      ['code', ' = ({of: 10})?.of\n%p;', 0],
+    ]);
+  });
+
   it('parses valid code that guessing regex or division gets wrong', () => {
     expect(() => parseCode('class C extends Object {} / 0')).not.toThrow();
     expect(() => parseCode('function () {} / 2')).not.toThrow();

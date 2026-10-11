@@ -152,7 +152,10 @@ const SigilParser = class extends (Parser as unknown as Base) {
   colonEndsTernary = false;
   /** The last `}` closed a block. */
   closedBlock = false;
-  /** The value of the token before the one being finished. */
+  /**
+   * The value of the token before the one being finished, but for a member
+   * name (`a.static`).
+   */
   prevValue: unknown;
   /** The type of the token before the last one. */
   typeBeforeLast: TokenType = tt.eof;
@@ -226,10 +229,11 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // or an object key (`class D { function; }`, `{ class: 1 }`)
     const self = this as unknown as ParserState;
     const prevType = self.type;
-    this.prevValue = self.value;
+    // The word before, unless it is a member name (`a.static`, `a?.let`),
+    // which no contextual keyword is
+    this.prevValue = isMemberDot(this.typeBeforeLast) ? undefined : self.value;
     const property =
-      (type.keyword !== undefined &&
-        (prevType === tt.dot || prevType === tt.questionDot)) ||
+      (type.keyword !== undefined && isMemberDot(prevType)) ||
       ((type === tt._function || type === tt._class) &&
         notABody(self.input, self.pos));
     // acorn takes a `function` or `class` for a statement's (whose `}` a
@@ -249,14 +253,17 @@ const SigilParser = class extends (Parser as unknown as Base) {
     this.typeBeforeLast = prevType;
     // @ts-expect-error acorn internals
     super.finishToken(property ? tt.name : type, value);
-    // A variable named `of` (`const of of list`): acorn takes it for the
-    // `of` of a for-of loop, after which an operand comes
+    // acorn takes a name for a contextual keyword wherever it reads (`of`
+    // of a for-of loop, `yield` in a generator), after which an operand
+    // comes. A member name (`a?.of`, which acorn checks only after `.`) and
+    // a variable named `of` (`const of of list`) are operands.
     if (
       type === tt.name &&
-      value === 'of' &&
-      (prevType === tt._const ||
-        prevType === tt._var ||
-        this.prevValue === 'let')
+      (isMemberDot(prevType) ||
+        (value === 'of' &&
+          (prevType === tt._const ||
+            prevType === tt._var ||
+            this.prevValue === 'let')))
     ) {
       self.exprAllowed = false;
     }
@@ -311,6 +318,11 @@ function transientAssignment(p: ParserState, end: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** Is `type` the `.` or `?.` of a member access? */
+function isMemberDot(type: TokenType): boolean {
+  return type === tt.dot || type === tt.questionDot;
 }
 
 const OPENERS = new Set([tt.parenL, tt.bracketL, tt.braceL, tt.dollarBraceL]);
