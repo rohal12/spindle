@@ -156,6 +156,7 @@ export function PassageDialog({
           ref={panelRef}
           class={cls}
           role="dialog"
+          data-passage={passageName}
           aria-modal="true"
           aria-label={label ?? passageName}
           tabIndex={-1}

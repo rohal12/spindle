@@ -17,7 +17,7 @@ defineMacro({
     // One group per variable in each view (see ViewScopeContext)
     const view = ctx.hooks.useContext(ViewScopeContext);
 
-    useVariableAction(ctx, {
+    const actionId = useVariableAction(ctx, {
       type: 'radiobutton',
       key: `$${ctx.varName}:${radioValue}`,
       label: label || radioValue,
@@ -31,6 +31,7 @@ defineMacro({
       >
         <input
           type="radio"
+          data-action={actionId || undefined}
           name={view ? `radio-${view}-${ctx.varName}` : `radio-${ctx.varName}`}
           checked={ctx.value === radioValue}
           onChange={() => ctx.setValue!(radioValue)}
