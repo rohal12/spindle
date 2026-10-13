@@ -235,6 +235,61 @@ describe('highlightSpans', () => {
   });
 });
 
+describe('<!-- in code', () => {
+  it.each([
+    ['{do} s = "<!--"; {/do} x'],
+    ['<script>var s = "<!--"; {$x}</script> y'],
+    ['<style>/* <!-- */ a{b:c}</style>{$x}'],
+    ['{print "<!--"} {$x}'],
+    ['{set $a = "<!--"} {$x}'],
+    ['{$a + "<!--"} {$x}'],
+  ])('is no comment in %j', (text) => {
+    expect(openConstructStart(text)).toBe(-1);
+    expect(highlightSpans(text).map((s) => s.style)).not.toContain('comment');
+  });
+
+  it('is only a JavaScript comment in a {do} body', () => {
+    const text = '{do}\n//<!--\n{/do}\n{$x}';
+    expect(openConstructStart(text)).toBe(-1);
+    expect(styled(text)).toEqual(
+      expect.arrayContaining([
+        ['//<!--', 'comment'],
+        ['$x', 'variable-2'],
+      ]),
+    );
+    expect(styled(text).filter(([, style]) => style === 'comment')).toEqual([
+      ['//<!--', 'comment'],
+    ]);
+  });
+
+  it('is a comment after the code ends', () => {
+    expect(openConstructStart('{do}"<!--"{/do} <!-- x')).toBe(16);
+    expect(openConstructStart('<script>a</script><!-- x')).toBe(18);
+    expect(styled('<script>"<!--"</script> a <!-- x')).toContainEqual([
+      '<!-- x',
+      'comment',
+    ]);
+  });
+
+  it('is no comment in a {do} body that is not closed yet', () => {
+    expect(openConstructStart('{do}\ns = "<!--"')).toBe(0);
+    expect(styled('{do}\ns = "<!--"')).not.toContainEqual(
+      expect.arrayContaining(['comment']),
+    );
+  });
+});
+
+describe('numbers in code', () => {
+  it('reads an exponent with a sign as one number', () => {
+    expect(styled('{print 1e+3 + 0xE+1}')).toEqual(
+      expect.arrayContaining([
+        ['1e+3', 'number'],
+        ['0xE', 'number'],
+      ]),
+    );
+  });
+});
+
 describe('openConstructStart', () => {
   it.each([
     ['a {if $x', 2],

@@ -45,7 +45,7 @@ const ATOMS = new Set(['true', 'false', 'null']);
 
 /** The words, numbers and runs of punctuation of code with literals blanked. */
 const CODE_TOKEN_RE =
-  /([\p{L}_$][\p{L}\p{N}_$]*)|(\d[\p{L}\p{N}_.]*|\.\d[\p{L}\p{N}_]*)|([^\s\p{L}\p{N}_$]+)/gu;
+  /([\p{L}_$][\p{L}\p{N}_$]*)|((?:\d+\.?\d*|\.\d+)[eE][+-]\d+|(?:\d|\.\d)[\p{L}\p{N}_.]*)|([^\s\p{L}\p{N}_$]+)/gu;
 
 /**
  * What is painted on each character of the text. A later paint covers an
@@ -227,12 +227,31 @@ function openDo(tokens: readonly Token[]): MacroToken | undefined {
   return open;
 }
 
-/** Where the `<!--` that no `-->` closes starts, or -1. */
+/** Elements whose content is code, where `<!--` is not an HTML comment. */
+const CODE_ELEMENTS = new Set(['script', 'style']);
+
+/**
+ * Where the `<!--` that no `-->` closes starts, or -1. The text of a `{do}`
+ * body and of a `<script>` or `<style>` is code, where `<!--` is no comment.
+ * (Strings and expressions in macros are not text tokens.)
+ */
 function openComment(tokens: readonly Token[]): number {
+  let inDo = false;
+  let element: string | undefined;
   for (const token of tokens) {
-    if (token.type !== 'text' || token.comment) continue;
-    const at = token.value.indexOf('<!--');
-    if (at >= 0) return token.start + at;
+    if (token.type === 'macro' && token.name.toLowerCase() === 'do') {
+      inDo = !token.isClose;
+    } else if (token.type === 'html') {
+      const tag = token.tag.toLowerCase();
+      if (token.isClose) {
+        if (tag === element) element = undefined;
+      } else if (!token.isSelfClose && CODE_ELEMENTS.has(tag)) {
+        element ??= tag;
+      }
+    } else if (token.type === 'text' && !token.comment && !inDo && !element) {
+      const at = token.value.indexOf('<!--');
+      if (at >= 0) return token.start + at;
+    }
   }
   return -1;
 }
