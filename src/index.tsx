@@ -195,12 +195,6 @@ export function boot() {
   // StoryInit's markup must be valid before it runs; the other passages are
   // validated once it has run, as it may define macros (see below).
   errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));
-  const storyContext = storyData.passages.get('StoryContext');
-  if (storyContext) {
-    errors.push(
-      ...storyContextErrors(storyContext.content, storeVarMacroNames()),
-    );
-  }
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
@@ -254,6 +248,13 @@ export function boot() {
     ...variableErrors(storyData, schema),
     ...markupErrors(storyData, (p) => p.name !== 'StoryInit'),
   ];
+  // StoryContext is display-only: not with the input macros known now either
+  const storyContext = storyData.passages.get('StoryContext');
+  if (storyContext) {
+    markup.push(
+      ...storyContextErrors(storyContext.content, storeVarMacroNames()),
+    );
+  }
   if (markup.length > 0) stopWithErrors(markup);
 
   // Reset action ID counters on every navigation (the passage remounts even

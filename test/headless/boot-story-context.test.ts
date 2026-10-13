@@ -13,7 +13,7 @@ describe('bootStory with a StoryContext passage', () => {
         Start: '[[Forest]]',
         Forest: 'Trees',
         StoryVariables: '$gold = 3',
-        StoryContext: 'Gold: {$gold}',
+        StoryContext: 'Gold: {$gold} {back}',
       }),
     });
     // Besides the interface's own controls, the passage's link is the only one
@@ -26,6 +26,9 @@ describe('bootStory with a StoryContext passage', () => {
     expect(el).not.toBeNull();
     expect(storyContextElement()).toBe(el);
     expect(el.textContent).toContain('Gold: 3');
+    // {back} renders its button but registers no second `back` action
+    expect(el.querySelector('button')).not.toBeNull();
+    expect(before.filter((id) => id.startsWith('back:'))).toHaveLength(1);
     expect(ids()).toEqual(before);
 
     // The mount subscribes to the store from an effect, a frame after it
@@ -34,5 +37,14 @@ describe('bootStory with a StoryContext passage', () => {
     Story.set('gold', 4);
     await Story.waitForActions();
     expect(observableText(el)).toContain('Gold: 4');
+  });
+
+  it('mounts it again when the page lost the element', async () => {
+    const el = storyContextElement()!;
+    el.parentElement!.remove();
+    const again = storyContextElement()!;
+    expect(again).not.toBe(el);
+    expect(again.isConnected).toBe(true);
+    expect(observableText(again)).toContain('Gold:');
   });
 });

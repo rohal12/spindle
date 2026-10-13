@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
 import { bootStory } from '../../src/headless';
-import { storyContextElement } from '../../src/story-context-passage';
 import { storyHtml } from './story-html';
 
 // Separate file: Spindle's module state allows one story per module instance.
@@ -23,6 +22,5 @@ describe('bootStory with a StoryContext that changes the story', () => {
     );
     expect(root.querySelector('li')!.textContent).toContain('{set}');
     expect(document.querySelector('.passage')).toBeNull();
-    expect(storyContextElement()).toBeNull();
   });
 });
