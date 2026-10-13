@@ -155,9 +155,9 @@ describe('format', () => {
   });
 
   it('indents the body of a block macro the static default does not know', async () => {
-    const editor = create('{dialog "Hi"}\nyes\n{/dialog}');
+    const editor = create('{dialog "Hi"}\nyes\n');
     await commands.format!(editor);
-    expect(editor.getValue()).toBe('{dialog "Hi"}\n  yes\n{/dialog}\n');
+    expect(editor.getValue()).toBe('{dialog "Hi"}\n  yes\n');
   });
 
   it('indents the body of a macro the passage closes itself', async () => {
@@ -198,7 +198,7 @@ describe('format', () => {
     expect(editor.getValue()).toBe('{if $a}\r\n  yes\r\n{/if}\r\n');
   });
 
-  it('alerts a formatter error and leaves the text as it was', async () => {
+  it('alerts an unexpected error and leaves the text as it was', async () => {
     const editor = create('{if $a}\nyes\n{/if}');
     const spy = vi.spyOn(editor, 'getValue');
     spy.mockImplementationOnce(() => {

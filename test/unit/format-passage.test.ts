@@ -571,4 +571,80 @@ describe('formatPassage', () => {
       '﻿{if $a}\n  yes\n{/if}\n',
     );
   });
+
+  // -- blockMacros ------------------------------------------------------
+
+  it('indents the body of a macro named in blockMacros', async () => {
+    const input = '{panel}\nyes\n';
+    expect(await fmt(input)).toBe('{panel}\nyes\n');
+    expect(await fmt(input, { blockMacros: ['Panel'] })).toBe(
+      '{panel}\n  yes\n',
+    );
+  });
+
+  it('keeps the passage closers and built-in blocks next to blockMacros', async () => {
+    const input = '{panel}\n{mine}\nyes\n{/mine}\n{if $a}\nno\n{/if}\n';
+    expect(await fmt(input, { blockMacros: ['panel'] })).toBe(
+      '{panel}\n  {mine}\n    yes\n  {/mine}\n  {if $a}\n    no\n  {/if}\n',
+    );
+  });
+
+  it('lets isBlock override blockMacros', async () => {
+    expect(
+      await fmt('{panel}\nyes\n', {
+        blockMacros: ['panel'],
+        isBlock: () => false,
+      }),
+    ).toBe('{panel}\nyes\n');
+  });
+
+  // -- Placeholders must come back exactly once -------------------------
+
+  describe('markup in <style> and <script>', () => {
+    const inputs = {
+      'CSS without spaces, read as a macro':
+        '<style>\na{color:red}\n</style>\n',
+      'CSS in a div': '<div>\n<style>\na{color:red}\n</style>\n</div>\n',
+      'CSS with a variable': '<style>\na { color: {$c} }\n</style>\n',
+      'JS block': '<script>\nif(a){b()}\n</script>\n',
+      'object literal that is a variable':
+        '<script>\nvar x = {$count};\n</script>\n',
+      'HTML with a macro in an attribute':
+        '<div class="{$c}">\n<p>x</p>\n</div>\n',
+    };
+
+    for (const [name, input] of Object.entries(inputs)) {
+      it(`never leaves a placeholder or loses text: ${name}`, async () => {
+        const output = await fmt(input);
+        expect(output).not.toMatch(/<!--sp:|<!--SP:|__SP\d|<!--SVG:/i);
+        // Every Spindle token and the CSS or JS around it survives
+        for (const word of input.match(/[\w$]+/g)!) {
+          expect(output).toContain(word);
+        }
+        // Formatting again changes nothing
+        expect(await fmt(output)).toBe(output);
+      });
+    }
+
+    it('leaves a <style> whose braces are a macro as written', async () => {
+      expect(await fmt('<style>\na{color:red}\n</style>\n')).toBe(
+        '<style>\na{color:red}\n</style>\n',
+      );
+    });
+
+    it('leaves a <script> block where a variable would be rewritten as written', async () => {
+      expect(await fmt('<script>\nvar x = {$count};\n</script>\n')).toBe(
+        '<script>\nvar x = {$count};\n</script>\n',
+      );
+    });
+
+    it('still formats the CSS and JS that hold no markup', async () => {
+      expect(await fmt('<style>\na { color:red }\n</style>\n')).toBe(
+        '<style>\n  a {\n    color: red;\n  }\n</style>\n',
+      );
+      expect(await fmt('<script>\nif(a){ b() }\n</script>\n')).toContain(
+        'if (a) {',
+      );
+    });
+  });
 });

@@ -9,7 +9,6 @@ import {
   validateStoryMarkup,
   type PrettierLike,
 } from '../tooling';
-import { tokenizeMarkupTolerant } from '../markup/parse';
 import { builtinMacros } from './builtin-macros';
 import { snippets } from './snippets';
 
@@ -122,25 +121,12 @@ function check(editor: Editor): void {
   );
 }
 
-/** Whether the named macro takes a body: the built-in ones and those the passage closes. */
-function blockLookup(text: string): (name: string) => boolean {
-  const blocks = new Set(
-    builtinMacros.filter((m) => m.block).map((m) => m.name.toLowerCase()),
-  );
-  for (const token of tokenizeMarkupTolerant(text).tokens) {
-    if (token.type === 'macro' && token.isClose) {
-      blocks.add(token.name.toLowerCase());
-    }
-  }
-  return (name) => blocks.has(name.toLowerCase());
-}
-
 async function format(editor: Editor): Promise<void> {
   try {
     const text = editor.getValue();
     const formatted = await formatPassage(text, {
       prettier,
-      isBlock: blockLookup(text),
+      blockMacros: builtinMacros.filter((m) => m.block).map((m) => m.name),
     });
     // The author kept typing while Prettier ran: their text wins
     if (editor.getValue() !== text || formatted === text) return;

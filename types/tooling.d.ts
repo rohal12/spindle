@@ -1146,9 +1146,15 @@ export interface PassageFormatOptions {
   prettierOptions?: object;
   /**
    * Whether the named macro takes a body (default: the built-in block macros
-   * and the names the passage closes with `{/name}`).
+   * and the names the passage closes with `{/name}`). Replaces that default
+   * whole; use `blockMacros` to add to it.
    */
   isBlock?: (name: string) => boolean;
+  /**
+   * Names of block macros to add to the default `isBlock` (ignored when
+   * `isBlock` is given), such as the ones the story or an editor knows.
+   */
+  blockMacros?: Iterable<string>;
   /**
    * Whether the named sub-macro snaps back to its parent's indentation
    * (default: else, elseif, next, case, default).

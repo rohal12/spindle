@@ -157,6 +157,46 @@ export function replaceSvgBlocks(html: string): PlaceholderResult {
   return { text: result, tokens };
 }
 
+/** The placeholders of the token at an index. */
+type PlaceholdersOf = (index: number) => string[];
+
+export const SVG_PLACEHOLDERS: PlaceholdersOf = (i) => [`<!--SVG:${i}-->`];
+export const SPINDLE_PLACEHOLDERS: PlaceholdersOf = (i) => [
+  `<!--SP:${i}-->`,
+  `__SP${i}__`,
+];
+
+/**
+ * Whether `text` (what a formatter made of the placeholdered text) holds
+ * the placeholder of every one of `tokens` exactly once. If not, the
+ * formatter lost, changed or copied one, and restoring the tokens would
+ * lose or duplicate story text.
+ */
+export function placeholdersIntact(
+  text: string,
+  tokens: readonly string[],
+  placeholdersOf: PlaceholdersOf,
+): boolean {
+  return tokens.every(
+    (_, index) =>
+      placeholdersOf(index).reduce(
+        (count, placeholder) => count + text.split(placeholder).length - 1,
+        0,
+      ) === 1,
+  );
+}
+
+/** Whether `before` and `after` hold the same Spindle tokens, in the same order. */
+export function sameSpindleTokens(before: string, after: string): boolean {
+  const tokensOf = (text: string) =>
+    scanSpindleMarkup(text).tokens.map((m) => m.token);
+  const expected = tokensOf(before);
+  const found = tokensOf(after);
+  return (
+    expected.length === found.length && expected.every((t, i) => t === found[i])
+  );
+}
+
 /**
  * Put each of `tokens` back in place of its placeholders (those that
  * `placeholdersOf` gives for its index): the first of each.
@@ -164,7 +204,7 @@ export function replaceSvgBlocks(html: string): PlaceholderResult {
 function restorePlaceholders(
   text: string,
   tokens: string[],
-  placeholdersOf: (index: number) => string[],
+  placeholdersOf: PlaceholdersOf,
 ): string {
   let result = text;
   tokens.forEach((token, index) => {
@@ -180,7 +220,7 @@ function restorePlaceholders(
  * Restore SVG blocks from placeholders.
  */
 export function restoreSvgBlocks(text: string, tokens: string[]): string {
-  return restorePlaceholders(text, tokens, (i) => [`<!--SVG:${i}-->`]);
+  return restorePlaceholders(text, tokens, SVG_PLACEHOLDERS);
 }
 
 /**
@@ -272,8 +312,5 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
  * Restore original Spindle tokens from placeholders.
  */
 export function restoreSpindleTokens(text: string, tokens: string[]): string {
-  return restorePlaceholders(text, tokens, (i) => [
-    `<!--SP:${i}-->`,
-    `__SP${i}__`,
-  ]);
+  return restorePlaceholders(text, tokens, SPINDLE_PLACEHOLDERS);
 }

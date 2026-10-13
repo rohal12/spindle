@@ -14,6 +14,10 @@ import {
   restoreSpindleTokens,
   replaceSvgBlocks,
   restoreSvgBlocks,
+  placeholdersIntact,
+  sameSpindleTokens,
+  SPINDLE_PLACEHOLDERS,
+  SVG_PLACEHOLDERS,
   scanSpindleMarkup,
 } from './placeholders';
 
@@ -30,8 +34,10 @@ export interface PassageFormatOptions {
   prettier?: PrettierLike;
   /** The options Prettier is given (default: `{ tabWidth: 2 }`). */
   prettierOptions?: object;
-  /** Returns true if the named macro is a block/container macro (default: the built-in block macros and the names the passage closes with `{/name}`). */
+  /** Returns true if the named macro is a block/container macro (default: the built-in block macros and the names the passage closes with `{/name}`). Replaces that default whole; use `blockMacros` to add to it. */
   isBlock?: (name: string) => boolean;
+  /** Names of block macros to add to the default `isBlock` (ignored when `isBlock` is given), such as the ones the story or a Twine editor knows. */
+  blockMacros?: Iterable<string>;
   /** Returns true for sub-macros that dedent to parent level (default: else, elseif, next, case, default). */
   isDedentingSubMacro?: (name: string) => boolean;
   /** If set, wrap prose lines exceeding this character count. */
@@ -57,8 +63,12 @@ function closedMacroNames(text: string): Set<string> {
 }
 
 /** The built-in block macros (and the block widgets the runtime has defined) plus those the passage closes. */
-function defaultIsBlock(text: string): (name: string) => boolean {
+function defaultIsBlock(
+  text: string,
+  extra: Iterable<string> = [],
+): (name: string) => boolean {
   const closed = closedMacroNames(text);
+  for (const name of extra) closed.add(name.toLowerCase());
   return (name) => isBlockMacro(name) || closed.has(name.toLowerCase());
 }
 
@@ -170,7 +180,7 @@ async function formatLf(
     return (formatted ?? code).trim().replace(/\n*$/, '\n');
   }
 
-  const isBlock = options.isBlock ?? defaultIsBlock(body);
+  const isBlock = options.isBlock ?? defaultIsBlock(body, options.blockMacros);
   const isDedenting =
     options.isDedentingSubMacro ??
     ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
@@ -202,8 +212,9 @@ async function formatLf(
         prettier,
         prettierOptions,
       );
-      // Without Prettier, or where it fails, the region stays as written
-      if (formatted === undefined) {
+      // Without Prettier, where it fails, or where it changed a Spindle
+      // token (`{$a}` is an object literal to it), the region stays as written
+      if (formatted === undefined || !sameSpindleTokens(innerCode, formatted)) {
         lines.push(...region.lines);
         continue;
       }
@@ -235,8 +246,14 @@ async function formatLf(
         prettier,
         prettierOptions,
       );
-      // Without Prettier, or where it fails, the region stays as written
-      if (formatted === undefined) {
+      // Without Prettier, where it fails, or where it lost or moved a
+      // placeholder (it formats a `<style>` body as CSS, where `<!--SP:0-->`
+      // is no comment), the region stays as written
+      if (
+        formatted === undefined ||
+        !placeholdersIntact(formatted, tokens, SPINDLE_PLACEHOLDERS) ||
+        !placeholdersIntact(formatted, svgTokens, SVG_PLACEHOLDERS)
+      ) {
         lines.push(...region.lines);
         continue;
       }
