@@ -793,6 +793,15 @@ export interface FindCodeEndOptions {
   goal?: JsGoal;
   /** End the code at a `{` in code, at any depth, for which this holds. */
   stop?: (index: number) => boolean;
+  /**
+   * Called when a line appended to `src` (text after a line break) could
+   * change the result: there is no end because the code runs to the end of
+   * `src` (an open bracket, comment, string or template literal), or the
+   * end was found by reading a template literal that runs to the end as
+   * closed early (see above). Not called when the code before the end
+   * can't be JavaScript.
+   */
+  onRunOut?: () => void;
 }
 
 /** The rest of a word, after a number (`2s`). */
@@ -828,9 +837,9 @@ const WORDS_BEFORE_STRING = new Set(['of', 'get', 'set', 'static', 'async']);
 export function findCodeEnd(
   src: string,
   start: number,
-  { goal = 'expression', stop }: FindCodeEndOptions = {},
+  { goal = 'expression', stop, onRunOut }: FindCodeEndOptions = {},
 ): number {
-  const end = scanCodeEnd(src, start, goal, stop);
+  const end = scanCodeEnd(src, start, goal, stop, onRunOut);
   return end < 0 && !stop ? parsedCodeEnd(src, start, goal) : end;
 }
 
@@ -866,7 +875,13 @@ function scanCodeEnd(
   start: number,
   goal: JsGoal,
   stop: ((index: number) => boolean) | undefined,
+  onRunOut: (() => void) | undefined,
 ): number {
+  /** No end: the code runs to the end of `src`. */
+  const ranOut = () => {
+    onRunOut?.();
+    return -1;
+  };
   const stack: string[] = [];
   let prevEnd = -1;
   let prevWord = false;
@@ -885,15 +900,30 @@ function scanCodeEnd(
           // on after its first character, as after an operator
           resumeAt = Math.max(tok.pos, from) + 1;
           afterOperand = false;
-          if (resumeAt >= src.length) return -1;
+          if (resumeAt >= src.length) return ranOut();
           break;
         }
         const k = stack.lastIndexOf('${');
         const unclosed = /^Unterminated template/.test(message);
         // One such slip per block: more is no code an author meant. (A raw
         // body that is no code ends at its first closer.)
-        if (!unclosed || k < 0 || templateSlip || stop) return -1;
-        // The template's text starts just past the backtick that opened it
+        if (!unclosed || k < 0 || templateSlip || stop) {
+          // An unterminated literal runs to the end, and a line after it
+          // could close it; not so a regex literal, which ends at the line
+          // break, or a quote after a word (`don't`), which is no string
+          const toEnd =
+            /^Unterminated/.test(message) &&
+            !/^Unterminated regular/.test(message) &&
+            !(
+              /^Unterminated string/.test(message) &&
+              prevWord &&
+              tok.pos === prevEnd
+            );
+          return toEnd ? ranOut() : -1;
+        }
+        // The template's text starts just past the backtick that opened it.
+        // It ran to the end: a backtick appended would close it instead.
+        onRunOut?.();
         templateSlip = true;
         stack.length = k;
         resumeAt = tok.pos;
@@ -902,7 +932,7 @@ function scanCodeEnd(
       }
       if (tok.restarted && stack.includes('${')) return -1;
       const t = tok.type;
-      if (t === tt.eof) return -1;
+      if (t === tt.eof) return ranOut();
       if (t === tt.string && prevWord && tok.start === prevEnd) return -1;
       prevWord =
         (t === tt.name && !WORDS_BEFORE_STRING.has(tok.value as string)) ||

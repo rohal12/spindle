@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   highlightSpans,
+  highlightWithOpenStart,
   openConstructStart,
   type CmStyle,
 } from '../../src/twine-editor/highlight';
@@ -312,4 +313,86 @@ describe('openConstructStart', () => {
     expect(openConstructStart('{do}\n<!-- x')).toBe(0);
     expect(openConstructStart('a <!-- x {if')).toBe(2);
   });
+  // Constructs that read as closed, or as text, at the end of the text,
+  // but that a following line can read differently
+  it.each([
+    // an end tag before its >
+    ['<span></span', 6],
+    ['<script>a</script', 9],
+    // text only for want of its >: `<b` is no tag before `_`
+    ['<b_r x=', 0],
+    // with > on the same line, an email autolink
+    ['<a@b', 0],
+    // an unclosed attribute in a tag that reads as text without it
+    ['<u:9 ="', 0],
+    // a closer without its }
+    ['{/if', 0],
+    // macro arguments ended leniently: the // comment hides the }
+    ['{if // }', 0],
+    // an open template literal
+    ['{set $a = `x}', 0],
+    // a template literal read as closed by the backtick in ${…}
+    ['{set $s = `Hi ${$name`}', 0],
+    // a {do} body whose JavaScript runs to the end: the {/do} is in a comment
+    ['{do}a = 1 // {/do}', 0],
+    // a closer cut off at the end of a {do} body
+    ['{do}a = /x/{/do', 0],
+    // a { in an attribute value with no } after it
+    ["<b title='{x'>", 0],
+  ])('%j is open at %d', (text, expected) =>
+    expect(openConstructStart(text)).toBe(expected),
+  );
+
+  it.each([
+    '<span></span>',
+    '<script>a</script>',
+    '<b_r x=>',
+    '<a@b>',
+    '<u:9 ="a">',
+    '{/if}',
+    '{if // }\n$x}',
+    '{set $a = `x`}',
+    '{set $s = `Hi ${$name}`}',
+    '{do}a = 1 // x\n{/do}',
+    '{do}a = /x/{/do}',
+    "<b title='{x}'>",
+    // a quote after a word is no string, and a regex ends at the line
+    "{if don't}",
+    'x {set $a = /re}',
+  ])('the closed %j is not open', (text) =>
+    expect(openConstructStart(text)).toBe(-1),
+  );
+
+  it('styles such a construct by the line that follows', () => {
+    expect(styled('<span></span\n>')).toEqual([
+      ['<span>', 'tag'],
+      ['</span', 'tag'],
+      ['>', 'tag'],
+    ]);
+    expect(styled('{if // }\n$x}')).toEqual([
+      ['{if', 'keyword'],
+      ['// }', 'comment'],
+      ['$x', 'variable-2'],
+      ['}', 'keyword'],
+    ]);
+  });
+
+  it('paints an unclosed attribute from the tag that holds it', () => {
+    expect(styled('<u:9 ="')).toEqual([['<u:9 ="', 'error']]);
+    expect(styled('<b title="{$a')).toEqual([
+      ['<b title="', 'error'],
+      ['{$a', 'error'],
+    ]);
+  });
+});
+
+describe('highlightWithOpenStart', () => {
+  it.each(['{if $x', '{if $x}', '<span></span', 'a <!-- b', ''])(
+    'is highlightSpans and openConstructStart of %j',
+    (text) =>
+      expect(highlightWithOpenStart(text)).toEqual({
+        spans: highlightSpans(text),
+        openStart: openConstructStart(text),
+      }),
+  );
 });

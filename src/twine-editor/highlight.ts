@@ -10,7 +10,10 @@ import {
   type Token,
   type VariableScope,
 } from '../tooling';
-import { tokenizeMarkupTolerant } from '../markup/parse';
+import { scanMarkupTolerant, tokenizeMarkupTolerant } from '../markup/parse';
+
+type ScannedMarkup = ReturnType<typeof scanMarkupTolerant>;
+import { jsCodeEnd } from '../markup/code-end';
 import { builtinMacros } from './builtin-macros';
 
 /** The CodeMirror 5 token names Twine themes (see the design spec's table). */
@@ -231,11 +234,13 @@ function openDo(tokens: readonly Token[]): MacroToken | undefined {
 const CODE_ELEMENTS = new Set(['script', 'style']);
 
 /**
- * Where the `<!--` that no `-->` closes starts, or -1. The text of a `{do}`
- * body and of a `<script>` or `<style>` is code, where `<!--` is no comment.
- * (Strings and expressions in macros are not text tokens.)
+ * The text tokens that are markup, each with the code element (`<script>`
+ * or `<style>`) it is in, if any. The text of a `{do}` body is code, and is
+ * left out. (Strings and expressions in macros are not text tokens.)
  */
-function openComment(tokens: readonly Token[]): number {
+function* markupText(
+  tokens: readonly Token[],
+): Generator<{ token: Token & { type: 'text' }; element?: string }> {
   let inDo = false;
   let element: string | undefined;
   for (const token of tokens) {
@@ -248,9 +253,48 @@ function openComment(tokens: readonly Token[]): number {
       } else if (!token.isSelfClose && CODE_ELEMENTS.has(tag)) {
         element ??= tag;
       }
-    } else if (token.type === 'text' && !token.comment && !inDo && !element) {
-      const at = token.value.indexOf('<!--');
-      if (at >= 0) return token.start + at;
+    } else if (token.type === 'text' && !token.comment && !inDo) {
+      yield { token, element };
+    }
+  }
+}
+
+/**
+ * Where the `<!--` that no `-->` closes starts, or -1. In a `<script>` or
+ * `<style>`, `<!--` is code, no comment.
+ */
+function openComment(tokens: readonly Token[]): number {
+  for (const { token, element } of markupText(tokens)) {
+    const at = element ? -1 : token.value.indexOf('<!--');
+    if (at >= 0) return token.start + at;
+  }
+  return -1;
+}
+
+/** `<name` or `</name`, where a tag may start. */
+const TAG_START = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/g;
+
+/**
+ * Whether the text from `at` is a tag that a `>` on the next line would
+ * close (on the same line, `<a@b>` would be an email autolink).
+ */
+function closesWithGt(text: string, at: number): boolean {
+  const rest = `${text.slice(at)}\n>`;
+  const [first] = tokenizeMarkupTolerant(rest).tokens;
+  return first?.type === 'html' && first.end === rest.length;
+}
+
+/**
+ * Where a tag starts that is text only for want of its `>`, or -1: `</b`,
+ * or `<b_r x=` (no error: `<b` is no tag before `_`), which a `>` on a later
+ * line makes a tag. In a code element only its end tag counts.
+ */
+function openTag(text: string, tokens: readonly Token[]): number {
+  for (const { token, element } of markupText(tokens)) {
+    for (const m of text.slice(token.start, token.end).matchAll(TAG_START)) {
+      const at = token.start + m.index;
+      if (element && !(m[1] && m[2]!.toLowerCase() === element)) continue;
+      if (closesWithGt(text, at)) return at;
     }
   }
   return -1;
@@ -262,13 +306,123 @@ function isUnclosed(error: MarkupError): boolean {
 }
 
 /**
- * Where the construct `error` leaves open starts. An unclosed attribute value
- * is reported where the value starts, in a tag that starts before it.
+ * Where each construct left open starts: where the tokenizer's damage
+ * starts, which for an error inside a tag (an attribute value, code in
+ * one) is the tag. An unclosed attribute value is in a tag that starts
+ * before it, even where the tag reads as text without it (`<u:9 ="`).
  */
-function unclosedStart(text: string, error: MarkupError): number {
-  return error.code === 'unclosed-attribute'
-    ? Math.max(text.lastIndexOf('<', error.offset), 0)
-    : error.offset;
+function unclosedStarts(text: string, scan: ScannedMarkup): number[] {
+  return scan.errors.flatMap((error, i) => {
+    if (!isUnclosed(error)) return [];
+    const damage = scan.damage[i]!;
+    return error.code === 'unclosed-attribute'
+      ? [Math.min(damage, Math.max(text.lastIndexOf('<', error.offset), 0))]
+      : [damage];
+  });
+}
+
+/**
+ * The tolerant tokens of `text`, and where code starts whose end may move
+ * once text follows (see `jsCodeEnd`).
+ */
+interface Reading extends ScannedMarkup {
+  openEnds: number[];
+}
+
+function read(text: string): Reading {
+  const ranOut: [input: string, codeStart: number][] = [];
+  const scan = scanMarkupTolerant(text, {
+    hooks: jsCodeEnd((input, codeStart) => ranOut.push([input, codeStart])),
+  });
+  // The tokenizer reads the text from its start and from just past each
+  // error's damage: to the end, and up to where the damage starts. Code
+  // that runs to the end, or into an unclosed construct, may end elsewhere
+  // once a line follows; not so code cut off by any other error.
+  const bases = [0, ...scan.damage.map((at) => at + 1)];
+  const ends = new Set([
+    text.length,
+    ...scan.damage.filter((_, i) => isUnclosed(scan.errors[i]!)),
+  ]);
+  const openEnds: number[] = [];
+  for (const [input, codeStart] of ranOut) {
+    const base = bases.find(
+      (at) => ends.has(at + input.length) && text.startsWith(input, at),
+    );
+    if (base !== undefined) openEnds.push(base + codeStart);
+  }
+  // The tokenizer reads no code after the last `}`, as none can end there:
+  // a `{` after it may start code once a `}` follows
+  for (let i = text.indexOf('{', text.lastIndexOf('}') + 1); i >= 0;) {
+    openEnds.push(i + 1);
+    i = text.indexOf('{', i + 1);
+  }
+  return { ...scan, openEnds };
+}
+
+function spansOf(text: string, reading: Reading): StyledSpan[] {
+  const { tokens, errors } = reading;
+  const canvas = new Canvas(text.length);
+  const comment = openComment(tokens);
+  if (comment >= 0) canvas.paint(comment, text.length, 'comment');
+  for (const start of unclosedStarts(text, reading)) {
+    canvas.paint(start, text.length, 'error');
+  }
+  for (const error of errors) {
+    if (!isUnclosed(error)) {
+      canvas.paint(
+        error.offset,
+        Math.max(error.end, error.offset + 1),
+        'error',
+      );
+    }
+  }
+  for (const token of tokens) {
+    if (token.type === 'macro') paintArgumentStrings(canvas, token);
+  }
+  for (const token of tokens) paintToken(canvas, text, token);
+  const body = openDo(tokens);
+  for (const piece of passagePieces(text, builtinMacros, tokens)) {
+    if (piece.kind === 'code') paintCode(canvas, piece);
+    if (piece.kind === 'text') {
+      for (const token of piece.tokens) paintToken(canvas, text, token);
+    }
+  }
+  if (body) {
+    paintCode(canvas, {
+      code: text.slice(body.end),
+      goal: 'statements',
+      offset: body.end,
+    });
+  }
+  return canvas.spans();
+}
+
+/**
+ * Where the construct starts whose code, starting at `at`, may end
+ * elsewhere once text follows: the damage of an error the code is in, or
+ * the tag holding the code (a raw body starts where its opener ends).
+ */
+function openCodeStart(scan: ScannedMarkup, at: number): number {
+  const i = scan.errors.findIndex(
+    (e, i) => scan.damage[i]! < at && at <= Math.max(e.offset, e.end),
+  );
+  if (i >= 0) return scan.damage[i]!;
+  const token = scan.tokens.find(
+    (t) => t.type !== 'text' && t.start < at && at <= t.end,
+  );
+  return token ? token.start : -1;
+}
+
+function openStartOf(text: string, reading: Reading): number {
+  const { tokens } = reading;
+  const starts = [
+    ...unclosedStarts(text, reading),
+    ...reading.openEnds.map((at) => openCodeStart(reading, at)),
+    openComment(tokens),
+    openDo(tokens)?.start ?? -1,
+    openTag(text, tokens),
+  ].filter((start) => start >= 0);
+  return starts.length > 0 ? Math.min(...starts) : -1;
 }
 
 /**
@@ -278,40 +432,7 @@ function unclosedStart(text: string, error: MarkupError): number {
  */
 export function highlightSpans(text: string): StyledSpan[] {
   try {
-    const { tokens, errors } = tokenizeMarkupTolerant(text);
-    const canvas = new Canvas(text.length);
-    const comment = openComment(tokens);
-    if (comment >= 0) canvas.paint(comment, text.length, 'comment');
-    for (const error of errors) {
-      if (isUnclosed(error)) {
-        canvas.paint(unclosedStart(text, error), text.length, 'error');
-      } else {
-        canvas.paint(
-          error.offset,
-          Math.max(error.end, error.offset + 1),
-          'error',
-        );
-      }
-    }
-    for (const token of tokens) {
-      if (token.type === 'macro') paintArgumentStrings(canvas, token);
-    }
-    for (const token of tokens) paintToken(canvas, text, token);
-    const body = openDo(tokens);
-    for (const piece of passagePieces(text, builtinMacros)) {
-      if (piece.kind === 'code') paintCode(canvas, piece);
-      if (piece.kind === 'text') {
-        for (const token of piece.tokens) paintToken(canvas, text, token);
-      }
-    }
-    if (body) {
-      paintCode(canvas, {
-        code: text.slice(body.end),
-        goal: 'statements',
-        offset: body.end,
-      });
-    }
-    return canvas.spans();
+    return spansOf(text, read(text));
   } catch {
     return [];
   }
@@ -319,19 +440,32 @@ export function highlightSpans(text: string): StyledSpan[] {
 
 /**
  * Where a construct still open at the end of `text` starts, or -1: an
- * unclosed tag (the tokenizer's `unclosed-*` errors), an unclosed `<!--`, or
- * a `{do}` body without `{/do}`. The earliest wins.
+ * unclosed tag (the tokenizer's `unclosed-*` errors), an unclosed `<!--`, a
+ * `{do}` body without `{/do}`, a tag read as text for want of its `>`
+ * (`</b`), or code whose end text after `text` could move: the tokenizer
+ * ended it leniently, or found none, because its JavaScript runs to the end
+ * (a `//` comment, an open string or template literal). The earliest wins.
  */
 export function openConstructStart(text: string): number {
   try {
-    const { tokens, errors } = tokenizeMarkupTolerant(text);
-    const starts = [
-      ...errors.filter(isUnclosed).map((e) => unclosedStart(text, e)),
-      openComment(tokens),
-      openDo(tokens)?.start ?? -1,
-    ].filter((start) => start >= 0);
-    return starts.length > 0 ? Math.min(...starts) : -1;
+    return openStartOf(text, read(text));
   } catch {
     return -1;
+  }
+}
+
+/** `highlightSpans` and `openConstructStart` of `text`, reading it once. */
+export function highlightWithOpenStart(text: string): {
+  spans: StyledSpan[];
+  openStart: number;
+} {
+  try {
+    const reading = read(text);
+    return {
+      spans: spansOf(text, reading),
+      openStart: openStartOf(text, reading),
+    };
+  } catch {
+    return { spans: highlightSpans(text), openStart: openConstructStart(text) };
   }
 }

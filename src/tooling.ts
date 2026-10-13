@@ -32,6 +32,7 @@ import {
   type VariableReference,
 } from './story-variables';
 import type { ParameterDef } from './registry';
+import type { Token } from './markup/tokens';
 import type { WidgetDef } from './widgets/widget-def';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
@@ -240,13 +241,15 @@ function blockLookup(macros: readonly ToolingMacro[]) {
  * markup in a text follows it, as pieces marked `nested` with offsets into
  * `source` too. Malformed tags are skipped, so it reads half-typed markup.
  * The macros are those the markup may use, built-in and user-defined.
+ * `tokens` are those of `tokenizeMarkupTolerant(source)`, for a caller that
+ * has them already.
  */
 export function passagePieces(
   source: string,
   macros: Iterable<ToolingMacro> = [],
+  tokens: readonly Token[] = tokenizeMarkupTolerant(source).tokens,
 ): Piece[] {
   const all = [...macros];
-  const { tokens } = tokenizeMarkupTolerant(source);
   return [
     ...passagePiecesOf(source, tokens, parameterLookup(all), {
       isBlock: blockLookup(all),

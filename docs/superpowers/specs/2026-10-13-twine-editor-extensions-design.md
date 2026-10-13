@@ -86,24 +86,56 @@ each in its own file and testable alone:
 
 A CodeMirror 5 mode is called line by line, with a state object carried
 between lines; it never sees the whole document. The mode keeps the
-**unfinished tail** in its state: the text from the start of a construct the
-tokenizer left open (a macro whose arguments continue on the next line, a
-`{do}` body, an HTML comment, a link) up to the end of the previous line.
+**unfinished tail** in its state: the text from the start of a construct
+still open at the end of the previous line (a macro whose arguments continue
+on the next line, a `{do}` body, an HTML comment, a link, a tag) up to that
+line's end.
+
+What is open at a line's end is `openConstructStart(text)`: the earliest of
+an unclosed tag (the tokenizer's `unclosed-*` errors, from where the error's
+damage starts, which for an error inside a tag is the tag), an unclosed
+`<!--`, a `{do}` without `{/do}`, and constructs that read as closed, or as
+text, at the end of the text but that a following line can read
+differently: an end tag before its `>` (`</span`), a tag that is text only
+for want of its `>` (`<b_r x=`), and code whose end a following line could
+move. The last is reported by the JavaScript reader
+(`jsCodeEnd(onOpenEnd)` in `src/markup/code-end.ts`, built on
+`findCodeEnd`'s `onRunOut`): code that runs to the end of the text (a `//`
+comment, an open string or template literal, an open bracket), code ended
+leniently after that, a `{do}` body cut off before its `}`, and a `{` with
+no `}` after it. Without the hook the reader finds the same ends.
 
 For each line, `token(stream, state)`:
 
-1. On the first call for the line, tokenizes `state.tail + line` with
-   `tokenizeMarkupTolerant`, maps the tokens (and the code pieces from
-   `passagePieces`, for expressions inside macros and `{$…}`) to styled spans,
-   and keeps the spans that fall on this line in the state.
+1. On the first call for the line, reads `head = state.tail + line` once
+   (`highlightWithOpenStart`). If a construct is open at the line's end, a
+   later line may change how this one reads, so the mode **looks ahead**
+   (`stream.lookAhead(n)`,
+   CodeMirror ≥ 5.27), appending following lines to the window, doubling
+   their number, until no construct open at the window's end started before
+   the line's end, or the passage ends. It highlights that window with
+   `highlightSpans` and keeps the spans on this line. A construct that closes
+   within the look-ahead is thus styled on every line as the whole passage
+   styles it, without waiting for the later lines.
 2. Advances the stream through those spans one by one, returning each span's
-   style.
-3. At end of line, sets `state.tail` to the text of any construct still open
-   at the line's end (or `''`).
+   style (and `null` for the gaps).
+3. Sets `state.tail` to the text from the open construct's start to the
+   line's end (or `''`).
 
-`copyState` copies the tail and the per-line spans; `blankLine` appends `\n`
-to an open tail. The work per line is proportional to the open construct's
-length, which is bounded by passage size.
+The look-ahead is **capped at 200 lines**. A construct still open after them
+is treated as unclosed: the line is styled from `head` alone (an unclosed
+construct is `error`, an unclosed `<!--` `comment`, an unclosed `{do}` body
+code), and the state is marked **`capped`** (a field of the state besides
+`tail`, `spans` and `lineStart`): the tail keeps only the construct's first
+line, and later lines do not look ahead until the construct closes. This
+keeps the work per line flat for a construct left open across a long passage
+(a `{if $x` at the top of 5,000 lines); the price is that a construct open
+for more than 200 lines is styled as unclosed until its closing line, and
+the lines after that one are read without the construct's middle lines.
+
+`copyState` copies the state and the per-line spans; `blankLine` appends `\n`
+to an open tail. Any exception skips to the end of the line and clears the
+tail.
 
 Styles use CodeMirror's built-in token names only (Twine themes them for light
 and dark):
