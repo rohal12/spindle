@@ -1,4 +1,4 @@
-import type { StoryAPI } from './index';
+import type { Observation, StoryAPI } from './index';
 
 /** Options for {@link bootStory}. */
 export interface BootStoryOptions {
@@ -24,4 +24,45 @@ export interface BootStoryOptions {
  */
 export function bootStory(options: BootStoryOptions): Promise<StoryAPI>;
 
-export type { StoryAPI };
+/** One recorded step: what the reader saw, and what they chose. */
+export interface TranscriptEntry {
+  turn: number;
+  passage: string;
+  /** Left out when the transcript was created with `include.text: false`. */
+  text?: string;
+  /** Only with `include.context: true`. */
+  context?: string | null;
+  chose: { id: string; label: string; value?: unknown };
+}
+
+/** Options for {@link createTranscript}. */
+export interface TranscriptOptions {
+  /**
+   * How many of the latest entries to keep: a non-negative integer, or
+   * `Infinity` for all. Default 10. Anything else throws.
+   */
+  limit?: number;
+  /** Default `{ text: true, context: false }`. */
+  include?: { text?: boolean; context?: boolean };
+}
+
+/** A recorder returned by {@link createTranscript}. */
+export interface Transcript {
+  /**
+   * `Story.step()`, recording the observation it acted on and the choice.
+   * Await each step before the next: steps are not queued.
+   */
+  step(id: string, value?: unknown): Promise<Observation>;
+  readonly entries: readonly TranscriptEntry[];
+}
+
+/**
+ * Record a playthrough for stateless decision models, which need the last few
+ * steps sent with every call. A step that rejects records nothing.
+ */
+export function createTranscript(
+  story: StoryAPI,
+  options?: TranscriptOptions,
+): Transcript;
+
+export type { Observation, StoryAPI };

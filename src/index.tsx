@@ -9,6 +9,7 @@ import {
 } from './story-api';
 import { resetIdCounters } from './action-registry';
 import { initializeStory } from './story-init';
+import { storyContextErrors } from './story-context-passage';
 import { connectTriggersToStore } from './triggers';
 import { loadSession } from './saves/save-manager';
 import {
@@ -85,6 +86,13 @@ function knownParameters() {
   return parameterLookup([...getMacroRegistry(), ...widgetMacros()]);
 }
 
+/** The names of the registered macros that bind a variable (the inputs). */
+function storeVarMacroNames(): string[] {
+  return getMacroRegistry()
+    .filter((m) => m.storeVar)
+    .map((m) => m.name);
+}
+
 /**
  * The undeclared variables the passages refer to, with the macros known now:
  * the input macros that bind a variable (registered by author JS or
@@ -94,13 +102,10 @@ function variableErrors(
   storyData: StoryData,
   schema: Parameters<typeof validatePassages>[1],
 ): string[] {
-  const storeVarMacros = getMacroRegistry()
-    .filter((m) => m.storeVar)
-    .map((m) => m.name);
   return validatePassages(
     storyData.passages,
     schema,
-    storeVarMacros,
+    storeVarMacroNames(),
     knownParameters(),
   );
 }
@@ -244,6 +249,13 @@ export function boot() {
     ...variableErrors(storyData, schema),
     ...markupErrors(storyData, (p) => p.name !== 'StoryInit'),
   ];
+  // StoryContext is display-only: not with the input macros known now either
+  const storyContext = storyData.passages.get('StoryContext');
+  if (storyContext) {
+    markup.push(
+      ...storyContextErrors(storyContext.content, storeVarMacroNames()),
+    );
+  }
   if (markup.length > 0) stopWithErrors(markup);
 
   // Reset action ID counters on every navigation (the passage remounts even

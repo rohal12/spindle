@@ -221,6 +221,56 @@ export interface StoryAction {
 }
 
 /**
+ * Selects actions by their fields; unset fields match anything. Used by
+ * `Story.setObservedActions()` and the automation YAML's `assert.actions`.
+ * @see {@link ../../src/action-registry.ts} for the implementation.
+ */
+export interface ActionMatcher {
+  id?: string;
+  type?: string;
+  target?: string;
+  variable?: string;
+  label?: string;
+  /** `true` matches only disabled actions, `false` only enabled ones. */
+  disabled?: boolean;
+}
+
+/** An action as `Story.observe()` lists it: without `perform`. */
+export type ObservedAction = Omit<StoryAction, 'perform'>;
+
+/**
+ * Which actions `Story.observe()` offers. `exclude` removes what it
+ * matches; `include` puts back what the default exclusions removed (`back`,
+ * `forward`, `restart`, `save`, `load`, `dialog`). `exclude` wins.
+ */
+export interface ObservedActionRules {
+  exclude?: ActionMatcher[];
+  include?: ActionMatcher[];
+}
+
+/**
+ * What a reader of the story sees and can do, as plain data
+ * (`Story.observe()`).
+ * @see {@link ../../src/observe/observe.ts} for the implementation.
+ */
+export interface Observation {
+  /** The current passage's name. */
+  passage: string;
+  /** The reader-visible text of the passage area (not StoryInterface chrome). */
+  text: string;
+  /** The rendered `StoryContext` passage, or null if the story has none. */
+  context: string | null;
+  /** The open dialogs, innermost last. */
+  dialogs: { passage: string; text: string }[];
+  /** The offered actions (see `setObservedActions()`). */
+  actions: ObservedAction[];
+  /** The macro and runtime errors on screen. */
+  errors: string[];
+  /** The navigation count: a link moves it forward, an input does not. */
+  turn: number;
+}
+
+/**
  * Storage usage information returned by `Story.storage.getInfo()`.
  * @see {@link ../../src/saves/types.ts} for the implementation.
  */
@@ -845,6 +895,27 @@ export interface StoryAPI {
    * them.
    */
   waitForActions(): Promise<StoryAction[]>;
+
+  /**
+   * What the story shows and offers now: the passage text, the
+   * `StoryContext` passage, open dialogs, the offered actions and the errors
+   * on screen. The first call mounts `StoryContext`. Throws before the first
+   * passage is on screen.
+   */
+  observe(): Observation;
+
+  /**
+   * Perform an action (any ID, offered or not), wait for its effects as
+   * `waitForActions()` does, and return the observation. Rejects as
+   * `performAction()` throws. Doesn't wait for `{timed}` content.
+   */
+  step(id: string, value?: unknown): Promise<Observation>;
+
+  /**
+   * Replace the rules for which actions `observe()` offers. Throws, naming
+   * the rule, when a rule isn't a valid matcher.
+   */
+  setObservedActions(rules: ObservedActionRules): void;
 
   /** Register a trigger that fires when a condition expression becomes truthy. Returns an unsubscribe function. */
   watch(

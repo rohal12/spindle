@@ -104,6 +104,7 @@ const SPECIAL_PASSAGES = new Set([
   'PassageHeader',
   'PassageFooter',
   'PassageDone',
+  'StoryContext',
 ]);
 
 // ---------------------------------------------------------------------------

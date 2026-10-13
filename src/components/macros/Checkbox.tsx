@@ -12,7 +12,7 @@ defineMacro({
   render(_props, ctx) {
     const label = ctx.args.label ?? '';
 
-    useVariableAction(ctx, {
+    const actionId = useVariableAction(ctx, {
       type: 'checkbox',
       label: label || ctx.varName || '',
       value: !!ctx.value,
@@ -26,6 +26,7 @@ defineMacro({
       >
         <input
           type="checkbox"
+          data-action={actionId || undefined}
           checked={!!ctx.value}
           onChange={(e) =>
             ctx.setValue!((e.target as HTMLInputElement).checked)

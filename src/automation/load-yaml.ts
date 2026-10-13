@@ -1,55 +1,16 @@
 import * as yaml from 'js-yaml';
 import type { AutomationScript, AutomationStep } from './types';
+import { checkActionMatcher } from '../action-registry';
+import {
+  checkFields,
+  checkObject,
+  isRecord,
+  isString,
+  type Fail,
+  type FieldCheck,
+} from '../utils/field-checks';
 
-type Fail = (message: string) => never;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** `value` as an object whose keys are all in `allowed`. */
-function checkObject(
-  value: unknown,
-  what: string,
-  allowed: readonly string[],
-  fail: Fail,
-): Record<string, unknown> {
-  if (!isRecord(value)) fail(`${what} must be an object`);
-  for (const key of Object.keys(value)) {
-    if (!allowed.includes(key)) {
-      fail(`${what} has an unknown field "${key}" (${allowed.join(', ')})`);
-    }
-  }
-  return value;
-}
-
-type FieldCheck = (value: unknown) => boolean;
-
-const isString: FieldCheck = (v) => typeof v === 'string';
-const isBoolean: FieldCheck = (v) => typeof v === 'boolean';
 const isCount: FieldCheck = (v) => Number.isInteger(v) && (v as number) >= 0;
-
-function checkFields(
-  obj: Record<string, unknown>,
-  what: string,
-  checks: Record<string, [FieldCheck, string]>,
-  fail: Fail,
-): void {
-  for (const [key, [valid, expected]] of Object.entries(checks)) {
-    if (key in obj && !valid(obj[key])) {
-      fail(`"${key}" of ${what} must be ${expected}`);
-    }
-  }
-}
-
-const MATCHER_FIELDS: Record<string, [FieldCheck, string]> = {
-  type: [isString, 'a string'],
-  id: [isString, 'a string'],
-  target: [isString, 'a string'],
-  variable: [isString, 'a string'],
-  label: [isString, 'a string'],
-  disabled: [isBoolean, 'true or false'],
-};
 
 const ASSERT_FIELDS: Record<string, [FieldCheck, string]> = {
   passage: [isString, 'a string'],
@@ -67,13 +28,7 @@ function checkAssert(value: unknown, fail: Fail): void {
   );
   checkFields(assert, '"assert"', ASSERT_FIELDS, fail);
   for (const matcher of (assert.actions as unknown[] | undefined) ?? []) {
-    const m = checkObject(
-      matcher,
-      'an action matcher in "assert.actions"',
-      Object.keys(MATCHER_FIELDS),
-      fail,
-    );
-    checkFields(m, 'an action matcher', MATCHER_FIELDS, fail);
+    checkActionMatcher(matcher, 'an action matcher in "assert.actions"', fail);
   }
 }
 

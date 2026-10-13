@@ -1,4 +1,12 @@
 import { emit } from './event-emitter';
+import {
+  checkFields,
+  checkObject,
+  isBoolean,
+  isString,
+  type Fail,
+  type FieldCheck,
+} from './utils/field-checks';
 
 export type ActionType =
   | 'link'
@@ -46,6 +54,60 @@ export const OPTIONAL_ACTION_FIELDS = [
   'disabled',
 ] as const;
 
+export interface ActionMatcher extends Partial<
+  Pick<StoryAction, 'id' | 'target' | 'variable' | 'label'>
+> {
+  type?: string;
+  /** `true` matches only disabled actions, `false` only enabled ones. */
+  disabled?: boolean;
+}
+
+/** The matcher fields compared with the action field of the same name. */
+const MATCHED_FIELDS = ['id', 'type', 'target', 'variable', 'label'] as const;
+
+/**
+ * Whether an action satisfies every field the matcher sets. Unset matcher
+ * fields match anything.
+ */
+export function actionMatches(
+  action: Omit<StoryAction, 'perform'>,
+  matcher: ActionMatcher,
+): boolean {
+  return (
+    MATCHED_FIELDS.every(
+      (field) =>
+        matcher[field] === undefined || action[field] === matcher[field],
+    ) &&
+    // An action that does not set `disabled` is enabled
+    (matcher.disabled === undefined || !!action.disabled === matcher.disabled)
+  );
+}
+
+const MATCHER_FIELDS: Record<string, [FieldCheck, string]> = {
+  type: [isString, 'a string'],
+  id: [isString, 'a string'],
+  target: [isString, 'a string'],
+  variable: [isString, 'a string'],
+  label: [isString, 'a string'],
+  disabled: [isBoolean, 'true or false'],
+};
+
+/**
+ * A copy of `value` as an ActionMatcher, or `fail` naming `what` when it is not an
+ * object of matcher fields with the right types. The automation YAML and
+ * Story.setObservedActions() take matchers from authors.
+ */
+export function checkActionMatcher(
+  value: unknown,
+  what: string,
+  fail: Fail,
+): ActionMatcher {
+  const matcher = checkObject(value, what, Object.keys(MATCHER_FIELDS), fail);
+  checkFields(matcher, what, MATCHER_FIELDS, fail);
+  // A copy: the author's object may change after it was checked
+  return { ...matcher } as ActionMatcher;
+}
+
 /** A mounted control's hold on its action ID. */
 export interface ActionRegistration {
   /**
@@ -59,6 +121,8 @@ export interface ActionRegistration {
 
 interface Entry {
   action: StoryAction;
+  /** The dialog the control renders in (its close function), if any. */
+  dialog: (() => void) | null;
 }
 
 /**
@@ -105,9 +169,16 @@ export function generateActionId(
   return id;
 }
 
-export function registerAction(action: StoryAction): ActionRegistration {
+/**
+ * Register `action`, of a control rendered in the dialog `dialog` (the
+ * dialog's DialogCloseContext value), or outside any when null.
+ */
+export function registerAction(
+  action: StoryAction,
+  dialog: (() => void) | null = null,
+): ActionRegistration {
   const id = action.id;
-  const entry: Entry = { action };
+  const entry: Entry = { action, dialog };
   const entries = actions.get(id);
   if (entries) {
     console.warn(
@@ -174,6 +245,17 @@ export async function settleRunningActions(): Promise<void> {
 
 export function getActions(): StoryAction[] {
   return Array.from(actions.values(), listed);
+}
+
+/**
+ * The actions of the controls rendered in the dialog `dialog` (its close
+ * function, see registerAction), its nested dialogs' left out.
+ */
+export function getDialogActions(dialog: () => void): StoryAction[] {
+  return Array.from(actions.values())
+    .map((entries) => entries[entries.length - 1]!)
+    .filter((entry) => entry.dialog === dialog)
+    .map((entry) => entry.action);
 }
 
 export function getAction(id: string): StoryAction | undefined {

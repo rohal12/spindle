@@ -41,6 +41,12 @@ import {
 } from './components/macros/macro-args';
 import { MacroError } from './components/macros/MacroError';
 import {
+  ACTING_MACROS,
+  DisplayOnlyContext,
+  displayOnlyError,
+} from './display-only';
+import { NameSet } from './utils/macro-names';
+import {
   checkParameterTypes,
   registerMacro,
   registerMacroText,
@@ -129,6 +135,8 @@ export interface MacroDefinition<
   ) => string;
 }
 
+const actingMacros = new NameSet(ACTING_MACROS);
+
 const sharedHooks = {
   useState,
   useRef,
@@ -145,8 +153,22 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
 ): void {
   const parameters: readonly ParameterDef[] = config.parameters ?? [];
   checkParameterTypes(config.name, parameters);
+  const acts = actingMacros.has(config.name);
 
   function Wrapper(props: MacroProps) {
+    // In a display-only passage nothing may change the story (a mount's
+    // context never changes, so the hooks below run alike on every render)
+    const displayOnly = useContext(DisplayOnlyContext);
+    if (displayOnly && acts) {
+      return h(MacroError, {
+        macro: config.name,
+        error: displayOnlyError(config.name),
+      });
+    }
+    const refuse = () => {
+      throw displayOnlyError(config.name);
+    };
+
     // className/id resolved first (interpolate may transform them)
     let className = props.className;
     let id = props.id;
@@ -196,11 +218,13 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       resolve,
       cls: macroClass(config.name, className),
       // Code run inside a {for} iteration edits the loop's items (#400)
-      mutate: inIteration
-        ? (code: string) =>
-            runAsItemEdit(() => executeMutation(code, getValues(), update))
-        : (code: string) => executeMutation(code, getValues(), update),
-      update,
+      mutate: displayOnly
+        ? refuse
+        : inIteration
+          ? (code: string) =>
+              runAsItemEdit(() => executeMutation(code, getValues(), update))
+          : (code: string) => executeMutation(code, getValues(), update),
+      update: displayOnly ? refuse : update,
       getValues,
       wrap: (content: ComponentChildren): VNode<any> =>
         wrapContent(className, id, content),
@@ -245,17 +269,19 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
       // In program order, also when mutation code performs the input
       ctx.getValue = () => getByPath(readState().variables, segments);
-      ctx.setValue = (value: unknown) => {
-        noteControlEdit(segments);
-        // The commit mutation code uses, which keeps the references among
-        // variables: a write to a draft copies only the path written, and
-        // other variables sharing the object would keep the old one.
-        mutateState((work, adopt) => {
-          setByPath(work.variables, segments, adopt(value), {
-            createMissing: true,
-          });
-        });
-      };
+      ctx.setValue = displayOnly
+        ? refuse
+        : (value: unknown) => {
+            noteControlEdit(segments);
+            // The commit mutation code uses, which keeps the references among
+            // variables: a write to a draft copies only the path written, and
+            // other variables sharing the object would keep the old one.
+            mutateState((work, adopt) => {
+              setByPath(work.variables, segments, adopt(value), {
+                createMissing: true,
+              });
+            });
+          };
     }
 
     try {

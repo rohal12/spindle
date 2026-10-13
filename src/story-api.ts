@@ -43,6 +43,12 @@ import {
 } from './action-registry';
 import { getRenderedNavigationId } from './passage-render-state';
 import {
+  observe,
+  setObservedActions,
+  type Observation,
+  type ObservedActionRules,
+} from './observe/observe';
+import {
   initPRNG,
   isPRNGEnabled,
   getPRNGSeed,
@@ -170,6 +176,9 @@ export interface StoryAPI {
     callback: StoryEventCallback<E>,
   ): () => void;
   waitForActions(): Promise<StoryAction[]>;
+  observe(): Observation;
+  step(id: string, value?: unknown): Promise<Observation>;
+  setObservedActions(rules: ObservedActionRules): void;
   watch(
     condition: string,
     callbackOrOptions: (() => void) | WatchOptions,
@@ -282,7 +291,7 @@ function storeAction<K extends keyof StoryState>(name: K): StoryState[K] {
 }
 
 function createStoryAPI(): StoryAPI {
-  return {
+  const api: StoryAPI = {
     get(name: string): unknown {
       const { isTransient, key } = parseName(name);
       // Mutation code running now ({do}, ctx.mutate, watcher run actions)
@@ -479,6 +488,16 @@ function createStoryAPI(): StoryAPI {
       return getActions();
     },
 
+    observe,
+
+    async step(id: string, value?: unknown): Promise<Observation> {
+      await api.performAction(id, value);
+      await api.waitForActions();
+      return observe();
+    },
+
+    setObservedActions,
+
     watch(
       condition: string,
       callbackOrOptions: (() => void) | WatchOptions,
@@ -602,6 +621,7 @@ function createStoryAPI(): StoryAPI {
       },
     },
   };
+  return api;
 }
 
 declare global {

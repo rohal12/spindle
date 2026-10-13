@@ -688,6 +688,60 @@ Story.waitForActions().then(function (actions) {
 });
 ```
 
+### `Story.observe()`
+
+Returns what a reader sees and can do right now, as plain data that can be cloned or serialized. It is meant for dev tooling such as an agent or a test that plays the story:
+
+```js
+const o = Story.observe();
+// {
+//   passage: 'Start',
+//   text: 'You have 3 gold. Shop View Inventory Earn',
+//   context: 'Gold: 3',
+//   dialogs: [],
+//   actions: [
+//     { id: 'link:Shop', type: 'link', label: 'Shop', target: 'Shop' },
+//     { id: 'open-dialog:"View Inventory"', type: 'open-dialog', label: 'View Inventory', target: 'Inv' },
+//     { id: 'button:"Earn"', type: 'button', label: 'Earn' },
+//   ],
+//   errors: [],
+//   turn: 1,
+// }
+```
+
+- `passage`: the current passage's name.
+- `text`: the text of the passage area, including its header and footer but not the `StoryInterface` chrome (menubars, sidebars). Controls show as markers such as `[textbox $name: "Alice"]`; hidden elements are left out.
+- `context`: the rendered [`StoryContext`](special-passages.md#storycontext) passage, or `null` if the story has none. The first `observe()` mounts it.
+- `dialogs`: the open dialogs, `{ passage, text }` each, in the order they were opened (innermost last). `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
+- `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules). A dialog is modal: while one is open, only the actions of the controls in the innermost open dialog are offered, its `close-dialog` included, not those of the passage, the story interface or the dialogs beneath it. `step()` still takes any action ID.
+- `errors`: the messages of the macro errors on screen in the passage, the dialogs and `StoryContext` (not those in hidden elements), then the runtime errors (such as a failed save or a `Story.goto()` to a missing passage) as `<what failed>: <message>`. A runtime error stays listed, in every observation, until the reader dismisses its banner or the story clears it.
+- `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.
+
+Before the first passage is on screen, `observe()` throws `spindle: Story.observe() needs a mounted story`.
+
+### `Story.step(id, value?)`
+
+Performs an action as [`performAction()`](#storyperformactionid-value) does, waits as [`waitForActions()`](#storywaitforactions) does, and resolves with `Story.observe()`. It takes any action ID, also one `observe()` doesn't offer, and rejects when the action is unknown or disabled or its promise rejects. It doesn't wait for `{timed}` content or other timers.
+
+```js
+let o = Story.observe();
+o = await Story.step('link:Shop');
+o = await Story.step('textbox:$name', 'Alice');
+```
+
+### `Story.setObservedActions(rules)`
+
+Sets which actions `observe()` offers. By default it leaves out `back`, `forward`, `restart`, `save`, `load` and the menubar's Saves and Settings dialogs (`dialog`), which aren't moves in the story. `exclude` removes the actions that match any of its matchers; `include` puts back default-excluded actions that match. `exclude` wins over `include`. A matcher has the fields of an automation [action matcher](automation.md#assert): `id`, `type`, `target`, `variable`, `label` and `disabled`.
+
+```js
+Story.setObservedActions({
+  exclude: [{ type: 'open-dialog', label: 'Stats' }],
+  include: [{ type: 'restart' }], // a roguelike where restarting is a real choice
+});
+```
+
+A second call replaces the rules; they stay in force across `Story.restart()`. Call it from story JavaScript or a `StoryInit` `{do}`. A rule that isn't a valid matcher (an unknown field, a value of the wrong type) throws, naming the rule. `getActions()`, `performAction()` and `step()` still see every action.
+
 ## Random Numbers
 
 Spindle includes a seedable pseudo-random number generator (PRNG) for reproducible randomness across save/load cycles. Initialize it in `StoryInit`, then use `random()` and `randomInt()` in expressions or via the Story API.

@@ -136,6 +136,23 @@ describe('useStoryStore', () => {
       expect(state.history).toHaveLength(prevState.history.length);
     });
 
+    it('refuses to navigate to StoryContext, a special passage', () => {
+      const story = makeStoryData([
+        makePassage(1, 'Start'),
+        makePassage(2, 'StoryContext', 'Gold'),
+      ]);
+      useStoryStore.getState().init(story);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      useStoryStore.getState().navigate('StoryContext');
+
+      expect(useStoryStore.getState().currentPassage).toBe('Start');
+      expect(error).toHaveBeenCalledWith(
+        'spindle: Cannot navigate to special passage "StoryContext".',
+      );
+      error.mockRestore();
+    });
+
     it('truncates forward history when navigating after goBack', () => {
       const story = makeStoryData([
         makePassage(1, 'A'),

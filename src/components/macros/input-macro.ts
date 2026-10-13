@@ -54,7 +54,7 @@ export function defineInputMacro(
     render(_props, ctx) {
       const placeholder = ctx.args.placeholder ?? '';
 
-      useVariableAction(ctx, {
+      const actionId = useVariableAction(ctx, {
         type: name,
         label: placeholder || ctx.varName!,
         perform: (v) => ctx.setValue!(toValue(v)),
@@ -75,6 +75,7 @@ export function defineInputMacro(
       return h(type ? 'input' : 'textarea', {
         type,
         id: ctx.id,
+        'data-action': actionId || undefined,
         class: ctx.cls,
         value: shown,
         placeholder,
