@@ -117,6 +117,19 @@ Controls the entire page layout. When this passage exists, its content replaces 
 
 See [StoryInterface](story-interface.md) for full documentation, examples, and available macros.
 
+## `StoryContext`
+
+Text for an agent or tool that plays the story through [`Story.observe()`](story-api.md#storyobserve), which returns it as `context`. Write it in ordinary markup: stats, values computed from variables, and instructions.
+
+```
+:: StoryContext
+You are playing a cautious detective. Avoid needless risks.
+Gold: {$gold}  HP: {$hp}/{$maxHp}
+Inventory: {print $inventory.join(", ")}
+```
+
+The passage is never shown to the reader. The first `Story.observe()` renders it into a hidden element, and it follows the story's variables from then on; a story that never calls `observe()` never renders it. It is display-only: the startup check rejects macros that change the story or act when they mount (`{set}`, `{do}`, `{unset}`, `{computed}`, `{goto}`, `{watch}`), links, buttons, `{dialog}` and inputs. If it fails to render, the error shows in `context` and in `errors`.
+
 ## `SaveTitle`
 
 Customize the title shown for each save slot. The passage content is executed as a JavaScript function body with two parameters: `passage` (the current passage name) and `variables` (the story variables object). It must return a string.

@@ -73,9 +73,10 @@ function controlMarker(el: Element): string {
 /**
  * The text a reader sees in the element, as lines: blocks and `<br>` break
  * lines, hidden elements are left out, and a control with a `data-action`
- * becomes a marker such as `[textbox $name: "Alice"]`.
+ * becomes a marker such as `[textbox $name: "Alice"]`. Elements inside `el`
+ * that match `skip` are left out with their content.
  */
-export function observableText(el: Element): string {
+export function observableText(el: Element, skip?: string): string {
   let out = '';
   const endLine = () => {
     if (out !== '' && !out.endsWith('\n')) out += '\n';
@@ -95,7 +96,8 @@ export function observableText(el: Element): string {
     }
     if (node.nodeType !== 1) return;
     const child = node as Element;
-    if (isHidden(child)) return;
+    if (isHidden(child) || (skip && child !== el && child.matches(skip)))
+      return;
     if (child.hasAttribute('data-action')) {
       out += controlMarker(child);
       return;
@@ -125,9 +127,16 @@ export function observableText(el: Element): string {
   );
 }
 
-/** The trimmed text of each error shown in the element. */
-export function observableErrors(el: Element): string[] {
-  return Array.from(el.querySelectorAll('.error'), (e) =>
-    (e.textContent ?? '').trim(),
-  );
+/**
+ * The trimmed text of each error shown in the element, leaving out those
+ * inside an element within `el` that matches `skip`.
+ */
+export function observableErrors(el: Element, skip?: string): string[] {
+  const skipped = (e: Element) => {
+    const outer = skip ? e.closest(skip) : null;
+    return !!outer && outer !== el && el.contains(outer);
+  };
+  return Array.from(el.querySelectorAll('.error'))
+    .filter((e) => !skipped(e))
+    .map((e) => (e.textContent ?? '').trim());
 }

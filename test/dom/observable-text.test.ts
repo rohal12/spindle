@@ -203,6 +203,26 @@ describe('observableErrors', () => {
   it('returns nothing when there are no errors', () => {
     expect(observableErrors(fixture('<p>fine</p>'))).toEqual([]);
   });
+
+  it('leaves out the errors inside what `skip` matches', () => {
+    const el = fixture(
+      '<div class="inner"><span class="error">Inner</span><div class="inner"><span class="error">Deeper</span></div></div><span class="error">Outer</span>',
+    );
+    expect(observableErrors(el, '.inner')).toEqual(['Outer']);
+    // The element itself matching `skip` doesn't leave out its own errors
+    const inner = el.querySelector('.inner')!;
+    expect(observableErrors(inner, '.inner')).toEqual(['Inner']);
+  });
+});
+
+describe('observableText with skip', () => {
+  it('leaves out what `skip` matches, but not the element itself', () => {
+    const el = fixture(
+      '<p class="box">Kept <span class="box">left out</span></p>',
+    );
+    expect(observableText(el, '.box span')).toBe('Kept');
+    expect(observableText(el.querySelector('p')!, '.box')).toBe('Kept');
+  });
 });
 
 describe('rendered controls', () => {

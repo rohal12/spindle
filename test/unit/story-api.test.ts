@@ -12,6 +12,7 @@ import {
   resetIdCounters,
 } from '../../src/action-registry';
 import { getMacro } from '../../src/registry';
+import { _resetObservedActions } from '../../src/observe/observe';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -53,6 +54,7 @@ describe('StoryAPI', () => {
     mod.installStoryAPI();
     // Reset module-level promise state between tests
     (mod as any)._resetReadyState?.();
+    _resetObservedActions();
     Story = (globalThis as any).window?.Story ?? (globalThis as any).Story;
     // If installStoryAPI sets on window but we're in node, grab it directly
     if (!Story) {

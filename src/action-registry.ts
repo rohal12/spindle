@@ -1,4 +1,12 @@
 import { emit } from './event-emitter';
+import {
+  checkFields,
+  checkObject,
+  isBoolean,
+  isString,
+  type Fail,
+  type FieldCheck,
+} from './utils/field-checks';
 
 export type ActionType =
   | 'link'
@@ -73,6 +81,30 @@ export function actionMatches(
     // An action that does not set `disabled` is enabled
     (matcher.disabled === undefined || !!action.disabled === matcher.disabled)
   );
+}
+
+const MATCHER_FIELDS: Record<string, [FieldCheck, string]> = {
+  type: [isString, 'a string'],
+  id: [isString, 'a string'],
+  target: [isString, 'a string'],
+  variable: [isString, 'a string'],
+  label: [isString, 'a string'],
+  disabled: [isBoolean, 'true or false'],
+};
+
+/**
+ * `value` as an ActionMatcher, or `fail` naming `what` when it is not an
+ * object of matcher fields with the right types. The automation YAML and
+ * Story.setObservedActions() take matchers from authors.
+ */
+export function checkActionMatcher(
+  value: unknown,
+  what: string,
+  fail: Fail,
+): ActionMatcher {
+  const matcher = checkObject(value, what, Object.keys(MATCHER_FIELDS), fail);
+  checkFields(matcher, what, MATCHER_FIELDS, fail);
+  return matcher as ActionMatcher;
 }
 
 /** A mounted control's hold on its action ID. */
