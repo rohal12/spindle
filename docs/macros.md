@@ -280,6 +280,8 @@ The passage named in the body must exist: a name no passage has stops the story 
 
 The dialog closes when the player clicks outside it or presses Escape.
 
+The button is the action `open-dialog:"View Inventory"` and the dialog's `✕` button, while it is shown, is `close-dialog:Inventory Screen` (see [Action IDs](story-api.md#action-ids)), so `Story.performAction()` and automation scripts can open and close it.
+
 Add `noclose` to hide the default close button — useful when your dialog content provides its own close UI:
 
 ```

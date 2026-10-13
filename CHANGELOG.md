@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `{dialog}` button is listed by `Story.getActions()` as `open-dialog:"Label"`, and the `✕` button of a dialog as `close-dialog:Passage`, so agents and automation scripts can open and close dialogs (#540).
 - Tooling (`@rohal12/spindle/tooling`): `validateStoryMarkup(passages, macros)` and `collectStoryPassageReferences(source, macros)` take the macros to check against and keep no state, so one process can analyse several projects; `builtinMacros` is the built-in macro list as data, loaded without `fs` so a bundler inlines it (`getMacroRegistry()` read `macro-registry.json` next to the file, and was empty in a bundle) (#446).
 - Tooling: a `MarkupDiagnostic` has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (the macro, the passage, the closest known name); a `MarkupError` has `code`, `end` and `data` too (#447).
 - Tooling: `pairMarkup(tokens, options)` pairs the flat tokens into a tree with the spans of the opening tag, closer and branches, and returns every unclosed, mismatched or stray tag instead of throwing; `isBlockMacro` is exported. `parseMarkup` builds its AST from the same pairing, so the runtime and tooling agree (#448).

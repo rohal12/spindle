@@ -15,7 +15,9 @@ export type ActionType =
   | 'restart'
   | 'save'
   | 'load'
-  | 'dialog';
+  | 'dialog'
+  | 'open-dialog'
+  | 'close-dialog';
 
 export interface StoryAction {
   id: string;

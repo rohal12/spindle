@@ -564,7 +564,7 @@ Each action object has these properties:
 | `value`    | `unknown?`  | Current value (inputs)                   |
 | `disabled` | `boolean?`  | Whether the action is currently disabled |
 
-Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`.
+Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`, `dialog`, `open-dialog`, `close-dialog`.
 
 #### Action IDs
 
@@ -573,6 +573,7 @@ IDs are generated automatically from the action type and a content-based key:
 - Links: `link:PassageName`
 - Buttons: `button:"Take damage"`
 - Inputs: `textbox:$name`, `cycle:$weapon`
+- Dialogs: `open-dialog:"View Inventory"` for the button of `{dialog "View Inventory"}`, and `close-dialog:Inventory Screen` for the `✕` button of the dialog showing that passage (listed while the dialog is open and has the button: not with `noclose` or `dismissible: false`)
 - Menubar: `back:back`, `forward:forward`, `restart:restart`, `save:quicksave`, `load:quickload`
 
 When multiple actions share the same base ID (e.g. two links to the same passage), a suffix is added: `link:Forest`, `link:Forest:2`, `link:Forest:3`.
