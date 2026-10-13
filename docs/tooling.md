@@ -180,6 +180,33 @@ const macros = discoverMacros(`
 validateStoryMarkup(passages, [...builtinMacros, ...macros]);
 ```
 
+## Formatting a passage
+
+`formatPassage(body, options?)` formats the text of one passage and resolves to the formatted text. It is what an editor's Format command needs, without a language server:
+
+- The bodies of block macros are indented by two spaces per level; `{else}`, `{elseif}`, `{next}`, `{case}` and `{default}` snap back to their macro. Trailing whitespace goes, except Markdown hard breaks (two spaces before a line) and the indentation of lists and code fences, which is kept relative to the body.
+- What the runtime executes is not touched: a macro, a link, an expression or a `{do}` body keeps its text, line breaks and the whitespace after them included. These are the spans `tokenizeMarkupTolerant` reads, so the formatter agrees with the runtime on where a macro ends.
+- `<script>` blocks and multi-line HTML are formatted with Prettier, with the macros inside kept as written. `<svg>` blocks are left alone.
+- The result ends with one newline (`''` formats to `'\n'`), keeps the more common of CRLF and LF, and keeps a byte order mark. Formatting the result again changes nothing.
+
+The options:
+
+- `kind`: `'normal'` (default) for story markup; `'script'` or `'stylesheet'` formats the whole text as JavaScript or CSS.
+- `prettier`: Prettier, as `{ format(code, options): Promise<string> }`. It is injected, not imported, so the tooling bundle holds no copy of it: pass `prettier`, or `prettier/standalone` with the babel, estree, postcss and html plugins in a browser. Without it, or where it throws on a piece of code (a half-typed `<script>`), that code stays as written and the rest is formatted. `prettierOptions` (default `{ tabWidth: 2 }`) are its options.
+- `isBlock(name)`: which macros take a body. By default the built-in block macros and the names the passage itself closes with `{/name}`; pass your own to include the block macros and widgets defined elsewhere in the story.
+- `isDedentingSubMacro(name)`: default `else`, `elseif`, `next`, `case` and `default`.
+- `maxLineLength`: wrap prose lines longer than this at word boundaries, never inside a macro, an expression or a link.
+
+```js
+import * as prettier from 'prettier';
+import { formatPassage } from '@rohal12/spindle/tooling';
+
+await formatPassage('{if $a}\nyes\n{/if}\n', { prettier });
+// '{if $a}\n  yes\n{/if}\n'
+await formatPassage('const   x=1', { kind: 'script', prettier });
+// 'const x = 1;\n'
+```
+
 ## Diagnostics
 
 A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, besides `passage`, `line`, `column`, `message` and the `file` and `fileLine` of its passage:

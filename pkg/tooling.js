@@ -42,6 +42,7 @@ export {
   variableReferences,
   discoverMacros,
   validateVariableReferences,
+  formatPassage,
 } from './story-variables.js';
 
 /**

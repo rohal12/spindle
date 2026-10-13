@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tooling (`@rohal12/spindle/tooling`): `formatPassage(body, { kind?, prettier?, prettierOptions?, isBlock?, isDedentingSubMacro?, maxLineLength? })` formats the text of a passage: block macro bodies indented, trailing whitespace removed, `<script>` and HTML blocks formatted with an injected Prettier, and everything the runtime executes (macros, links, `{do}` bodies, multi-line template literals) kept as written, in the line endings of the text.
 - Tooling (`@rohal12/spindle/tooling`): `validateStoryMarkup(passages, macros)` and `collectStoryPassageReferences(source, macros)` take the macros to check against and keep no state, so one process can analyse several projects; `builtinMacros` is the built-in macro list as data, loaded without `fs` so a bundler inlines it (`getMacroRegistry()` read `macro-registry.json` next to the file, and was empty in a bundle) (#446).
 - Tooling: a `MarkupDiagnostic` has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (the macro, the passage, the closest known name); a `MarkupError` has `code`, `end` and `data` too (#447).
 - Tooling: `pairMarkup(tokens, options)` pairs the flat tokens into a tree with the spans of the opening tag, closer and branches, and returns every unclosed, mismatched or stray tag instead of throwing; `isBlockMacro` is exported. `parseMarkup` builds its AST from the same pairing, so the runtime and tooling agree (#448).

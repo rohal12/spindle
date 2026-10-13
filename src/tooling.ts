@@ -86,6 +86,11 @@ export type {
   VariableScope,
   VariableToken,
 } from './markup/tokens';
+export { formatPassage } from './format/format-passage';
+export type {
+  PassageFormatOptions,
+  PrettierLike,
+} from './format/format-passage';
 export { pairMarkup } from './markup/pair';
 export { pieceOffset };
 export type {
