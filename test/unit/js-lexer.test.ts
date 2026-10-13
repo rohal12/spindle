@@ -378,6 +378,23 @@ describe('findCodeEnd', () => {
     const stop = (i: number) => src.startsWith('{/do}', i);
     expect(findCodeEnd(src, 0, { goal: 'statements', stop })).toBe(25);
   });
+
+  it('tells onRunOut when a line after the code could change the end', () => {
+    const ranOut = (src: string) => {
+      let called = false;
+      const end = findCodeEnd(src, 0, { onRunOut: () => (called = true) });
+      return [end, called];
+    };
+    expect(ranOut('a // }')).toEqual([-1, true]);
+    expect(ranOut('a /* } */ + { b: 1 }')).toEqual([-1, true]);
+    expect(ranOut('`a }')).toEqual([-1, true]);
+    expect(ranOut('"a }')).toEqual([-1, true]);
+    // The backtick in ${…} read as closing the template literal
+    expect(ranOut('`Hi ${$name`} x')).toEqual([12, true]);
+    expect(ranOut('a }')).toEqual([2, false]);
+    expect(ranOut("don't }")).toEqual([-1, false]);
+    expect(ranOut('/re }')).toEqual([-1, false]);
+  });
 });
 
 describe('parseCode', () => {

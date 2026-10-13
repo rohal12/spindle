@@ -59,6 +59,7 @@ Full docs at **[rohal12.github.io/spindle](https://rohal12.github.io/spindle/)**
 - [Story API](https://rohal12.github.io/spindle/story-api) — The `window.Story` JavaScript API
 - [Widgets](https://rohal12.github.io/spindle/widgets) — Reusable content blocks
 - [npm Package](https://rohal12.github.io/spindle/story-format-packages) — Packaging guide
+- [Twine Editor Extensions](https://rohal12.github.io/spindle/twine-editor) — Highlighting, references and a toolbar in Twine's passage editor
 
 ## Development
 

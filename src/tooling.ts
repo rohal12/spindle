@@ -32,6 +32,7 @@ import {
   type VariableReference,
 } from './story-variables';
 import type { ParameterDef } from './registry';
+import type { Token } from './markup/tokens';
 import type { WidgetDef } from './widgets/widget-def';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
@@ -86,6 +87,11 @@ export type {
   VariableScope,
   VariableToken,
 } from './markup/tokens';
+export { formatPassage } from './format/format-passage';
+export type {
+  PassageFormatOptions,
+  PrettierLike,
+} from './format/format-passage';
 export { pairMarkup } from './markup/pair';
 export { pieceOffset };
 export type {
@@ -240,8 +246,24 @@ export function passagePieces(
   source: string,
   macros: Iterable<ToolingMacro> = [],
 ): Piece[] {
+  return passagePiecesOfTokens(
+    source,
+    macros,
+    tokenizeMarkupTolerant(source).tokens,
+  );
+}
+
+/**
+ * `passagePieces` for a caller that has the tokens of
+ * `tokenizeMarkupTolerant(source)` already (the editor's highlighter). Not
+ * part of the published tooling API.
+ */
+export function passagePiecesOfTokens(
+  source: string,
+  macros: Iterable<ToolingMacro>,
+  tokens: readonly Token[],
+): Piece[] {
   const all = [...macros];
-  const { tokens } = tokenizeMarkupTolerant(source);
   return [
     ...passagePiecesOf(source, tokens, parameterLookup(all), {
       isBlock: blockLookup(all),

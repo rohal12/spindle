@@ -139,7 +139,7 @@ export function analyzeMarkup(
   source: string,
   options: ParseMarkupOptions = {},
 ): MarkupAnalysis {
-  const { tokens, errors, damage } = scan(source, options);
+  const { tokens, errors, damage } = scanMarkupTolerant(source, options);
   const hooks = { ...defaultHooks, ...options.hooks };
   const paired = pairMarkup(tokens, {
     isBlock: hooks.isBlock,
@@ -242,18 +242,18 @@ export function tokenizeMarkupTolerant(
   source: string,
   options: ParseMarkupOptions = {},
 ): TolerantTokens {
-  const { tokens, errors } = scan(source, options);
+  const { tokens, errors } = scanMarkupTolerant(source, options);
   return { tokens, errors };
 }
 
 /**
  * The tokens of tolerant tokenizing, the errors, and where the damage of
- * each error starts: the tag that is malformed, which an error inside it
- * (an attribute value) is after.
+ * each error starts (`damage[i]` for `errors[i]`): the tag that is
+ * malformed, which an error inside it (an attribute value) is after.
  */
-function scan(
+export function scanMarkupTolerant(
   source: string,
-  options: ParseMarkupOptions,
+  options: ParseMarkupOptions = {},
 ): TolerantTokens & { damage: number[] } {
   const tokens: Token[] = [];
   const errors: MarkupError[] = [];

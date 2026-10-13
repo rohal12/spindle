@@ -1116,3 +1116,71 @@ export interface DiscoveredMacro extends ToolingMacro {
  * throws.
  */
 export declare function discoverMacros(source: string): DiscoveredMacro[];
+
+// ---------------------------------------------------------------------------
+// Formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * The part of Prettier's API `formatPassage` calls: `prettier`, or
+ * `prettier/standalone` with the plugins for the languages in the passage.
+ */
+export interface PrettierLike {
+  format(code: string, options: object): Promise<string>;
+}
+
+/** What `formatPassage` formats and how. */
+export interface PassageFormatOptions {
+  /**
+   * What the passage holds (default: 'normal', story markup). The text of a
+   * 'script' or 'stylesheet' passage is formatted whole, as JavaScript or CSS.
+   */
+  kind?: 'normal' | 'script' | 'stylesheet';
+  /**
+   * Prettier, for the `<script>` and HTML blocks of the markup and for script
+   * and stylesheet passages. Without it, or where it throws on a piece of
+   * code, that code stays as written.
+   */
+  prettier?: PrettierLike;
+  /**
+   * The options Prettier is given (default: `{ tabWidth: 2 }`). They replace
+   * the default; the formatter sets `parser` (and HTML whitespace handling)
+   * itself. Standalone Prettier needs its `plugins` in every call: wrap
+   * `prettier` to add them rather than passing them here.
+   */
+  prettierOptions?: object;
+  /**
+   * Whether the named macro takes a body (default: the built-in block macros
+   * and the names the passage closes with `{/name}`). Replaces that default
+   * whole; use `blockMacros` to add to it.
+   */
+  isBlock?: (name: string) => boolean;
+  /**
+   * Names of block macros to add to the default `isBlock` (ignored when
+   * `isBlock` is given), such as the ones the story or an editor knows.
+   */
+  blockMacros?: Iterable<string>;
+  /**
+   * Whether the named sub-macro snaps back to its parent's indentation
+   * (default: else, elseif, next, case, default).
+   */
+  isDedentingSubMacro?: (name: string) => boolean;
+  /** Wrap prose lines longer than this many characters. */
+  maxLineLength?: number;
+}
+
+/**
+ * Format the text of a passage: indent the bodies of block macros by two
+ * spaces per level, snap `{else}`, `{case}` and the like back to their
+ * macro, strip trailing whitespace (keeping Markdown hard breaks, lists and
+ * code fences), and format `<script>` and HTML blocks with Prettier. What the
+ * runtime executes is never touched: a macro, a link or a `{do}` body keeps
+ * its text, line breaks included, and a multiline JavaScript literal keeps its
+ * value. What the passage displays does not change. The result ends with one
+ * newline and keeps the line endings of the text (the more common of CRLF and
+ * LF) and its byte order mark. It is idempotent.
+ */
+export declare function formatPassage(
+  body: string,
+  options?: PassageFormatOptions,
+): Promise<string>;

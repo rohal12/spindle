@@ -126,7 +126,19 @@ const _toolingTypes: [
     SourceTooling.ValidateMarkupOptions,
     PublishedTooling.ValidateMarkupOptions
   >,
+  Same<SourceTooling.PrettierLike, PublishedTooling.PrettierLike>,
+  Same<
+    SourceTooling.PassageFormatOptions,
+    PublishedTooling.PassageFormatOptions
+  >,
+  Same<
+    typeof SourceTooling.formatPassage,
+    typeof PublishedTooling.formatPassage
+  >,
 ] = [
+  true,
+  true,
+  true,
   true,
   true,
   true,

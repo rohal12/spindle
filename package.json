@@ -50,7 +50,7 @@
     "src"
   ],
   "scripts": {
-    "build": "vite build && bun run scripts/build-format.ts && bun run scripts/dump-macro-registry.ts",
+    "build": "vite build && bun run scripts/dump-macro-registry.ts && bun run scripts/build-format.ts",
     "compile": "bun run scripts/compile-story.ts",
     "preview": "bun run build && bun run compile",
     "test": "vitest run",
@@ -84,9 +84,11 @@
     "@fast-check/vitest": "^0.5.0",
     "@preact/preset-vite": "^2.10.6",
     "@rohal12/twee-ts": "^1.18.2",
+    "@types/codemirror": "^5.60.18",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@vitest/coverage-v8": "^5.0.3",
+    "codemirror": "^5.65.21",
     "fake-indexeddb": "^6.2.5",
     "fallow": "3.33.1",
     "fast-check": "^4.10.2",

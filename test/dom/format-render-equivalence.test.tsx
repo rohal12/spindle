@@ -1,0 +1,91 @@
+// @vitest-environment happy-dom
+/**
+ * Format must not change what the story displays: a passage renders the
+ * same before and after formatPassage, for HTML with prose in it.
+ */
+import { describe, it, expect } from 'vitest';
+import { render } from 'preact';
+import * as prettier from 'prettier';
+import { parseMarkup } from '../../src/markup/parse';
+import { renderNodes } from '../../src/markup/render';
+import { formatPassage } from '../../src/format/format-passage';
+
+/** Elements whose surrounding whitespace does not render (display: block and kin). */
+const BLOCK = new Set(
+  'address article aside blockquote details dialog dd div dl dt fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section summary table tbody td tfoot th thead tr ul'.split(
+    ' ',
+  ),
+);
+/** Elements whose text renders as written. */
+const PREFORMATTED = new Set(['pre', 'textarea']);
+
+/**
+ * What the browser shows of `node`: its elements and attributes, and its
+ * text with whitespace collapsed as CSS collapses it (kept as written in
+ * preformatted elements, dropped next to block boundaries).
+ */
+function displayed(node: Node, preformatted = false): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent ?? '';
+    // Preformatted whitespace is kept out of the collapsing below
+    return preformatted
+      ? text.replace(/ /g, '\u0002').replace(/\n/g, '\u0003')
+      : text.replace(/\s+/g, ' ');
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+  const element = node as Element;
+  const tag = element.localName;
+  const pre = preformatted || PREFORMATTED.has(tag);
+  const attributes = Array.from(element.attributes)
+    .map((a) => ` ${a.name}="${a.value}"`)
+    .join('');
+  const inner = Array.from(element.childNodes)
+    .map((child) => displayed(child, pre))
+    .join('');
+  const block = BLOCK.has(tag) ? '\u0001' : '';
+  return `${block}<${tag}${attributes}>${block}${inner}${block}</${tag}>${block}`;
+}
+
+function canonical(markup: string): string {
+  const container = document.createElement('div');
+  render(<>{renderNodes(parseMarkup(markup))}</>, container);
+  return (
+    Array.from(container.childNodes)
+      .map((child) => `\u0001${displayed(child)}\u0001`)
+      .join('')
+      // Adjacent text nodes collapse together
+      .replace(/ {2,}/g, ' ')
+      // Whitespace at a block boundary does not render
+      .replace(/ *\u0001+ */g, '|')
+      .replace(/\u0002/g, ' ')
+      .replace(/\u0003/g, '\n')
+  );
+}
+
+const cases = [
+  '<div>\n<b>bold</b>, and more!\n</div>\n',
+  '<div>\nHello <em>you</em>.\n</div>\n',
+  '<p>\nHello <em>you</em>.\n</p>\n',
+  '<div>\n<span class="a">one</span><span class="b">two</span>\n</div>\n',
+  '<div>\n<p>First <strong>para</strong>.</p>\n<p>Second, <a href="#x">link</a>!</p>\n</div>\n',
+  '<ul>\n<li><b>a</b>: first</li>\n<li>second <i>item</i>.</li>\n</ul>\n',
+  '<div>\n<pre>a\n  b</pre>\n</div>\n',
+  '<div class="box">\nSome *markdown* and <code>code</code>, then text.\n</div>\n',
+  '<section>\n<h2>Title</h2>\n<p>The <abbr title="x">abbr</abbr>; more.</p>\n</section>\n',
+  '<div>\n<span>{$name}</span>, welcome!\n</div>\n',
+  '<div>\n<textarea>a\n  b</textarea>\n</div>\n',
+  '<div>\n<div style="white-space: pre">  keep\n   this</div>\n</div>\n',
+  '<div class="long">\nA long line of prose with <b>bold words</b>, <i>italic words</i> and <a href="#somewhere">a link somewhere</a>, then more prose to pass eighty columns.\n</div>\n',
+  '<div>\n<span>a</span>\n<span>b</span>\n</div>\n',
+  '<div>\n  <p>\n    Indented <em>text</em>\n    over lines.\n  </p>\n</div>\n',
+];
+
+describe('Format keeps what a passage displays', () => {
+  for (const input of cases) {
+    it(JSON.stringify(input), async () => {
+      const output = await formatPassage(input, { prettier });
+      expect(canonical(output)).toBe(canonical(input));
+      expect(await formatPassage(output, { prettier })).toBe(output);
+    });
+  }
+});

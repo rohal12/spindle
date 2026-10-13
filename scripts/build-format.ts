@@ -1,7 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  copyFileSync,
+  existsSync,
+} from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'vite';
+import { build, normalizePath, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import { peggyPlugin } from './peggy';
 
@@ -21,6 +27,73 @@ const formatMeta = JSON.parse(
 );
 formatMeta.version = packageJson.version;
 
+/**
+ * The format's `hydrate`: the Twine editor extensions (src/twine-editor/),
+ * which Twine 2.4+ runs with `new Function(hydrate)` bound to an empty
+ * object. The IIFE's global lives in a local `var` inside a function called
+ * with that object, so the code only assigns `this.editorExtensions` and
+ * leaks no globals. `builtin-macros.ts` is swapped for the macro list that
+ * scripts/dump-macro-registry.ts wrote (run before this script), so the
+ * bundle carries no Preact or runtime.
+ */
+async function buildHydrate(): Promise<string> {
+  const registryPath = resolve(projectRoot, 'dist/pkg/macro-registry.js');
+  if (!existsSync(registryPath)) {
+    throw new Error(
+      `${registryPath} not found. Run scripts/dump-macro-registry.ts first.`,
+    );
+  }
+  // Vite's resolved ids use forward slashes, also on Windows
+  const builtinMacrosPath = normalizePath(
+    resolve(projectRoot, 'src/twine-editor/builtin-macros.ts'),
+  );
+  const builtinMacrosFromRegistry: Plugin = {
+    name: 'spindle-builtin-macros-from-registry',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
+      return resolved && normalizePath(resolved.id) === builtinMacrosPath
+        ? '\0spindle-builtin-macros'
+        : null;
+    },
+    load(id) {
+      return id === '\0spindle-builtin-macros'
+        ? `export { default as builtinMacros } from ${JSON.stringify(registryPath)};`
+        : null;
+    },
+  };
+  const result = await build({
+    configFile: false,
+    logLevel: 'warn',
+    plugins: [builtinMacrosFromRegistry, peggyPlugin()],
+    build: {
+      write: false,
+      minify: true,
+      target: 'es2019',
+      chunkSizeWarningLimit: 4096,
+      lib: {
+        entry: resolve(projectRoot, 'src/twine-editor/index.ts'),
+        formats: ['iife'],
+        name: '__spindleTwineEditor',
+      },
+    },
+  });
+  const outputs = Array.isArray(result) ? result : [result];
+  const chunk = outputs
+    .flatMap((output) => ('output' in output ? output.output : []))
+    .find((file) => file.type === 'chunk');
+  if (!chunk || chunk.type !== 'chunk') {
+    throw new Error('The Twine editor build produced no chunk.');
+  }
+  return [
+    '/* spindle twine-editor */',
+    `(function(){${chunk.code};this.editorExtensions=__spindleTwineEditor.editorExtensions;}).call(this);`,
+  ].join('\n');
+}
+
 // Build the story format JSONP payload
 const formatData = {
   name: formatMeta.name,
@@ -32,6 +105,7 @@ const formatData = {
   license: formatMeta.license || '',
   proofing: false,
   source: html,
+  hydrate: await buildHydrate(),
 };
 
 // Write the format.js file
@@ -40,7 +114,9 @@ const outputDir = resolve(projectRoot, 'dist');
 mkdirSync(outputDir, { recursive: true });
 writeFileSync(resolve(outputDir, 'format.js'), output, 'utf-8');
 
-console.log(`Built dist/format.js (${(output.length / 1024).toFixed(1)} KB)`);
+console.log(
+  `Built dist/format.js (${(output.length / 1024).toFixed(1)} KB, hydrate ${(formatData.hydrate.length / 1024).toFixed(1)} KB)`,
+);
 
 // Build the npm package structure in dist/pkg/
 const pkgDir = resolve(outputDir, 'pkg');

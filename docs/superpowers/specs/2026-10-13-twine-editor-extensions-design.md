@@ -1,0 +1,340 @@
+# Twine editor extensions: design
+
+Date: 2026-10-13. Status: approved in conversation, awaiting spec review.
+
+## Goal
+
+Spindle works in Twine 2 today without any extension. This adds the optional
+editor extensions Twine 2.4+ offers to story formats
+([Twine's `EXTENDING.md`](https://github.com/klembot/twinejs/blob/develop/EXTENDING.md)),
+so authors writing Spindle in the Twine web or desktop app get:
+
+1. **Syntax highlighting** in the passage editor.
+2. **References**: dotted story-map connections for passages named outside
+   `[[links]]` (`{goto}`, `{include}`, `{dialog}`, `{watch … goto/dialog}`, …).
+3. **A toolbar** above the passage text: snippet menus that insert or wrap
+   markup, a **Check** button and a **Format** button.
+
+Success: in Twine 2.12 (web), with Spindle's `format.js` added, each of the
+three works on real passages; turning extensions off in Twine's Formats dialog
+leaves Spindle fully usable; compiled stories are byte-for-byte what they are
+without the extensions.
+
+## Decisions taken
+
+| Question                       | Decision                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| Which extensions               | All three: highlighting, references, toolbar                                               |
+| Toolbar content                | Snippets plus tools: Check and Format                                                      |
+| Where parsing comes from       | `src/tooling.ts` (the API `spindle-lsp` already consumes), not `spindle-lsp`               |
+| Where the formatter comes from | Moved from `spindle-lsp` into Spindle's tooling; `spindle-lsp` then imports it             |
+| Prettier                       | Bundled into the hydrate code (`prettier/standalone` + plugins), not fetched at run time   |
+| Highlighting approach          | A CodeMirror 5 mode driven by the runtime's tolerant tokenizer, not a hand-written grammar |
+
+## Non-goals
+
+- No extension is required to use Spindle (Twine's own rule).
+- Highlighting and references cannot see the rest of the story (Twine gives a
+  mode and `parsePassageText` only the passage text). User-defined macros and
+  widgets are therefore not known: their tags are highlighted as macros of
+  unknown name, and their `passage` parameters produce no references.
+- Check does not report what needs the whole story (unknown passage names,
+  undeclared story variables, unknown user macros).
+- Twine's Story JavaScript and Story Stylesheet dialogs use Twine's own modes;
+  nothing here touches them.
+
+## How it ships
+
+Twine reads extensions from the format's JSONP object: a `hydrate` string that
+Twine runs with `this` bound to an empty object, which sets
+`this.editorExtensions = { twine: { '^2.4.0': { codeMirror, references } } }`.
+
+- `hydrate` is a property of `format.js` only. Twine, Tweego and twee-ts put
+  only `source` into a compiled story, and `pkg/index.js` exports only `name`,
+  `version`, `source` and `proofing`. Compiled stories do not grow; `format.js`
+  grows by the bundle (about 1 MB, most of it Prettier), which costs Twine
+  load time and npm package size only.
+- The hydrate code must be synchronous, side-effect free (no DOM, no globals)
+  and safe to run repeatedly. It is built as an IIFE whose only effect is
+  assigning to `this`.
+- One version key, `'^2.4.0'`. Twine 2.4 through 2.12 use CodeMirror 5
+  (`codemirror@^5.65`); a future Twine on CodeMirror 6 gets a new key later.
+
+## Components
+
+### `src/twine-editor/` (new)
+
+One entry point, `src/twine-editor/index.ts`, importing only from the tooling
+modules (never from the runtime: Preact, the store, components). Its pieces,
+each in its own file and testable alone:
+
+- **`references.ts`**: `parsePassageText(text)` returns the unique `target`s of
+  `collectStoryPassageReferences(text, builtinMacros)`, leaving out `[[links]]`
+  (Twine already draws those) and targets that are expressions rather than
+  written names. Never throws: malformed markup yields what parses.
+- **`mode.ts`**: the CodeMirror mode (see below).
+- **`toolbar.ts`**: `toolbar(editor, environment)`, a pure function returning
+  the items. Items' `disabled` may follow the editor (for example, wrap
+  snippets work with or without a selection, so they stay enabled; Check and
+  Format are enabled when the passage is not empty), but the list itself never
+  changes with editor state or locale.
+- **`commands.ts`**: the CodeMirror commands the toolbar names.
+- **`icons.ts`**: `data:image/svg+xml` icons, drawn in
+  `environment.foregroundColor`.
+
+### Highlighting: the mode
+
+A CodeMirror 5 mode is called line by line, with a state object carried
+between lines; it never sees the whole document. The mode keeps the
+**unfinished tail** in its state: the text from the start of a construct
+still open at the end of the previous line (a macro whose arguments continue
+on the next line, a `{do}` body, an HTML comment, a link, a tag) up to that
+line's end.
+
+What is open at a line's end is `openConstructStart(text)`: the earliest of
+an unclosed tag (the tokenizer's `unclosed-*` errors, from where the error's
+damage starts, which for an error inside a tag is the tag), an unclosed
+`<!--`, a `{do}` without `{/do}`, and constructs that read as closed, or as
+text, at the end of the text but that a following line can read
+differently: an end tag before its `>` (`</span`), a tag that is text only
+for want of its `>` (`<b_r x=`), and code whose end a following line could
+move. The last is reported by the JavaScript reader
+(`jsCodeEnd(onOpenEnd)` in `src/markup/code-end.ts`, built on
+`findCodeEnd`'s `onRunOut`): code that runs to the end of the text (a `//`
+comment, an open string or template literal, an open bracket), code ended
+leniently after that, a `{do}` body cut off before its `}`, and a `{` with
+no `}` after it. Without the hook the reader finds the same ends.
+
+For each line, `token(stream, state)`:
+
+1. On the first call for the line, reads `head = state.tail + line` once
+   (`highlightWithOpenStart`). If a construct is open at the line's end, a
+   later line may change how this one reads, so the mode **looks ahead**
+   (`stream.lookAhead(n)`,
+   CodeMirror ≥ 5.27), appending following lines to the window, doubling
+   their number, until no construct open at the window's end started before
+   the line's end, or the passage ends. It highlights that window with
+   `highlightSpans` and keeps the spans on this line. A construct that closes
+   within the look-ahead is thus styled on every line as the whole passage
+   styles it, without waiting for the later lines.
+2. Advances the stream through those spans one by one, returning each span's
+   style (and `null` for the gaps).
+3. Sets `state.tail` to the text from the open construct's start to the
+   line's end (or `''`).
+
+The look-ahead is **capped at 200 lines**. A construct still open after them
+is treated as unclosed: the line is styled from `head` alone (an unclosed
+construct is `error`, an unclosed `<!--` `comment`, an unclosed `{do}` body
+code), and the state is marked **`capped`** (a field of the state besides
+`tail`, `spans` and `lineStart`): the tail keeps only the construct's first
+line, and later lines do not look ahead until the construct closes. This
+keeps the work per line flat for a construct left open across a long passage
+(a `{if $x` at the top of 5,000 lines); the price is that a construct open
+for more than 200 lines is styled as unclosed until its closing line, and
+the lines after that one are read without the construct's middle lines.
+
+`copyState` copies the state and the per-line spans; `blankLine` appends `\n`
+to an open tail. Any exception skips to the end of the line and clears the
+tail.
+
+Styles use CodeMirror's built-in token names only (Twine themes them for light
+and dark):
+
+| Spindle                              | Token                          |
+| ------------------------------------ | ------------------------------ |
+| Macro name, `{/name}`, braces        | `keyword`                      |
+| Story variable `$x`, `%x`            | `variable-2`                   |
+| Temporary `_x`, local `@x`           | `variable-3`                   |
+| String literals                      | `string`                       |
+| Numbers, `true`/`false`/`null`       | `number` / `atom`              |
+| JS operators and punctuation in code | `operator`                     |
+| `[[link]]` and its target            | `link`                         |
+| `.class#id` selectors                | `attribute`                    |
+| HTML tags / attribute names / values | `tag` / `attribute` / `string` |
+| HTML comments                        | `comment`                      |
+| Malformed or unclosed markup         | `error`                        |
+
+Plain prose and Markdown get no style.
+
+### Toolbar
+
+```
+[Links ▾] [Logic ▾] [Variables ▾] [Inputs ▾] [UI ▾] [Check] [Format]
+```
+
+- **Links**: link `[[…]]`, `{link}`, `{goto}`, `{include}`, `{back}`.
+- **Logic**: `{if}…{/if}`, `{if}{else}`, `{for}`, `{switch}`, `{do}`, `{watch}`.
+- **Variables**: `{set}`, `{unset}`, `{print}`, `{$x}` display, `{computed}`.
+- **Inputs**: `{textbox}`, `{numberbox}`, `{textarea}`, `{checkbox}`,
+  `{radiobutton}`, `{listbox}`, `{cycle}`, `{button}`.
+- **UI**: `{dialog}`, `{repeat}`, `{timed}`, `{meter}`, `{nobr}`, `{widget}`.
+
+The exact templates are taken from the macro docs (`docs/macros.md`) at
+implementation time; every template must pass the validator (tested). A block
+snippet wraps the selection as its body (`{if $}` + selection + `{/if}`) and
+puts the cursor where the author types next; with no selection it inserts the
+template with the cursor in its first slot. Each menu-item insert is one undo
+step.
+
+**Check** runs `validateStoryMarkup([{ name, content }], builtinMacros, {
+checkPassageNames: false, tolerant: true })` on the passage. It clears marks
+from a previous check, marks each problem's span with `editor.markText` using
+an inline `css` red wavy underline (Twine allows no custom CSS classes) and a
+`title` holding the message, and shows a summary (count and first messages)
+through `window.alert`, or "No problems found". Marks are cleared on the next
+edit of the passage.
+
+**Format** calls `formatPassage(text, { prettier })` (below). It is
+asynchronous: when it resolves, the result is applied only if the editor text
+still equals the text it formatted, as one `replaceRange` over the whole
+document inside `editor.operation`, so it is one undo step; the cursor stays on
+its line (clamped). A formatter error is shown with `window.alert`, and the
+passage is left unchanged.
+
+### Formatter move
+
+Today the formatter is `spindle-lsp`'s `src/plugins/format.ts` and
+`src/plugins/format/*` (about 1,100 lines), working on whole `.twee`
+documents. Its parsing already comes from Spindle's tooling; Prettier is
+imported dynamically and configured with `resolveConfig(process.cwd())`.
+
+Spindle's tooling gains:
+
+```ts
+export interface PassageFormatOptions {
+  /** How the body is formatted. Default 'normal' (Spindle markup). */
+  kind?: 'normal' | 'script' | 'stylesheet';
+  /** Prettier (Node's `prettier`, or `prettier/standalone` with plugins). Without it, embedded JS, CSS and HTML stay as written. */
+  prettier?: { format(code: string, options: object): Promise<string> };
+  /** Given to each Prettier call (tabWidth etc.), replacing the default { tabWidth: 2 }. */
+  prettierOptions?: object;
+  isBlock?: (name: string) => boolean;
+  isDedentingSubMacro?: (name: string) => boolean;
+  maxLineLength?: number;
+}
+export function formatPassage(
+  body: string,
+  options?: PassageFormatOptions,
+): Promise<string>;
+```
+
+- The per-passage body logic of `formatLf` (region segmentation, protection of
+  multiline tokens, `<script>`/SVG/HTML regions, macro indentation, wrapping,
+  hard breaks, trailing whitespace, line endings and byte order mark) moves to
+  `src/format/` in Spindle with its unit tests. The default `isBlock` is the
+  built-in block macros plus the macros the passage closes with `{/name}`.
+- The Twee-document layer stays in `spindle-lsp`: splitting into passages,
+  header normalization, blank lines between passages, the document-wide
+  `isBlock` scan, and `resolveConfig`. It calls `formatPassage` per passage,
+  passing Node's `prettier` and the resolved config.
+- `spindle-lsp` switches in its own pull request after a Spindle release that
+  exports `formatPassage`, deletes its copy and raises
+  `MINIMUM_SPINDLE_VERSION`. Its format tests, which check whole documents,
+  must pass, except the HTML-whitespace cases that the rule below changes,
+  which the follow-up pull request updates; that is the move's acceptance
+  test.
+- Format must not change what the story displays. HTML is formatted with
+  Prettier's `htmlWhitespaceSensitivity: 'css'` (not `'ignore'`, which turned
+  `<b>bold</b>, and more!` into `<b>bold</b> , and more!`), and HTML holding a
+  `<pre>`, a `<textarea>` or a `white-space` style stays as written. A
+  render-equivalence test renders passages before and after Format with the
+  runtime.
+- Before the move, Spindle's duplication budget is checked for the moved code
+  (it must reuse the tokenizer and lexer helpers already in `src/`, not bring
+  copies).
+
+The Twine bundle passes `prettier/standalone` with `plugins/babel`,
+`plugins/estree`, `plugins/postcss` and `plugins/html`.
+
+#### Follow-up for spindle-lsp
+
+These bugs, found while moving the formatter, also exist in `spindle-lsp`'s
+copy and are fixed there by switching it to `formatPassage`:
+
+- A Spindle-token placeholder that Prettier loses, moves or rewrites (in a
+  `<style>` body or a `<script>`) leaked into the output or dropped story
+  text; such a region now stays as written.
+- `<script>` regions re-indented every line of Prettier's output, including
+  the continuation lines of multiline template literals and
+  backslash-continued strings: values changed (a string `'a\` continued by
+  `b'` on the next line went from `ab` to `a  b`) and Format was not
+  idempotent. Wrapping (`maxLineLength`) also broke long lines
+  of `{do}` bodies, inside string literals.
+- HTML was formatted with `htmlWhitespaceSensitivity: 'ignore'`, which changed
+  what passages display (see above).
+
+### Build
+
+`scripts/build-format.ts` gains a step after the runtime build:
+
+1. Bundle `src/twine-editor/index.ts` with Vite in library mode, format
+   `iife`, minified, target `es2019` (a fixed esbuild target instead of
+   Twine's browserslist, which the build does not read), Prettier and the
+   tooling bundled in.
+2. Wrap it so that its only effect is
+   `this.editorExtensions = { twine: { '^2.4.0': … } }`.
+3. Add it to `formatData` as `hydrate`.
+
+`dist/format.js` and `dist/pkg/format.js` both carry it. The runtime build,
+`source`, and `pkg/index.js` are unchanged.
+
+## Error handling
+
+- Twine calls the mode, the toolbar and `parsePassageText` constantly on
+  half-typed text. All three catch everything: the mode styles the rest of the
+  line as plain text and resets its tail; `parsePassageText` returns `[]`; the
+  toolbar returns its fixed item list.
+- Commands report failures through `window.alert` and never leave the passage
+  half-changed.
+- If Prettier throws on a region, that region stays as written (as now in the
+  LSP).
+
+## Testing
+
+- **References**: a fixture per passage-naming macro (`{goto}`, `{include}`,
+  `{link "x" "P"}`, `{dialog}` body, `{watch … goto/dialog}`); no duplicates;
+  no `[[links]]`; expressions skipped; malformed markup does not throw.
+- **Mode**: run with CodeMirror 5's `runMode` addon (`codemirror@5` as a dev
+  dependency) on sample passages, including macros, code and comments spanning
+  lines; a property test over the existing `test/property` arbitraries checks
+  that the spans the mode produces line by line equal the spans of
+  tokenizing the whole passage.
+- **Toolbar**: shape follows Twine's rules (icons on top-level items and none
+  inside menus, every item labelled, separators only in menus); the item list
+  is identical across editor states and locales; every snippet template
+  validates with no diagnostics.
+- **Commands**: against a CodeMirror 5 instance in happy-dom: insert and wrap
+  with and without a selection, one undo step each; Check marks the right
+  spans and clears them; Format applies, keeps the cursor line, and does
+  nothing when the text changed while it ran.
+- **Formatter**: the moved unit tests run in Spindle; `formatPassage` with no
+  `prettier` leaves embedded code unchanged.
+- **Build**: load `dist/format.js`, run `hydrate` with `new Function` bound to
+  `{}`: it returns synchronously, defines no globals, and yields
+  `editorExtensions.twine['^2.4.0']` with `codeMirror.mode`,
+  `codeMirror.toolbar`, `codeMirror.commands` and
+  `references.parsePassageText`.
+- **Not in compiled stories**: check the format's `source` (the template a
+  compiled story is made from, so what compiled stories contain) holds no
+  editor-bundle marker (the hydrate banner and a toolbar label). The check
+  reads `source` rather than compiling `dist/story.html`: same content, no
+  compile step.
+- **Manual, before merging**: run Twine's web build locally (twinejs dev
+  server), add Spindle's `format.js` from a local server, check highlighting,
+  the toolbar, Check, Format and the reference lines; screenshots go in the
+  pull request.
+
+## Docs
+
+- `docs/twine-editor.md` (new): what the extensions do, their limits (one
+  passage at a time), how to turn them off.
+- `docs/tooling.md`: `formatPassage`.
+- Changelog entries under Added.
+
+## Order of work
+
+1. Move the formatter into Spindle's tooling (`formatPassage`) with its tests.
+2. References, then the mode, then the toolbar and commands.
+3. Build integration and the build tests.
+4. Docs, manual check in Twine, pull request.
+5. After release: the `spindle-lsp` pull request switching to `formatPassage`.
