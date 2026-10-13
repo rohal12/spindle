@@ -13,14 +13,31 @@ describe('storyContextErrors', () => {
     ]);
   });
 
-  it.each(['do', 'unset', 'link', 'button', 'dialog', 'goto', 'watch'])(
-    'rejects {%s}',
-    (name) => {
-      const errors = storyContextErrors(`{${name} "x"}`, []);
-      expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain(`{${name}}`);
-    },
-  );
+  it.each([
+    'do',
+    'unset',
+    'computed',
+    'link',
+    'button',
+    'dialog',
+    'goto',
+    'watch',
+  ])('rejects {%s}', (name) => {
+    const errors = storyContextErrors(`{${name} "x"}`, []);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(`{${name}}`);
+  });
+
+  it('matches macro names case-insensitively, as Spindle resolves them', () => {
+    expect(storyContextErrors('{Set $x = 1}', [])).toEqual([
+      'StoryContext: {set} is not allowed; StoryContext is display-only',
+    ]);
+    expect(storyContextErrors('{LINK "a"}x{/LINK}', [])).toHaveLength(1);
+    expect(storyContextErrors('{TextBox "$n"}', ['textbox'])).toHaveLength(1);
+    expect(storyContextErrors('{textbox "$n"}', ['TextBox'])).toHaveLength(1);
+    // {set} and {SET} are one name, reported once
+    expect(storyContextErrors('{set $a = 1}{SET $b = 2}', [])).toHaveLength(1);
+  });
 
   it('rejects [[links]]', () => {
     expect(storyContextErrors('[[Forest]]', [])).toEqual([

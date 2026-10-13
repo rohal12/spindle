@@ -46,5 +46,19 @@ describe('bootStory with a StoryContext passage', () => {
     expect(again).not.toBe(el);
     expect(again.isConnected).toBe(true);
     expect(observableText(again)).toContain('Gold:');
+    // The lost tree was unmounted
+    expect(el.childNodes).toHaveLength(0);
+  });
+
+  it('unmounts the lost tree and removes its hidden wrapper', async () => {
+    const el = storyContextElement()!;
+    const hidden = el.parentElement!;
+    // The element alone leaves the page; its wrapper stays
+    el.remove();
+    const again = storyContextElement()!;
+    expect(again).not.toBe(el);
+    expect(hidden.isConnected).toBe(false);
+    expect(el.childNodes).toHaveLength(0);
+    expect(again.parentElement!.isConnected).toBe(true);
   });
 });

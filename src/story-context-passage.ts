@@ -6,21 +6,18 @@ import type { ASTNode } from './markup/ast';
 import { renderNodes } from './markup/render';
 import { errorMessage } from './utils/error-message';
 import { ActionsDisabledContext } from './hooks/use-action';
+import { ACTING_MACROS, DisplayOnlyContext } from './display-only';
+import { NameSet } from './utils/macro-names';
 
 /**
  * The macros a display-only passage may not use besides the input macros:
- * they change the story, or act when they mount.
+ * they change the story, act when they mount, or are controls.
  */
 const REJECTED_MACROS: readonly string[] = [
-  'set',
-  'do',
-  'unset',
-  'computed',
+  ...ACTING_MACROS,
   'link',
   'button',
   'dialog',
-  'goto',
-  'watch',
 ];
 
 /**
@@ -34,7 +31,8 @@ export function storyContextErrors(
   content: string,
   inputMacros: Iterable<string>,
 ): string[] {
-  const rejected = new Set([...REJECTED_MACROS, ...inputMacros]);
+  // Macro names are case-insensitive: {Set} is {set}
+  const rejected = new NameSet([...REJECTED_MACROS, ...inputMacros]);
   let tokens;
   try {
     tokens = tokenizeMarkup(content);
@@ -50,7 +48,7 @@ export function storyContextErrors(
       !token.isClose &&
       rejected.has(token.name)
     ) {
-      found.add(`{${token.name}}`);
+      found.add(`{${token.name.toLowerCase()}}`);
     }
   }
   return [...found].map(
@@ -61,6 +59,8 @@ export function storyContextErrors(
 
 /** The element the mounted StoryContext tree renders into. */
 let container: HTMLElement | null = null;
+/** The hidden element the container was put in. */
+let wrapper: HTMLElement | null = null;
 
 /** What shows in place of a StoryContext that can't be rendered. */
 function contextError(err: unknown) {
@@ -84,6 +84,12 @@ function StoryContextView({ ast }: { ast: ASTNode[] }) {
  */
 export function storyContextElement(): Element | null {
   if (container?.isConnected) return container;
+  // The page lost it: the old tree must not keep following the store
+  if (container) {
+    render(null, container);
+    wrapper?.remove();
+    container = wrapper = null;
+  }
   const passage = useStoryStore
     .getState()
     .storyData?.passages.get('StoryContext');
@@ -95,6 +101,7 @@ export function storyContextElement(): Element | null {
   hidden.appendChild(el);
   document.body.appendChild(hidden);
   container = el;
+  wrapper = hidden;
 
   let view: ComponentChild;
   try {
@@ -102,8 +109,17 @@ export function storyContextElement(): Element | null {
   } catch (err) {
     view = contextError(err);
   }
+  // Display-only: its controls register no actions, and nothing in it, also
+  // what an {include} or a widget brings in, changes the story
   const mount = () =>
-    render(h(ActionsDisabledContext.Provider, { value: true }, view), el);
+    render(
+      h(
+        ActionsDisabledContext.Provider,
+        { value: true },
+        h(DisplayOnlyContext.Provider, { value: true }, view),
+      ),
+      el,
+    );
   try {
     mount();
     // An error caught below the boundary re-renders it a tick later: render

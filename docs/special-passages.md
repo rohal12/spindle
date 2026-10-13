@@ -128,7 +128,7 @@ Gold: {$gold}  HP: {$hp}/{$maxHp}
 Inventory: {print $inventory.join(", ")}
 ```
 
-The passage is never shown to the reader. The first `Story.observe()` renders it into a hidden element, and it follows the story's variables from then on; a story that never calls `observe()` never renders it. It is display-only: the startup check rejects macros that change the story or act when they mount (`{set}`, `{do}`, `{unset}`, `{computed}`, `{goto}`, `{watch}`), links, buttons, `{dialog}` and inputs. If it fails to render, the error shows in `context` and in `errors`.
+The passage is never shown to the reader. The first `Story.observe()` renders it into a hidden element, and it follows the story's variables from then on; a story that never calls `observe()` never renders it. It is display-only: the startup check rejects macros that change the story or act when they mount (`{set}`, `{do}`, `{unset}`, `{computed}`, `{goto}`, `{watch}`), links, buttons, `{dialog}` and inputs, in any case (`{Set}` is `{set}`). The check sees only the passage's own markup, so the rule also holds while it renders: anything it brings in with `{include}` or a widget changes nothing either, and such a macro shows the error "StoryContext is display-only" in `context` and in `errors` instead of running. If it fails to render, the error shows in `context` and in `errors`.
 
 ## `SaveTitle`
 
