@@ -241,13 +241,27 @@ function blockLookup(macros: readonly ToolingMacro[]) {
  * markup in a text follows it, as pieces marked `nested` with offsets into
  * `source` too. Malformed tags are skipped, so it reads half-typed markup.
  * The macros are those the markup may use, built-in and user-defined.
- * `tokens` are those of `tokenizeMarkupTolerant(source)`, for a caller that
- * has them already.
  */
 export function passagePieces(
   source: string,
   macros: Iterable<ToolingMacro> = [],
-  tokens: readonly Token[] = tokenizeMarkupTolerant(source).tokens,
+): Piece[] {
+  return passagePiecesOfTokens(
+    source,
+    macros,
+    tokenizeMarkupTolerant(source).tokens,
+  );
+}
+
+/**
+ * `passagePieces` for a caller that has the tokens of
+ * `tokenizeMarkupTolerant(source)` already (the editor's highlighter). Not
+ * part of the published tooling API.
+ */
+export function passagePiecesOfTokens(
+  source: string,
+  macros: Iterable<ToolingMacro>,
+  tokens: readonly Token[],
 ): Piece[] {
   const all = [...macros];
   return [

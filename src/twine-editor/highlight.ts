@@ -1,7 +1,7 @@
 import {
   SIGIL_SCOPES,
   lexJs,
-  passagePieces,
+  passagePiecesOfTokens,
   pieceOffset,
   type HtmlToken,
   type MacroToken,
@@ -381,7 +381,7 @@ function spansOf(text: string, reading: Reading): StyledSpan[] {
   }
   for (const token of tokens) paintToken(canvas, text, token);
   const body = openDo(tokens);
-  for (const piece of passagePieces(text, builtinMacros, tokens)) {
+  for (const piece of passagePiecesOfTokens(text, builtinMacros, tokens)) {
     if (piece.kind === 'code') paintCode(canvas, piece);
     if (piece.kind === 'text') {
       for (const token of piece.tokens) paintToken(canvas, text, token);
