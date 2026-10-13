@@ -38,7 +38,6 @@ function isHidden(el: Element): boolean {
 }
 
 function formatValue(value: unknown): string {
-  if (typeof value === 'string') return JSON.stringify(value);
   return JSON.stringify(value) ?? String(value);
 }
 
@@ -62,6 +61,12 @@ function controlMarker(el: Element): string {
   const variable = action?.variable;
   const name =
     variable && !variable.startsWith('$') ? `$${variable}` : variable;
+  // A radio is one choice of its variable: its own value, and whether it is
+  // the one selected (the action's value is the variable's, shared by all)
+  if (type === 'radiobutton' && own.value !== undefined) {
+    const state = action?.value === own.value ? 'selected' : 'unselected';
+    return `[${type}${name ? ` ${name}` : ''} = ${formatValue(own.value)}: ${state}]`;
+  }
   return `[${type}${name ? ` ${name}` : ''}: ${shown}]`;
 }
 
@@ -108,12 +113,16 @@ export function observableText(el: Element): string {
   };
 
   walk(el, false);
-  return out
-    .split('\n')
-    .map((line) => line.trim())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return (
+    out
+      .split('\n')
+      // Not trimStart: a <pre> line keeps its indentation, and no other line
+      // starts with whitespace
+      .map((line) => line.trimEnd())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\n+|\s+$/g, '')
+  );
 }
 
 /** The trimmed text of each error shown in the element. */

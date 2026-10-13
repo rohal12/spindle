@@ -31,6 +31,7 @@ defineMacro({
       >
         <input
           type="radio"
+          value={radioValue}
           data-action={actionId || undefined}
           name={view ? `radio-${view}-${ctx.varName}` : `radio-${ctx.varName}`}
           checked={ctx.value === radioValue}

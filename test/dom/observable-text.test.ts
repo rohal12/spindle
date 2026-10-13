@@ -56,6 +56,12 @@ describe('observableText', () => {
       expect(text('<p>A</p><br><br><br><br><p>B</p>')).toBe('A\n\nB');
     });
 
+    it('keeps the indentation of preformatted lines', () => {
+      expect(text('<p>A</p><pre>  if (x) {\n    y();\n  }</pre>')).toBe(
+        'A\n  if (x) {\n    y();\n  }',
+      );
+    });
+
     it('reads inline elements as part of the line', () => {
       expect(text('<p>Go <a>north</a> now</p>')).toBe('Go north now');
     });
@@ -71,7 +77,11 @@ describe('observableText', () => {
     it.each([
       ['hidden', '<p hidden>x</p>'],
       ['display:none', '<p style="display:none">x</p>'],
-      ['display: none !important', '<p style="color:red; display: none">x</p>'],
+      ['display: none !important', '<p style="display: none !important">x</p>'],
+      [
+        'display: none after another declaration',
+        '<p style="color:red; display: none">x</p>',
+      ],
       ['aria-hidden', '<p aria-hidden="true">x</p>'],
     ])('skips an element with %s', (_name, html) => {
       expect(text(`<p>A</p>${html}<p>B</p>`)).toBe('A\nB');
@@ -217,7 +227,10 @@ describe('rendered controls', () => {
     ['{textbox $name "Your name"}', '[textbox $name: "Alice"]'],
     ['{textarea $name}', '[textarea $name: "Alice"]'],
     ['{checkbox $brave "Brave"}', '[checkbox $brave: checked] Brave'],
-    ['{radiobutton $name "Alice" "Pick"}', '[radiobutton $name: "Alice"] Pick'],
+    [
+      '{radiobutton $name "Alice" "Pick"}',
+      '[radiobutton $name = "Alice": selected] Pick',
+    ],
     [
       '{listbox $name}{option "Alice"}{option "Bob"}{/listbox}',
       '[listbox $name: "Alice"]',
@@ -232,6 +245,15 @@ describe('rendered controls', () => {
     useStoryStore.getState().setVariable('brave', true);
     useStoryStore.getState().setVariable('age', 7);
     expect(passageText(markup)).toBe(expected);
+  });
+
+  it('tells the radios of one variable apart', () => {
+    useStoryStore.getState().setVariable('c', 'red');
+    expect(
+      passageText('{radiobutton $c "red" "Red"}{radiobutton $c "blue" "Blue"}'),
+    ).toBe(
+      '[radiobutton $c = "red": selected] Red[radiobutton $c = "blue": unselected] Blue',
+    );
   });
 
   it('names the passage of a dialog panel', () => {
