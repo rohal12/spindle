@@ -206,7 +206,7 @@ export interface PassageFormatOptions {
   kind?: 'normal' | 'script' | 'stylesheet';
   /** Prettier (Node's `prettier`, or `prettier/standalone` with plugins). Without it, embedded JS, CSS and HTML stay as written. */
   prettier?: { format(code: string, options: object): Promise<string> };
-  /** Merged under each Prettier call (tabWidth etc.). Default { tabWidth: 2 }. */
+  /** Given to each Prettier call (tabWidth etc.), replacing the default { tabWidth: 2 }. */
   prettierOptions?: object;
   isBlock?: (name: string) => boolean;
   isDedentingSubMacro?: (name: string) => boolean;
@@ -230,7 +230,15 @@ export function formatPassage(
 - `spindle-lsp` switches in its own pull request after a Spindle release that
   exports `formatPassage`, deletes its copy and raises
   `MINIMUM_SPINDLE_VERSION`. Its format tests, which check whole documents,
-  must pass unchanged; that is the move's acceptance test.
+  must pass, except the HTML-whitespace cases that the rule below changes,
+  which the follow-up pull request updates; that is the move's acceptance
+  test.
+- Format must not change what the story displays. HTML is formatted with
+  Prettier's `htmlWhitespaceSensitivity: 'css'` (not `'ignore'`, which turned
+  `<b>bold</b>, and more!` into `<b>bold</b> , and more!`), and HTML holding a
+  `<pre>`, a `<textarea>` or a `white-space` style stays as written. A
+  render-equivalence test renders passages before and after Format with the
+  runtime.
 - Before the move, Spindle's duplication budget is checked for the moved code
   (it must reuse the tokenizer and lexer helpers already in `src/`, not bring
   copies).
@@ -238,12 +246,30 @@ export function formatPassage(
 The Twine bundle passes `prettier/standalone` with `plugins/babel`,
 `plugins/estree`, `plugins/postcss` and `plugins/html`.
 
+#### Follow-up for spindle-lsp
+
+These bugs, found while moving the formatter, also exist in `spindle-lsp`'s
+copy and are fixed there by switching it to `formatPassage`:
+
+- A Spindle-token placeholder that Prettier loses, moves or rewrites (in a
+  `<style>` body or a `<script>`) leaked into the output or dropped story
+  text; such a region now stays as written.
+- `<script>` regions re-indented every line of Prettier's output, including
+  the continuation lines of multiline template literals and
+  backslash-continued strings: values changed (a string `'a\` continued by
+  `b'` on the next line went from `ab` to `a  b`) and Format was not
+  idempotent. Wrapping (`maxLineLength`) also broke long lines
+  of `{do}` bodies, inside string literals.
+- HTML was formatted with `htmlWhitespaceSensitivity: 'ignore'`, which changed
+  what passages display (see above).
+
 ### Build
 
 `scripts/build-format.ts` gains a step after the runtime build:
 
 1. Bundle `src/twine-editor/index.ts` with Vite in library mode, format
-   `iife`, minified, target from Twine's browserslist, Prettier and the
+   `iife`, minified, target `es2019` (a fixed esbuild target instead of
+   Twine's browserslist, which the build does not read), Prettier and the
    tooling bundled in.
 2. Wrap it so that its only effect is
    `this.editorExtensions = { twine: { '^2.4.0': … } }`.
@@ -288,9 +314,11 @@ The Twine bundle passes `prettier/standalone` with `plugins/babel`,
   `editorExtensions.twine['^2.4.0']` with `codeMirror.mode`,
   `codeMirror.toolbar`, `codeMirror.commands` and
   `references.parsePassageText`.
-- **Not in compiled stories**: `bun run compile`, then check
-  `dist/story.html` contains no editor-bundle marker (the hydrate banner and a
-  toolbar label).
+- **Not in compiled stories**: check the format's `source` (the template a
+  compiled story is made from, so what compiled stories contain) holds no
+  editor-bundle marker (the hydrate banner and a toolbar label). The check
+  reads `source` rather than compiling `dist/story.html`: same content, no
+  compile step.
 - **Manual, before merging**: run Twine's web build locally (twinejs dev
   server), add Spindle's `format.js` from a local server, check highlighting,
   the toolbar, Check, Format and the reference lines; screenshots go in the
