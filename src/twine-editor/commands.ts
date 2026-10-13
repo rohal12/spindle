@@ -8,6 +8,7 @@ import {
   formatPassage,
   validateStoryMarkup,
   type PrettierLike,
+  type ToolingMacro,
 } from '../tooling';
 import { builtinMacros } from './builtin-macros';
 import { snippets } from './snippets';
@@ -90,17 +91,33 @@ function markProblem(
   });
 }
 
+/**
+ * Macros and widgets defined elsewhere in the story are unknown here, and a
+ * typo cannot be told from them: Check reports neither. A `{/name}` closer
+ * says the unknown macro has a body, so it is read as a block macro rather
+ * than reported as a stray closer.
+ */
+function closedUserMacros(content: string): ToolingMacro[] {
+  const known = new Set(builtinMacros.map((m) => m.name.toLowerCase()));
+  const names = new Set<string>();
+  for (const [, name] of content.matchAll(/\{\/([^\s{}/]+)\}/g)) {
+    if (!known.has(name!.toLowerCase())) names.add(name!);
+  }
+  return [...names].map((name) => ({ name, block: true, subMacros: [] }));
+}
+
 function check(editor: Editor): void {
   clearCheckMarks(editor);
   if (!watchedForChanges.has(editor)) {
     watchedForChanges.add(editor);
     editor.on('change', () => clearCheckMarks(editor));
   }
+  const content = editor.getValue();
   const diagnostics = validateStoryMarkup(
-    [{ name: 'passage', content: editor.getValue() }],
-    builtinMacros,
+    [{ name: 'passage', content }],
+    [...builtinMacros, ...closedUserMacros(content)],
     { checkPassageNames: false, tolerant: true },
-  );
+  ).filter((d) => d.code !== 'unknown-macro');
   if (diagnostics.length === 0) {
     window.alert('No problems found');
     return;

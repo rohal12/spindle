@@ -24,7 +24,7 @@ Passage text is highlighted as you type, with the colors of Twine's current them
 | HTML comments                             | comments                  |
 | Malformed or unclosed markup (`{if $x`)   | error                     |
 
-Plain prose and Markdown are left as they are. A macro whose arguments run over several lines, a `{do}` body and a comment are highlighted across their lines. The highlighter reads the passage with the tokenizer Spindle itself uses (see the [Tooling API](tooling.md)), so what it marks as an error is what the story would reject.
+Plain prose and Markdown are left as they are. A macro whose arguments run over several lines, a `{do}` body and a comment are highlighted across their lines. The highlighter reads the passage with the tokenizer Spindle itself uses (see the [Tooling API](tooling.md)), so what it marks as an error is something the story would reject (a subset: a typo in a macro name, for instance, is not an error here, since the macro may be defined elsewhere in the story).
 
 A construct left open for more than 200 lines (a `{if $x` at the top of a very long passage) is shown as unclosed until the line that closes it, so that a long passage stays quick to edit.
 
@@ -34,7 +34,7 @@ Twine draws a line on the story map for each `[[link]]`. Spindle adds dotted lin
 
 - `{goto "B"}` and `{include "B"}`
 - `{link "text" "B"}`
-- a `{dialog "B"}` body
+- the passage in a `{dialog "label"}B{/dialog}` body
 - `{watch … goto "B"}` and `{watch … dialog "B"}`
 
 `[[links]]` are not repeated (Twine draws those itself), and neither are targets that are expressions (`{goto $next}`): only names written in the passage are known.
@@ -45,7 +45,7 @@ Twine draws a line on the story map for each `[[link]]`. Spindle adds dotted lin
 [Links ▾] [Logic ▾] [Variables ▾] [Inputs ▾] [UI ▾] [Check] [Format]
 ```
 
-The five menus insert markup. With text selected, a block macro wraps the selection as its body (`{if }`, the selection, `{/if}`) and the cursor lands where you type next; with nothing selected, the template is inserted with the cursor in its first slot. Each insert is one undo step.
+The five menus insert markup. With text selected, a block macro wraps the selection as its body (`{if }`, the selection, `{/if}`) and the cursor lands where you type next; with nothing selected, the template is inserted with the cursor in its first slot. A macro that has no body (`{goto}`, `{set}`, `{meter}`) is inserted before the selected text instead of wrapping it. Each insert is one undo step. **Check** and **Format** are disabled while the passage is empty.
 
 | Menu      | Items                                                                                                       |
 | --------- | ----------------------------------------------------------------------------------------------------------- |
@@ -61,11 +61,11 @@ The templates follow the [macro reference](macros.md); every one passes the stor
 
 **Check** looks for problems in the passage you are editing. Each problem is underlined in red; hover it to read the message. A summary (the count and the first messages, with line numbers) is shown in an alert, or "No problems found". The underlines are cleared when you edit the passage.
 
-Check reads one passage, so it reports malformed and unclosed tags, unknown built-in macros, argument errors and JavaScript syntax errors in expressions, but not what needs the rest of the story: passage names that do not exist, undeclared story variables, or macros and widgets you define yourself. The story still reports those when it starts.
+Check reads one passage, so it reports malformed, unclosed and mismatched tags, argument errors and JavaScript syntax errors in expressions. It does not report what needs the rest of the story: passage names that do not exist, undeclared story variables, and unknown macros. A macro or widget you define in another passage looks the same as a typo from here, so `{mycustom 1}` is not reported, and a `{/mycustom}` closer is taken to close it. The story still reports all of these when it starts.
 
 ### Format
 
-**Format** formats the passage: bodies of block macros are indented, trailing whitespace is removed, and embedded `<script>`, `<style>` and HTML are formatted with a copy of [Prettier](https://prettier.io/) bundled in the format. A region Prettier would break (for example one with a macro in the middle of a JavaScript expression) is left as you wrote it, as is everything the runtime executes (macros, links, `{do}` bodies). The result replaces the passage as one undo step and the cursor stays on its line. If you keep typing while it runs, your text wins and nothing is replaced.
+**Format** formats the passage: bodies of block macros are indented, trailing whitespace is removed (Markdown hard breaks, and the indentation of lists and code fences, are kept), the text ends with one newline, and embedded `<script>`, `<style>` and HTML are formatted with a copy of [Prettier](https://prettier.io/) bundled in the format. A region Prettier would break (for example one with a macro in the middle of a JavaScript expression) is left as you wrote it, as is everything the runtime executes (macros, links, `{do}` bodies). The result replaces the passage as one undo step and the cursor stays on its line. If you keep typing while it runs, your text wins and nothing is replaced.
 
 The same formatter is available to your own tools as `formatPassage` ([Tooling API](tooling.md#formatting-a-passage)).
 
@@ -74,7 +74,7 @@ The same formatter is available to your own tools as `formatPassage` ([Tooling A
 Twine hands an extension one passage at a time, so:
 
 - Highlighting and references cannot see the rest of the story. Macros and widgets you define yourself are highlighted as macros of unknown name, and their passage parameters draw no lines.
-- Check does not report what needs the whole story (see above).
+- Check does not report what needs the whole story: passage names, undeclared story variables and unknown macros (it cannot tell a typo from a macro defined elsewhere).
 - Twine's Story JavaScript and Story Stylesheet dialogs use Twine's own modes; the extensions do not touch them.
 
 ## Turning them off

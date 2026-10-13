@@ -114,6 +114,38 @@ describe('check', () => {
     expect(alert).toHaveBeenCalledWith('No problems found');
   });
 
+  it('does not report macros and widgets defined elsewhere in the story', () => {
+    for (const text of [
+      '{mycustom 1}',
+      '{mycustom $x "a"}',
+      '{mycustom 1}body{/mycustom}',
+      '{mycustom}{/mycustom}',
+    ]) {
+      const editor = create(text);
+      alert.mockClear();
+      commands.check!(editor);
+      expect(editor.getAllMarks(), text).toHaveLength(0);
+      expect(alert, text).toHaveBeenCalledWith('No problems found');
+    }
+  });
+
+  it('still reports the other problems of a passage with user macros', () => {
+    for (const text of [
+      '{mycustom 1}\n{if $x',
+      '{mycustom}body{/mycustom}\n{if $x',
+    ]) {
+      const editor = create(text);
+      alert.mockClear();
+      commands.check!(editor);
+      expect(editor.getAllMarks(), text).toHaveLength(1);
+      expect(alert.mock.calls[0]![0], text).toContain('1 problem found');
+    }
+    // A user macro's own unclosed tag and bad code are still errors
+    const editor = create('{mycustom {if');
+    commands.check!(editor);
+    expect(editor.getAllMarks().length).toBeGreaterThan(0);
+  });
+
   it('clears its marks on the next change and when it runs again', () => {
     const editor = create('{if $x');
     commands.check!(editor);
