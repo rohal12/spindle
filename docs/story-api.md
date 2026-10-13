@@ -558,13 +558,17 @@ Each action object has these properties:
 | `id`       | `string`    | Unique identifier (e.g. `link:Forest`)   |
 | `type`     | `string`    | Action type (see below)                  |
 | `label`    | `string`    | Display text                             |
-| `target`   | `string?`   | Destination passage (links only)         |
+| `target`   | `string?`   | Destination passage (links, dialogs)     |
 | `variable` | `string?`   | Bound variable name (inputs only)        |
 | `options`  | `string[]?` | Available options (cycle/listbox)        |
 | `value`    | `unknown?`  | Current value (inputs)                   |
 | `disabled` | `boolean?`  | Whether the action is currently disabled |
 
 Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`, `dialog`, `open-dialog`, `close-dialog`.
+
+- `dialog` is a menubar button that opens a built-in dialog (`{saves}`, `{settings}`).
+- `open-dialog` is a [`{dialog}`](macros.md#dialog) button; its `target` is the passage it shows.
+- `close-dialog` is the `✕` button of an open dialog, however it was opened (`{dialog}`, `Story.openDialog()`, a `{watch}` with `dialog`, the menubar). It is listed while the dialog is shown, and not at all for a dialog without the button (`noclose`, or `dismissible: false`); its `target` is the dialog's passage.
 
 #### Action IDs
 
@@ -573,8 +577,8 @@ IDs are generated automatically from the action type and a content-based key:
 - Links: `link:PassageName`
 - Buttons: `button:"Take damage"`
 - Inputs: `textbox:$name`, `cycle:$weapon`
-- Dialogs: `open-dialog:"View Inventory"` for the button of `{dialog "View Inventory"}`, and `close-dialog:Inventory Screen` for the `✕` button of the dialog showing that passage (listed while the dialog is open and has the button: not with `noclose` or `dismissible: false`)
-- Menubar: `back:back`, `forward:forward`, `restart:restart`, `save:quicksave`, `load:quickload`
+- Menubar: `back:back`, `forward:forward`, `restart:restart`, `save:quicksave`, `load:quickload`, `dialog:saves`, `dialog:settings`
+- Dialogs: `open-dialog:"View Inventory"` (the `{dialog}` arguments as written), `close-dialog:Inventory` (the passage shown)
 
 When multiple actions share the same base ID (e.g. two links to the same passage), a suffix is added: `link:Forest`, `link:Forest:2`, `link:Forest:3`.
 
@@ -697,7 +701,7 @@ const o = Story.observe();
 //   dialogs: [],
 //   actions: [
 //     { id: 'link:Shop', type: 'link', label: 'Shop', target: 'Shop' },
-//     { id: 'open-dialog:"View Inventory"', type: 'open-dialog', label: 'View Inventory' },
+//     { id: 'open-dialog:"View Inventory"', type: 'open-dialog', label: 'View Inventory', target: 'Inv' },
 //     { id: 'button:"Earn"', type: 'button', label: 'Earn' },
 //   ],
 //   errors: [],

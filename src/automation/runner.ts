@@ -60,6 +60,10 @@ async function executeStep(
 ): Promise<void> {
   if (step.set) {
     story.set(step.set);
+    // Controls shown or removed by the new values register (or go) when the
+    // UI has rendered, which is after set(): an assert, or an action in the
+    // same step, would otherwise see the previous step's controls (#514)
+    await story.waitForActions();
   }
 
   if (step.action !== undefined) {

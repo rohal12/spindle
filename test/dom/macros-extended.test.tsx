@@ -432,7 +432,7 @@ describe('extended macro components', () => {
       const error = el.querySelector('.error');
       expect(error).not.toBeNull();
       expect(error!.textContent).toContain(
-        'expects a variable ($name, _name, %name, or @name), got "foo"',
+        'expects a variable ($name, _name, %name, or @name, or a field of one such as $name.field or $name["field"]), got "foo"',
       );
     });
   });

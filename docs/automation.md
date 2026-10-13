@@ -62,6 +62,10 @@ Perform a registered action by ID. Can be a simple string or an object with a va
 # Use back/forward
 - action: 'back:back'
 - action: 'forward:forward'
+
+# Open a {dialog "View Inventory"}Inventory{/dialog} and close it again
+- action: 'open-dialog:"View Inventory"'
+- action: 'close-dialog:Inventory'
 ```
 
 See [Action IDs](story-api.md#action-ids) for the ID format.
@@ -101,7 +105,7 @@ Action matchers support these fields:
 | ---------- | --------------------------------------------------------------- |
 | `id`       | Exact action ID                                                 |
 | `type`     | Action type                                                     |
-| `target`   | Destination passage                                             |
+| `target`   | Destination passage (or the passage a dialog shows)             |
 | `variable` | Bound variable name                                             |
 | `label`    | Display text                                                    |
 | `disabled` | `true` matches only disabled actions, `false` only enabled ones |

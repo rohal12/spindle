@@ -53,7 +53,9 @@ export function tokenTextContainsChildren(
 /**
  * Recursively scan an AST node array for a VariableNode
  * with scope 'local' and name 'children' (@children), in the content and in
- * the attributes and labels that render markup.
+ * the attributes and labels that render markup. A nested `{widget}` is not
+ * entered: its slot belongs to the innermost widget (as widgetDefinitions
+ * reads it), and a definition renders nothing of its own.
  */
 export function astContainsChildren(
   nodes: ASTNode[],
@@ -87,6 +89,7 @@ export function astContainsChildren(
       }
     }
     if (node.type === 'macro') {
+      if (node.name.toLowerCase() === 'widget') continue;
       const tag: Token = {
         isClose: false,
         nameStart: 0,

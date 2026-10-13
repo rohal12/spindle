@@ -99,11 +99,12 @@ Multiple assignments can be separated with semicolons:
 
 ### `{unset}`
 
-Delete a variable.
+Delete a variable, or a field or array element of one. The path is written as in code, with `.field` and `[expression]` members: `$data["field"]`, `_list[0]`, `$data[$key]`. Deleting an array element leaves a hole, as `delete` does. Anything else after the variable (`$data["a"] + 1`) is an error.
 
 ```
 {unset $oldVar}
 {unset _temp}
+{unset $data["field"]}
 ```
 
 ### `{computed}`
@@ -280,13 +281,13 @@ The passage named in the body must exist: a name no passage has stops the story 
 
 The dialog closes when the player clicks outside it or presses Escape.
 
-The button is the action `open-dialog:"View Inventory"` and the dialog's `✕` button, while it is shown, is `close-dialog:Inventory Screen` (see [Action IDs](story-api.md#action-ids)), so `Story.performAction()` and automation scripts can open and close it.
-
 Add `noclose` to hide the default close button — useful when your dialog content provides its own close UI:
 
 ```
 {dialog "Custom UI" noclose}My Custom Dialog{/dialog}
 ```
+
+The button is an [`open-dialog` action](story-api.md#storygetactions) (`open-dialog:"View Inventory"`, or the `#id` given), and while the dialog is shown its close button is a `close-dialog` action (`close-dialog:Inventory Screen`), so automation scripts and agents can open and close it.
 
 ### `{back}`
 

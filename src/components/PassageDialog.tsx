@@ -20,29 +20,6 @@ import { registerOpenDialog } from '../triggers';
 import { errorMessage } from '../utils/error-message';
 import { useAction } from '../hooks/use-action';
 
-/**
- * The dialog's `✕` button, also listed as the `close-dialog` action while it
- * is shown (a separate component so the hook runs only when it is).
- */
-function CloseButton({ name, onClose }: { name: string; onClose: () => void }) {
-  useAction({
-    type: 'close-dialog',
-    key: name,
-    label: 'Close',
-    perform: onClose,
-  });
-  return (
-    <button
-      type="button"
-      class="dialog-close"
-      aria-label="Close"
-      onClick={onClose}
-    >
-      ✕
-    </button>
-  );
-}
-
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
 interface PassageDialogProps {
@@ -162,8 +139,9 @@ export function PassageDialog({
           tabIndex={-1}
         >
           {showCloseButton && (
-            <CloseButton
-              name={passageName ?? label ?? ''}
+            <DialogCloseButton
+              dialogName={passageName ?? label ?? 'dialog'}
+              passageName={passageName}
               onClose={stableOnClose}
             />
           )}
@@ -175,5 +153,38 @@ export function PassageDialog({
         </div>
       </div>
     </DialogCloseContext.Provider>
+  );
+}
+
+/**
+ * The `✕` button, registered as a `close-dialog` action while the dialog is
+ * shown, so whatever opened it through the API can close it too (#540).
+ */
+function DialogCloseButton({
+  dialogName,
+  passageName,
+  onClose,
+}: {
+  dialogName: string;
+  passageName?: string;
+  onClose: () => void;
+}) {
+  useAction({
+    type: 'close-dialog',
+    key: dialogName,
+    label: 'Close',
+    target: passageName,
+    perform: onClose,
+  });
+
+  return (
+    <button
+      type="button"
+      class="dialog-close"
+      aria-label="Close"
+      onClick={onClose}
+    >
+      ✕
+    </button>
   );
 }

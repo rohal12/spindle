@@ -108,9 +108,11 @@ function ensureVariableChangedSubscription(): void {
       prefix: string,
     ) => {
       for (const key of changedNames(prev, next)) {
+        // As Story.get() hands values out: a retained value must not be a
+        // way to change live state or recorded history (#518)
         changed[prefix + key] = {
-          from: ownValue(prev, key),
-          to: ownValue(next, key),
+          from: readOnlyValue(ownValue(prev, key)),
+          to: readOnlyValue(ownValue(next, key)),
         };
       }
     };
@@ -457,6 +459,12 @@ function createStoryAPI(): StoryAPI {
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });
+      // Preact runs a component's effects a frame and a timer after it
+      // renders, and a store subscription made in one (useSyncExternalStore)
+      // only then sees an update made before it: the re-render it triggers is
+      // ahead of what the frames above wait for. A timer queued now runs after
+      // the one Preact queued in its frame.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       // A navigation can still be rendering: the passage display mounts the
       // new passage from an effect, after a fade-through's outgoing phase.
       // Its actions exist only once it is mounted, so wait for that. Compare

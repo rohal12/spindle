@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initSaveSystem,
   startNewPlaythrough,
+  adoptPlaythrough,
   getCurrentPlaythroughId,
   createSave,
   overwriteSave,
@@ -107,6 +108,8 @@ describe('save-manager', () => {
     it('gives imported playthroughs no number', async () => {
       const ifid = 'pt-imported-' + Date.now();
       await startNewPlaythrough(ifid);
+      // A playthrough not started here (a save of it is stored in it)
+      await adoptPlaythrough(ifid, 'foreign-pt');
       const foreign = await createSave(ifid, 'foreign-pt', makePayload());
       const data = await exportSave(foreign.meta.id);
       await deletePlaythroughData(ifid, 'foreign-pt');

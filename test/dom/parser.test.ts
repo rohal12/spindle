@@ -214,6 +214,40 @@ describe('parseStoryData', () => {
       );
     });
 
+    it('writes a literal entity in text and in an attribute again (#526)', () => {
+      const content = contentOf(
+        '<span id="example" title="&amp;lt;">&amp;lt;</span>',
+      );
+      expect(content).toBe(
+        '<span id="example" title="&amp;lt;">&amp;lt;</span>',
+      );
+      expect(attributesOf(content)).toEqual({
+        id: 'example',
+        title: '&amp;lt;',
+      });
+    });
+
+    it('writes ampersands and markup lookalikes in text as references (#526)', () => {
+      expect(
+        contentOf('<p>Tom &amp; Jerry &lt;b&gt;x&lt;/b&gt; &amp;amp;</p>'),
+      ).toBe('<p>Tom &amp; Jerry &lt;b>x&lt;/b> &amp;amp;</p>');
+    });
+
+    it('leaves markup in text, and a top-level entity, as written (#526)', () => {
+      expect(contentOf('<p>{if $a < 3 && $b}x{/if}</p>')).toBe(
+        '<p>{if $a < 3 && $b}x{/if}</p>',
+      );
+      expect(contentOf('Tom &amp; Jerry <i>a</i>')).toBe(
+        'Tom & Jerry <i>a</i>',
+      );
+    });
+
+    it('writes an ampersand in an attribute as a reference, quotes too (#526)', () => {
+      expect(contentOf(`<a href="?a=1&amp;b=2" title='"&amp;"'>x</a>`)).toBe(
+        `<a href="?a=1&amp;b=2" title='"&amp;"'>x</a>`,
+      );
+    });
+
     it('writes void elements without an end tag', () => {
       expect(contentOf('a<br>b<img src="x.png" alt="">c')).toBe(
         'a<br>b<img src="x.png" alt="">c',

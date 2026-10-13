@@ -65,6 +65,13 @@ const BLOCK_MACROS = new NameSet([
   'nobr',
 ]);
 
+/**
+ * The block widgets (those whose body renders `{@children}`), kept apart from
+ * BLOCK_MACROS: a widget is redefined, so it is a block only while its latest
+ * definition is, whereas the macros in BLOCK_MACROS stay blocks.
+ */
+const BLOCK_WIDGETS = new NameSet();
+
 /** Macros whose body is JavaScript source, kept verbatim. */
 const RAW_BODY_MACROS = new Set(['do']);
 
@@ -75,12 +82,26 @@ export function isRawMacro(name: string): boolean {
 
 /** Whether a macro takes a body closed by `{/name}`. */
 export function isBlockMacro(name: string): boolean {
-  return BLOCK_MACROS.has(name);
+  return BLOCK_MACROS.has(name) || BLOCK_WIDGETS.has(name);
 }
 
 /** Register a custom macro as a block macro so the parser nests children. */
 export function registerBlockMacro(name: string): void {
   BLOCK_MACROS.add(name);
+}
+
+/**
+ * Record whether the widget `name` takes a body, as its latest definition
+ * does. A block macro registered under the same name stays a block.
+ */
+export function setBlockWidget(name: string, isBlock: boolean): void {
+  if (isBlock) BLOCK_WIDGETS.add(name);
+  else BLOCK_WIDGETS.delete(name);
+}
+
+/** Forget which widgets take a body (see clearWidgets). */
+export function clearBlockWidgets(): void {
+  BLOCK_WIDGETS.clear();
 }
 
 /** Unregister a custom block macro (for test cleanup). */

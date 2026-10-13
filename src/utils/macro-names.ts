@@ -37,4 +37,8 @@ export class NameSet {
   delete(name: string): void {
     this.names.delete(name);
   }
+
+  clear(): void {
+    this.names.clear();
+  }
 }
