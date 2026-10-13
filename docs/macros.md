@@ -287,6 +287,8 @@ Add `noclose` to hide the default close button — useful when your dialog conte
 {dialog "Custom UI" noclose}My Custom Dialog{/dialog}
 ```
 
+The button is an [`open-dialog` action](story-api.md#storygetactions) (`open-dialog:"View Inventory"`, or the `#id` given), and while the dialog is shown its close button is a `close-dialog` action (`close-dialog:Inventory Screen`), so automation scripts and agents can open and close it.
+
 ### `{back}`
 
 A button that goes to the previous passage in the history.

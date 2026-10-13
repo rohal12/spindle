@@ -9,15 +9,26 @@ defineMacro({
     { name: 'label', type: 'text', holds: 'markup', required: true },
     { name: 'noclose', type: 'flag' },
   ],
-  render({ children = [] }, ctx) {
+  render({ rawArgs, children = [] }, ctx) {
     const [open, setOpen] = ctx.hooks.useState(false);
 
     const { noclose } = ctx.args;
-    const label = ctx.resolve!(ctx.args.label ?? '');
+    const label = ctx.resolve!(ctx.args.label ?? '') ?? '';
     const passageName = ctx
       .collectText(children)
       .trim()
       .replace(/^["']|["']$/g, '');
+    const openDialog = () => setOpen(true);
+
+    // Its own type: the menubar's Saves and Settings are `dialog` (#540)
+    ctx.useAction({
+      type: 'open-dialog',
+      key: rawArgs,
+      authorId: ctx.id,
+      label,
+      target: passageName,
+      perform: openDialog,
+    });
 
     return (
       <>
@@ -25,7 +36,7 @@ defineMacro({
           type="button"
           id={ctx.id}
           class={ctx.cls}
-          onClick={() => setOpen(true)}
+          onClick={openDialog}
         >
           {label}
         </button>
