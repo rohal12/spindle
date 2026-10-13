@@ -43,7 +43,6 @@ import {
 } from './action-registry';
 import { getRenderedNavigationId } from './passage-render-state';
 import {
-  mountStoryContext,
   observe,
   setObservedActions,
   type Observation,
@@ -492,7 +491,6 @@ function createStoryAPI(): StoryAPI {
     observe,
 
     async step(id: string, value?: unknown): Promise<Observation> {
-      if (mountStoryContext()) await api.waitForActions();
       await api.performAction(id, value);
       await api.waitForActions();
       return observe();

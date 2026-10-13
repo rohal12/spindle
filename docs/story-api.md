@@ -712,7 +712,7 @@ const o = Story.observe();
 - `passage`: the current passage's name.
 - `text`: the text of the passage area, including its header and footer but not the `StoryInterface` chrome (menubars, sidebars). Controls show as markers such as `[textbox $name: "Alice"]`; hidden elements are left out.
 - `context`: the rendered [`StoryContext`](special-passages.md#storycontext) passage, or `null` if the story has none. The first `observe()` mounts it.
-- `dialogs`: the open dialogs, `{ passage, text }` each, innermost last. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
+- `dialogs`: the open dialogs, `{ passage, text }` each, innermost last. `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
 - `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules).
 - `errors`: the messages of the macro and runtime errors on screen in the passage, the dialogs and `StoryContext`.
 - `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.
@@ -740,7 +740,7 @@ Story.setObservedActions({
 });
 ```
 
-A second call replaces the rules. Call it from story JavaScript or a `StoryInit` `{do}`. A rule that isn't a valid matcher (an unknown field, a value of the wrong type) throws, naming the rule. `getActions()`, `performAction()` and `step()` still see every action.
+A second call replaces the rules; they stay in force across `Story.restart()`. Call it from story JavaScript or a `StoryInit` `{do}`. A rule that isn't a valid matcher (an unknown field, a value of the wrong type) throws, naming the rule. `getActions()`, `performAction()` and `step()` still see every action.
 
 ## Random Numbers
 

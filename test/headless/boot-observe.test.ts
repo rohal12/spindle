@@ -49,6 +49,7 @@ describe('Story.observe() and Story.step()', () => {
     expect(shop.passage).toBe('Shop');
     expect(shop.turn).toBeGreaterThan(closed.turn);
     expect(shop.errors).toHaveLength(1);
+    expect(shop.errors[0]).toMatch(/null/);
 
     const back = await Story.step('back:back');
     expect(back.passage).toBe('Start');

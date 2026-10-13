@@ -105,22 +105,6 @@ export function setObservedActions(rules: ObservedActionRules): void {
   observedRules = next;
 }
 
-/** The StoryContext element step() has given a frame to settle. */
-let settledContext: Element | null = null;
-
-/**
- * Mount StoryContext, and say whether it needs a frame before an action:
- * it subscribes to the store from an effect after it first renders, and
- * would miss a change made before that.
- */
-export function mountStoryContext(): boolean {
-  if (getRenderedNavigationId() === null) return false;
-  const el = storyContextElement();
-  if (!el || el === settledContext) return false;
-  settledContext = el;
-  return true;
-}
-
 /** A dialog, from its backdrop down. */
 const DIALOG = '.dialog-overlay';
 
