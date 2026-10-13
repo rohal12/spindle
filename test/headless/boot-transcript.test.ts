@@ -18,6 +18,16 @@ describe('createTranscript()', () => {
       }),
     });
 
+    // limit is a count of entries, or Infinity to keep them all
+    for (const limit of [-1, 1.5, NaN, '3', -Infinity]) {
+      expect(() => createTranscript(Story, { limit: limit as number })).toThrow(
+        /"limit" must be a non-negative integer or Infinity/,
+      );
+    }
+    for (const limit of [0, 3, Infinity]) {
+      expect(() => createTranscript(Story, { limit })).not.toThrow();
+    }
+
     const transcript = createTranscript(Story, { limit: 2 });
     expect(transcript.entries).toEqual([]);
 
@@ -53,6 +63,9 @@ describe('createTranscript()', () => {
       include: { context: true },
     });
     await full.step('button:"Press"');
+    const backLabel = Story.getActions().find(
+      (a) => a.id === 'back:back',
+    )!.label;
     await full.step('back:back');
     expect(full.entries[0]).toMatchObject({
       passage: 'D',
@@ -61,7 +74,8 @@ describe('createTranscript()', () => {
     });
     expect('value' in full.entries[0]!.chose).toBe(false);
     expect(full.entries[1]!.chose.id).toBe('back:back');
-    expect(full.entries[1]!.chose.label).toBeTruthy();
+    expect(full.entries[1]!.chose.label).toBe(backLabel);
+    expect(backLabel).not.toBe('back:back');
 
     // text can be left out
     const noText = createTranscript(Story, { include: { text: false } });

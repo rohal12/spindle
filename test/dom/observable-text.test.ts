@@ -200,6 +200,20 @@ describe('observableErrors', () => {
     ).toEqual(['One', 'Two']);
   });
 
+  it('leaves out the errors the reader cannot see, as observableText does', () => {
+    const el = fixture(
+      [
+        '<div hidden><span class="error">Hidden</span></div>',
+        '<div style="display: none"><p><span class="error">None</span></p></div>',
+        '<span class="error" aria-hidden="true">Aria</span>',
+        '<template><span class="error">Template</span></template>',
+        '<span class="error">Shown</span>',
+      ].join(''),
+    );
+    expect(observableErrors(el)).toEqual(['Shown']);
+    expect(observableText(el)).toBe('Shown');
+  });
+
   it('returns nothing when there are no errors', () => {
     expect(observableErrors(fixture('<p>fine</p>'))).toEqual([]);
   });

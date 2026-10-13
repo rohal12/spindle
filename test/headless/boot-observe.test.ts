@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
 import { bootStory } from '../../src/headless';
+import { clearRuntimeErrors } from '../../src/runtime-errors';
 import { storyHtml } from './story-html';
 
 // Separate file: Spindle's module state allows one story per module instance.
@@ -48,12 +49,25 @@ describe('Story.observe() and Story.step()', () => {
     const shop = await Story.step('link:Shop');
     expect(shop.passage).toBe('Shop');
     expect(shop.turn).toBeGreaterThan(closed.turn);
-    expect(shop.errors).toHaveLength(1);
-    expect(shop.errors[0]).toMatch(/null/);
+    // A dead end: nothing to do but go back, which observe() leaves out
+    expect(shop.actions).toEqual([]);
+    expect(shop.errors).toEqual([
+      "{print error: Cannot read properties of null (reading 'boom')}",
+    ]);
 
     const back = await Story.step('back:back');
     expect(back.passage).toBe('Start');
 
     await expect(Story.step('link:Nope')).rejects.toThrow(/link:Nope/);
+
+    // A runtime error is listed with what failed, until it is dismissed
+    Story.goto('Nowhere');
+    const failed = Story.observe();
+    expect(failed.passage).toBe('Start');
+    expect(failed.errors).toEqual([
+      'The story could not go to another passage: No passage named "Nowhere" (in passage "Start")',
+    ]);
+    clearRuntimeErrors();
+    expect(Story.observe().errors).toEqual([]);
   });
 });

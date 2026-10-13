@@ -93,7 +93,7 @@ const MATCHER_FIELDS: Record<string, [FieldCheck, string]> = {
 };
 
 /**
- * `value` as an ActionMatcher, or `fail` naming `what` when it is not an
+ * A copy of `value` as an ActionMatcher, or `fail` naming `what` when it is not an
  * object of matcher fields with the right types. The automation YAML and
  * Story.setObservedActions() take matchers from authors.
  */
@@ -104,7 +104,8 @@ export function checkActionMatcher(
 ): ActionMatcher {
   const matcher = checkObject(value, what, Object.keys(MATCHER_FIELDS), fail);
   checkFields(matcher, what, MATCHER_FIELDS, fail);
-  return matcher as ActionMatcher;
+  // A copy: the author's object may change after it was checked
+  return { ...matcher } as ActionMatcher;
 }
 
 /** A mounted control's hold on its action ID. */

@@ -29,5 +29,15 @@ describe('Story.setObservedActions() from StoryInit', () => {
     expect(restarted.passage).toBe('Start');
     expect(restarted.context).toBe('Gold: 3');
     expect(restarted.turn).toBeGreaterThan(next.turn);
+
+    // The rules keep the matchers as they were set
+    const matcher = { type: 'restart' };
+    const rules = { include: [matcher] };
+    Story.setObservedActions(rules);
+    matcher.type = 'link';
+    rules.include.length = 0;
+    expect(Story.observe().actions.map((a) => a.id)).toContain(
+      'restart:restart',
+    );
   });
 });

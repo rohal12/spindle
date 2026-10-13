@@ -129,14 +129,19 @@ export function observableText(el: Element, skip?: string): string {
 
 /**
  * The trimmed text of each error shown in the element, leaving out those
- * inside an element within `el` that matches `skip`.
+ * the reader can't see (inside a hidden element, as observableText() does)
+ * and those inside an element within `el` that matches `skip`.
  */
 export function observableErrors(el: Element, skip?: string): string[] {
-  const skipped = (e: Element) => {
-    const outer = skip ? e.closest(skip) : null;
-    return !!outer && outer !== el && el.contains(outer);
+  const left = (e: Element) => {
+    for (let at: Element | null = e; at; at = at.parentElement) {
+      if (isHidden(at)) return true;
+      if (at === el) return false;
+      if (skip && at.matches(skip)) return true;
+    }
+    return false;
   };
   return Array.from(el.querySelectorAll('.error'))
-    .filter((e) => !skipped(e))
+    .filter((e) => !left(e))
     .map((e) => (e.textContent ?? '').trim());
 }

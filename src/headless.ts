@@ -97,14 +97,20 @@ export interface TranscriptEntry {
 }
 
 export interface TranscriptOptions {
-  /** How many of the latest entries to keep. Default 10. */
+  /**
+   * How many of the latest entries to keep: a non-negative integer, or
+   * `Infinity` for all. Default 10. Anything else throws.
+   */
   limit?: number;
   /** Default `{ text: true, context: false }`. */
   include?: { text?: boolean; context?: boolean };
 }
 
 export interface Transcript {
-  /** `Story.step()`, recording the observation it acted on and the choice. */
+  /**
+   * `Story.step()`, recording the observation it acted on and the choice.
+   * Await each step before the next: steps are not queued.
+   */
   step(id: string, value?: unknown): Promise<Observation>;
   readonly entries: readonly TranscriptEntry[];
 }
@@ -117,7 +123,15 @@ export function createTranscript(
   story: StoryAPI,
   options: TranscriptOptions = {},
 ): Transcript {
-  const limit = Math.max(0, options.limit ?? 10);
+  const limit = options.limit ?? 10;
+  if (
+    limit !== Infinity &&
+    !(typeof limit === 'number' && Number.isInteger(limit) && limit >= 0)
+  ) {
+    throw new Error(
+      `spindle: createTranscript(): "limit" must be a non-negative integer or Infinity, got ${typeof limit === 'string' ? JSON.stringify(limit) : String(limit)}`,
+    );
+  }
   const withText = options.include?.text ?? true;
   const withContext = options.include?.context ?? false;
   const entries: TranscriptEntry[] = [];

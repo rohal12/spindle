@@ -9,6 +9,7 @@ import {
 } from '../action-registry';
 import { getRenderedNavigationId } from '../passage-render-state';
 import { useStoryStore } from '../store';
+import { getRuntimeErrors } from '../runtime-errors';
 import { storyContextElement } from '../story-context-passage';
 import { innermostOpenDialog, openDialogPanels } from '../triggers';
 import { checkObject, type Fail } from '../utils/field-checks';
@@ -143,8 +144,9 @@ export function observe(): Observation {
   const errors = [passageEl, ...bodies.map((d) => d.body), contextEl].flatMap(
     (el) => (el ? observableErrors(el, DIALOG) : []),
   );
-  for (const el of document.querySelectorAll('.spindle-error-banner-message')) {
-    errors.push((el.textContent ?? '').trim());
+  // The runtime errors shown (as banners) until dismissed, with what failed
+  for (const { context, message } of getRuntimeErrors()) {
+    errors.push(`${context.replace(/:$/, '')}: ${message}`);
   }
   return {
     passage: currentPassage,
