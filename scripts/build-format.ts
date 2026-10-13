@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, type Plugin } from 'vite';
+import { build, normalizePath, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import { peggyPlugin } from './peggy';
 
@@ -43,9 +43,9 @@ async function buildHydrate(): Promise<string> {
       `${registryPath} not found. Run scripts/dump-macro-registry.ts first.`,
     );
   }
-  const builtinMacrosPath = resolve(
-    projectRoot,
-    'src/twine-editor/builtin-macros.ts',
+  // Vite's resolved ids use forward slashes, also on Windows
+  const builtinMacrosPath = normalizePath(
+    resolve(projectRoot, 'src/twine-editor/builtin-macros.ts'),
   );
   const builtinMacrosFromRegistry: Plugin = {
     name: 'spindle-builtin-macros-from-registry',
@@ -55,7 +55,7 @@ async function buildHydrate(): Promise<string> {
         ...options,
         skipSelf: true,
       });
-      return resolved?.id === builtinMacrosPath
+      return resolved && normalizePath(resolved.id) === builtinMacrosPath
         ? '\0spindle-builtin-macros'
         : null;
     },
