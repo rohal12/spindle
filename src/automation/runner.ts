@@ -6,7 +6,7 @@ import type {
   ActionMatcher,
 } from './types';
 import type { StoryAPI } from '../story-api';
-import type { StoryAction } from '../action-registry';
+import { actionMatches, type StoryAction } from '../action-registry';
 import { errorMessage } from '../utils/error-message';
 import { deepEqual } from '../structural';
 
@@ -123,21 +123,9 @@ async function executeStep(
   }
 }
 
-/** The matcher fields compared with the action field of the same name. */
-const MATCHED_FIELDS = ['id', 'type', 'target', 'variable', 'label'] as const;
-
 function findMatchingAction(
   actions: StoryAction[],
   matcher: ActionMatcher,
 ): StoryAction | undefined {
-  return actions.find(
-    (action) =>
-      MATCHED_FIELDS.every(
-        (field) =>
-          matcher[field] === undefined || action[field] === matcher[field],
-      ) &&
-      // An action that does not set `disabled` is enabled
-      (matcher.disabled === undefined ||
-        !!action.disabled === matcher.disabled),
-  );
+  return actions.find((action) => actionMatches(action, matcher));
 }

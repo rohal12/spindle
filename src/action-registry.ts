@@ -44,6 +44,35 @@ export const OPTIONAL_ACTION_FIELDS = [
   'disabled',
 ] as const;
 
+export interface ActionMatcher extends Partial<
+  Pick<StoryAction, 'id' | 'target' | 'variable' | 'label'>
+> {
+  type?: string;
+  /** `true` matches only disabled actions, `false` only enabled ones. */
+  disabled?: boolean;
+}
+
+/** The matcher fields compared with the action field of the same name. */
+const MATCHED_FIELDS = ['id', 'type', 'target', 'variable', 'label'] as const;
+
+/**
+ * Whether an action satisfies every field the matcher sets. Unset matcher
+ * fields match anything.
+ */
+export function actionMatches(
+  action: Omit<StoryAction, 'perform'>,
+  matcher: ActionMatcher,
+): boolean {
+  return (
+    MATCHED_FIELDS.every(
+      (field) =>
+        matcher[field] === undefined || action[field] === matcher[field],
+    ) &&
+    // An action that does not set `disabled` is enabled
+    (matcher.disabled === undefined || !!action.disabled === matcher.disabled)
+  );
+}
+
 /** A mounted control's hold on its action ID. */
 export interface ActionRegistration {
   /**
