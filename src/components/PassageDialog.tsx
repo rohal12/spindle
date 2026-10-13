@@ -18,6 +18,30 @@ import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
 import { registerOpenDialog } from '../triggers';
 import { errorMessage } from '../utils/error-message';
+import { useAction } from '../hooks/use-action';
+
+/**
+ * The dialog's `✕` button, also listed as the `close-dialog` action while it
+ * is shown (a separate component so the hook runs only when it is).
+ */
+function CloseButton({ name, onClose }: { name: string; onClose: () => void }) {
+  useAction({
+    type: 'close-dialog',
+    key: name,
+    label: 'Close',
+    perform: onClose,
+  });
+  return (
+    <button
+      type="button"
+      class="dialog-close"
+      aria-label="Close"
+      onClick={onClose}
+    >
+      ✕
+    </button>
+  );
+}
 
 export const DialogCloseContext = createContext<(() => void) | null>(null);
 
@@ -137,14 +161,10 @@ export function PassageDialog({
           tabIndex={-1}
         >
           {showCloseButton && (
-            <button
-              type="button"
-              class="dialog-close"
-              aria-label="Close"
-              onClick={stableOnClose}
-            >
-              ✕
-            </button>
+            <CloseButton
+              name={passageName ?? label ?? ''}
+              onClose={stableOnClose}
+            />
           )}
           <div class="dialog-body">
             <ViewScopeContext.Provider value={viewScope}>

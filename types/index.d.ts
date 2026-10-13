@@ -200,7 +200,9 @@ export type ActionType =
   | 'restart'
   | 'save'
   | 'load'
-  | 'dialog';
+  | 'dialog'
+  | 'open-dialog'
+  | 'close-dialog';
 
 /**
  * A registered interactive action (link, button, input, etc.).

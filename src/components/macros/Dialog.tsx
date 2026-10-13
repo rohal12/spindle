@@ -19,6 +19,14 @@ defineMacro({
       .trim()
       .replace(/^["']|["']$/g, '');
 
+    ctx.useAction({
+      type: 'open-dialog',
+      key: `"${ctx.args.label ?? ''}"`,
+      authorId: ctx.id,
+      label: label ?? '',
+      perform: () => setOpen(true),
+    });
+
     return (
       <>
         <button
