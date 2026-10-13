@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `{dialog}` buttons are registered as `open-dialog` actions (`open-dialog:"View Inventory"`, or the `#id`), and the `✕` button of an open dialog as a `close-dialog` action while it is shown, so `Story.getActions()`, `Story.performAction()` and automation scripts can open author dialogs and close any dialog, including one opened by `Story.openDialog()`, a `{watch}` or the menubar (#540).
 - The outgoing passage of a crossfade or fade-through keeps what the player left on screen: every selected option of a multiple `<select>` (#525), the frame and position of a `<video>` (drawn into its poster; the clone stays muted and paused; a video with no decoded frame or a canvas-tainting cross-origin source keeps its own poster) (#536), the position of `<audio>`, an indeterminate checkbox, and the scroll offsets of scrolled elements.
 - Closing stacked dialogs together (`Story.closeAllDialogs()`, nested `{dialog}`s, two `Story.closeDialog()` calls in a row) returns focus to the original opener instead of dropping it on the page; focus that author code moved elsewhere is still left alone (#529).
 - A dialog opened from a control inside a same-origin iframe (also a nested one) returns focus to that control when it closes, instead of the iframe element; the frame itself takes it when the control is gone (#530).
