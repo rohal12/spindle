@@ -7,6 +7,11 @@ const formatJsPath = resolve(projectRoot, 'dist/format.js');
 const formatJsonPath = resolve(projectRoot, 'format.json');
 const packageJsonPath = resolve(projectRoot, 'package.json');
 
+// Strings Preact's bundled code always carries: its hooks state property and
+// `createElement`. A hydrate built without the builtin-macros alias pulls in
+// register-builtins and with it both.
+const PREACT_MARKERS = ['__H', 'createElement'];
+
 describe('build output: dist/format.js', () => {
   const raw = readFileSync(formatJsPath, 'utf-8');
   const formatMeta = JSON.parse(readFileSync(formatJsonPath, 'utf-8'));
@@ -67,5 +72,38 @@ describe('build output: dist/format.js', () => {
   it('version matches package.json', () => {
     parsed ??= JSON.parse(jsonStr);
     expect(parsed.version).toBe(packageJson.version);
+  });
+
+  it('hydrates the editor extensions', () => {
+    parsed ??= JSON.parse(jsonStr);
+    const before = Object.keys(globalThis);
+    const target: any = {};
+    const result = new Function(parsed.hydrate as string).call(target);
+    expect(result).toBeUndefined(); // synchronous, returns nothing
+    const ext = target.editorExtensions.twine['^2.4.0'];
+    expect(typeof ext.codeMirror.mode).toBe('function');
+    expect(typeof ext.codeMirror.toolbar).toBe('function');
+    expect(Object.keys(ext.codeMirror.commands)).toContain('format');
+    expect(ext.references.parsePassageText('{goto "A"}')).toEqual(['A']);
+    expect(Object.keys(globalThis)).toEqual(before);
+  });
+
+  it('starts the hydrate with its banner', () => {
+    parsed ??= JSON.parse(jsonStr);
+    expect((parsed.hydrate as string).split('\n')[0]).toBe(
+      '/* spindle twine-editor */',
+    );
+  });
+
+  it('keeps Preact out of the hydrate', () => {
+    parsed ??= JSON.parse(jsonStr);
+    const hydrate = parsed.hydrate as string;
+    for (const marker of PREACT_MARKERS) expect(hydrate).not.toContain(marker);
+  });
+
+  it('keeps the editor code out of the story source', () => {
+    parsed ??= JSON.parse(jsonStr);
+    expect(parsed.source).not.toContain('spindle twine-editor');
+    expect(parsed.source).not.toContain('No problems found');
   });
 });
