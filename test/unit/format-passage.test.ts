@@ -268,6 +268,12 @@ describe('formatPassage', () => {
     expect(await formatPassage(body)).toBe(body);
   });
 
+  it('keeps HTML with a white-space style as written: its whitespace renders', async () => {
+    const body =
+      '<div style="white-space: pre-wrap">\nText <b>x</b>\n  more\n</div>\n';
+    expect(await fmt(body)).toBe(body);
+  });
+
   it('preserves {button} inside HTML blocks', async () => {
     const input = [
       '<div class="menu">',

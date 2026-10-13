@@ -1142,7 +1142,12 @@ export interface PassageFormatOptions {
    * code, that code stays as written.
    */
   prettier?: PrettierLike;
-  /** The options Prettier is given (default: `{ tabWidth: 2 }`). */
+  /**
+   * The options Prettier is given (default: `{ tabWidth: 2 }`). They replace
+   * the default; the formatter sets `parser` (and HTML whitespace handling)
+   * itself. Standalone Prettier needs its `plugins` in every call: wrap
+   * `prettier` to add them rather than passing them here.
+   */
   prettierOptions?: object;
   /**
    * Whether the named macro takes a body (default: the built-in block macros
@@ -1170,9 +1175,10 @@ export interface PassageFormatOptions {
  * macro, strip trailing whitespace (keeping Markdown hard breaks, lists and
  * code fences), and format `<script>` and HTML blocks with Prettier. What the
  * runtime executes is never touched: a macro, a link or a `{do}` body keeps
- * its text, line breaks included. The result ends with one newline and keeps
- * the line endings of the text (the more common of CRLF and LF) and its byte
- * order mark. It is idempotent.
+ * its text, line breaks included, and a multiline JavaScript literal keeps its
+ * value. What the passage displays does not change. The result ends with one
+ * newline and keeps the line endings of the text (the more common of CRLF and
+ * LF) and its byte order mark. It is idempotent.
  */
 export declare function formatPassage(
   body: string,

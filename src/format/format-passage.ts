@@ -32,7 +32,12 @@ export interface PassageFormatOptions {
    * Without it, or where it throws, that text stays as written.
    */
   prettier?: PrettierLike;
-  /** The options Prettier is given (default: `{ tabWidth: 2 }`). */
+  /**
+   * The options Prettier is given (default: `{ tabWidth: 2 }`). They replace
+   * the default; the formatter sets `parser` (and HTML whitespace handling)
+   * itself. Standalone Prettier needs its `plugins` in every call: wrap
+   * `prettier` to add them rather than passing them here.
+   */
   prettierOptions?: object;
   /** Returns true if the named macro is a block/container macro (default: the built-in block macros and the names the passage closes with `{/name}`). Replaces that default whole; use `blockMacros` to add to it. */
   isBlock?: (name: string) => boolean;
@@ -155,14 +160,31 @@ function protectMultilineTokens(body: string, sentinel: string): string {
       spans.push([block.bodyStart + a, block.bodyStart + b]);
     }
   }
-  spans.sort((x, y) => x[0] - y[0]);
+  return joinSpans(body, spans, sentinel);
+}
+
+/**
+ * The JavaScript `code` with the line breaks of its multiline string and
+ * template literals replaced by `sentinel`: re-indenting its lines then
+ * leaves the literals' values as written.
+ */
+function joinJsLiterals(code: string, sentinel: string): string {
+  return joinSpans(code, multilineJsLiterals(code), sentinel);
+}
+
+/** `text` with the line breaks inside each of `spans` replaced by `sentinel`. */
+function joinSpans(
+  text: string,
+  spans: [number, number][],
+  sentinel: string,
+): string {
   let out = '';
   let last = 0;
-  for (const [a, b] of spans) {
-    out += body.slice(last, a) + replaceAll(body.slice(a, b), '\n', sentinel);
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    out += text.slice(last, a) + replaceAll(text.slice(a, b), '\n', sentinel);
     last = b;
   }
-  return out + body.slice(last);
+  return out + text.slice(last);
 }
 
 async function formatLf(
@@ -220,7 +242,10 @@ async function formatLf(
       }
       lines.push(region.lines[0]!);
       if (formatted.trim()) {
-        for (const fLine of formatted.trim().split('\n')) {
+        // A literal's line breaks are its value: indent only the lines of code
+        for (const fLine of joinJsLiterals(formatted.trim(), sentinel).split(
+          '\n',
+        )) {
           lines.push('  ' + fLine);
         }
       }
@@ -235,8 +260,15 @@ async function formatLf(
     }
 
     if (region.type === 'html') {
-      // HTML block — placeholder substitution + Prettier
       const htmlText = region.lines.join('\n');
+      // Whitespace that renders as written: the runtime keeps a line break
+      // Prettier puts after `<pre>` (a browser's parser drops it), and
+      // Prettier cannot see a `white-space` style. Leave such HTML as written.
+      if (WHITESPACE_AS_WRITTEN.test(htmlText)) {
+        lines.push(...region.lines);
+        continue;
+      }
+      // HTML block — placeholder substitution + Prettier
       const { text: svgPlaceholdered, tokens: svgTokens } =
         replaceSvgBlocks(htmlText);
       const { text: placeholdered, tokens } =
@@ -288,6 +320,9 @@ async function formatLf(
 
   return replaceAll(output, sentinel, '\n');
 }
+
+/** HTML whose whitespace renders as written: a `<pre>` or `<textarea>`, or a `white-space` style. */
+const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea)[\s>]|white-space\s*:/i;
 
 /** A Markdown list item line (`- a`, `* a`, `+ a`, `1. a`, `1) a`). */
 const LIST_ITEM_REGEX = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
@@ -490,9 +525,11 @@ function indentColumn(line: string): number {
  */
 function wrapLines(lines: string[], maxLen: number): string[] {
   const result: string[] = [];
+  const javaScript = doBodyLines(lines);
 
-  for (const line of lines) {
-    if (line.length <= maxLen) {
+  for (const [index, line] of lines.entries()) {
+    // A `{do}` body is JavaScript: a line break there can change the program
+    if (line.length <= maxLen || javaScript.has(index)) {
       result.push(line);
       continue;
     }
@@ -523,6 +560,18 @@ function wrapLines(lines: string[], maxLen: number): string[] {
   }
 
   return result;
+}
+
+/** The indices of `lines` that hold part of a `{do}` body. */
+function doBodyLines(lines: string[]): Set<number> {
+  const found = new Set<number>();
+  const text = lines.join('\n');
+  for (const block of scanSpindleMarkup(text).doBlocks) {
+    const first = text.slice(0, block.bodyStart).split('\n').length - 1;
+    const last = text.slice(0, block.bodyEnd).split('\n').length - 1;
+    for (let i = first; i <= last; i++) found.add(i);
+  }
+  return found;
 }
 
 /**

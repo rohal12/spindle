@@ -51,8 +51,12 @@ export function formatHTML(
   prettier?: PrettierLike,
   options?: object,
 ): Promise<string | undefined> {
+  // 'css': Prettier adds and removes whitespace only where the default CSS
+  // display of the elements says it does not render, so Format never
+  // changes the text a passage shows ('ignore' turned `<b>a</b>,` into
+  // `<b>a</b> ,`)
   return run(code, prettier, options, {
     parser: 'html',
-    htmlWhitespaceSensitivity: 'ignore',
+    htmlWhitespaceSensitivity: 'css',
   });
 }

@@ -1,7 +1,8 @@
 /**
- * Formatting keeps the JavaScript values a {do} body produces. A template
+ * Formatting keeps the JavaScript values a passage produces. A template
  * literal (or a backslash-continued string) that spans lines is a value, so
- * its line breaks and the whitespace after them stay.
+ * its line breaks and the whitespace after them stay: in {do} bodies and in
+ * <script> regions, and line wrapping never breaks JavaScript.
  */
 import { describe, expect, it } from 'vitest';
 import * as prettier from 'prettier';
@@ -93,6 +94,55 @@ describe('multiline JavaScript literals in {do} bodies', () => {
   it('text around a {do} body and single-line bodies are still formatted', async () => {
     expect(await fmt('   prose \n{do}\n   foo();\n{/do}\n')).toBe(
       'prose\n{do}\n  foo();\n{/do}\n',
+    );
+  });
+});
+
+describe('multiline JavaScript literals in <script> regions', () => {
+  it('a template literal keeps its lines, and Format is idempotent', async () => {
+    const text = '<script>\nconst s = `a\nb`;\n</script>\n';
+    const expected = '<script>\n  const s = `a\nb`;\n</script>\n';
+    expect(await fmt(text)).toBe(expected);
+    expect(await fmt(expected)).toBe(expected);
+  });
+
+  it('a backslash-continued string keeps its value', async () => {
+    const text = "<script>\nconst s = 'a\\\nb';\n</script>";
+    const output = await fmt(text);
+    // The continuation line is not indented: the value stays `ab`
+    expect(output).toContain('\nb";\n');
+    expect(await fmt(output)).toBe(output);
+  });
+
+  it('inside a block macro and in an HTML block', async () => {
+    const inMacro =
+      '{if $x}\n<script>\nconst s = `a\n  b`;\n</script>\n{/if}\n';
+    const once = await fmt(inMacro);
+    expect(once).toContain('`a\n  b`');
+    expect(await fmt(once)).toBe(once);
+    const inHtml = '<div>\n<script>\nconst s = `a\nb`;\n</script>\n</div>\n';
+    const html = await fmt(inHtml);
+    expect(html).toContain('`a\nb`');
+    expect(await fmt(html)).toBe(html);
+    const handler = '<div>\n<button onclick="x(`a\nb`)">go</button>\n</div>\n';
+    const attribute = await fmt(handler);
+    expect(attribute).toContain('x(`a\nb`)');
+    expect(await fmt(attribute)).toBe(attribute);
+  });
+});
+
+describe('line wrapping leaves {do} bodies alone', () => {
+  it('does not break a long line of JavaScript', async () => {
+    const text =
+      '{do}\nconst s = "one two three four five six seven eight nine ten";\n{/do}\n';
+    const expected =
+      '{do}\n  const s = "one two three four five six seven eight nine ten";\n{/do}\n';
+    const output = await formatPassage(text, { prettier, maxLineLength: 30 });
+    expect(output).toBe(expected);
+    const inline =
+      'Some prose {do}x("one two three four five six seven");{/do} more';
+    expect(await formatPassage(inline, { prettier, maxLineLength: 30 })).toBe(
+      inline + '\n',
     );
   });
 });
