@@ -1,4 +1,3 @@
-import { createContext } from 'preact';
 import {
   useCallback,
   useId,
@@ -20,7 +19,9 @@ import { registerOpenDialog } from '../triggers';
 import { errorMessage } from '../utils/error-message';
 import { useAction } from '../hooks/use-action';
 
-export const DialogCloseContext = createContext<(() => void) | null>(null);
+import { DialogCloseContext } from './dialog-close-context';
+
+export { DialogCloseContext };
 
 interface PassageDialogProps {
   passageName?: string;
@@ -92,7 +93,10 @@ export function PassageDialog({
   useModalFocus(panelRef, '.dialog-body', dismissible, stableOnClose);
 
   // Be on the stack of displayed dialogs the Story dialog API works on.
-  useLayoutEffect(() => registerOpenDialog(stableOnClose), [stableOnClose]);
+  useLayoutEffect(
+    () => registerOpenDialog(stableOnClose, panelRef.current),
+    [stableOnClose],
+  );
 
   // Name the dialog after its first heading when no label is given
   useLayoutEffect(() => {
@@ -133,7 +137,7 @@ export function PassageDialog({
           ref={panelRef}
           class={cls}
           role="dialog"
-          data-passage={passageName}
+          data-dialog-passage={passageName}
           aria-modal="true"
           aria-label={label ?? passageName}
           tabIndex={-1}

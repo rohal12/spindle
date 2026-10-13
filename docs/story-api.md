@@ -712,8 +712,8 @@ const o = Story.observe();
 - `passage`: the current passage's name.
 - `text`: the text of the passage area, including its header and footer but not the `StoryInterface` chrome (menubars, sidebars). Controls show as markers such as `[textbox $name: "Alice"]`; hidden elements are left out.
 - `context`: the rendered [`StoryContext`](special-passages.md#storycontext) passage, or `null` if the story has none. The first `observe()` mounts it.
-- `dialogs`: the open dialogs, `{ passage, text }` each, innermost last. `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
-- `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules).
+- `dialogs`: the open dialogs, `{ passage, text }` each, in the order they were opened (innermost last). `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
+- `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules). A dialog is modal: while one is open, only the actions of the controls in the innermost open dialog are offered, its `close-dialog` included, not those of the passage, the story interface or the dialogs beneath it. `step()` still takes any action ID.
 - `errors`: the messages of the macro and runtime errors on screen in the passage, the dialogs and `StoryContext`.
 - `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.
 

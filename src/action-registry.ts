@@ -120,6 +120,8 @@ export interface ActionRegistration {
 
 interface Entry {
   action: StoryAction;
+  /** The dialog the control renders in (its close function), if any. */
+  dialog: (() => void) | null;
 }
 
 /**
@@ -166,9 +168,16 @@ export function generateActionId(
   return id;
 }
 
-export function registerAction(action: StoryAction): ActionRegistration {
+/**
+ * Register `action`, of a control rendered in the dialog `dialog` (the
+ * dialog's DialogCloseContext value), or outside any when null.
+ */
+export function registerAction(
+  action: StoryAction,
+  dialog: (() => void) | null = null,
+): ActionRegistration {
   const id = action.id;
-  const entry: Entry = { action };
+  const entry: Entry = { action, dialog };
   const entries = actions.get(id);
   if (entries) {
     console.warn(
@@ -235,6 +244,17 @@ export async function settleRunningActions(): Promise<void> {
 
 export function getActions(): StoryAction[] {
   return Array.from(actions.values(), listed);
+}
+
+/**
+ * The actions of the controls rendered in the dialog `dialog` (its close
+ * function, see registerAction), its nested dialogs' left out.
+ */
+export function getDialogActions(dialog: () => void): StoryAction[] {
+  return Array.from(actions.values())
+    .map((entries) => entries[entries.length - 1]!)
+    .filter((entry) => entry.dialog === dialog)
+    .map((entry) => entry.action);
 }
 
 export function getAction(id: string): StoryAction | undefined {

@@ -404,32 +404,56 @@ export function registerDialogHost(callbacks: DialogHostCallbacks): () => void {
   };
 }
 
+/** A dialog on display: the function that closes it, and its panel. */
+interface OpenDialog {
+  close: () => void;
+  panel: Element | null;
+}
+
 /**
  * The dialogs on display, bottom first, whoever opened them: the trigger
  * host, `{dialog}` or a menubar button (each PassageDialog registers itself
- * while mounted), as the function that closes each.
+ * while mounted).
  */
-const openDialogs: Array<() => void> = [];
+const openDialogs: OpenDialog[] = [];
 
-/** Register a displayed dialog; returns the function that unregisters it. */
-export function registerOpenDialog(close: () => void): () => void {
-  openDialogs.push(close);
+/**
+ * Register a displayed dialog, as the function that closes it (its
+ * DialogCloseContext value) and its panel element; returns the function
+ * that unregisters it.
+ */
+export function registerOpenDialog(
+  close: () => void,
+  panel: Element | null = null,
+): () => void {
+  const entry: OpenDialog = { close, panel };
+  openDialogs.push(entry);
   return () => {
-    const i = openDialogs.lastIndexOf(close);
+    const i = openDialogs.lastIndexOf(entry);
     if (i >= 0) openDialogs.splice(i, 1);
   };
 }
 
+/** The close function of the topmost dialog, or undefined when none is open. */
+export function innermostOpenDialog(): (() => void) | undefined {
+  return openDialogs[openDialogs.length - 1]?.close;
+}
+
+/** The panels of the dialogs on display, in opening order (innermost last). */
+export function openDialogPanels(): Element[] {
+  return openDialogs.flatMap((d) => (d.panel ? [d.panel] : []));
+}
+
 /** Close the topmost dialog. */
 export function closeCurrentDialog(): void {
-  const top = openDialogs[openDialogs.length - 1];
+  const top = innermostOpenDialog();
   if (top) top();
   else dialogHostCallbacks?.close();
 }
 
 export function closeAllOpenDialogs(): void {
   clearDialogQueue();
-  for (const close of [...openDialogs].reverse()) close();
+  for (const { close } of [...openDialogs].reverse()) close();
   dialogHostCallbacks?.closeAll();
 }
 

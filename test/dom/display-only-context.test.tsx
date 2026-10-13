@@ -8,6 +8,7 @@ import { useStoryStore } from '../../src/store';
 import { defineMacro } from '../../src/define-macro';
 import { DisplayOnlyContext } from '../../src/display-only';
 import '../../src/components/macros/Set';
+import '../../src/components/macros/Button';
 import type { Passage, StoryData } from '../../src/parser';
 
 const start: Passage = {
@@ -86,4 +87,10 @@ describe('DisplayOnlyContext', () => {
       expect(el.textContent).toContain('StoryContext is display-only');
     },
   );
+
+  it("carries over into a button's body, which renders detached", () => {
+    const el = renderDisplayOnly('{button "B"}{set $n = 2}{/button}');
+    act(() => el.querySelector('button')!.click());
+    expect(useStoryStore.getState().variables.n).toBe(1);
+  });
 });

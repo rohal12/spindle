@@ -22,6 +22,8 @@ import { RepeatContext } from './Repeat';
 import { DialogCloseContext } from '../PassageDialog';
 import { NameSet } from '../../utils/macro-names';
 import { ItemEditContext } from '../../utils/control-edits';
+import { DisplayOnlyContext } from '../../display-only';
+import { ActionsDisabledContext } from '../../hooks/use-action';
 
 const frozenAlways = () => true;
 
@@ -89,7 +91,8 @@ function Settled({ onSettled }: { onSettled: () => void }) {
  * through a live view, so a local assigned earlier in the body is visible),
  * nobr/inline rendering, the enclosing block widget's {@children}, the
  * enclosing {repeat}'s {stop} and the enclosing dialog's close callback and whether it runs in a {for} iteration
- * (#411) and the owning passage's departure (#410).
+ * (#411), the owning passage's departure (#410), and whether it renders in
+ * display-only content (StoryContext), which a body may not change either.
  * The body then behaves as if it rendered in place.
  *
  * The body's macros read story state from the store. Run from mutation code
@@ -106,6 +109,8 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
   const closeDialog = useContext(DialogCloseContext);
   const inIteration = useContext(ItemEditContext);
   const hasLeft = useContext(OutgoingContext);
+  const displayOnly = useContext(DisplayOnlyContext);
+  const actionsDisabled = useContext(ActionsDisabledContext);
 
   const mounted = useRef<HTMLElement[]>([]);
   useEffect(() => {
@@ -150,13 +155,19 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
                       <DialogCloseContext.Provider value={closeDialog}>
                         <ItemEditContext.Provider value={inIteration}>
                           <OutgoingContext.Provider value={hasLeft}>
-                            {renderNodes(children, {
-                              nobr,
-                              inline,
-                              structural,
-                              locals,
-                            })}
-                            {release && <Settled onSettled={release} />}
+                            <DisplayOnlyContext.Provider value={displayOnly}>
+                              <ActionsDisabledContext.Provider
+                                value={actionsDisabled}
+                              >
+                                {renderNodes(children, {
+                                  nobr,
+                                  inline,
+                                  structural,
+                                  locals,
+                                })}
+                                {release && <Settled onSettled={release} />}
+                              </ActionsDisabledContext.Provider>
+                            </DisplayOnlyContext.Provider>
                           </OutgoingContext.Provider>
                         </ItemEditContext.Provider>
                       </DialogCloseContext.Provider>

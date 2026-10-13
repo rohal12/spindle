@@ -2,6 +2,7 @@ import {
   actionMatches,
   checkActionMatcher,
   getActions,
+  getDialogActions,
   type ActionMatcher,
   type ActionType,
   type StoryAction,
@@ -9,6 +10,7 @@ import {
 import { getRenderedNavigationId } from '../passage-render-state';
 import { useStoryStore } from '../store';
 import { storyContextElement } from '../story-context-passage';
+import { innermostOpenDialog, openDialogPanels } from '../triggers';
 import { checkObject, type Fail } from '../utils/field-checks';
 import { observableErrors, observableText } from './observable-text';
 
@@ -108,6 +110,15 @@ export function setObservedActions(rules: ObservedActionRules): void {
 /** A dialog, from its backdrop down. */
 const DIALOG = '.dialog-overlay';
 
+/**
+ * The actions a reader can reach: while a dialog is open (it is modal) only
+ * those in the innermost one, its close button included.
+ */
+function offeredActions(): StoryAction[] {
+  const dialog = innermostOpenDialog();
+  return dialog ? getDialogActions(dialog) : getActions();
+}
+
 /** What the story shows and offers now. */
 export function observe(): Observation {
   // Before the first passage is on screen there's nothing to observe, and a
@@ -119,14 +130,12 @@ export function observe(): Observation {
   const contextEl = storyContextElement();
   const passageEl = document.querySelector('.passage');
   // A dialog opened from a passage or another dialog renders inside it:
-  // each one is read on its own, so the others leave it out
-  const bodies = Array.from(
-    document.querySelectorAll('[role=dialog]'),
-    (el) => ({
-      passage: el.getAttribute('data-passage') ?? '',
-      body: el.querySelector(':scope > .dialog-body'),
-    }),
-  );
+  // each one is read on its own, so the others leave it out. In opening
+  // order, which the page's order needn't be
+  const bodies = openDialogPanels().map((el) => ({
+    passage: el.getAttribute('data-dialog-passage') ?? '',
+    body: el.querySelector(':scope > .dialog-body'),
+  }));
   const dialogs = bodies.map(({ passage, body }) => ({
     passage,
     text: body ? observableText(body, DIALOG) : '',
@@ -142,7 +151,7 @@ export function observe(): Observation {
     text: passageEl ? observableText(passageEl, DIALOG) : '',
     context: contextEl ? observableText(contextEl) : null,
     dialogs,
-    actions: filterObservedActions(getActions(), observedRules),
+    actions: filterObservedActions(offeredActions(), observedRules),
     errors,
     turn: navigationId,
   };

@@ -7,6 +7,7 @@ import {
   type ActionRegistration,
   type StoryAction,
 } from '../action-registry';
+import { DialogCloseContext } from '../components/dialog-close-context';
 
 /** The action to register, and what its ID is generated from. */
 export interface UseActionOptions extends Omit<StoryAction, 'id'> {
@@ -23,6 +24,8 @@ export const ActionsDisabledContext = createContext(false);
 
 export function useAction(opts: UseActionOptions): string {
   const disabled = useContext(ActionsDisabledContext);
+  // The dialog the control renders in, for observe() to scope by
+  const dialog = useContext(DialogCloseContext);
   const idRef = useRef<string>('');
   const performRef = useRef(opts.perform);
   performRef.current = opts.perform;
@@ -51,26 +54,32 @@ export function useAction(opts: UseActionOptions): string {
   // Registered for the component's lifetime. Unregistering removes only this
   // registration, never another control's holding the same ID (#233).
   const registration = useRef<ActionRegistration | null>(null);
+  // Set when the registration below is new in this commit: it is current
+  const fresh = useRef(false);
   useLayoutEffect(() => {
     if (disabled) return;
-    const own = registerAction(buildAction());
+    const own = registerAction(buildAction(), dialog);
     registration.current = own;
+    fresh.current = true;
     return () => own.unregister();
-  }, [id, disabled]);
+  }, [id, disabled, dialog]);
 
   // When what the action exposes changes (e.g. an input's value), replace it
   // in place: one `actionsChanged` notification, and it keeps its position in
   // getActions(). Unregistering and registering again would notify twice and
-  // move it to the end.
-  const registered = useRef(false);
+  // move it to the end. Its dependencies include the registration's, so it
+  // runs in every commit that registers and clears `fresh` there.
   useLayoutEffect(() => {
     if (disabled) return;
-    if (!registered.current) {
-      registered.current = true; // the registration above is current
+    if (fresh.current) {
+      fresh.current = false;
       return;
     }
     registration.current?.update(buildAction());
   }, [
+    id,
+    disabled,
+    dialog,
     opts.type,
     opts.label,
     opts.target,
@@ -80,5 +89,7 @@ export function useAction(opts: UseActionOptions): string {
     JSON.stringify(opts.options),
   ]);
 
-  return id;
+  // A control that registers nothing has no ID (the flag may have turned
+  // true after it was generated)
+  return disabled ? '' : id;
 }

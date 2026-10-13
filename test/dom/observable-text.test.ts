@@ -282,8 +282,9 @@ describe('rendered controls', () => {
       h(PassageDialog, { passageName: 'Inventory', onClose: () => {} }),
       container,
     );
-    expect(
-      container.querySelector('[role=dialog]')!.getAttribute('data-passage'),
-    ).toBe('Inventory');
+    const panel = container.querySelector('[role=dialog]')!;
+    expect(panel.getAttribute('data-dialog-passage')).toBe('Inventory');
+    // Not taken for the passage element by [data-passage] selectors
+    expect(panel.hasAttribute('data-passage')).toBe(false);
   });
 });
