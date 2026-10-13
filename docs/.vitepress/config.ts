@@ -113,6 +113,7 @@ export default defineConfig({
         items: [
           { text: 'Automation', link: '/automation' },
           { text: 'npm Package', link: '/story-format-packages' },
+          { text: 'Twine Editor Extensions', link: '/twine-editor' },
           { text: 'Tooling API', link: '/tooling' },
         ],
       },
