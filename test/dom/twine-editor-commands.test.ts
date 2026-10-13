@@ -146,6 +146,19 @@ describe('check', () => {
     expect(editor.getAllMarks().length).toBeGreaterThan(0);
   });
 
+  it('reads a closer as the tokenizer does: {/foo} in a string closes nothing, so {foo} is a plain unknown macro, not reported', () => {
+    for (const text of [
+      '{set $s = "{/foo}"}{foo}',
+      '{do}// {/foo}\n{/do}{foo}',
+    ]) {
+      const editor = create(text);
+      alert.mockClear();
+      commands.check!(editor);
+      expect(editor.getAllMarks(), text).toHaveLength(0);
+      expect(alert, text).toHaveBeenCalledWith('No problems found');
+    }
+  });
+
   it('clears its marks on the next change and when it runs again', () => {
     const editor = create('{if $x');
     commands.check!(editor);

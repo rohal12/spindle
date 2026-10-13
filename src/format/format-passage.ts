@@ -54,7 +54,7 @@ const DEFAULT_DEDENTING = new Set([
 ]);
 
 /** The names of the macros the passage closes with `{/name}`: block macros it defines itself. */
-function closedMacroNames(text: string): Set<string> {
+export function closedMacroNames(text: string): Set<string> {
   const found = new Set<string>();
   for (const t of tokenizeMarkupTolerant(text).tokens) {
     if (t.type === 'macro' && t.isClose) found.add(t.name.toLowerCase());

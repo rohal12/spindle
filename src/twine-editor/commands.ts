@@ -10,6 +10,7 @@ import {
   type PrettierLike,
   type ToolingMacro,
 } from '../tooling';
+import { closedMacroNames } from '../format/format-passage';
 import { builtinMacros } from './builtin-macros';
 import { snippets } from './snippets';
 
@@ -99,11 +100,9 @@ function markProblem(
  */
 function closedUserMacros(content: string): ToolingMacro[] {
   const known = new Set(builtinMacros.map((m) => m.name.toLowerCase()));
-  const names = new Set<string>();
-  for (const [, name] of content.matchAll(/\{\/([^\s{}/]+)\}/g)) {
-    if (!known.has(name!.toLowerCase())) names.add(name!);
-  }
-  return [...names].map((name) => ({ name, block: true, subMacros: [] }));
+  return [...closedMacroNames(content)]
+    .filter((name) => !known.has(name))
+    .map((name) => ({ name, block: true, subMacros: [] }));
 }
 
 function check(editor: Editor): void {
