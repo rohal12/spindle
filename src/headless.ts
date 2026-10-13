@@ -10,6 +10,7 @@
 import { boot } from './index';
 import { useStoryStore } from './store';
 import type { StoryAPI } from './story-api';
+import type { Observation } from './observe/observe';
 
 export interface BootStoryOptions {
   /**
@@ -84,4 +85,69 @@ export function bootStory(options: BootStoryOptions): Promise<StoryAPI> {
   });
 }
 
-export type { StoryAPI };
+/** One recorded step: what the reader saw, and what they chose. */
+export interface TranscriptEntry {
+  turn: number;
+  passage: string;
+  /** Left out when the transcript was created with `include.text: false`. */
+  text?: string;
+  /** Only with `include.context: true`. */
+  context?: string | null;
+  chose: { id: string; label: string; value?: unknown };
+}
+
+export interface TranscriptOptions {
+  /** How many of the latest entries to keep. Default 10. */
+  limit?: number;
+  /** Default `{ text: true, context: false }`. */
+  include?: { text?: boolean; context?: boolean };
+}
+
+export interface Transcript {
+  /** `Story.step()`, recording the observation it acted on and the choice. */
+  step(id: string, value?: unknown): Promise<Observation>;
+  readonly entries: readonly TranscriptEntry[];
+}
+
+/**
+ * Record a playthrough for stateless decision models, which need the last few
+ * steps sent with every call. A step that rejects records nothing.
+ */
+export function createTranscript(
+  story: StoryAPI,
+  options: TranscriptOptions = {},
+): Transcript {
+  const limit = Math.max(0, options.limit ?? 10);
+  const withText = options.include?.text ?? true;
+  const withContext = options.include?.context ?? false;
+  const entries: TranscriptEntry[] = [];
+
+  return {
+    entries,
+    async step(id, value) {
+      const before = story.observe();
+      const action =
+        before.actions.find((a) => a.id === id) ??
+        story.getActions().find((a) => a.id === id);
+      const next = await story.step(id, value);
+
+      const chose: TranscriptEntry['chose'] = {
+        id,
+        label: action?.label ?? id,
+      };
+      if (value !== undefined) chose.value = value;
+      const entry: TranscriptEntry = {
+        turn: before.turn,
+        passage: before.passage,
+        chose,
+      };
+      if (withText) entry.text = before.text;
+      if (withContext) entry.context = before.context;
+      entries.push(entry);
+      if (entries.length > limit) entries.splice(0, entries.length - limit);
+      return next;
+    },
+  };
+}
+
+export type { Observation, StoryAPI };

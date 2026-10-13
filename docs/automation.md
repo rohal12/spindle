@@ -177,6 +177,30 @@ test('reach the hallway', async () => {
 - Spindle keeps its state in module scope, so one story can be booted per module instance. Boot each story in its own test file (vitest isolates modules per file); a second `bootStory()` call in the same file rejects.
 - Spindle does not ship a DOM: install `happy-dom` or `jsdom` and select it as the test environment.
 
+### Agent playthroughs
+
+`Story.observe()` returns what a reader sees and can do as plain data (passage, text, `StoryContext`, dialogs, actions, errors, turn), and `Story.step(id, value?)` performs one action and resolves with the next observation. A decision model (an LLM, a search) can drive a story with just these two calls.
+
+Such a model is usually stateless, so each call needs the recent history. `createTranscript()` from the headless entry records it:
+
+```typescript
+import { bootStory, createTranscript } from '@rohal12/spindle/headless';
+
+const Story = await bootStory({ html });
+const transcript = createTranscript(Story, { limit: 5 });
+
+let observation = Story.observe();
+while (observation.actions.length > 0) {
+  const choice = await decide(observation, transcript.entries); // your model
+  observation = await transcript.step(choice.id, choice.value);
+}
+```
+
+- `transcript.step(id, value?)` calls `Story.step()` and records an entry: the `turn`, `passage` and `text` the reader saw before acting, and `chose: { id, label, value? }`. `value` appears only if one was passed. It resolves with the new observation, and a rejected step records nothing and rethrows.
+- `limit` keeps the last N entries (default 10). `include` defaults to `{ text: true, context: false }`: pass `context: true` to record the `StoryContext` text too, or `text: false` to leave the passage text out.
+- Back and load are recorded like any other step, and the transcript does not rewind. A navigation the story triggers itself (`goto` inside `{do}`, `{watch ... goto}`) gets no entry; the next observation shows where it landed.
+- `observe().actions` leaves out back, forward, restart, save, load and dialog actions by default (see `Story.setObservedActions()`); `Story.step()` still accepts their IDs, and the transcript takes their labels from `Story.getActions()`.
+
 ### In the Browser Console
 
 Load your story, then:
