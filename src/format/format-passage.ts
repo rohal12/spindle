@@ -587,7 +587,9 @@ function wordWrap(text: string, maxLen: number, indent: string): string[] {
     if (token.type === 'text' || token.type === 'html') continue;
     inToken.fill(true, token.start, token.end);
   }
-  const room = maxLen - indent.length;
+  const room = maxLen - indentColumn(indent);
+  // With no room after the prefix, keep the line instead of searching before pos.
+  if (room <= 0) return [indent + text];
   let pos = 0;
 
   while (pos < text.length) {
