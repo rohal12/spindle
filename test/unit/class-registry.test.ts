@@ -1031,3 +1031,45 @@ describe('registered Date and RegExp subclasses (#393)', () => {
     expect(errorBack.message).toBe('boom');
   });
 });
+
+describe('RegExp cursor values accepted by JavaScript (#548)', () => {
+  it.each([0.5, NaN, Infinity, -Infinity, '2', -3, -0, null, undefined, 1n])(
+    'round-trips lastIndex %s',
+    (cursor) => {
+      const re = /x/g;
+      Object.assign(re, { lastIndex: cursor });
+      const restored = deserialize(serialize(re)) as RegExp;
+      expect(restored.lastIndex).toBe(cursor);
+      expect(restored.source).toBe('x');
+      expect(restored.flags).toBe('g');
+    },
+  );
+});
+
+it('rejects object-valued RegExp cursors before creating unreadable saves (#548)', () => {
+  const re = /x/g;
+  Object.assign(re, { lastIndex: {} });
+  expect(() => serialize(re)).toThrow(/cursor/);
+  expect(() => deserialize('[["R",1],[2,3,4],"x","g",{}]')).toThrow(
+    /regular expression/,
+  );
+});
+
+it('compares NaN RegExp cursors consistently after serialization (#548)', () => {
+  const re = Object.assign(/x/g, { lastIndex: NaN });
+  expect(deepEqual(re, deserialize(serialize(re)))).toBe(true);
+});
+
+it('round-trips primitive RegExp subclass cursors and rejects object cursors (#548)', () => {
+  class Cursor extends RegExp {}
+  registerClass('Cursor', Cursor);
+  for (const cursor of [0.5, NaN, Infinity, '2']) {
+    const re = Object.assign(new Cursor('x', 'g'), { lastIndex: cursor });
+    const restored = deserialize(serialize(re)) as RegExp;
+    expect(restored).toBeInstanceOf(Cursor);
+    expect(restored.lastIndex).toBe(cursor);
+  }
+  expect(() =>
+    serialize(Object.assign(new Cursor('x'), { lastIndex: {} })),
+  ).toThrow(/cursor/);
+});

@@ -1,6 +1,7 @@
 // The stored form of a save payload: what saves, exports and the session
 // hold, and the version of that form.
 
+import { assertTrustedWatchers } from '../triggers';
 import { deserialize, serialize } from '../class-registry';
 import { createCounts } from '../utils/namespace';
 import type { SavePayload } from './types';
@@ -199,6 +200,9 @@ export function decodePayload(encoded: unknown): SavePayload {
   if (typeof data !== 'string') throw invalid();
   const body = deserialize(migrate(formatVersion, data));
   if (!isPayload(body)) throw invalid();
+  assertTrustedWatchers(
+    (body.watchers ?? []) as NonNullable<SavePayload['watchers']>,
+  );
   const payload = {
     ...body,
     visitCounts: mapToCounts(body.visitCounts),

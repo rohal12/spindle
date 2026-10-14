@@ -1,3 +1,4 @@
+import { DisplayOnlyContext } from '../../display-only';
 import { useStoryStore } from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
 import { parseMarkup } from '../../markup/parse';
@@ -13,6 +14,7 @@ defineMacro({
   merged: true,
   parameters: INCLUDE_PARAMETERS,
   render(_props, ctx) {
+    const displayOnly = ctx.hooks.useContext(DisplayOnlyContext);
     const { storyData } = useStoryFields('storyData');
 
     const { inline } = ctx.args;
@@ -42,8 +44,10 @@ defineMacro({
     // not on every render (an unrelated variable update re-renders it)
     const included = !failure && !!passage;
     ctx.hooks.useEffect(() => {
-      if (included) useStoryStore.getState().trackRender(passageName);
-    }, [included, passageName]);
+      if (included && !displayOnly) {
+        useStoryStore.getState().trackRender(passageName);
+      }
+    }, [included, passageName, displayOnly]);
 
     if (!storyData) return null;
     if (failure) {

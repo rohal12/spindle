@@ -12,7 +12,7 @@ export function MacroError({
   return (
     <span
       class="error"
-      title={String(error)}
+      title={errorMessage(error)}
     >
       {`{${macro} error${currentSourceLocation()}: ${errorMessage(error)}}`}
     </span>

@@ -522,3 +522,30 @@ describe('macro watchers across a restored session', () => {
     expect(savedMacroWatchers()).toEqual([]);
   });
 });
+
+it('restores a literal watcher after the runtime and story instance are replaced (#545)', () => {
+  const story = () =>
+    makeStoryData([
+      makePassage(1, 'Start', 'Start'),
+      makePassage(
+        2,
+        'Previous',
+        '{watch "$n > 0" run "$hits += 1" name "persisted"}',
+      ),
+    ]);
+  resetTriggers();
+  const store = () => useStoryStore.getState();
+  store().init(story(), { n: 0, hits: 0 });
+  addMacroTrigger('$n > 0', { run: '$hits += 1', name: 'persisted' });
+  const payload = store().getSavePayload();
+  resetTriggers();
+  // A new story instance has no remembered runtime watcher definitions.
+  store().init(story(), { n: 0, hits: 0 });
+  store().loadFromPayload(payload);
+  expect(savedMacroWatchers()).toHaveLength(1);
+  const disconnect = connectTriggersToStore();
+  store().setVariable('n', 1);
+  expect(store().variables.hits).toBe(1);
+  disconnect();
+  resetTriggers();
+});

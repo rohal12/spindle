@@ -87,3 +87,18 @@ describe('defineMacro with block flag', () => {
     );
   });
 });
+
+it('replaces a custom block definition with an inline one (#553)', () => {
+  defineMacro({ name: 'Fresh', block: true, render: () => 'old' }, 'user');
+  defineMacro({ name: 'FRESH', block: false, render: () => 'new' }, 'user');
+  expect(() => parse('{fresh}')).not.toThrow();
+  unregisterBlockMacro('fresh');
+});
+
+it('keeps independent block registrations when replacing a definition (#553)', () => {
+  registerBlockMacro('independent');
+  defineMacro({ name: 'independent', block: true, render: () => null });
+  defineMacro({ name: 'independent', block: false, render: () => null });
+  expect(() => parse('{independent}body{/independent}')).not.toThrow();
+  unregisterBlockMacro('independent');
+});

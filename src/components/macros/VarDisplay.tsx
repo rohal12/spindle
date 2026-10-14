@@ -4,6 +4,7 @@ import { useInterpolate } from '../../hooks/use-interpolate';
 import { ownValue, variableNameError } from '../../utils/namespace';
 import { SCOPE_SIGILS } from '../../markup/tokens';
 import type { VariableNode } from '../../markup/ast';
+import { MacroError } from './MacroError';
 import { display, wrapContent } from './display';
 
 const STORE_NAMESPACES = {
@@ -32,23 +33,34 @@ export function VarDisplay({ node }: { node: VariableNode }) {
     return <span class="error">{`{${sigil}${name} error: ${nameError}}`}</span>;
   }
 
-  let value: unknown;
-  if (scope === 'local') {
-    value = ownValue(localsValues, root);
-  } else {
-    value = storeValue;
-  }
-
-  // Resolve dot path (e.g. "character.name" → character['name']). Primitives
-  // box on access, so built-ins like "name.length" resolve too.
-  for (let i = 1; i < parts.length; i++) {
-    if (value == null) {
-      value = undefined;
-      break;
+  try {
+    let value: unknown;
+    if (scope === 'local') {
+      value = ownValue(localsValues, root);
+    } else {
+      value = storeValue;
     }
-    const part = parts[i] as string;
-    value = (value as Record<string, unknown>)[part];
-  }
 
-  return wrapContent(className, id, display(value));
+    // Resolve dot path (e.g. "character.name" → character['name']). Primitives
+    // box on access, so built-ins like "name.length" resolve too.
+    for (let i = 1; i < parts.length; i++) {
+      if (value == null) {
+        value = undefined;
+        break;
+      }
+      const part = parts[i] as string;
+      value = (value as Record<string, unknown>)[part];
+    }
+
+    return wrapContent(className, id, display(value));
+  } catch (error) {
+    return wrapContent(
+      className,
+      id,
+      <MacroError
+        macro={sigil + name}
+        error={error}
+      />,
+    );
+  }
 }

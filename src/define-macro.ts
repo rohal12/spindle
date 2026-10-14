@@ -24,7 +24,7 @@ import {
 } from './markup/render';
 import type { ASTNode } from './markup/ast';
 import { executeMutation, mutateState, readState } from './execute-mutation';
-import { evaluate } from './expression';
+import { evaluateDisplay } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
 import { RESERVED_NAME } from './utils/namespace';
@@ -59,7 +59,7 @@ import type {
   MacroTextContext,
   ParameterDef,
 } from './registry';
-import { registerBlockMacro } from './markup/ast';
+import { setDefinedBlockMacro } from './markup/ast';
 
 export type { MacroArgs, MacroTextContext, ParameterDef };
 
@@ -234,7 +234,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       ctx.merged = useMergedLocals();
       const merged = ctx.merged;
       ctx.evaluate = (expr: string) =>
-        evaluate(expr, merged[0], merged[1], merged[2], merged[3]);
+        evaluateDisplay(expr, [...merged], displayOnly);
     }
 
     if (config.storeVar) {
@@ -326,7 +326,5 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
   if (config.subMacros) {
     for (const sub of config.subMacros) registerSubMacro(sub);
   }
-  if (isBlock) {
-    registerBlockMacro(config.name);
-  }
+  setDefinedBlockMacro(config.name, isBlock);
 }

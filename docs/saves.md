@@ -194,3 +194,7 @@ Values can be nested about 2,000 levels deep (an object in an object in an objec
 Saves, exports and the session store a payload as `{ formatVersion, data }`: `data` is the payload serialized as text (with [devalue](https://github.com/sveltejs/devalue)), and `formatVersion` is the version of that format, currently `1`. Treat `data` as opaque; read saves through the Story API.
 
 A save, export or session written in a format version this build of Spindle cannot read is refused with an error ("This save was made by an incompatible version of Spindle"); a stale session is dropped and the story starts fresh. Saves, exports and sessions made before format versions existed (Spindle 0.52 and earlier) cannot be loaded.
+
+Saved `{watch}` conditions and options must exactly match definitions from the running story. Spindle rejects imported or restored watcher code that the story has not supplied, before evaluating it or replacing the game. Literal watcher declarations in passages and widget bodies are available after a refresh; dynamically generated declarations must have been registered by trusted story code in the current runtime before their saves can be restored. Changing a story's watcher definitions can therefore make older saves incompatible.
+
+A RegExp's primitive `lastIndex` is preserved, including fractional numbers, `NaN`, infinities and strings. Object-valued cursors are unsupported and saving rejects them before overwriting a slot.

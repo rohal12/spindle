@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Imported saves cannot introduce executable watcher conditions or actions: saved watchers must match definitions supplied by the running story before they are restored (#545). Passage and dialog watchers no longer inherit persistent interface ownership when loading early checkpoints (#547).
+- Outgoing passage snapshots replace iframe/object/embed browsing contexts with passive placeholders, so transitions never reload their scripts (#546). Dialog keyboard handlers follow document replacement in nested same-origin iframes (#557).
+- RegExp saves preserve primitive cursor values, including fractional numbers, `NaN`, infinities, strings and negative zero. Object-valued cursors are refused before a slot can be overwritten (#548).
+- StoryContext rejects `{unwatch}` and `{widget}` definitions, includes contribute no gameplay render counts, and expression evaluation leaves seeded gameplay randomness unchanged across initial and reactive renders (#549–#551).
+- Variable display conversion and field-access failures render local errors; inline expression failures use the same error representation and appear in observations (#552, #555).
+- Replacing a custom block macro with an inline definition updates parser classification without removing separately owned block registrations (#553).
+- Observations handle BigInt and cyclic control values, hide closed-details bodies and their errors, and separate table cells and rows (#554, #556, #558).
+
 - `{dialog}` buttons are registered as `open-dialog` actions (`open-dialog:"View Inventory"`, or the `#id`), and the `✕` button of an open dialog as a `close-dialog` action while it is shown, so `Story.getActions()`, `Story.performAction()` and automation scripts can open author dialogs and close any dialog, including one opened by `Story.openDialog()`, a `{watch}` or the menubar (#540).
 - The outgoing passage of a crossfade or fade-through keeps what the player left on screen: every selected option of a multiple `<select>` (#525), the frame and position of a `<video>` (drawn into its poster; the clone stays muted and paused; a video with no decoded frame or a canvas-tainting cross-origin source keeps its own poster) (#536), the position of `<audio>`, an indeterminate checkbox, and the scroll offsets of scrolled elements.
 - Closing stacked dialogs together (`Story.closeAllDialogs()`, nested `{dialog}`s, two `Story.closeDialog()` calls in a row) returns focus to the original opener instead of dropping it on the page; focus that author code moved elsewhere is still left alone (#529).

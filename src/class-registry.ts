@@ -234,7 +234,7 @@ function classData(value: object): unknown {
     return ['Date', Date.prototype.getTime.call(value), extra()];
   }
   if (value instanceof RegExp) {
-    return ['RegExp', [...regExpParts(value), value.lastIndex], extra()];
+    return ['RegExp', savedRegExp(value), extra()];
   }
   return savedData(ownData(value));
 }
@@ -299,14 +299,27 @@ function reducers(): Record<string, (value: unknown) => unknown> {
     return key !== undefined && [key];
   };
   out[REGEXP_TAG] = (v) =>
-    v instanceof RegExp &&
-    v.lastIndex !== 0 && [...regExpParts(v), v.lastIndex];
+    v instanceof RegExp && !Object.is(v.lastIndex, 0) && savedRegExp(v);
   if (GUARD_V8_KEYS) {
     out[KEYS_TAG] = (v) => {
       return isPlainData(v) && keyEntries(v);
     };
   }
   return out;
+}
+
+/** RegExp cursors are primitive data; object coercion cannot be replayed safely. */
+function isRegExpCursor(value: unknown): boolean {
+  return (
+    value === null || (typeof value !== 'object' && typeof value !== 'function')
+  );
+}
+
+function savedRegExp(re: RegExp): unknown[] {
+  if (!isRegExpCursor(re.lastIndex)) {
+    throw new TypeError('spindle: Cannot save an object-valued RegExp cursor');
+  }
+  return [...regExpParts(re), re.lastIndex];
 }
 
 /**
@@ -318,7 +331,8 @@ function newRegExp(data: unknown): RegExp | undefined {
     !Array.isArray(data) ||
     typeof data[0] !== 'string' ||
     typeof data[1] !== 'string' ||
-    !Number.isSafeInteger(data[2])
+    data.length !== 3 ||
+    !isRegExpCursor(data[2])
   ) {
     return undefined;
   }

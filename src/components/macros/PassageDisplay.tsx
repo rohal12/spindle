@@ -162,6 +162,25 @@ function createSnapshot(
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
+  // A cloned browsing context would reload and execute scripts on insertion.
+  // Keep its authored size/style as a passive placeholder instead.
+  const originals = passageEl.querySelectorAll('iframe, object, embed');
+  const copies = clone.querySelectorAll('iframe, object, embed');
+  copies.forEach((embedded, i) => {
+    const placeholder = document.createElement('div');
+    for (const name of ['class', 'style', 'width', 'height']) {
+      const value = embedded.getAttribute(name);
+      if (value !== null) placeholder.setAttribute(name, value);
+    }
+    const original = originals[i];
+    if (original) {
+      const rect = original.getBoundingClientRect();
+      placeholder.style.width = `${rect.width}px`;
+      placeholder.style.height = `${rect.height}px`;
+    }
+    embedded.replaceWith(placeholder);
+  });
+
   // Strip id attributes to avoid duplicates
   clone.removeAttribute('id');
   const idEls = clone.querySelectorAll('[id]');

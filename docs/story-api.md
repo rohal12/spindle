@@ -715,7 +715,10 @@ const o = Story.observe();
 - `dialogs`: the open dialogs, `{ passage, text }` each, in the order they were opened (innermost last). `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
 - `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules). A dialog is modal: while one is open, only the actions of the controls in the innermost open dialog are offered, its `close-dialog` included, not those of the passage, the story interface or the dialogs beneath it. `step()` still takes any action ID.
 - `errors`: the messages of the macro errors on screen in the passage, the dialogs and `StoryContext` (not those in hidden elements), then the runtime errors (such as a failed save or a `Story.goto()` to a missing passage) as `<what failed>: <message>`. A runtime error stays listed, in every observation, until the reader dismisses its banner or the story clears it.
+
 - `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.
+
+Observation text keeps table cells separated by tabs and rows by newlines. A closed `<details>` contributes only its first `<summary>`; errors in its collapsed body are omitted until it opens. Variable and inline expression failures are reported as local errors, and non-JSON control values do not stop observation.
 
 Before the first passage is on screen, `observe()` throws `spindle: Story.observe() needs a mounted story`.
 

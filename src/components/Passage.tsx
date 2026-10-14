@@ -11,6 +11,7 @@ import {
   renderNodes,
   NobrContext,
   ViewScopeContext,
+  InterfaceContext,
   useViewScope,
 } from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
@@ -138,20 +139,22 @@ export function Passage({
   const viewScope = useViewScope();
 
   const inner = (
-    <ViewScopeContext.Provider value={viewScope}>
-      <div
-        ref={elRef}
-        class="passage"
-        data-passage={passage.name}
-        data-tags={passage.tags.join(' ')}
-        data-transition={dataTransition}
-      >
-        {headerContent && <div class="passage-header">{headerContent}</div>}
-        {content}
-        {footerContent && <div class="passage-footer">{footerContent}</div>}
-        {doneContent && <div hidden>{doneContent}</div>}
-      </div>
-    </ViewScopeContext.Provider>
+    <InterfaceContext.Provider value={false}>
+      <ViewScopeContext.Provider value={viewScope}>
+        <div
+          ref={elRef}
+          class="passage"
+          data-passage={passage.name}
+          data-tags={passage.tags.join(' ')}
+          data-transition={dataTransition}
+        >
+          {headerContent && <div class="passage-header">{headerContent}</div>}
+          {content}
+          {footerContent && <div class="passage-footer">{footerContent}</div>}
+          {doneContent && <div hidden>{doneContent}</div>}
+        </div>
+      </ViewScopeContext.Provider>
+    </InterfaceContext.Provider>
   );
 
   return nobr ? (

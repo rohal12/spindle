@@ -94,7 +94,7 @@ export function structEq(
     return (
       a.source === re.source &&
       a.flags === re.flags &&
-      a.lastIndex === re.lastIndex
+      Object.is(a.lastIndex, re.lastIndex)
     );
   }
   if (a instanceof Map) {
