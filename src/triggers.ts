@@ -1,3 +1,7 @@
+import { tokenizeMarkup } from './markup/parse';
+import { parseMacroArgs } from './components/macros/macro-args';
+import { WATCH_PARAMETERS } from './watch-parameters';
+import type { StoryData } from './parser';
 import { evaluate } from './expression';
 import { executeMutation, readState } from './execute-mutation';
 import { useStoryStore } from './store';
@@ -108,10 +112,9 @@ export function addMacroTrigger(
   condition: string,
   options: WatchOptions,
 ): void {
-  const sortedOptions = Object.fromEntries(
-    Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)),
-  );
-  const macroKey = JSON.stringify([condition, sortedOptions]);
+  const macroKey = watcherKey(condition, options);
+  const story = useStoryStore.getState().storyData;
+  if (story) trustedWatchers(story).add(macroKey);
   if (triggers.some((t) => t.macroKey === macroKey)) return;
   registerTrigger(condition, options, macroKey);
 }
@@ -120,6 +123,60 @@ export function addMacroTrigger(
 export interface SavedWatcher {
   condition: string;
   options: WatchOptions;
+}
+
+/** Canonical identity includes every option, so an imported action cannot change it. */
+function watcherKey(condition: string, options: WatchOptions): string {
+  const sorted = Object.fromEntries(
+    Object.entries(options).sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  return JSON.stringify([condition, sorted]);
+}
+
+// Definitions belong to this story, not a slot or the active trigger list.
+// Remember dynamically registered definitions through unwatch/restart too.
+const definitions = new WeakMap<StoryData, Set<string>>();
+
+function trustedWatchers(story: StoryData): Set<string> {
+  let known = definitions.get(story);
+  if (known) return known;
+  known = new Set();
+  definitions.set(story, known);
+  for (const passage of story.passages.values()) {
+    try {
+      for (const token of tokenizeMarkup(passage.content)) {
+        if (
+          token.type !== 'macro' ||
+          token.isClose ||
+          token.name.toLowerCase() !== 'watch'
+        )
+          continue;
+        const { condition, options } = parseMacroArgs(
+          token.rawArgs,
+          WATCH_PARAMETERS,
+        );
+        if (typeof condition === 'string')
+          known.add(watcherKey(condition, options));
+      }
+    } catch {
+      // Script passages and malformed markup are not watcher declarations.
+    }
+  }
+  return known;
+}
+
+/** Validate all saved definitions before evaluating any of them or replacing state. */
+export function assertTrustedWatchers(watchers: readonly SavedWatcher[]): void {
+  if (!watchers.length) return;
+  const story = useStoryStore.getState().storyData;
+  const known = story && trustedWatchers(story);
+  for (const { condition, options } of watchers) {
+    if (!known?.has(watcherKey(condition, options))) {
+      throw new Error(
+        'Invalid save data: watcher is not defined by this story',
+      );
+    }
+  }
 }
 
 /**
@@ -182,6 +239,7 @@ export function restoreMacroWatchers(
   watchers: readonly SavedWatcher[],
   interfaceSaved?: boolean,
 ): void {
+  assertTrustedWatchers(watchers);
   triggers = triggers.filter((t) => t.macroKey === undefined);
   for (const { condition, options } of watchers) {
     addMacroTrigger(condition, options);

@@ -13,7 +13,7 @@
  * one without a text form (inputs, links, {set}, …) has nothing to put in a
  * string, so it is reported instead of being run or shown as source.
  */
-import { evaluate } from './expression';
+import { evaluateDisplay } from './expression';
 import {
   SCOPE_SIGILS,
   SIGIL_SCOPES,
@@ -61,6 +61,7 @@ export function widgetChildrenOf(
 
 /** The scope text-only markup is evaluated in. */
 export interface TextScope {
+  displayOnly?: boolean;
   variables: Record<string, unknown>;
   temporary: Record<string, unknown>;
   locals: Record<string, unknown>;
@@ -171,12 +172,10 @@ function resolveVariable(
 
 /** Evaluate an expression in `scope`. */
 function evaluateIn(expr: string, scope: TextScope): unknown {
-  return evaluate(
+  return evaluateDisplay(
     expr,
-    scope.variables,
-    scope.temporary,
-    scope.locals,
-    scope.transient,
+    [scope.variables, scope.temporary, scope.locals, scope.transient],
+    scope.displayOnly,
   );
 }
 

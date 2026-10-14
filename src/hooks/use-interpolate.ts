@@ -6,6 +6,7 @@ import {
   interpolateText,
   type TextScope,
 } from '../interpolation';
+import { DisplayOnlyContext } from '../display-only';
 import { errorMessage } from '../utils/error-message';
 
 /**
@@ -15,10 +16,18 @@ import { errorMessage } from '../utils/error-message';
  */
 export function useTextScope(): TextScope {
   const [variables, temporary, locals, transient] = useMergedLocals();
+  const displayOnly = useContext(DisplayOnlyContext);
   const widgetChildren = useContext(WidgetChildrenContext);
   return useMemo(
-    () => ({ variables, temporary, locals, transient, widgetChildren }),
-    [variables, temporary, locals, transient, widgetChildren],
+    () => ({
+      variables,
+      temporary,
+      locals,
+      transient,
+      widgetChildren,
+      displayOnly,
+    }),
+    [variables, temporary, locals, transient, widgetChildren, displayOnly],
   );
 }
 

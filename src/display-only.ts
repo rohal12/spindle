@@ -12,6 +12,8 @@ export const ACTING_MACROS: readonly string[] = [
   'computed',
   'goto',
   'watch',
+  'unwatch',
+  'widget',
 ];
 
 /**

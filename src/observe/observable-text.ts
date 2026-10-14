@@ -33,12 +33,26 @@ function isHidden(el: Element): boolean {
     el.hasAttribute('hidden') ||
     el.getAttribute('aria-hidden') === 'true' ||
     /(^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') ?? '') ||
-    NOT_TEXT.has(el.tagName)
+    NOT_TEXT.has(el.tagName) ||
+    (el.parentElement?.tagName === 'DETAILS' &&
+      !el.parentElement.hasAttribute('open') &&
+      el !==
+        Array.from(el.parentElement.children).find(
+          (c) => c.tagName === 'SUMMARY',
+        ))
   );
 }
 
 function formatValue(value: unknown): string {
-  return JSON.stringify(value) ?? String(value);
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return '[unprintable value]';
+    }
+  }
 }
 
 /** What a control with an action shows: its type, variable and value. */
@@ -108,9 +122,15 @@ export function observableText(el: Element, skip?: string): string {
     }
     const block = BLOCKS.has(child.tagName);
     if (block) endLine();
-    for (const c of Array.from(child.childNodes)) {
+    const closedDetails =
+      child.tagName === 'DETAILS' && !child.hasAttribute('open');
+    const children = closedDetails
+      ? Array.from(child.children).filter((c) => !isHidden(c))
+      : Array.from(child.childNodes);
+    for (const c of children) {
       walk(c, inPre || child.tagName === 'PRE');
     }
+    if (child.tagName === 'TD' || child.tagName === 'TH') out += '\t';
     if (block) endLine();
   };
 

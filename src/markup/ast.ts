@@ -72,6 +72,19 @@ const BLOCK_MACROS = new NameSet([
  */
 const BLOCK_WIDGETS = new NameSet();
 
+/** Classification owned by defineMacro, independent of explicit registrations. */
+const DEFINED_BLOCK_MACROS = new NameSet();
+
+export function setDefinedBlockMacro(name: string, isBlock: boolean): void {
+  setClassification(DEFINED_BLOCK_MACROS, name, isBlock);
+}
+
+/** Update the classification owned by one registration source. */
+function setClassification(names: NameSet, name: string, block: boolean): void {
+  if (block) names.add(name);
+  else names.delete(name);
+}
+
 /** Macros whose body is JavaScript source, kept verbatim. */
 const RAW_BODY_MACROS = new Set(['do']);
 
@@ -82,7 +95,11 @@ export function isRawMacro(name: string): boolean {
 
 /** Whether a macro takes a body closed by `{/name}`. */
 export function isBlockMacro(name: string): boolean {
-  return BLOCK_MACROS.has(name) || BLOCK_WIDGETS.has(name);
+  return (
+    BLOCK_MACROS.has(name) ||
+    DEFINED_BLOCK_MACROS.has(name) ||
+    BLOCK_WIDGETS.has(name)
+  );
 }
 
 /** Register a custom macro as a block macro so the parser nests children. */
@@ -95,8 +112,7 @@ export function registerBlockMacro(name: string): void {
  * does. A block macro registered under the same name stays a block.
  */
 export function setBlockWidget(name: string, isBlock: boolean): void {
-  if (isBlock) BLOCK_WIDGETS.add(name);
-  else BLOCK_WIDGETS.delete(name);
+  setClassification(BLOCK_WIDGETS, name, isBlock);
 }
 
 /** Forget which widgets take a body (see clearWidgets). */
@@ -107,6 +123,7 @@ export function clearBlockWidgets(): void {
 /** Unregister a custom block macro (for test cleanup). */
 export function unregisterBlockMacro(name: string): void {
   BLOCK_MACROS.delete(name);
+  DEFINED_BLOCK_MACROS.delete(name);
 }
 
 /** Macros whose branches render as one: the node holds one per branch. */

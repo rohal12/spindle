@@ -6,7 +6,11 @@
  * Error its string form (e.g. "Error").
  */
 export function errorMessage(err: unknown, fallback?: string): string {
-  if (err instanceof Error) return err.message || fallback || String(err);
-  if (typeof err === 'string' && err !== '') return err;
-  return fallback ?? String(err);
+  try {
+    if (err instanceof Error) return err.message || fallback || String(err);
+    if (typeof err === 'string' && err !== '') return err;
+    return fallback ?? String(err);
+  } catch {
+    return fallback ?? 'Unprintable error';
+  }
 }

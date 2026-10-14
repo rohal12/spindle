@@ -32,3 +32,14 @@ describe('errorMessage', () => {
     expect(errorMessage('', 'Failed to save')).toBe('Failed to save');
   });
 });
+
+it('contains unprintable thrown values and throwing error message getters', () => {
+  expect(errorMessage(Object.create(null))).toBe('Unprintable error');
+  const error = new Error('original');
+  Object.defineProperty(error, 'message', {
+    get() {
+      throw new Error('message failed');
+    },
+  });
+  expect(errorMessage(error, 'Failed')).toBe('Failed');
+});

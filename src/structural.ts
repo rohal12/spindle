@@ -407,7 +407,7 @@ function equalBuiltin(
   if (a instanceof RegExp) {
     return (
       regExpText(a) === regExpText(b as RegExp) &&
-      a.lastIndex === (b as RegExp).lastIndex &&
+      Object.is(a.lastIndex, (b as RegExp).lastIndex) &&
       equalExtraKeys(a, b, assumed)
     );
   }

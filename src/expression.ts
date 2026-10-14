@@ -1,7 +1,7 @@
 import type { StoryState } from './store';
 import { useStoryStore } from './store';
 import type { Passage } from './parser';
-import { random, randomInt } from './prng';
+import { random, randomInt, withoutDraws } from './prng';
 import {
   BINDINGS,
   FNS_BINDING,
@@ -209,6 +209,16 @@ function run(
  */
 export function evaluate(expr: string, ...namespaces: Namespaces): unknown {
   return run(getOrCompile(expr, 'expression'), ...namespaces);
+}
+
+/** Evaluate display-only content without consuming gameplay randomness. */
+export function evaluateDisplay(
+  expr: string,
+  namespaces: Namespaces,
+  displayOnly = false,
+): unknown {
+  const read = () => evaluate(expr, ...namespaces);
+  return displayOnly ? withoutDraws(read) : read();
 }
 
 /**

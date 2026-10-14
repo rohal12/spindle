@@ -302,3 +302,58 @@ describe('rendered controls', () => {
     expect(panel.hasAttribute('data-passage')).toBe(false);
   });
 });
+
+describe('observation visibility and value boundaries (#554, #556, #558)', () => {
+  it('reads only the first summary of closed details, including nested details', () => {
+    const el = fixture(
+      '<details><summary>Hint <span class="error">Summary error</span></summary>Secret <span class="error">Hidden error</span><summary>Second</summary><details open><summary>Nested</summary>Nested secret</details></details>',
+    );
+    expect(observableText(el)).toBe('Hint Summary error');
+    expect(observableErrors(el)).toEqual(['Summary error']);
+    el.querySelector('details')!.open = true;
+    expect(observableText(el)).toContain('Secret');
+    expect(observableErrors(el)).toEqual(['Summary error', 'Hidden error']);
+    el.querySelector<HTMLDetailsElement>('details details')!.open = false;
+    expect(observableText(el)).toContain('Nested');
+    expect(observableText(el)).not.toContain('Nested secret');
+  });
+
+  it('hides all content of a closed details without a summary', () => {
+    const el = fixture(
+      '<details>Secret <span class="error">Hidden</span></details>',
+    );
+    expect(observableText(el)).toBe('');
+    expect(observableErrors(el)).toEqual([]);
+  });
+
+  it('separates numeric table cells and rows', () => {
+    expect(
+      text(
+        '<table><tr><th>0</th><th>1</th></tr><tr><td>2</td><td>3</td></tr></table>',
+      ),
+    ).toBe('0\t1\n2\t3');
+  });
+
+  it('formats BigInt, cyclic and unprintable action values without throwing', () => {
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    for (const [value, shown] of [
+      [1n, '1'],
+      [cyclic, '[object Object]'],
+      [Object.create(null), '{}'],
+      [
+        {
+          toString: null,
+          toJSON: () => {
+            throw new Error('bad');
+          },
+        },
+        '[unprintable value]',
+      ],
+    ] as const) {
+      register({ id: 'odd', type: 'textbox', variable: 'n', value });
+      expect(text('<input data-action="odd">')).toBe(`[textbox $n: ${shown}]`);
+    }
+    clearActions();
+  });
+});

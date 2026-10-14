@@ -1,3 +1,4 @@
+import { WATCH_PARAMETERS } from '../../watch-parameters';
 import { defineMacro } from '../../define-macro';
 import { FrozenStateContext } from '../../hooks/use-story-fields';
 import { useStoryStore } from '../../store';
@@ -13,26 +14,7 @@ import {
 defineMacro({
   name: 'watch',
   // {watch "condition" goto "X" dialog "X" run "X" name "X" priority N once}
-  parameters: [
-    {
-      name: 'condition',
-      type: 'string',
-      holds: 'expression',
-      required: true,
-    },
-    {
-      name: 'options',
-      type: 'options',
-      parameters: [
-        { name: 'goto', type: 'string', holds: 'passage' },
-        { name: 'dialog', type: 'string', holds: 'passage' },
-        { name: 'run', type: 'string', holds: 'statements' },
-        { name: 'name', type: 'string', holds: 'text' },
-        { name: 'priority', type: 'number' },
-        { name: 'once', type: 'flag' },
-      ],
-    },
-  ],
+  parameters: WATCH_PARAMETERS,
   render(_props, ctx) {
     const { hooks } = ctx;
 

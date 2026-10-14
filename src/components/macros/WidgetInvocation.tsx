@@ -1,7 +1,8 @@
 import { useContext, useMemo } from 'preact/hooks';
 import { WidgetChildrenContext, renderNodes } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
-import { evaluate } from '../../expression';
+import { evaluateDisplay } from '../../expression';
+import { DisplayOnlyContext } from '../../display-only';
 import type { ASTNode } from '../../markup/ast';
 import { splitArgs } from './arg-utils';
 import { createNamespace } from '../../utils/namespace';
@@ -39,6 +40,7 @@ function WidgetContent({
   rawArgs,
   invocationChildren,
 }: WidgetInvocationProps) {
+  const displayOnly = useContext(DisplayOnlyContext);
   const [mergedVars, mergedTemps, mergedLocals, mergedTrans] =
     useMergedLocals();
 
@@ -59,12 +61,10 @@ function WidgetContent({
     let value: unknown;
     if (expr !== undefined) {
       try {
-        value = evaluate(
+        value = evaluateDisplay(
           expr,
-          mergedVars,
-          mergedTemps,
-          mergedLocals,
-          mergedTrans,
+          [mergedVars, mergedTemps, mergedLocals, mergedTrans],
+          displayOnly,
         );
       } catch {
         value = undefined;

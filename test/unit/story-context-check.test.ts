@@ -61,3 +61,10 @@ describe('storyContextErrors', () => {
     expect(storyContextErrors('[[Forest', [])).toEqual([]);
   });
 });
+
+it.each(['{unwatch "alarm"}', '{widget "Greeting"}Changed{/widget}'])(
+  'rejects stateful registry mutation %s (#549)',
+  (markup) => {
+    expect(storyContextErrors(markup, [])).toHaveLength(1);
+  },
+);

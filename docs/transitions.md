@@ -134,3 +134,5 @@ Spindle respects `prefers-reduced-motion` automatically. Users with reduced moti
 - **`Story.restart()` and `Story.load()`:** Treated like first load — incoming only, no outgoing phase.
 - **`{include}` passages:** Transitions only apply to the main `{passage}` macro. Included passages render inline without animation.
 - **Back/forward:** Transitions apply normally via the resolution chain.
+
+Outgoing snapshots replace embedded browsing contexts (`iframe`, `object`, `embed`) with empty placeholders sized to the original elements. This prevents a transition from loading the embedded document again or replaying its scripts.

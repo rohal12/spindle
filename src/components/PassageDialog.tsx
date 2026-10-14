@@ -10,6 +10,7 @@ import {
   renderNodes,
   NobrContext,
   ViewScopeContext,
+  InterfaceContext,
   useViewScope,
 } from '../markup/render';
 import { useStoryFields } from '../hooks/use-story-fields';
@@ -128,35 +129,37 @@ export function PassageDialog({
   const cls = panelClass ? `dialog-panel ${panelClass}` : 'dialog-panel';
 
   return (
-    <DialogCloseContext.Provider value={stableOnClose}>
-      <div
-        class="dialog-overlay"
-        onClick={handleBackdrop}
-      >
+    <InterfaceContext.Provider value={false}>
+      <DialogCloseContext.Provider value={stableOnClose}>
         <div
-          ref={panelRef}
-          class={cls}
-          role="dialog"
-          data-dialog-passage={passageName}
-          aria-modal="true"
-          aria-label={label ?? passageName}
-          tabIndex={-1}
+          class="dialog-overlay"
+          onClick={handleBackdrop}
         >
-          {showCloseButton && (
-            <DialogCloseButton
-              dialogName={passageName ?? label ?? 'dialog'}
-              passageName={passageName}
-              onClose={stableOnClose}
-            />
-          )}
-          <div class="dialog-body">
-            <ViewScopeContext.Provider value={viewScope}>
-              {content}
-            </ViewScopeContext.Provider>
+          <div
+            ref={panelRef}
+            class={cls}
+            role="dialog"
+            data-dialog-passage={passageName}
+            aria-modal="true"
+            aria-label={label ?? passageName}
+            tabIndex={-1}
+          >
+            {showCloseButton && (
+              <DialogCloseButton
+                dialogName={passageName ?? label ?? 'dialog'}
+                passageName={passageName}
+                onClose={stableOnClose}
+              />
+            )}
+            <div class="dialog-body">
+              <ViewScopeContext.Provider value={viewScope}>
+                {content}
+              </ViewScopeContext.Provider>
+            </div>
           </div>
         </div>
-      </div>
-    </DialogCloseContext.Provider>
+      </DialogCloseContext.Provider>
+    </InterfaceContext.Provider>
   );
 }
 

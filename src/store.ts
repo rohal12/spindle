@@ -23,6 +23,7 @@ import {
   resetTriggers,
   checkTriggersOnNavigation,
   restoreMacroWatchers,
+  assertTrustedWatchers,
   interfaceMounted,
   savedMacroWatchers,
   reinitTriggerState,
@@ -1838,6 +1839,7 @@ export const useStoryStore = create<StoryState>()(
       // Before anything is replaced: an incompatible payload leaves the
       // running game as it is
       assertPassagesExist(get().storyData, payload);
+      assertTrustedWatchers(payload.watchers ?? []);
       applyReplacement(replacement);
 
       leavingPlaythrough = leaving;

@@ -481,7 +481,7 @@ export function useModalFocus(
       root.addEventListener(
         'load',
         (e) => {
-          if (e.target instanceof Node && isFrame(e.target as Element)) {
+          if (e.target && isFrame(e.target as Element)) {
             attachFrame(e.target as HTMLIFrameElement);
           }
         },
