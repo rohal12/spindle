@@ -12,6 +12,19 @@ describe('play session handle', () => {
   it('rejects open when the worker cannot boot', () =>
     expect(open({ html: 'fail' })).rejects.toThrow('boom'));
 
+  it('rejects open when the story hangs while booting', () =>
+    expect(open({ html: 'hang', stepTimeoutMs: 200 })).rejects.toThrow(
+      'spindle: play session timed out after 200 ms (the story may be stuck in a loop)',
+    ));
+
+  it.each([0, -1, NaN, Infinity, 2_147_483_648, '5' as unknown as number])(
+    'rejects open for an invalid stepTimeoutMs (%s)',
+    (stepTimeoutMs) =>
+      expect(open({ html: 'x', stepTimeoutMs })).rejects.toThrow(
+        `spindle: openPlaySession(): "stepTimeoutMs" must be a positive number of milliseconds, got ${stepTimeoutMs}`,
+      ),
+  );
+
   it('runs calls one at a time in call order', async () => {
     const s = await open({ html: 'x' });
     const a = s.step('slow', 50);
@@ -42,12 +55,13 @@ describe('play session handle', () => {
       'spindle: play session is closed',
     );
     expect(s.closed).toBe(true);
+    await s.close();
   });
 
   it('starts the timer when a call is sent, not when it is queued', async () => {
-    const s = await open({ html: 'x', stepTimeoutMs: 300 });
-    const a = s.step('slow', 200);
-    const b = s.step('slow', 200);
+    const s = await open({ html: 'x', stepTimeoutMs: 400 });
+    const a = s.step('slow', 100);
+    const b = s.step('slow', 100);
     await expect(Promise.all([a, b])).resolves.toHaveLength(2);
     await s.close();
   });
@@ -62,6 +76,7 @@ describe('play session handle', () => {
     await expect(s.observe()).rejects.toThrow(
       'spindle: play session is closed',
     );
+    await s.close();
   });
 
   it('close() is idempotent and works after a timeout', async () => {

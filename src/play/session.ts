@@ -35,6 +35,8 @@ export interface PlaySession {
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 10_000;
+/** The largest delay setTimeout accepts. */
+const MAX_TIMEOUT_MS = 2_147_483_647;
 const CLOSED_MESSAGE = 'spindle: play session is closed';
 
 interface Job {
@@ -60,6 +62,19 @@ export function openPlaySessionWith(
   urls: { workerUrl: URL; headlessUrl: URL },
 ): Promise<PlaySession> {
   const stepTimeoutMs = options.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+  if (
+    typeof stepTimeoutMs !== 'number' ||
+    !Number.isFinite(stepTimeoutMs) ||
+    stepTimeoutMs <= 0 ||
+    stepTimeoutMs > MAX_TIMEOUT_MS
+  ) {
+    return Promise.reject(
+      new Error(
+        `spindle: openPlaySession(): "stepTimeoutMs" must be a positive number of milliseconds, got ${String(stepTimeoutMs)}`,
+      ),
+    );
+  }
+  const timeoutMessage = `spindle: play session timed out after ${stepTimeoutMs} ms (the story may be stuck in a loop)`;
   const workerData: WorkerData = {
     html: options.html,
     headlessUrl: urls.headlessUrl.href,
@@ -83,6 +98,12 @@ export function openPlaySessionWith(
       );
       return terminated;
     };
+
+    // Booting is bounded by the same timeout (a StoryInit can loop forever).
+    const bootTimer = setTimeout(() => {
+      rejectOpen(new Error(timeoutMessage));
+      void terminate();
+    }, stepTimeoutMs);
 
     /** Marks the session closed and settles everything still pending. */
     const shutdown = (runningError: Error, queuedError: Error): void => {
@@ -112,9 +133,7 @@ export function openPlaySessionWith(
         return;
       }
       const timer = setTimeout(() => {
-        const timeout = new Error(
-          `spindle: play session timed out after ${stepTimeoutMs} ms (the story may be stuck in a loop)`,
-        );
+        const timeout = new Error(timeoutMessage);
         shutdown(timeout, new Error(CLOSED_MESSAGE));
         void terminate();
       }, stepTimeoutMs);
@@ -155,6 +174,7 @@ export function openPlaySessionWith(
 
     const failWorker = (message: string): void => {
       if (!booted) {
+        clearTimeout(bootTimer);
         rejectOpen(new Error(message));
         void terminate();
         return;
@@ -167,6 +187,7 @@ export function openPlaySessionWith(
     worker.on('message', (message: WorkerMessage) => {
       if ('ready' in message) {
         if (booted) return;
+        clearTimeout(bootTimer);
         if (message.ready) {
           booted = true;
           resolveOpen(session);
