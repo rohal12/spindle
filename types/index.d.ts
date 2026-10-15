@@ -471,6 +471,8 @@ export interface UseActionOptions {
   type: ActionType;
   key: string;
   authorId?: string;
+  /** The exact DOM control, including when authored action IDs collide. */
+  element?: { readonly current: Element | null };
   label: string;
   target?: string;
   variable?: string;

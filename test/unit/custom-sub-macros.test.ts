@@ -93,7 +93,7 @@ describe('custom companion macros (#564, #571)', () => {
   it('releases removed companions only after their last owner changes', () => {
     defineMacro({
       name: 'parent571',
-      subMacros: ['child571'],
+      subMacros: ['child571', 'CHILD571'],
       render: () => null,
     });
     defineMacro({

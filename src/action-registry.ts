@@ -124,6 +124,9 @@ interface Entry {
   action: StoryAction;
   /** The dialog the control renders in (its close function), if any. */
   dialog: (() => void) | null;
+  /** Its panel ref stays live across DOM commits without re-registering. */
+  panel: { readonly current: Element | null } | null;
+  element: { readonly current: Element | null } | null;
 }
 
 /**
@@ -177,9 +180,11 @@ export function generateActionId(
 export function registerAction(
   action: StoryAction,
   dialog: (() => void) | null = null,
+  panel: Entry['panel'] = null,
+  element: Entry['element'] = null,
 ): ActionRegistration {
   const id = action.id;
-  const entry: Entry = { action, dialog };
+  const entry: Entry = { action, dialog, panel, element };
   const entries = actions.get(id);
   if (entries) {
     console.warn(
@@ -271,8 +276,17 @@ function listed(entries: Entry[]): StoryAction {
 /** The live control for an action; author IDs need no selector escaping. */
 function actionElements(id: string): Element[] {
   if (typeof document === 'undefined') return [];
-  return [...document.querySelectorAll('[data-action]')].filter(
-    (el) => el.getAttribute('data-action') === id,
+  const entries = actions.get(id);
+  const entry = entries?.[entries.length - 1];
+  if (entry?.element) {
+    const control = entry.element.current;
+    return control ? [control] : [];
+  }
+  const panel = entry?.panel?.current ?? null;
+  return [...(panel ?? document).querySelectorAll('[data-action]')].filter(
+    (el) =>
+      el.getAttribute('data-action') === id &&
+      el.closest('.dialog-panel') === panel,
   );
 }
 

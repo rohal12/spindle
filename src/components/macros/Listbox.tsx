@@ -12,7 +12,7 @@ defineMacro({
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 
-    const actionId = useVariableAction(ctx, {
+    const action = useVariableAction(ctx, {
       type: 'listbox',
       label: ctx.varName!,
       options,
@@ -23,7 +23,7 @@ defineMacro({
 
     return (
       <select
-        {...actionAttributes(actionId, ctx)}
+        {...actionAttributes(action, ctx)}
         value={display(ctx.value)}
         onChange={(e) => ctx.setValue!((e.target as HTMLSelectElement).value)}
       >

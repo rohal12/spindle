@@ -1,5 +1,6 @@
 import { isBlockMacro } from '../markup/ast';
-import { tokenizeMarkupTolerant } from '../markup/parse';
+import { analyzeMarkup, tokenizeMarkupTolerant } from '../markup/parse';
+import type { PairedNode } from '../markup/pair';
 import type { MacroToken } from '../markup/tokens';
 import { segmentRegions } from './segment';
 import { fencedCodeLines } from './fenced-code';
@@ -213,18 +214,16 @@ async function formatLf(
   // Region newline decoding must not consume literal-line placeholders.
   const literalSentinel = newlineSentinel(body + sentinel);
   const literalLines = new Map<string, string>();
-  const fenceMarkers = new Set<string>();
+  const literalMarkers = new Set<string>();
   const fenced = fencedCodeLines(body, isBlock);
+  const literalHtml = whitespaceSensitiveLines(body, isBlock);
   body = body
     .split('\n')
     .map((line, index) => {
-      if (!fenced.has(index) && !WHITESPACE_AS_WRITTEN.test(line)) return line;
-      // Multi-line HTML is preserved as a region below; only hide same-line
-      // elements here so their bodies cannot be wrapped as prose.
-      if (!fenced.has(index) && !/<\/[^>]+>/.test(line)) return line;
+      if (!fenced.has(index) && !literalHtml.has(index)) return line;
       const marker = `${literalSentinel}L${literalLines.size}${literalSentinel}`;
       literalLines.set(marker, line);
-      if (fenced.has(index)) fenceMarkers.add(marker);
+      literalMarkers.add(marker);
       return (line.match(/^[ \t]*/)?.[0] ?? '') + marker;
     })
     .join('\n')
@@ -334,7 +333,7 @@ async function formatLf(
       region.lines,
       isBlock,
       isDedenting,
-      fenceMarkers,
+      literalMarkers,
     );
     if (options.maxLineLength) {
       indented = wrapLines(indented, options.maxLineLength, literalLines);
@@ -368,6 +367,38 @@ async function formatLf(
 /** HTML whose whitespace renders as written: a `<pre>` or `<textarea>`, or a `white-space` style. */
 const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea)[\s>]|white-space\s*:/i;
 
+/** Preserve whole literal elements, including openers beside nested tags. */
+function whitespaceSensitiveLines(
+  source: string,
+  isBlock: (name: string) => boolean,
+): Set<number> {
+  const lines = new Set<number>();
+  if (!WHITESPACE_AS_WRITTEN.test(source)) return lines;
+  const { nodes } = analyzeMarkup(source, { hooks: { isBlock } });
+  function visit(nodes: PairedNode[]): void {
+    for (const node of nodes) {
+      const { token, body } = node;
+      if (
+        token.type === 'html' &&
+        (['pre', 'textarea'].includes(token.tag.toLowerCase()) ||
+          Object.entries(token.attributes).some(
+            ([name, value]) =>
+              name.toLowerCase() === 'style' && /white-space\s*:/i.test(value),
+          ))
+      ) {
+        const first = source.slice(0, node.start).split('\n').length - 1;
+        const last = source.slice(0, node.end - 1).split('\n').length - 1;
+        for (let line = first; line <= last; line++) lines.add(line);
+      } else if (body) {
+        visit(body.children);
+        for (const branch of body.branches) visit(branch.children);
+      }
+    }
+  }
+  visit(nodes);
+  return lines;
+}
+
 /** A Markdown list item line (`- a`, `* a`, `+ a`, `1. a`, `1) a`). */
 const LIST_ITEM_REGEX = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
 
@@ -386,7 +417,7 @@ interface MacroBody {
   minCol: number;
   /** True if leading indentation may be Markdown syntax (lists, code fences). */
   keepRelative: boolean;
-  /** Literal fences retain the indentation of their owning Markdown document. */
+  /** Literal lines retain the indentation of their owning Markdown document. */
   keepOriginal?: boolean;
 }
 
@@ -409,7 +440,7 @@ function indentMacros(
   lines: string[],
   isBlock: (name: string) => boolean,
   isDedenting: (name: string) => boolean,
-  fenceMarkers: ReadonlySet<string>,
+  literalMarkers: ReadonlySet<string>,
 ): string[] {
   const macrosOnLine = macroTokensByLine(lines);
   // Pass 1: assign each line to the body (Markdown document) it belongs to.
@@ -437,7 +468,7 @@ function indentMacros(
     body.minCol = Math.min(body.minCol, col);
     if (LIST_ITEM_REGEX.test(text) || CODE_FENCE_REGEX.test(text))
       body.keepRelative = true;
-    if (fenceMarkers.has(text)) body.keepOriginal = true;
+    if (literalMarkers.has(text)) body.keepOriginal = true;
     info.push({ body: currentBody(), col, text });
   };
 

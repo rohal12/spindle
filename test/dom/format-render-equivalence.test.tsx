@@ -83,6 +83,10 @@ const cases = [
 const literalCases = [
   '<pre>\na    \n b\n</pre>\n',
   '<textarea>\na    \n b\n</textarea>\n',
+  '<pre><span>hello</span>\n\t literal    \n</pre>\n',
+  'Before <pre><span>hello</span>\n\t literal    \n</pre> after\n',
+  '- <pre><span>hello</span>\n  literal    \n  </pre>\n  continuation\n',
+  '{if true}\n  - <pre>text</pre>\n    continuation\n{/if}\n',
   '<pre>\tlong literal source text    </pre>\n',
   '```python\nprint("hello world from the story")\n```\n',
   '```\n\tline\t  \n \t\n```\n',

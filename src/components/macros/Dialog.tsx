@@ -1,4 +1,4 @@
-import { actionAttributes } from '../../hooks/use-action';
+import { actionAttributes, useControlAction } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
 
@@ -22,7 +22,7 @@ defineMacro({
     const openDialog = () => setOpen(true);
 
     // Its own type: the menubar's Saves and Settings are `dialog` (#540)
-    const actionId = ctx.useAction({
+    const action = useControlAction({
       type: 'open-dialog',
       key: rawArgs,
       authorId: ctx.id,
@@ -35,7 +35,7 @@ defineMacro({
       <>
         <button
           type="button"
-          {...actionAttributes(actionId, ctx)}
+          {...actionAttributes(action, ctx)}
           onClick={openDialog}
         >
           {label}

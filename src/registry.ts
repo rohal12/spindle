@@ -65,12 +65,7 @@ export function registerSubMacro(name: string): void {
 }
 
 export function isSubMacro(name: string): boolean {
-  return (
-    subMacros.has(name) ||
-    getMacroRegistry().some((macro) =>
-      macro.subMacros.some((sub) => sub.toLowerCase() === name.toLowerCase()),
-    )
-  );
+  return subMacros.has(name) || companionParents.has(name);
 }
 
 /**
@@ -232,22 +227,39 @@ export interface MacroMetadata {
 }
 
 const metadataRegistry = new NameMap<MacroMetadata>();
+/** Indexed at registration, so parsing each tag does not scan every macro. */
+const companionParents = new NameMap<Set<string>>();
 
 export function registerMacroMetadata(
   name: string,
   metadata: MacroMetadata,
 ): void {
+  const previous = metadataRegistry.get(name);
+  if (previous) {
+    for (const sub of previous.subMacros) {
+      const parents = companionParents.get(sub);
+      parents?.delete(previous.name.toLowerCase());
+      if (parents?.size === 0) companionParents.delete(sub);
+    }
+  }
   metadataRegistry.set(name, metadata);
+  for (const sub of metadata.subMacros) {
+    const parents = companionParents.get(sub) ?? new Set<string>();
+    parents.add(metadata.name.toLowerCase());
+    companionParents.set(sub, parents);
+  }
 }
 
 /** The parents declaring a branching companion (listbox options are values). */
 export function branchParents(
   name: string,
-  macros: readonly Pick<
-    MacroMetadata,
-    'name' | 'subMacros'
-  >[] = getMacroRegistry(),
+  macros?: readonly Pick<MacroMetadata, 'name' | 'subMacros'>[],
 ): string[] {
+  if (!macros) {
+    return [...(companionParents.get(name) ?? [])].filter(
+      (parent) => parent !== 'listbox',
+    );
+  }
   return macros
     .filter(
       (macro) =>
@@ -270,4 +282,5 @@ export function getMacroRegistry(): MacroMetadata[] {
 
 export function clearMetadataRegistry(): void {
   metadataRegistry.clear();
+  companionParents.clear();
 }

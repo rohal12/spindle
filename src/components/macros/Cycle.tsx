@@ -19,7 +19,7 @@ defineMacro({
       ctx.setValue!(options[nextIndex]);
     };
 
-    const actionId = useVariableAction(ctx, {
+    const action = useVariableAction(ctx, {
       type: 'cycle',
       label: ctx.value == null ? options[0] || '' : String(ctx.value),
       options,
@@ -35,7 +35,7 @@ defineMacro({
     return (
       <button
         type="button"
-        {...actionAttributes(actionId, ctx)}
+        {...actionAttributes(action, ctx)}
         onClick={handleClick}
       >
         {ctx.value == null ? options[0] || '' : String(ctx.value)}

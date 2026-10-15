@@ -30,6 +30,7 @@ $enabled = false
 $legend = false
 $secondLegend = false
 $hits = 0
+$keepLatest = true
 
 :: Start
 <img class="loaded" src="/pixel.svg" onload="Story.set('loads', Number(Story.get('loads')) + 1)">
@@ -51,6 +52,13 @@ Next
 
 :: Enabled
 {#snapshot-shared button "Shared"}{set $hits += 100}{/button}
+
+:: Popup
+{#snapshot-shared button "Dialog shared"}{set $hits += 100}{/button}
+
+:: Duplicates
+<fieldset disabled>{#duplicate button "Older"}{set $hits += 100}{/button}</fieldset>
+{if $keepLatest}<div hidden class="newer-control">{#duplicate button "Newer"}{set $hits += 1}{/button}</div>{/if}
 `,
   );
   await compileToFile({
@@ -210,6 +218,63 @@ describe('reader control and resource regressions', () => {
       return { disabled: false, hits: Story.get('hits') };
     });
     expect(result).toEqual({ disabled: false, hits: 100 });
+  });
+
+  it('keeps a dialog action independent of an older disabled control with the same ID', async () => {
+    await page.evaluate(async () => {
+      const Story = (window as any).Story;
+      Story.openDialog('Popup');
+      await Story.waitForActions();
+    });
+    const disabled = await page.evaluate(
+      () =>
+        !!(window as any).Story.getActions().find(
+          (action: any) => action.id === 'snapshot-shared',
+        ).disabled,
+    );
+    expect(disabled).toBe(false);
+    await page.evaluate(() => (window as any).Story.step('snapshot-shared'));
+    expect(await page.evaluate(() => (window as any).Story.get('hits'))).toBe(
+      100,
+    );
+  });
+
+  it('uses the newest same-view control and restores the older registration after unmount', async () => {
+    await page.evaluate(async () => {
+      const Story = (window as any).Story;
+      Story.goto('Duplicates');
+      await Story.waitForActions();
+    });
+    const active = await page.evaluate(() => {
+      const Story = (window as any).Story;
+      const action = Story.getActions().find((a: any) => a.id === 'duplicate');
+      return {
+        label: action.label,
+        disabled: !!action.disabled,
+        offered: Story.observe().actions.some((a: any) => a.id === 'duplicate'),
+      };
+    });
+    expect(active).toEqual({ label: 'Newer', disabled: false, offered: false });
+    await page
+      .locator('.newer-control')
+      .evaluate((el) => el.removeAttribute('hidden'));
+    await page.evaluate(() => (window as any).Story.step('duplicate'));
+    expect(await page.evaluate(() => (window as any).Story.get('hits'))).toBe(
+      1,
+    );
+    await page.evaluate(async () => {
+      const Story = (window as any).Story;
+      Story.set('keepLatest', false);
+      await Story.waitForActions();
+    });
+    expect(
+      await page.evaluate(() => {
+        const action = (window as any).Story.getActions().find(
+          (a: any) => a.id === 'duplicate',
+        );
+        return { label: action.label, disabled: !!action.disabled };
+      }),
+    ).toEqual({ label: 'Older', disabled: true });
   });
 
   it('observes CSS visibility and collapsed details without relying on layout size (#565)', async () => {

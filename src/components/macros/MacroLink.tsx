@@ -1,4 +1,4 @@
-import { actionAttributes } from '../../hooks/use-action';
+import { actionAttributes, useControlAction } from '../../hooks/use-action';
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 import { useDetachedBody } from './detached-body';
@@ -49,7 +49,7 @@ defineMacro({
       perform();
     };
 
-    const actionId = ctx.useAction({
+    const action = useControlAction({
       type: 'link',
       key: passage || display,
       authorId: ctx.id,
@@ -69,7 +69,7 @@ defineMacro({
     }
     return (
       <a
-        {...actionAttributes(actionId, ctx)}
+        {...actionAttributes(action, ctx)}
         href="#"
         onClick={handleClick}
       >

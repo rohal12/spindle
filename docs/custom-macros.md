@@ -270,16 +270,22 @@ If you've used React or Preact before, these work exactly the same way. If not, 
 - **`useRef(initial)`** — stores a value that persists but doesn't trigger re-renders when changed. Access via `.current`.
 - **`useEffect(fn, deps)`** — runs `fn` after the component renders. Useful for timers, animations, or DOM manipulation.
 
-When registering a custom control with `ctx.useAction(config)`, put the returned ID in its `data-action` attribute. Spindle can then omit hidden controls from `Story.observe()` and honor native disabling, including `<fieldset disabled>`. Existing actions without this association remain available for automation.
+When registering a custom control with `ctx.useAction(config)`, put the returned ID in its `data-action` attribute. Pass its DOM ref as `element` to associate the exact control, including when multiple mounted controls share an authored action ID. Spindle can then omit hidden controls from `Story.observe()` and honor native disabling, including `<fieldset disabled>`. Existing actions without this association remain available for automation.
 
 ```js
+const element = ctx.hooks.useRef(null);
 const id = ctx.useAction({
   type: 'button',
   key: 'custom',
   label: 'Custom',
+  element,
   perform,
 });
-return ctx.h('button', { 'data-action': id, onClick: perform }, 'Custom');
+return ctx.h(
+  'button',
+  { ref: element, 'data-action': id, onClick: perform },
+  'Custom',
+);
 ```
 
 ## Sub-Macros (Branching)

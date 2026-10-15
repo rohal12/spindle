@@ -1,4 +1,4 @@
-import { createContext } from 'preact';
+import { createContext, type RefObject } from 'preact';
 
 /**
  * The function that closes the dialog the content renders in, or null
@@ -8,3 +8,7 @@ import { createContext } from 'preact';
  * offer only the innermost dialog's actions.
  */
 export const DialogCloseContext = createContext<(() => void) | null>(null);
+
+/** The dialog's own panel, for associating actions with its live controls. */
+export const DialogPanelContext =
+  createContext<RefObject<Element | null> | null>(null);

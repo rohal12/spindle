@@ -18,9 +18,9 @@ import { emitFromRender } from '../event-emitter';
 import { useModalFocus } from '../hooks/use-modal-focus';
 import { registerOpenDialog } from '../triggers';
 import { errorMessage } from '../utils/error-message';
-import { useAction } from '../hooks/use-action';
+import { actionAttributes, useControlAction } from '../hooks/use-action';
 
-import { DialogCloseContext } from './dialog-close-context';
+import { DialogCloseContext, DialogPanelContext } from './dialog-close-context';
 
 export { DialogCloseContext };
 
@@ -131,33 +131,35 @@ export function PassageDialog({
   return (
     <InterfaceContext.Provider value={false}>
       <DialogCloseContext.Provider value={stableOnClose}>
-        <div
-          class="dialog-overlay"
-          onClick={handleBackdrop}
-        >
+        <DialogPanelContext.Provider value={panelRef}>
           <div
-            ref={panelRef}
-            class={cls}
-            role="dialog"
-            data-dialog-passage={passageName}
-            aria-modal="true"
-            aria-label={label ?? passageName}
-            tabIndex={-1}
+            class="dialog-overlay"
+            onClick={handleBackdrop}
           >
-            {showCloseButton && (
-              <DialogCloseButton
-                dialogName={passageName ?? label ?? 'dialog'}
-                passageName={passageName}
-                onClose={stableOnClose}
-              />
-            )}
-            <div class="dialog-body">
-              <ViewScopeContext.Provider value={viewScope}>
-                {content}
-              </ViewScopeContext.Provider>
+            <div
+              ref={panelRef}
+              class={cls}
+              role="dialog"
+              data-dialog-passage={passageName}
+              aria-modal="true"
+              aria-label={label ?? passageName}
+              tabIndex={-1}
+            >
+              {showCloseButton && (
+                <DialogCloseButton
+                  dialogName={passageName ?? label ?? 'dialog'}
+                  passageName={passageName}
+                  onClose={stableOnClose}
+                />
+              )}
+              <div class="dialog-body">
+                <ViewScopeContext.Provider value={viewScope}>
+                  {content}
+                </ViewScopeContext.Provider>
+              </div>
             </div>
           </div>
-        </div>
+        </DialogPanelContext.Provider>
       </DialogCloseContext.Provider>
     </InterfaceContext.Provider>
   );
@@ -176,7 +178,7 @@ function DialogCloseButton({
   passageName?: string;
   onClose: () => void;
 }) {
-  const actionId = useAction({
+  const action = useControlAction({
     type: 'close-dialog',
     key: dialogName,
     label: 'Close',
@@ -187,8 +189,7 @@ function DialogCloseButton({
   return (
     <button
       type="button"
-      class="dialog-close"
-      data-action={actionId || undefined}
+      {...actionAttributes(action, { cls: 'dialog-close' })}
       aria-label="Close"
       onClick={onClose}
     >

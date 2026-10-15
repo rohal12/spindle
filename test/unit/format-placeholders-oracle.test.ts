@@ -150,7 +150,7 @@ describe('K66-scan: scanSpindleTokens matches the Spindle tokenizer', () => {
     });
   }
 
-  it('K66-scan fuzz: random mixes of brace, string, link and sigil characters', () => {
+  describe('K66-scan fuzz: random mixes of brace, string, link and sigil characters', () => {
     // Deterministic LCG so a failure reproduces
     let seed = 0x5eed1234;
     const next = () =>
@@ -198,12 +198,21 @@ describe('K66-scan: scanSpindleTokens matches the Spindle tokenizer', () => {
       '<br/>',
       'c=',
     ];
-    for (let n = 0; n < 6000; n++) {
-      const length = 1 + Math.floor(next() * 24);
-      let text = '';
-      for (let i = 0; i < length; i++)
-        text += pieces[Math.floor(next() * pieces.length)];
-      expect(ours(text), JSON.stringify(text)).toEqual(oracleSpans(text));
+    // Keep the same 6,000-input corpus, with bounded cases that also finish
+    // within the default test timeout when coverage instrumentation is on.
+    for (let batch = 0; batch < 12; batch++) {
+      const texts = Array.from({ length: 500 }, () => {
+        const length = 1 + Math.floor(next() * 24);
+        let text = '';
+        for (let i = 0; i < length; i++)
+          text += pieces[Math.floor(next() * pieces.length)];
+        return text;
+      });
+      it(`compares batch ${batch + 1} of 12`, () => {
+        for (const text of texts) {
+          expect(ours(text), JSON.stringify(text)).toEqual(oracleSpans(text));
+        }
+      });
     }
   });
 
