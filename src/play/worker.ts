@@ -33,6 +33,14 @@ async function installDom(): Promise<void> {
   // except the event classes: happy-dom's dispatchEvent() refuses events
   // made with Node's (`new CustomEvent(':storyready')` at boot).
   for (const name of DOM_EVENT_CLASSES) global[name] = source[name];
+  // Node's BroadcastChannel reaches every worker thread in the process, so
+  // sessions would hear each other's save-slot notices. Spindle works without
+  // one (it falls back when the constructor is missing).
+  Object.defineProperty(globalThis, 'BroadcastChannel', {
+    configurable: true,
+    writable: true,
+    value: undefined,
+  });
   // Spindle installs `window.Story`; story code ({do}, Story JavaScript)
   // names it as a global, as it can in a browser.
   Object.defineProperty(globalThis, 'Story', {
@@ -43,14 +51,14 @@ async function installDom(): Promise<void> {
 
 const DOM_EVENT_CLASSES = ['Event', 'CustomEvent', 'EventTarget'] as const;
 
-/** A value as JSON gives it back, or a marker when it has no JSON form. */
+/**
+ * A value as the reply will carry it (structured clone keeps Map, Set, Date
+ * and cycles), or a marker when it cannot be cloned (a function, a Map
+ * holding one).
+ */
 function encode(value: unknown): unknown {
-  if (value === undefined) return undefined;
   try {
-    const json = JSON.stringify(value);
-    return json === undefined
-      ? `[unserializable: ${typeof value}]`
-      : JSON.parse(json);
+    return structuredClone(value);
   } catch (err) {
     return `[unserializable: ${errorMessage(err)}]`;
   }
@@ -105,7 +113,16 @@ async function start(): Promise<void> {
     } catch (err) {
       reply = { id, ok: false, error: { message: errorMessage(err) } };
     }
-    port.postMessage(reply);
+    try {
+      port.postMessage(reply);
+    } catch (err) {
+      // The result could not be cloned: report why instead of no reply.
+      port.postMessage({
+        id,
+        ok: false,
+        error: { message: errorMessage(err) },
+      } satisfies Reply);
+    }
   });
   port.postMessage({ ready: true } satisfies Ready);
 }

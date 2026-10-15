@@ -25,7 +25,11 @@ export interface PlaySession {
   step(id: string, value?: unknown): Promise<Observation>;
   /** Story.goto(), then waitForActions(), then observe(). Not recorded in the transcript. */
   goto(passage: string): Promise<Observation>;
-  /** Story variables, by name with or without `$`. All of them when `names` is left out. */
+  /**
+   * Story variables, by name with or without `$`. All of them when `names` is
+   * left out. Values are structured clones; one that cannot be cloned is
+   * `"[unserializable: <reason>]"`.
+   */
   get(names?: string[]): Promise<Record<string, unknown>>;
   /** Story.set(), then waitForActions(). */
   set(values: Record<string, unknown>): Promise<void>;
@@ -46,7 +50,11 @@ interface Job {
   reject(error: Error): void;
 }
 
-/** Opens a session that runs the story in a worker. */
+/**
+ * Opens a session that runs the story in a worker. There `window` is
+ * happy-dom's window, not `globalThis`: story code sees `Story` and the DOM
+ * globals, but `window.foo = 1` does not make a bare global `foo`.
+ */
 export function openPlaySession(
   options: PlaySessionOptions,
 ): Promise<PlaySession> {

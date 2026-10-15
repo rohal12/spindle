@@ -42,8 +42,10 @@ export interface PlaySession {
   goto(passage: string): Promise<Observation>;
   /**
    * Story variables, by name with or without `$`. All of them when `names`
-   * is left out. Each value comes back as JSON gives it; one with no JSON
-   * form is the string `"[unserializable: <reason>]"`.
+   * is left out. Each value comes back as a structured clone (Map, Set, Date
+   * and cycles survive; class instances arrive as plain objects); one that
+   * cannot be cloned (a function, a Map holding one) is the string
+   * `"[unserializable: <reason>]"`.
    */
   get(names?: string[]): Promise<Record<string, unknown>>;
   /** Story.set(), then waitForActions(). */
@@ -58,6 +60,11 @@ export interface PlaySession {
  * peer dependency) and resolve with a session once the first passage is
  * shown. Calls run one at a time; a call that takes longer than
  * `stepTimeoutMs` closes the session.
+ *
+ * In the worker, `window` is happy-dom's window, not `globalThis`. Story code
+ * sees `Story` and the DOM globals as in a browser, but a property set on
+ * `window` (`window.foo = 1`) does not become a bare global `foo`. Sessions do
+ * not share a `BroadcastChannel`, so they never hear each other.
  */
 export function openPlaySession(
   options: PlaySessionOptions,

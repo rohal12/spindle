@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
+import { Worker } from 'worker_threads';
 import type * as Play from '../../types/play';
 import { storyHtml } from '../headless/story-html';
 
@@ -118,27 +119,92 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     ).rejects.toThrow(/validation error[\s\S]*nosuchmacro/);
   });
 
-  it('returns a marker for values that cannot be serialized', async () => {
+  it('clones values, with a marker for those that cannot be cloned', async () => {
     const s = await openPlaySession({
       html: storyHtml({
-        StoryVariables: '$fn = 0\n$cycle = 0\n$ok = 0',
+        StoryVariables:
+          '$fn = 0\n$fnMap = 0\n$cycle = 0\n$map = 0\n$set = 0\n$date = 0\n$ok = 0',
         StoryInit: [
           "{do}Story.set('fn', () => 1){/do}",
+          "{do}Story.set('fnMap', new Map([['f', () => 1]])){/do}",
           "{do}const c = { n: 1 }; c.self = c; Story.set('cycle', c){/do}",
+          "{do}Story.set('map', new Map([['a', 1]])){/do}",
+          "{do}Story.set('set', new Set(['x'])){/do}",
+          "{do}Story.set('date', new Date(0)){/do}",
           "{do}Story.set('ok', { n: 1 }){/do}",
         ].join(''),
         Start: 'Hi',
       }),
     });
-    expect(await s.get(['fn', 'cycle', 'ok'])).toEqual({
-      fn: '[unserializable: function]',
-      cycle: expect.stringMatching(/^\[unserializable: .*circular/i),
+    const unclonable = expect.stringMatching(
+      /^\[unserializable: .*could not be cloned/,
+    );
+    const got = await s.get([
+      'fn',
+      'fnMap',
+      'cycle',
+      'map',
+      'set',
+      'date',
+      'ok',
+    ]);
+    expect(got).toMatchObject({
+      fn: unclonable,
+      fnMap: unclonable,
       ok: { n: 1 },
     });
+    const cycle = got.cycle as { n: number; self: unknown };
+    expect(cycle.n).toBe(1);
+    expect(cycle.self).toBe(cycle);
+    expect(got.map).toEqual(new Map([['a', 1]]));
+    expect(got.map).toBeInstanceOf(Map);
+    expect(got.set).toEqual(new Set(['x']));
+    expect(got.set).toBeInstanceOf(Set);
+    expect(got.date).toEqual(new Date(0));
+    expect(got.date).toBeInstanceOf(Date);
     const all = await s.get();
-    expect(all.fn).toBe('[unserializable: function]');
-    expect(all.ok).toEqual({ n: 1 });
+    expect(all.fn).toEqual(unclonable);
+    expect(all.map).toEqual(new Map([['a', 1]]));
     await s.close();
+  });
+
+  it('gives each session no BroadcastChannel, so sessions cannot hear each other', async () => {
+    const s = await openPlaySession({
+      html: storyHtml({
+        StoryVariables: '$bc = ""',
+        StoryInit: "{do}Story.set('bc', typeof BroadcastChannel){/do}",
+        Start: 'Hi',
+      }),
+    });
+    expect(await s.get(['bc'])).toEqual({ bc: 'undefined' });
+    await s.close();
+  });
+
+  it('ends the worker on its own when boot fails', async () => {
+    const worker = new Worker(
+      new URL(pathToFileURL(resolve(projectRoot, 'dist/pkg/play-worker.js'))),
+      {
+        workerData: {
+          html: '<html><body></body></html>',
+          headlessUrl: pathToFileURL(
+            resolve(projectRoot, 'dist/pkg/headless.js'),
+          ).href,
+          transcript: { limit: 10 },
+          transitions: false,
+        },
+      },
+    );
+    const messages: unknown[] = [];
+    worker.on('message', (m) => messages.push(m));
+    // No terminate(): the worker must exit by itself.
+    const code = await new Promise((r) => worker.on('exit', r));
+    expect(code).toBe(1);
+    expect(messages).toEqual([
+      {
+        ready: false,
+        error: { message: expect.stringContaining('no <tw-storydata>') },
+      },
+    ]);
   });
 
   it('opens a session from resolved Twee', async () => {
