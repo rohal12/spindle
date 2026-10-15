@@ -14,7 +14,7 @@ function isMissingPackage(err: unknown, pkg: string): boolean {
   return (
     err instanceof Error &&
     (err as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND' &&
-    err.message.includes(pkg)
+    err.message.includes(`'${pkg}'`)
   );
 }
 

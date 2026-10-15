@@ -59,6 +59,19 @@ describe('loadOptional', () => {
       }),
     ).rejects.toBe(error);
   });
+  it('rethrows a missing dependency of the package, whose path names it', async () => {
+    const error = Object.assign(
+      new Error(
+        "Cannot find package 'x' imported from /app/node_modules/happy-dom/lib/index.js",
+      ),
+      { code: 'ERR_MODULE_NOT_FOUND' },
+    );
+    await expect(
+      loadOptional('happy-dom', 'play sessions', async () => {
+        throw error;
+      }),
+    ).rejects.toBe(error);
+  });
   it('rethrows any other import error unchanged', async () => {
     const error = new Error("Cannot find package 'happy-dom'");
     await expect(
@@ -127,6 +140,88 @@ describe('resolveStoryHtmlWith', () => {
     const { html } = await resolveStoryHtmlWith({ path: dir }, env);
     expect(html).toContain('name="Next"');
     expect(html).toContain('name="Extra"');
+  });
+
+  it('compiles a project directory the same from any working directory', async () => {
+    const dir = join(tmp, 'project-paths');
+    await mkdir(join(dir, 'story'), { recursive: true });
+    await writeFile(
+      join(dir, 'twee-ts.config.json'),
+      JSON.stringify({
+        sources: ['story'],
+        headFile: 'head.html',
+        modules: ['mod.js'],
+        exclude: ['story/skip.twee'],
+      }),
+    );
+    await writeFile(join(dir, 'head.html'), '<meta name="head-marker" />');
+    await writeFile(join(dir, 'mod.js'), 'window.moduleMarker = 1;');
+    await writeFile(join(dir, 'story', 'a.twee'), TWEE);
+    await writeFile(join(dir, 'story', 'skip.twee'), ':: Skipped\nNo\n');
+    const cwd = process.cwd();
+    const elsewhere = join(tmp, 'elsewhere');
+    await mkdir(elsewhere, { recursive: true });
+    process.chdir(elsewhere);
+    try {
+      const { html } = await resolveStoryHtmlWith({ path: dir }, env);
+      expect(html).toContain('name="head-marker"');
+      expect(html).toContain('window.moduleMarker');
+      expect(html).toContain('name="Next"');
+      expect(html).not.toContain('name="Skipped"');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it('applies the project exclude from a working directory above the project', async () => {
+    const dir = join(tmp, 'project-exclude');
+    await mkdir(join(dir, 'story'), { recursive: true });
+    await writeFile(
+      join(dir, 'twee-ts.config.json'),
+      JSON.stringify({ sources: ['story'], exclude: ['story/skip.twee'] }),
+    );
+    await writeFile(join(dir, 'story', 'a.twee'), TWEE);
+    await writeFile(join(dir, 'story', 'skip.twee'), ':: Skipped\nNo\n');
+    const cwd = process.cwd();
+    process.chdir(tmp);
+    try {
+      const { html } = await resolveStoryHtmlWith({ path: dir }, env);
+      expect(html).toContain('name="Next"');
+      expect(html).not.toContain('name="Skipped"');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it('compiles the files a glob matches', async () => {
+    const dir = join(tmp, 'globbed');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'a.twee'), TWEE);
+    await writeFile(join(dir, 'b.twee'), ':: Extra\nMore\n');
+    const { html } = await resolveStoryHtmlWith(
+      { path: join(dir, '*.twee') },
+      env,
+    );
+    expect(html).toContain('name="Next"');
+    expect(html).toContain('name="Extra"');
+  });
+
+  it('rejects a glob that matches nothing', async () => {
+    await expect(
+      resolveStoryHtmlWith({ path: join(tmp, 'none-*.twee') }, env),
+    ).rejects.toThrow(/no story files match .*none-\*\.twee/);
+  });
+
+  it('rejects a project config with no sources', async () => {
+    const dir = join(tmp, 'empty-sources');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, 'twee-ts.config.json'),
+      JSON.stringify({ sources: [] }),
+    );
+    await expect(resolveStoryHtmlWith({ path: dir }, env)).rejects.toThrow(
+      /empty-sources has a twee-ts config with no sources/,
+    );
   });
 
   it('rejects with file:line diagnostics when Twee does not compile', async () => {

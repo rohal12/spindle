@@ -1,5 +1,5 @@
-import { readFile, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { glob, readFile, stat } from 'node:fs/promises';
+import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type * as TweeTs from '@rohal12/twee-ts';
 import { errorMessage } from '../utils/error-message';
@@ -54,6 +54,41 @@ function diagnosticsError(
   );
 }
 
+/** The files a glob pattern matches, sorted. */
+async function expandGlob(pattern: string): Promise<string[]> {
+  const matches: string[] = [];
+  for await (const file of glob(pattern)) matches.push(file);
+  return matches.sort();
+}
+
+/**
+ * The project config with its paths made independent of the working
+ * directory. twee-ts reads `sources`, `modules` and `headFile` relative to
+ * the working directory, and matches `exclude` globs against paths relative
+ * to it, so each is rebased from the project directory.
+ */
+function rebaseConfig(
+  dir: string,
+  config: TweeTs.TweeTsConfig,
+): TweeTs.TweeTsConfig {
+  const fromCwd = relative(process.cwd(), dir).split(sep).join('/');
+  const rebased: TweeTs.TweeTsConfig = {
+    ...config,
+    sources: (config.sources ?? ['.']).map((s) => resolve(dir, s)),
+  };
+  if (config.modules)
+    rebased.modules = config.modules.map((m) => resolve(dir, m));
+  if (config.headFile !== undefined) {
+    rebased.headFile = resolve(dir, config.headFile);
+  }
+  if (config.exclude && fromCwd !== '') {
+    rebased.exclude = config.exclude.map(
+      (e) => `${fromCwd}/${e.replace(/^\.\//, '')}`,
+    );
+  }
+  return rebased;
+}
+
 /** The compile sources and project config for a path (or glob). */
 async function sourcesFor(
   tweeTs: TweeTsModule,
@@ -68,14 +103,27 @@ async function sourcesFor(
         `spindle: cannot read story ${path}: ${errorMessage(err)}`,
       );
     }
+    // twee-ts does not expand globs.
+    const sources = await expandGlob(path);
+    if (sources.length === 0) {
+      throw new Error(`spindle: no story files match ${path}`);
+    }
+    return { sources, config: {} };
   }
   if (!isDirectory) return { sources: [path], config: {} };
-  const config = tweeTs.loadConfig(path);
-  if (!config) return { sources: [path], config: {} };
-  return {
-    sources: (config.sources ?? [path]).map((s) => resolve(path, s)),
-    config,
-  };
+  const found = tweeTs.loadConfig(path);
+  if (!found) return { sources: [path], config: {} };
+  const config = rebaseConfig(resolve(path), found);
+  if (config.sources?.length === 0) {
+    throw new Error(`spindle: ${path} has a twee-ts config with no sources`);
+  }
+  return { sources: config.sources ?? [], config };
+}
+
+/** The diagnostics a thrown twee-ts error carries, when it has any. */
+function thrownDiagnostics(err: unknown): TweeTs.Diagnostic[] {
+  const diagnostics = (err as { diagnostics?: unknown } | null)?.diagnostics;
+  return Array.isArray(diagnostics) ? diagnostics : [];
 }
 
 async function compileTwee(path: string, env: ResolveEnv): Promise<string> {
@@ -88,8 +136,9 @@ async function compileTwee(path: string, env: ResolveEnv): Promise<string> {
   // The format options are ours: the project's own format settings would
   // compile for another format, or fetch one.
   const { output: _output, ...rest } = config;
+  let result: TweeTs.CompileResult;
   try {
-    const { output, diagnostics } = await tweeTs.compile({
+    result = await tweeTs.compile({
       ...rest,
       sources,
       outputMode: 'html',
@@ -97,19 +146,17 @@ async function compileTwee(path: string, env: ResolveEnv): Promise<string> {
       formatId: FORMAT_FOLDER,
       noRemote: true,
     });
-    if (diagnostics.some((d) => d.level === 'error')) {
-      throw diagnosticsError(diagnostics, 'spindle: Twee did not compile');
-    }
-    return output;
   } catch (err) {
     // A fatal compile error is thrown with its diagnostics.
-    const diagnostics = (err as { diagnostics?: TweeTs.Diagnostic[] })
-      .diagnostics;
-    if (Array.isArray(diagnostics) && diagnostics.length > 0) {
-      throw diagnosticsError(diagnostics, errorMessage(err));
-    }
-    throw err;
+    const diagnostics = thrownDiagnostics(err);
+    throw diagnostics.length > 0
+      ? diagnosticsError(diagnostics, errorMessage(err))
+      : err;
   }
+  if (result.diagnostics.some((d) => d.level === 'error')) {
+    throw diagnosticsError(result.diagnostics, 'spindle: Twee did not compile');
+  }
+  return result.output;
 }
 
 /** The `format-version` of the story's `<tw-storydata>`, if it has one. */
