@@ -65,7 +65,12 @@ export function registerSubMacro(name: string): void {
 }
 
 export function isSubMacro(name: string): boolean {
-  return subMacros.has(name);
+  return (
+    subMacros.has(name) ||
+    getMacroRegistry().some((macro) =>
+      macro.subMacros.some((sub) => sub.toLowerCase() === name.toLowerCase()),
+    )
+  );
 }
 
 /**
@@ -233,6 +238,23 @@ export function registerMacroMetadata(
   metadata: MacroMetadata,
 ): void {
   metadataRegistry.set(name, metadata);
+}
+
+/** The parents declaring a branching companion (listbox options are values). */
+export function branchParents(
+  name: string,
+  macros: readonly Pick<
+    MacroMetadata,
+    'name' | 'subMacros'
+  >[] = getMacroRegistry(),
+): string[] {
+  return macros
+    .filter(
+      (macro) =>
+        macro.name.toLowerCase() !== 'listbox' &&
+        macro.subMacros.some((sub) => sub.toLowerCase() === name.toLowerCase()),
+    )
+    .map((macro) => macro.name.toLowerCase());
 }
 
 /** The declared parameters of the macro `name`, if it declares any. */

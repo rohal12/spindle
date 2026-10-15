@@ -993,6 +993,8 @@ export interface PairMarkupOptions {
    * tag, and the markup after it is not its body.
    */
   isRaw?(name: string): boolean;
+  /** Parents declaring a branching sub-macro (default: registered metadata). */
+  branchParents?(name: string): readonly string[];
   /**
    * The markup the tokens are of: lets a message say at which line and column
    * an element was opened (else it says at which offset).

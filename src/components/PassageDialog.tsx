@@ -176,7 +176,7 @@ function DialogCloseButton({
   passageName?: string;
   onClose: () => void;
 }) {
-  useAction({
+  const actionId = useAction({
     type: 'close-dialog',
     key: dialogName,
     label: 'Close',
@@ -188,6 +188,7 @@ function DialogCloseButton({
     <button
       type="button"
       class="dialog-close"
+      data-action={actionId || undefined}
       aria-label="Close"
       onClick={onClose}
     >

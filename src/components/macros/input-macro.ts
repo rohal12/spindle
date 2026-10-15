@@ -1,6 +1,9 @@
 import { h } from 'preact';
 import { defineMacro, type MacroContext } from '../../define-macro';
-import type { UseActionOptions } from '../../hooks/use-action';
+import {
+  actionAttributes,
+  type UseActionOptions,
+} from '../../hooks/use-action';
 import { display } from './display';
 
 /** The story variable a `storeVar` macro binds: its first parameter. */
@@ -74,9 +77,7 @@ export function defineInputMacro(
 
       return h(type ? 'input' : 'textarea', {
         type,
-        id: ctx.id,
-        'data-action': actionId || undefined,
-        class: ctx.cls,
+        ...actionAttributes(actionId, ctx),
         value: shown,
         placeholder,
         onInput: (e: Event) => {

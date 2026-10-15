@@ -33,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Imported saves remap playthrough IDs already owned by another story; deleting a playthrough removes only that story's saves and slots (#562).
+- Outgoing passage snapshots remove inline event handlers before resources can load or fail again, keeping transitions from changing destination state (#563).
+- Custom sub-macros build the documented branches in the runtime and tooling; replacing a parent releases companions that no other parent declares (#564, #571).
+- Observations omit hidden and collapsed controls, initialization and detached click bodies publish no actions, and action execution respects native disabled fieldsets and the first-legend exception (#565, #566).
+- Passage formatting preserves literal tabs, trailing whitespace and long lines in fenced code and whitespace-sensitive HTML (#567, #569). Formatter bundles use the DOM-free Markdown entity decoder so editor extensions and Node tooling still load without a document.
+- Changed shared graphs produce bounded structural diffs while preserving aliases and target-only fields; literal NUL-prefixed keys no longer collide with internal collection-entry paths (#568, #570).
+
 - Imported saves cannot introduce executable watcher conditions or actions: saved watchers must match definitions supplied by the running story before they are restored (#545). Passage and dialog watchers no longer inherit persistent interface ownership when loading early checkpoints (#547).
 - Outgoing passage snapshots replace iframe/object/embed browsing contexts with passive placeholders, so transitions never reload their scripts (#546). Dialog keyboard handlers follow document replacement in nested same-origin iframes (#557).
 - RegExp saves preserve primitive cursor values, including fractional numbers, `NaN`, infinities, strings and negative zero. Object-valued cursors are refused before a slot can be overwritten (#548).

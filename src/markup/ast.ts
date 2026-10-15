@@ -180,7 +180,7 @@ function astNode({ token, body }: PairedNode): ASTNode {
       };
       if (!body) return withSelectors(node, token);
       const children = buildAst(body.children);
-      if (!BRANCHING.has(name)) {
+      if (!BRANCHING.has(name) && body.branches.length === 0) {
         node.children = children;
         return withSelectors(node, token);
       }
@@ -193,13 +193,14 @@ function astNode({ token, body }: PairedNode): ASTNode {
           { rawArgs: tag.rawArgs, children: branchChildren },
           tag,
         );
+      if (!BRANCHING.has(name)) node.children = children;
       node.branches = [
-        branch(token, children),
+        ...(BRANCHING.has(name) ? [branch(token, children)] : []),
         ...body.branches.map(({ tag, children: c }: PairedBranch) =>
           branch(tag, buildAst(c)),
         ),
       ];
-      return node;
+      return BRANCHING.has(name) ? node : withSelectors(node, token);
     }
   }
 }

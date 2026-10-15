@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { useStoryStore } from '../../store';
 import { defineMacro } from '../../define-macro';
 import { useDetachedBody } from './detached-body';
@@ -48,7 +49,7 @@ defineMacro({
       perform();
     };
 
-    ctx.useAction({
+    const actionId = ctx.useAction({
       type: 'link',
       key: passage || display,
       authorId: ctx.id,
@@ -68,8 +69,7 @@ defineMacro({
     }
     return (
       <a
-        id={ctx.id}
-        class={ctx.cls}
+        {...actionAttributes(actionId, ctx)}
         href="#"
         onClick={handleClick}
       >

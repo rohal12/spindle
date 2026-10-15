@@ -11,6 +11,7 @@ import { resetEmitter } from '../../src/event-emitter';
 import { initPRNG, random } from '../../src/prng';
 import type { StoryData, Passage } from '../../src/parser';
 import { deepClone } from '../../src/structural';
+import { executeMutation } from '../../src/execute-mutation';
 
 function makePassage(pid: number, name: string, content: string): Passage {
   return { pid, name, tags: [], metadata: {}, content };
@@ -442,6 +443,47 @@ describe('load pipeline', () => {
         },
       );
       expect(Story.get('state')).toEqual({ count: 0, engine: 42 });
+    });
+
+    it('keeps distinct snapshot objects that the passage aliased (#568)', async () => {
+      Story.set({
+        a: { value: 1, aOnly: true },
+        b: { value: 1, bOnly: true },
+      });
+      Story.goto('B');
+      Story.set('b', Story.get('a'));
+      expect(Story.get('a')).toBe(Story.get('b'));
+      Story.on('beforesave', () => {
+        executeMutation('$a.value = 2', {}, () => {});
+      });
+      await saveTo('hooked');
+      Story.goto('C');
+      await loadFrom('hooked');
+
+      expect(Story.get('a')).toEqual({ value: 2, aOnly: true });
+      expect(Story.get('b')).toEqual({ value: 2, bOnly: true });
+      expect(Story.get('a')).not.toBe(Story.get('b'));
+    });
+
+    it('copies a missing snapshot parent without adopting another target branch (#568)', async () => {
+      Story.set({ a: undefined, b: { value: 1, bOnly: true } });
+      Story.goto('B');
+      Story.set('a', Story.get('b'));
+      Story.set('a.passageOnly', true);
+      Story.on('beforesave', () => {
+        executeMutation('$a.value = 2', {}, () => {});
+      });
+      await saveTo('hooked');
+      Story.goto('C');
+      await loadFrom('hooked');
+
+      expect(Story.get('a')).toEqual({
+        value: 2,
+        bOnly: true,
+        passageOnly: true,
+      });
+      expect(Story.get('b')).toEqual({ value: 2, bOnly: true });
+      expect(Story.get('a')).not.toBe(Story.get('b'));
     });
 
     it('merges at any depth', async () => {

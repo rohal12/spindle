@@ -67,6 +67,8 @@ async function buildHydrate(): Promise<string> {
   };
   const result = await build({
     configFile: false,
+    // These bundles also run in plain Node. Use micromark's DOM-free entity decoder.
+    resolve: { conditions: ['module', 'node'] },
     logLevel: 'warn',
     plugins: [builtinMacrosFromRegistry, peggyPlugin()],
     build: {
@@ -161,6 +163,7 @@ console.log('Copied tooling entry point to dist/pkg/');
 // Preact/DOM dependencies, so Node tooling can run them.
 await build({
   configFile: false,
+  resolve: { conditions: ['module', 'node'] },
   logLevel: 'warn',
   plugins: [peggyPlugin()],
   build: {

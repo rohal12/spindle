@@ -1,5 +1,6 @@
 import {
   actionMatches,
+  isActionVisible,
   checkActionMatcher,
   getActions,
   getDialogActions,
@@ -117,7 +118,9 @@ const DIALOG = '.dialog-overlay';
  */
 function offeredActions(): StoryAction[] {
   const dialog = innermostOpenDialog();
-  return dialog ? getDialogActions(dialog) : getActions();
+  return (dialog ? getDialogActions(dialog) : getActions()).filter(
+    isActionVisible,
+  );
 }
 
 /** What the story shows and offers now. */

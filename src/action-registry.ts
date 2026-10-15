@@ -1,3 +1,4 @@
+import { isReaderVisible } from './utils/element-visibility';
 import { emit } from './event-emitter';
 import {
   checkFields,
@@ -255,7 +256,7 @@ export function getDialogActions(dialog: () => void): StoryAction[] {
   return Array.from(actions.values())
     .map((entries) => entries[entries.length - 1]!)
     .filter((entry) => entry.dialog === dialog)
-    .map((entry) => entry.action);
+    .map((entry) => effectiveAction(entry.action));
 }
 
 export function getAction(id: string): StoryAction | undefined {
@@ -264,7 +265,32 @@ export function getAction(id: string): StoryAction | undefined {
 }
 
 function listed(entries: Entry[]): StoryAction {
-  return entries[entries.length - 1]!.action;
+  return effectiveAction(entries[entries.length - 1]!.action);
+}
+
+/** The live control for an action; author IDs need no selector escaping. */
+function actionElements(id: string): Element[] {
+  if (typeof document === 'undefined') return [];
+  return [...document.querySelectorAll('[data-action]')].filter(
+    (el) => el.getAttribute('data-action') === id,
+  );
+}
+
+/** Effective native disability, including disabled fieldsets and legends. */
+function effectiveAction(action: StoryAction): StoryAction {
+  const controls = actionElements(action.id);
+  return !action.disabled && controls.some((el) => el.matches(':disabled'))
+    ? { ...action, disabled: true }
+    : action;
+}
+
+/** Whether any connected instance of this action is visible to a reader. */
+export function isActionVisible(action: StoryAction): boolean {
+  const elements = actionElements(action.id);
+  // Older custom actions need not associate a DOM control. Keep those
+  // registrations available; built-ins and associated custom controls are
+  // filtered against the live DOM.
+  return elements.length === 0 || elements.some(isReaderVisible);
 }
 
 export function clearActions(): void {

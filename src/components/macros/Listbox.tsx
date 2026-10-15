@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 import { display } from './display';
@@ -22,9 +23,7 @@ defineMacro({
 
     return (
       <select
-        id={ctx.id}
-        data-action={actionId || undefined}
-        class={ctx.cls}
+        {...actionAttributes(actionId, ctx)}
         value={display(ctx.value)}
         onChange={(e) => ctx.setValue!((e.target as HTMLSelectElement).value)}
       >

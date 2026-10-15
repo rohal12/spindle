@@ -15,6 +15,18 @@ export interface UseActionOptions extends Omit<StoryAction, 'id'> {
   authorId?: string;
 }
 
+/** Associate a macro control's authored attributes with its runtime action. */
+export function actionAttributes(
+  actionId: string,
+  control: { id?: string; cls?: string },
+): { id?: string; class?: string; 'data-action'?: string } {
+  return {
+    id: control.id,
+    class: control.cls,
+    'data-action': actionId || undefined,
+  };
+}
+
 /**
  * While true, controls rendered underneath do not register actions or reserve
  * IDs. Used for display-only content mounted off-screen, so it never shows up

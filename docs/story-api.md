@@ -553,16 +553,16 @@ actions.forEach(function (a) {
 
 Each action object has these properties:
 
-| Property   | Type        | Description                              |
-| ---------- | ----------- | ---------------------------------------- |
-| `id`       | `string`    | Unique identifier (e.g. `link:Forest`)   |
-| `type`     | `string`    | Action type (see below)                  |
-| `label`    | `string`    | Display text                             |
-| `target`   | `string?`   | Destination passage (links, dialogs)     |
-| `variable` | `string?`   | Bound variable name (inputs only)        |
-| `options`  | `string[]?` | Available options (cycle/listbox)        |
-| `value`    | `unknown?`  | Current value (inputs)                   |
-| `disabled` | `boolean?`  | Whether the action is currently disabled |
+| Property   | Type        | Description                                                                   |
+| ---------- | ----------- | ----------------------------------------------------------------------------- |
+| `id`       | `string`    | Unique identifier (e.g. `link:Forest`)                                        |
+| `type`     | `string`    | Action type (see below)                                                       |
+| `label`    | `string`    | Display text                                                                  |
+| `target`   | `string?`   | Destination passage (links, dialogs)                                          |
+| `variable` | `string?`   | Bound variable name (inputs only)                                             |
+| `options`  | `string[]?` | Available options (cycle/listbox)                                             |
+| `value`    | `unknown?`  | Current value (inputs)                                                        |
+| `disabled` | `boolean?`  | Whether the action is currently disabled, including native fieldset disabling |
 
 Action types: `link`, `button`, `cycle`, `textbox`, `numberbox`, `textarea`, `checkbox`, `radiobutton`, `listbox`, `back`, `forward`, `restart`, `save`, `load`, `dialog`, `open-dialog`, `close-dialog`.
 
@@ -713,7 +713,7 @@ const o = Story.observe();
 - `text`: the text of the passage area, including its header and footer but not the `StoryInterface` chrome (menubars, sidebars). Controls show as markers such as `[textbox $name: "Alice"]`; hidden elements are left out.
 - `context`: the rendered [`StoryContext`](special-passages.md#storycontext) passage, or `null` if the story has none. The first `observe()` mounts it.
 - `dialogs`: the open dialogs, `{ passage, text }` each, in the order they were opened (innermost last). `passage` is `''` for a dialog that shows no passage, such as the menubar's Saves dialog. A dialog's text appears only here, not in `text` or in the dialog it was opened from.
-- `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules). A dialog is modal: while one is open, only the actions of the controls in the innermost open dialog are offered, its `close-dialog` included, not those of the passage, the story interface or the dialogs beneath it. `step()` still takes any action ID.
+- `actions`: the actions of [`getActions()`](#storygetactions) without `perform`, filtered by [`setObservedActions()`](#storysetobservedactionsrules). Controls hidden by markup, CSS, or collapsed details are omitted; hidden initialization and click-body trees publish no actions. A dialog is modal: while one is open, only the actions of the controls in the innermost open dialog are offered, its `close-dialog` included, not those of the passage, the story interface or the dialogs beneath it. `step()` still takes any action ID.
 - `errors`: the messages of the macro errors on screen in the passage, the dialogs and `StoryContext` (not those in hidden elements), then the runtime errors (such as a failed save or a `Story.goto()` to a missing passage) as `<what failed>: <message>`. A runtime error stays listed, in every observation, until the reader dismisses its banner or the story clears it.
 
 - `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.

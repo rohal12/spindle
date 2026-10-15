@@ -50,7 +50,6 @@ import {
   checkParameterTypes,
   registerMacro,
   registerMacroText,
-  registerSubMacro,
   registerMacroMetadata,
 } from './registry';
 import type {
@@ -323,8 +322,5 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
     source,
   });
 
-  if (config.subMacros) {
-    for (const sub of config.subMacros) registerSubMacro(sub);
-  }
   setDefinedBlockMacro(config.name, isBlock);
 }

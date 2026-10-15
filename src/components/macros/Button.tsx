@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { useDetachedBody } from './detached-body';
 
@@ -16,7 +17,7 @@ defineMacro({
     // {if}, {unwatch}, etc.) fire through the normal Preact pipeline.
     const handleClick = () => runBody(children);
 
-    ctx.useAction({
+    const actionId = ctx.useAction({
       type: 'button',
       key: rawArgs,
       authorId: ctx.id,
@@ -27,8 +28,7 @@ defineMacro({
     return (
       <button
         type="button"
-        id={ctx.id}
-        class={ctx.cls}
+        {...actionAttributes(actionId, ctx)}
         onClick={handleClick}
       >
         {label}

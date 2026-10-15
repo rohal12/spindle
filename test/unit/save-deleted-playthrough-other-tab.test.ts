@@ -63,7 +63,7 @@ describe('saving after another tab deleted the playthrough (#527)', () => {
 
   /** Tab A deletes the shared playthrough and goes on in a new one. */
   async function deleteInTabA(): Promise<string> {
-    const next = 'tab-a-playthrough';
+    const next = `tab-a-playthrough-${ifid}`;
     await saveManager.deletePlaythroughData(ifid, shared, {
       current: shared,
       id: next,
@@ -119,7 +119,7 @@ describe('saving after another tab deleted the playthrough (#527)', () => {
 
   it('puts an overwritten slot save in a playthrough that exists', async () => {
     // The slot holds a save of a playthrough that is still there
-    const kept = 'kept-playthrough';
+    const kept = `kept-playthrough-${ifid}`;
     await saveManager.startNewPlaythrough(ifid, kept);
     await saveManager.quickSave(
       ifid,
@@ -148,7 +148,7 @@ describe('saving after another tab deleted the playthrough (#527)', () => {
       shared,
       useStoryStore.getState().getSavePayload(),
     );
-    const other = 'other-playthrough';
+    const other = `other-playthrough-${ifid}`;
     await saveManager.startNewPlaythrough(ifid, other);
     await saveManager.deletePlaythroughData(ifid, other);
 

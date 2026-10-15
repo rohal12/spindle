@@ -844,7 +844,7 @@ function keepHookWrites(
 ): void {
   const moment = payload.history[payload.historyIndex];
   if (!moment) return;
-  const changes = changesBetween(before, after, true);
+  const changes = changesBetween(before, after, true, moment.variables);
   const keys = new Set(changes.map((c) => pathKey(c.path)));
   // A write of the live value is no change to the live store, but the
   // snapshot can still hold another one: an earlier save's hooks wrote the
