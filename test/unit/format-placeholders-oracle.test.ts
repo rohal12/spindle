@@ -205,7 +205,8 @@ describe('K66-scan: scanSpindleTokens matches the Spindle tokenizer', () => {
         text += pieces[Math.floor(next() * pieces.length)];
       expect(ours(text), JSON.stringify(text)).toEqual(oracleSpans(text));
     }
-  });
+    // 6000 deterministic cases; slow under coverage, so allow more than 5 s.
+  }, 30_000);
 
   it('K66-scan: attribute values inside recognized tags are scanned too', () => {
     const text = '<div class="{$c}" title=\'{if $x}a{/if}\'>x</div>';
