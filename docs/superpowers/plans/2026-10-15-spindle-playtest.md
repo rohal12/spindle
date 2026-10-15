@@ -95,6 +95,10 @@ run`), `typecheck`, `format:check` and `duplication`.
 - Create: `README.md`, a stub that Task 7 fills in.
 - Create: `docs/design.md`, a copy of the spec.
 - Create: `src/index.ts`, empty for now.
+- Create: `src/types.ts`, holding the shared interfaces exactly as Tasks 2-4
+  define them: `PlaytestConfig` (Task 2), `Option` (Task 3) and `Decision`
+  (Task 4). Those tasks run in parallel, so they import these from
+  `./types.js` rather than defining them again.
 - Create: `test/smoke.test.ts`, asserting `1 + 1 === 2`. Delete it in
   Task 2.
 
@@ -126,7 +130,7 @@ git add -A && git commit -m "chore: scaffold spindle-playtest"
 **Interfaces:**
 
 - Produces:
-  - `interface PlaytestConfig { story: string; provider: 'jev' | 'kev'; baseUrl: string; model: string; runs: number; maxTurns: number; parallel: number; historyLimit: number; instructions: string; endings: string[]; inputs: Record<string, unknown[]>; seed: number; apiKey?: string }`.
+  - `interface PlaytestConfig` (in `src/types.ts`, from Task 1) `{ story: string; provider: 'jev' | 'kev'; baseUrl: string; model: string; runs: number; maxTurns: number; parallel: number; historyLimit: number; instructions: string; endings: string[]; inputs: Record<string, unknown[]>; seed: number; apiKey?: string }`.
     Keys in `inputs` are normalized without `$`.
   - `resolveConfig(file: unknown, flags: Partial<Pick<PlaytestConfig, 'story' | 'runs' | 'maxTurns' | 'seed'>>, env: Record<string, string | undefined>, randomSeed: () => number): PlaytestConfig`.
     It throws a `ConfigError` whose message names the field.
@@ -209,9 +213,9 @@ it('sample picks by cumulative probability and tolerates rounding', () => {
   from `@rohal12/spindle/play`. If `ObservedAction` isn't re-exported there,
   use `Observation['actions'][number]`.
 - Produces:
-  - `interface Option { name: string; description: string; id: string; value?: unknown }`
-  - `buildOptions(actions: ObservedAction[], inputs: Record<string, unknown[]>): { options: Option[]; unusedInputs: string[] }`.
-    `unusedInputs` holds variable names (without `$`) of free inputs with
+  - `interface Option` (in `src/types.ts`) `{ name: string; description: string; id: string; value?: unknown }`
+  - `buildOptions(actions: ObservedAction[], inputs: Record<string, unknown[]>): { options: Option[]; unusedInputs: { variable: string; type: string }[] }`.
+    `unusedInputs` holds variable names (without `$`) and the action type of free inputs with
     no candidates.
   - `buildState(o: Observation, history: readonly TranscriptEntry[]): string`
 
@@ -260,7 +264,7 @@ it('offers configured candidates for free inputs and reports the rest', () => {
     { name: ['Alice', ''] },
   );
   expect(r.options.map((o) => o.name)).toEqual(['$name = Alice']);
-  expect(r.unusedInputs).toEqual(['nick']);
+  expect(r.unusedInputs).toEqual([{ variable: 'nick', type: 'textbox' }]);
 });
 it('skips disabled actions before numbering duplicates', () => {
   /* two 'Go north' enabled + one disabled → 'Go north', 'Go north (2)' */
@@ -321,7 +325,7 @@ target.
 **Interfaces:**
 
 - Produces:
-  - `interface Decision { choice: string; confidence: number; probabilities: Record<string, number> }`
+  - `interface Decision` (in `src/types.ts`) `{ choice: string; confidence: number; probabilities: Record<string, number> }`
   - `class AbortError extends Error`, for errors that stop the whole
     command.
   - `class RunError extends Error`, for errors that end one run.
@@ -426,7 +430,7 @@ A 422 counts as "token limit" when its body text matches
   `openPlaySession` from `@rohal12/spindle/play`.
 - Produces:
   - `interface TurnRecord { passage: string; options: string[]; probabilities: number[]; confidence: number; chose: string }`
-  - `interface RunResult { outcome: 'ending' | 'dead end' | 'turn cap' | 'error'; passage: string; turns: TurnRecord[]; errors: { passage: string; message: string }[]; unusedInputs: { variable: string; passage: string }[]; message?: string }`
+  - `interface RunResult { outcome: 'ending' | 'dead end' | 'turn cap' | 'error'; passage: string; turns: TurnRecord[]; errors: { passage: string; message: string }[]; unusedInputs: { variable: string; type: string; passage: string }[]; message?: string }`
   - `endingPassages(html: string, configured: string[]): Set<string>`,
     which reads `tags` from `<tw-passagedata>` with a regex and adds the
     `ending` ones.
@@ -453,7 +457,7 @@ it('records on-screen errors by passage without ending the run', async () => {
   /* errors [{ passage: 'Start', message: /price/ }], outcome 'ending' */
 });
 it('lists unused free inputs and chooses configured candidates', async () => {
-  /* inputs { name: ['Ada'] }; options seen include '$name = Ada', '$weapon = axe'; unusedInputs [{ variable: 'nick', passage: 'Start' }] */
+  /* inputs { name: ['Ada'] }; options seen include '$name = Ada', '$weapon = axe'; unusedInputs [{ variable: 'nick', type: 'textbox', passage: 'Start' }] */
 });
 it('follows a story-triggered redirect', async () => {
   /* redirect.twee → 'ending' at 'End' */
@@ -531,9 +535,8 @@ More summary tests:
 - At most 10 least-confident rows, sorted ascending.
 - Rows visited only once are excluded.
 - Tokens are formatted with `k` above 1,000 and with thousands separators.
-- The `(textbox in Tavern)` part needs the input type. Add `type` to
-  `unusedInputs` in `RunResult` if Task 5 left it out, and note that in the
-  report.
+- The `(textbox in Tavern)` part comes from `unusedInputs[].type` and
+  `.passage`.
 
 `playtest.test.ts`, using the fake server and `ending.twee`:
 
