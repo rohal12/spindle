@@ -201,11 +201,18 @@ export async function resolveStoryHtmlWith(
 export async function resolveStoryHtml(
   input: StoryInput,
 ): Promise<ResolvedStory> {
+  // Relative to dist/pkg/play.js at runtime; @vite-ignore keeps the build
+  // from inlining the files these URLs name.
   const { version } = JSON.parse(
-    await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    await readFile(
+      new URL(/* @vite-ignore */ '../../package.json', import.meta.url),
+      'utf8',
+    ),
   ) as { version: string };
   return resolveStoryHtmlWith(input, {
-    formatSearchDir: fileURLToPath(new URL('..', import.meta.url)),
+    formatSearchDir: fileURLToPath(
+      new URL(/* @vite-ignore */ '..', import.meta.url),
+    ),
     version,
   });
 }

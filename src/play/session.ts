@@ -50,9 +50,11 @@ interface Job {
 export function openPlaySession(
   options: PlaySessionOptions,
 ): Promise<PlaySession> {
+  // Resolved at runtime next to dist/pkg/play.js; @vite-ignore keeps the
+  // build from inlining or rewriting them.
   return openPlaySessionWith(options, {
-    workerUrl: new URL('./play-worker.js', import.meta.url),
-    headlessUrl: new URL('./headless.js', import.meta.url),
+    workerUrl: new URL(/* @vite-ignore */ './play-worker.js', import.meta.url),
+    headlessUrl: new URL(/* @vite-ignore */ './headless.js', import.meta.url),
   });
 }
 

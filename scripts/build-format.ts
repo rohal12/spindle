@@ -205,3 +205,34 @@ await build({
 });
 
 console.log('Built dist/pkg/headless.js (headless)');
+
+// Bundle the play entry point (`@rohal12/spindle/play`) and its worker. Both
+// are emitted flat in dist/pkg/: they find the worker, headless.js, the format
+// and package.json by URLs relative to themselves. happy-dom and twee-ts are
+// optional peer dependencies, loaded at runtime and never bundled.
+const PLAY_EXTERNAL = /^(node:|happy-dom$|@rohal12\/twee-ts$)/;
+for (const [entry, fileName] of [
+  ['src/play/index.ts', 'play.js'],
+  ['src/play/worker.ts', 'play-worker.js'],
+] as const) {
+  await build({
+    configFile: false,
+    logLevel: 'warn',
+    build: {
+      outDir: pkgDir,
+      emptyOutDir: false,
+      target: 'es2022',
+      minify: false,
+      lib: {
+        entry: resolve(projectRoot, entry),
+        formats: ['es'],
+        fileName: () => fileName,
+      },
+      rollupOptions: {
+        external: (id) => RUNTIME_DEPS.test(id) || PLAY_EXTERNAL.test(id),
+      },
+    },
+  });
+}
+
+console.log('Built dist/pkg/play.js and dist/pkg/play-worker.js (play)');

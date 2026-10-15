@@ -55,6 +55,10 @@ describe('npm package', () => {
   it.each(exportTargets)('ships $path', ({ path }) => {
     expect(files.has(path)).toBe(true);
   });
+
+  it('ships the play worker next to the play entry', () => {
+    expect(files.has('dist/pkg/play-worker.js')).toBe(true);
+  });
 });
 
 describe('@rohal12/spindle/tooling', async () => {

@@ -85,6 +85,14 @@ export function bootStory(options: BootStoryOptions): Promise<StoryAPI> {
   });
 }
 
+/**
+ * The story's `$` variables: a shallow copy of the current values, keyed by
+ * name without the `$`. Values are the store's own (frozen) objects.
+ */
+export function storyVariables(): Record<string, unknown> {
+  return { ...useStoryStore.getState().variables };
+}
+
 /** One recorded step: what the reader saw, and what they chose. */
 export interface TranscriptEntry {
   turn: number;
