@@ -1,5 +1,5 @@
 import { glob, readFile, stat } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type * as TweeTs from '@rohal12/twee-ts';
 import { errorMessage } from '../utils/error-message';
@@ -71,7 +71,9 @@ function rebaseConfig(
   dir: string,
   config: TweeTs.TweeTsConfig,
 ): TweeTs.TweeTsConfig {
-  const fromCwd = relative(process.cwd(), dir).split(sep).join('/');
+  const fromCwd = globLiteral(
+    relative(process.cwd(), dir).split(sep).join('/'),
+  );
   const rebased: TweeTs.TweeTsConfig = {
     ...config,
     sources: (config.sources ?? ['.']).map((s) => resolve(dir, s)),
@@ -82,11 +84,38 @@ function rebaseConfig(
     rebased.headFile = resolve(dir, config.headFile);
   }
   if (config.exclude && fromCwd !== '') {
-    rebased.exclude = config.exclude.map(
-      (e) => `${fromCwd}/${e.replace(/^\.\//, '')}`,
+    rebased.exclude = config.exclude.map((e) =>
+      isAbsolute(e) ? e : `${fromCwd}/${e.replace(/^\.\//, '')}`,
     );
   }
   return rebased;
+}
+
+/**
+ * The project config less its output and format options. Those are ours: the
+ * project's own would write a file, compile for another format, or fetch one.
+ */
+function withoutFormatOptions(
+  config: TweeTs.TweeTsConfig,
+): Partial<TweeTs.CompileOptions> {
+  return Object.fromEntries(
+    Object.entries(config).filter(
+      ([key]) =>
+        !key.startsWith('format') &&
+        !key.startsWith('output') &&
+        key !== 'useTweegoPath' &&
+        key !== 'noRemote',
+    ),
+  );
+}
+
+/**
+ * `text` as a glob matching only itself, for Node's `path.matchesGlob` (which
+ * twee-ts uses): a metacharacter goes in brackets. Braces and `!` cannot be
+ * bracketed there, so each becomes `?` (any one character).
+ */
+function globLiteral(text: string): string {
+  return text.replace(/[*?[\]()+@]/g, (c) => `[${c}]`).replace(/[{}!]/g, '?');
 }
 
 /** The compile sources and project config for a path (or glob). */
@@ -133,13 +162,10 @@ async function compileTwee(path: string, env: ResolveEnv): Promise<string> {
     env.importer,
   );
   const { sources, config } = await sourcesFor(tweeTs, path);
-  // The format options are ours: the project's own format settings would
-  // compile for another format, or fetch one.
-  const { output: _output, ...rest } = config;
   let result: TweeTs.CompileResult;
   try {
     result = await tweeTs.compile({
-      ...rest,
+      ...withoutFormatOptions(config),
       sources,
       outputMode: 'html',
       formatPaths: [env.formatSearchDir],

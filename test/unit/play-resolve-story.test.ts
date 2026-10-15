@@ -193,6 +193,94 @@ describe('resolveStoryHtmlWith', () => {
     }
   });
 
+  it('applies the project exclude when the project path has glob characters', async () => {
+    const dir = join(tmp, 'proj[1]{a,b}');
+    await mkdir(join(dir, 'story'), { recursive: true });
+    await writeFile(
+      join(dir, 'twee-ts.config.json'),
+      JSON.stringify({ sources: ['story'], exclude: ['story/skip.twee'] }),
+    );
+    await writeFile(join(dir, 'story', 'a.twee'), TWEE);
+    await writeFile(join(dir, 'story', 'skip.twee'), ':: Skipped\nNo\n');
+    const cwd = process.cwd();
+    process.chdir(tmp);
+    try {
+      const { html } = await resolveStoryHtmlWith({ path: dir }, env);
+      expect(html).toContain('name="Next"');
+      expect(html).not.toContain('name="Skipped"');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  describe('the options passed to twee-ts', () => {
+    /** Compiles `dir` with a fake twee-ts whose config is `config`. */
+    async function compileOptions(
+      dir: string,
+      config: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      let options: Record<string, unknown> = {};
+      const fake = {
+        loadConfig: () => config,
+        compile: async (o: Record<string, unknown>) => {
+          options = o;
+          return { output: storyHtml({ Start: 'Hi' }), diagnostics: [] };
+        },
+      };
+      await resolveStoryHtmlWith(
+        { path: dir },
+        { ...env, importer: async () => fake },
+      );
+      return options;
+    }
+
+    it('drops every format and output option of the project config', async () => {
+      const dir = join(tmp, 'format-options');
+      await mkdir(dir, { recursive: true });
+      const options = await compileOptions(dir, {
+        sources: ['.'],
+        output: 'out.html',
+        outputMode: 'twee3',
+        formatId: 'sugarcube-2',
+        formatPaths: ['/elsewhere'],
+        formatIndices: ['https://example.com/index.json'],
+        formatUrls: ['https://example.com/format.js'],
+        formatFetchTimeout: 5,
+        useTweegoPath: true,
+        noRemote: false,
+        trim: false,
+      });
+      expect(options).toEqual({
+        sources: [dir],
+        trim: false,
+        outputMode: 'html',
+        formatPaths: [env.formatSearchDir],
+        formatId: 'pkg',
+        noRemote: true,
+      });
+    });
+
+    it('keeps absolute exclude patterns as they are', async () => {
+      const dir = join(tmp, 'absolute-exclude');
+      await mkdir(dir, { recursive: true });
+      const absolute = join(dir, 'skip.twee');
+      const cwd = process.cwd();
+      process.chdir(tmp);
+      try {
+        const options = await compileOptions(dir, {
+          sources: ['.'],
+          exclude: [absolute, 'rel/*.twee'],
+        });
+        expect(options.exclude).toEqual([
+          absolute,
+          'absolute-exclude/rel/*.twee',
+        ]);
+      } finally {
+        process.chdir(cwd);
+      }
+    });
+  });
+
   it('compiles the files a glob matches', async () => {
     const dir = join(tmp, 'globbed');
     await mkdir(dir, { recursive: true });
