@@ -43,7 +43,7 @@ ms (the story may be stuck in a loop)`.
   `transitions` is `false`.
 - A value that can't be serialized becomes the string
   `"[unserializable: <reason>]"`.
-- Twee compiles use `formatPaths: [<package>/dist]`, `formatId: 'spindle'`
+- Twee compiles use `formatPaths: [<package>/dist]`, `formatId: 'pkg'` (twee-ts names a local format by its folder)
   and `noRemote: true`. These override any format options in the project
   config.
 - Before the pull request: `npm run typecheck`, `npx prettier --check .`,
@@ -179,7 +179,7 @@ Expected: FAIL, because the module isn't found.
     `loadConfig(dir)` (from twee-ts) for its `sources`, and otherwise
     `[dir]`. twee-ts walks directories itself and picks up `.tw` and
     `.twee`.
-- **Compile:** call `compile({ ...config, sources, formatPaths: [env.formatSearchDir], formatId: 'spindle', noRemote: true })`.
+- **Compile:** call `compile({ ...config, sources, formatPaths: [env.formatSearchDir], formatId: 'pkg', noRemote: true })`.
   Any diagnostic with `level: 'error'` rejects with one
   `${file}:${line}: ${message}` line each. When `file` or `line` is missing,
   the line is just the message.
