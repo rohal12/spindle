@@ -59,10 +59,18 @@ describe('play session handle', () => {
   });
 
   it('starts the timer when a call is sent, not when it is queued', async () => {
-    const s = await open({ html: 'x', stepTimeoutMs: 400 });
-    const a = s.step('slow', 100);
-    const b = s.step('slow', 100);
-    await expect(Promise.all([a, b])).resolves.toHaveLength(2);
+    // Each step is well under the timeout, but all three together exceed it.
+    const s = await open({ html: 'x', stepTimeoutMs: 500 });
+    const calls = [
+      s.step('slow', 200),
+      s.step('slow', 200),
+      s.step('slow', 200),
+    ];
+    await expect(Promise.all(calls)).resolves.toEqual([
+      { order: 1 },
+      { order: 2 },
+      { order: 3 },
+    ]);
     await s.close();
   });
 
