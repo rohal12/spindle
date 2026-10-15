@@ -212,6 +212,13 @@ describe('@rohal12/spindle/tooling', async () => {
           .getMacroRegistry()
           .some((m: { name: string }) => m.name === 'set'),
       ).toBe(true);
+      // The formatter uses the Markdown parser to recognize literal fences,
+      // and the published bundle must preserve them in Node without a DOM.
+      const fenced =
+        '```python\n\tprint("hello world from the story")    \n```\n';
+      expect(await bundled.formatPassage(fenced, { maxLineLength: 20 })).toBe(
+        fenced,
+      );
       expect(
         bundled.validateMarkup([{ name: 'P', content: '{set $a = 1}' }]),
       ).toEqual([]);
@@ -221,12 +228,12 @@ describe('@rohal12/spindle/tooling', async () => {
   });
 
   it('does not load or bundle the runtime', () => {
-    // Imported or inlined, Preact, zustand, immer and micromark would show
+    // Imported or inlined, Preact, zustand and immer would show
     // by name in the bundle (their sources and import specifiers)
     const bundle = readFileSync(
       resolve(projectRoot, 'dist/pkg/story-variables.js'),
       'utf-8',
     );
-    expect(bundle.match(/\b(?:preact|zustand|immer|micromark)\b/g)).toBeNull();
+    expect(bundle.match(/\b(?:preact|zustand|immer)\b/g)).toBeNull();
   });
 });

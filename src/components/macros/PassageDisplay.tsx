@@ -146,7 +146,7 @@ function appendSnapshot(container: Element, snapshot: HTMLElement): void {
 
 /**
  * Create a snapshot clone of a .passage element for outgoing transitions.
- * - Strips `id` attributes from the clone tree
+ * - Strips IDs, action associations and event handlers from the clone tree
  * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
  * - Pauses/mutes any <audio>/<video>
  * - Copies what cloneNode leaves behind: canvas pixels, the state of form
@@ -159,6 +159,18 @@ function createSnapshot(
   transitionType: string,
 ): HTMLElement {
   const clone = passageEl.cloneNode(true) as HTMLElement;
+  // Resource events still fire on inert nodes. Remove handlers before any
+  // media copying or insertion can reload a resource in the destination state.
+  for (const el of [clone, ...clone.querySelectorAll('*')]) {
+    for (const attr of [...el.attributes]) {
+      if (
+        attr.name === 'id' ||
+        attr.name === 'data-action' ||
+        attr.name.toLowerCase().startsWith('on')
+      )
+        el.removeAttribute(attr.name);
+    }
+  }
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
@@ -181,18 +193,11 @@ function createSnapshot(
     embedded.replaceWith(placeholder);
   });
 
-  // Strip id attributes to avoid duplicates
-  clone.removeAttribute('id');
-  const idEls = clone.querySelectorAll('[id]');
-  for (let i = 0; i < idEls.length; i++) {
-    idEls[i]!.removeAttribute('id');
-  }
-
   // Disable interaction
   clone.style.pointerEvents = 'none';
   clone.style.userSelect = 'none';
   // Visual only: out of the tab order and the accessibility tree, and its
-  // controls (copied with their inline handlers) can not be activated
+  // controls cannot be activated
   clone.setAttribute('inert', '');
   clone.setAttribute('aria-hidden', 'true');
 

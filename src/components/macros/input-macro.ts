@@ -1,6 +1,10 @@
 import { h } from 'preact';
 import { defineMacro, type MacroContext } from '../../define-macro';
-import type { UseActionOptions } from '../../hooks/use-action';
+import {
+  actionAttributes,
+  useControlAction,
+  type UseActionOptions,
+} from '../../hooks/use-action';
 import { display } from './display';
 
 /** The story variable a `storeVar` macro binds: its first parameter. */
@@ -16,12 +20,12 @@ export const VARIABLE_PARAMETER = {
  * gives another.
  */
 export function useVariableAction(
-  ctx: Pick<MacroContext, 'useAction' | 'id' | 'varName' | 'value'>,
+  ctx: Pick<MacroContext, 'id' | 'varName' | 'value'>,
   action: Omit<UseActionOptions, 'key' | 'authorId' | 'variable'> & {
     key?: string;
   },
-): string {
-  return ctx.useAction({
+): ReturnType<typeof useControlAction> {
+  return useControlAction({
     key: `$${ctx.varName}`,
     authorId: ctx.id,
     variable: ctx.varName,
@@ -54,7 +58,7 @@ export function defineInputMacro(
     render(_props, ctx) {
       const placeholder = ctx.args.placeholder ?? '';
 
-      const actionId = useVariableAction(ctx, {
+      const action = useVariableAction(ctx, {
         type: name,
         label: placeholder || ctx.varName!,
         perform: (v) => ctx.setValue!(toValue(v)),
@@ -74,9 +78,7 @@ export function defineInputMacro(
 
       return h(type ? 'input' : 'textarea', {
         type,
-        id: ctx.id,
-        'data-action': actionId || undefined,
-        class: ctx.cls,
+        ...actionAttributes(action, ctx),
         value: shown,
         placeholder,
         onInput: (e: Event) => {

@@ -22,6 +22,7 @@ export { lineColumn };
 export interface MarkupHooks extends CodeEnd {
   /** Whether a macro takes a body closed by `{/name}`. */
   isBlock(name: string): boolean;
+  branchParents?(name: string): readonly string[];
   /** Whether a macro's body is JavaScript, kept verbatim (`{do}`). */
   isRaw(name: string): boolean;
   /** Whether an attribute's value is code (`onclick`), not markup. */
@@ -144,6 +145,7 @@ export function analyzeMarkup(
   const paired = pairMarkup(tokens, {
     isBlock: hooks.isBlock,
     isRaw: hooks.isRaw,
+    branchParents: hooks.branchParents,
     source,
   });
   if (errors.length === 0 && paired.errors.length === 0) {

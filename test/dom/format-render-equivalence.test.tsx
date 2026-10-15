@@ -80,12 +80,32 @@ const cases = [
   '<div>\n  <p>\n    Indented <em>text</em>\n    over lines.\n  </p>\n</div>\n',
 ];
 
+const literalCases = [
+  '<pre>\na    \n b\n</pre>\n',
+  '<textarea>\na    \n b\n</textarea>\n',
+  '<pre><span>hello</span>\n\t literal    \n</pre>\n',
+  'Before <pre><span>hello</span>\n\t literal    \n</pre> after\n',
+  '- <pre><span>hello</span>\n  literal    \n  </pre>\n  continuation\n',
+  '{if true}\n  - <pre>text</pre>\n    continuation\n{/if}\n',
+  '<pre>\tlong literal source text    </pre>\n',
+  '```python\nprint("hello world from the story")\n```\n',
+  '```\n\tline\t  \n \t\n```\n',
+  '```html\n<div>\n<span>a    </span>\n</div>\n```\n',
+  '````\n```\n\tcode    \n~~~\n````\n',
+  '- item\n\n  ```\n  \tcode    \n  ```\n',
+  '```\ncode    \n\n',
+];
+
 describe('Format keeps what a passage displays', () => {
-  for (const input of cases) {
+  for (const input of [...cases, ...literalCases]) {
     it(JSON.stringify(input), async () => {
-      const output = await formatPassage(input, { prettier });
+      const options = {
+        prettier,
+        maxLineLength: literalCases.includes(input) ? 20 : undefined,
+      };
+      const output = await formatPassage(input, options);
       expect(canonical(output)).toBe(canonical(input));
-      expect(await formatPassage(output, { prettier })).toBe(output);
+      expect(await formatPassage(output, options)).toBe(output);
     });
   }
 });

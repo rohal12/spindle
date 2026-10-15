@@ -676,9 +676,10 @@ export type PathChange =
       /** Holes an appended element follows (the array is sparse). */
       gap?: number;
       /**
-       * Set where the value is the same content as before and only which
-       * object the path refers to changed (see aliasChanges), so a store
-       * holding equal content there still takes the write.
+       * A reference write (see aliasChanges), also used by diffPaths for
+       * another edge to an object already changed through its first path.
+       * A store holding equal content there still takes the write, and the
+       * value is adopted from the target's existing object when available.
        */
       alias?: true;
       /**
@@ -696,42 +697,83 @@ export type PathChange =
       hole?: true;
     };
 
+type DiffOptions = [arrays?: boolean, target?: Record<string, unknown>];
+
 /**
  * The property paths where `after` differs from `before`, two objects of
  * one class: objects that merge (see isMergeable) are compared property by
  * property, any other value as a whole; with `arrays`, arrays are compared
- * by index too (see keyChanges).
+ * by index too (see keyChanges). Shared changed pairs are entered once;
+ * later edges write a reference to their first target object. With `target`,
+ * compare each distinct target object separately, keeping its own fields
+ * and references when the target shares differently from the live values.
  */
 export function diffPaths(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
-  arrays = false,
+  ...[arrays = false, target]: DiffOptions
 ): PathChange[] {
   const changes: PathChange[] = [];
   const ancestors = new Set<object>();
-  // Pairs found equal, so a graph that shares objects is not walked once per
-  // path to them (exponentially many), and how often a walk met a cycle
-  const unchanged = new WeakMap<object, Set<object>>();
-  let cuts = 0;
+  // Compare each pair once. A repeated changed edge refers to the object
+  // already changed through its first path, rather than repeating every
+  // descendant path (exponentially many in a shared graph).
+  const compared = new WeakMap<object, Map<object, boolean>>();
+  const targets = new WeakMap<object, WeakMap<object, WeakSet<object>>>();
+  const missing = new WeakMap<object, Map<object, PathChange[]>>();
   (function walk(
     b: Record<string, unknown>,
     a: Record<string, unknown>,
     path: string[],
+    held?: Record<string, unknown>,
   ): void {
-    // Stop at cycles; shared (non-cyclic) references that differ are visited
-    // per path, as each is a change there.
-    if (ancestors.has(a)) {
-      cuts++;
+    if (held) {
+      const byBefore = targets.get(a) ?? new WeakMap();
+      const seen = byBefore.get(b) ?? new WeakSet();
+      if (seen.has(held)) return;
+      seen.add(held);
+      byBefore.set(b, seen);
+      targets.set(a, byBefore);
+    }
+    // Stop at cycles; the first path already changes the object they reach.
+    if (!held && ancestors.has(a)) return;
+    const pairs = compared.get(a);
+    if (!held && pairs?.has(b)) {
+      if (pairs.get(b)) {
+        changes.push({ path, deleted: false, value: a, alias: true });
+      }
       return;
     }
-    if (unchanged.get(a)?.has(b)) return;
-    ancestors.add(a);
+    if (!held) ancestors.add(a);
     const found = changes.length;
-    const cutsBefore = cuts;
     for (const change of keyChanges(b, a, arrays)) {
       const at = [...path, change.key];
       if (change.kind === 'nested') {
-        walk(change.before, change.after, at);
+        const child =
+          held && hasOwn(held, change.key) ? held[change.key] : undefined;
+        if (!held || mergesWith(child, change.after, arrays)) {
+          walk(
+            change.before,
+            change.after,
+            at,
+            child as Record<string, unknown> | undefined,
+          );
+        } else {
+          // Keep descendant paths when the target lacks their parent, so
+          // the writer can copy that parent without changing object lookup.
+          const known =
+            missing.get(change.after) ?? new Map<object, PathChange[]>();
+          if (!known.has(change.before)) {
+            known.set(
+              change.before,
+              diffPaths(change.before, change.after, arrays),
+            );
+            missing.set(change.after, known);
+          }
+          for (const nested of known.get(change.before)!) {
+            changes.push({ ...nested, path: [...at, ...nested.path] });
+          }
+        }
       } else {
         changes.push(
           change.kind === 'deleted'
@@ -756,18 +798,17 @@ export function diffPaths(
         );
       }
     }
-    // A walk that met a cycle depends on the ancestors it was reached by
-    if (changes.length === found && cuts === cutsBefore) {
-      const seen = unchanged.get(a) ?? new Set<object>();
-      seen.add(b);
-      unchanged.set(a, seen);
+    if (!held) {
+      const seen = pairs ?? new Map<object, boolean>();
+      seen.set(b, changes.length !== found);
+      compared.set(a, seen);
+      ancestors.delete(a);
     }
-    ancestors.delete(a);
-  })(before, after, []);
+  })(before, after, [], target);
   return changes;
 }
 
-export const pathKey = (path: readonly string[]): string =>
+export const pathKey = (path: readonly ObjectPathSegment[]): string =>
   JSON.stringify(path);
 
 /** Whether `path`, or one of its ancestors, is one of `keys`. */
@@ -786,21 +827,31 @@ export function underChange(
  * for the `cause` or `errors` of an Error ('c', 'e'), or for the buffer a
  * typed array or DataView views ('b').
  */
-const entryKey = (
-  kind: 'k' | 'v' | 's' | 'c' | 'e' | 'b',
-  index: number,
-): string => `\0${kind}${index}`;
+interface EntrySegment {
+  kind: 'k' | 'v' | 's' | 'c' | 'e' | 'b';
+  index: number;
+}
 
-export const isEntryKey = (segment: string): boolean =>
-  segment.startsWith('\0');
+/** Internal graph paths distinguish built-in entries from every own key. */
+export type ObjectPathSegment = string | EntrySegment;
+export type ObjectPath = ObjectPathSegment[];
+
+const entryKey = (kind: EntrySegment['kind'], index: number): EntrySegment => ({
+  kind,
+  index,
+});
+
+export const isEntryKey = (
+  segment: ObjectPathSegment,
+): segment is EntrySegment => typeof segment !== 'string';
 
 /**
  * What a Map, Set, Error or view holds in place of properties (keys and
  * values, members, `cause` and `errors`, the buffer), each with the segment standing for it in
  * a path (see entryKey); undefined for any other value.
  */
-function entryChildren(value: object): [string, unknown][] | undefined {
-  const children: [string, unknown][] = [];
+function entryChildren(value: object): [EntrySegment, unknown][] | undefined {
+  const children: [EntrySegment, unknown][] = [];
   if (value instanceof Map) {
     let index = 0;
     for (const [k, v] of mapEntries(value)) {
@@ -834,19 +885,20 @@ function entryChildren(value: object): [string, unknown][] | undefined {
  * The value at `path` below `root`, where a path may go through the entries
  * of Maps, Sets and Errors (see objectPaths) as well as properties.
  */
-export function getByEntryPath(root: object, path: readonly string[]): unknown {
+export function getByEntryPath(
+  root: object,
+  path: readonly ObjectPathSegment[],
+): unknown {
   let current: unknown = root;
-  let start = 0;
-  for (let i = 0; i < path.length; i++) {
-    if (!isEntryKey(path[i]!)) continue;
-    current = getByPath(current as object, path.slice(start, i));
+  for (const segment of path) {
     if (!isObjectValue(current)) return undefined;
-    current = entryChildren(current)?.find(([at]) => at === path[i])?.[1];
-    start = i + 1;
+    current = isEntryKey(segment)
+      ? entryChildren(current)?.find(
+          ([at]) => at.kind === segment.kind && at.index === segment.index,
+        )?.[1]
+      : getByPath(current, [segment]);
   }
-  return start === path.length
-    ? current
-    : getByPath(current as object, path.slice(start));
+  return current;
 }
 
 /**
@@ -856,13 +908,14 @@ export function getByEntryPath(root: object, path: readonly string[]): unknown {
  */
 function setEntryValue(
   root: object,
-  path: readonly string[],
+  path: readonly ObjectPathSegment[],
   value: unknown,
 ): boolean {
   const holder = getByEntryPath(root, path.slice(0, -1));
-  const match = /^\0v(\d+)$/.exec(path[path.length - 1]!);
-  if (!(holder instanceof Map) || !match) return false;
-  const entry = [...mapEntries(holder)][Number(match[1])];
+  const segment = path[path.length - 1]!;
+  if (!(holder instanceof Map) || !isEntryKey(segment) || segment.kind !== 'v')
+    return false;
+  const entry = [...mapEntries(holder)][segment.index];
   if (!entry) return false;
   mapSet(holder, entry[0], value);
   return true;
@@ -907,10 +960,10 @@ function objectPaths(
   root: object,
   skip: ReadonlySet<string> = new Set(),
   entries = false,
-): Map<object, string[][]> {
-  const all = new Map<object, string[][]>();
-  const collections: [object, string[]][] = [];
-  function place(value: object, at: string[]): void {
+): Map<object, ObjectPath[]> {
+  const all = new Map<object, ObjectPath[]>();
+  const collections: [object, ObjectPath][] = [];
+  function place(value: object, at: ObjectPath): void {
     const known = all.get(value);
     if (known) {
       known.push(at);
@@ -926,7 +979,7 @@ function objectPaths(
   }
   function walk(
     node: Record<string, unknown>,
-    path: string[],
+    path: ObjectPath,
     keys: string[] = Object.keys(node),
   ): void {
     for (const key of keys) {
@@ -951,7 +1004,7 @@ function firstPaths(
   root: object,
   skip?: ReadonlySet<string>,
   entries?: boolean,
-): Map<object, string[]> {
+): Map<object, ObjectPath> {
   return new Map(
     [...objectPaths(root, skip, entries)].map(([object, paths]) => [
       object,
@@ -965,7 +1018,7 @@ function firstPaths(
  * refer to, or one that refers to itself), with every path they are at,
  * parents before children.
  */
-export function sharedPaths(root: object): string[][][] {
+export function sharedPaths(root: object): ObjectPath[][] {
   return [...objectPaths(root, undefined, true).values()].filter(
     (paths) => paths.length > 1,
   );
@@ -982,11 +1035,11 @@ export function sharedPaths(root: object): string[][][] {
 function aliasMoved(
   x: object,
   y: object,
-  at: string[],
-  earlier: ReadonlyMap<object, string[]>,
-  later: ReadonlyMap<object, string[]>,
+  at: ObjectPath,
+  earlier: ReadonlyMap<object, ObjectPath>,
+  later: ReadonlyMap<object, ObjectPath>,
 ): boolean {
-  const pairs: [string, unknown, unknown][] = [];
+  const pairs: [ObjectPathSegment, unknown, unknown][] = [];
   const xs = entryChildren(x);
   const ys = entryChildren(y);
   if (xs && ys) {
@@ -995,9 +1048,12 @@ function aliasMoved(
       const ySize = collectionSize(y as Map<unknown, unknown>);
       if (collectionSize(x) !== ySize) return false;
     }
-    const held = new Map(ys);
+    const held = new Map(
+      ys.map(([segment, value]) => [pathKey([segment]), value]),
+    );
     for (const [segment, a] of xs) {
-      if (held.has(segment)) pairs.push([segment, a, held.get(segment)]);
+      const key = pathKey([segment]);
+      if (held.has(key)) pairs.push([segment, a, held.get(key)]);
     }
   }
   // The properties both hold: of objects that merge, and the fields of a
@@ -1088,8 +1144,9 @@ export function changesBetween(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
   arrays = false,
+  target?: Record<string, unknown>,
 ): PathChange[] {
-  const written = diffPaths(before, after, arrays);
+  const written = diffPaths(before, after, arrays, target);
   const keys = new Set(written.map((c) => pathKey(c.path)));
   const aliases: PathChange[] = [];
   for (const change of aliasChanges(before, after)) {
@@ -1108,7 +1165,7 @@ export function changesBetween(
 export function locateObjects(
   source: object,
   changes: readonly PathChange[],
-): Map<object, string[]> {
+): Map<object, ObjectPath> {
   return firstPaths(
     source as Record<string, unknown>,
     new Set(changes.map((c) => pathKey(c.path))),
@@ -1124,7 +1181,7 @@ export function locateObjects(
  * when met, not up front.
  */
 export function existingObjects(
-  paths: ReadonlyMap<object, string[]>,
+  paths: ReadonlyMap<object, ObjectPath>,
   target: object,
 ): Map<object, object> {
   return new (class extends Map<object, object> {
@@ -1164,11 +1221,14 @@ export function isApplied(target: object, change: PathChange): boolean {
  */
 export function relinkPath(
   root: Record<string, unknown>,
-  path: readonly string[],
+  path: readonly ObjectPathSegment[],
   object: object,
 ): void {
-  if (path.some(isEntryKey)) setEntryValue(root, path, object);
-  else setByPath(root, path, object);
+  if (path.every((segment): segment is string => !isEntryKey(segment))) {
+    setByPath(root, path, object);
+  } else {
+    setEntryValue(root, path, object);
+  }
 }
 
 export function applyChange(target: object, change: PathChange): void {

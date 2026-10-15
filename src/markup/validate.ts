@@ -85,6 +85,7 @@ export interface MarkupValidationOptions {
   macroNames?: Iterable<string>;
   /** Whether a macro takes a body (default: the registered block macros). */
   isBlockMacro?(name: string): boolean;
+  branchParents?(name: string): readonly string[];
   /**
    * Report on only the passages for which this holds (default: all). The
    * others are still read for the widgets they define.
@@ -201,9 +202,10 @@ export function validateMarkup(
   options: MarkupValidationOptions,
 ): MarkupDiagnostic[] {
   const diagnostics: MarkupDiagnostic[] = [];
-  const hooks = options.isBlockMacro
-    ? { isBlock: options.isBlockMacro }
-    : undefined;
+  const hooks = {
+    ...(options.isBlockMacro && { isBlock: options.isBlockMacro }),
+    ...(options.branchParents && { branchParents: options.branchParents }),
+  };
   const report = (
     passage: MarkupPassage,
     start: number,

@@ -34,6 +34,21 @@ function init(variables: Record<string, unknown>) {
 }
 
 describe('references kept by mutation commits', () => {
+  it('commits a deep shared graph through pending writes (#568)', () => {
+    let graph: Record<string, any> = { n: 1, other: 0 };
+    for (let i = 0; i < 16; i++) graph = { left: graph, right: graph };
+    init({ graph, marker: 0 });
+    const leaf = `$graph${'.left'.repeat(16)}`;
+    run(`${leaf}.n = 2; Story.set("marker", 1); ${leaf}.other = 3`);
+    let node = vars().graph;
+    for (let i = 0; i < 16; i++) {
+      expect(node.left).toBe(node.right);
+      node = node.left;
+    }
+    expect(node).toEqual({ n: 2, other: 3 });
+    expect(vars().marker).toBe(1);
+  });
+
   describe('alias-only assignments (#280)', () => {
     beforeEach(() => init({ a: { n: 1 }, b: { n: 1 } }));
 
@@ -171,6 +186,19 @@ describe('Story.set below a variable (#295)', () => {
     expect(story().get('a')).toBe(story().get('b'));
     expect(story().get('b.n')).toBe(2);
   });
+
+  it.each(['\0field', '\0v0', '\0k0', '\0b0'])(
+    'keeps aliases through the own property %j (#570)',
+    (key) => {
+      const shared = { n: 1 };
+      story().set({ a: { [key]: shared }, b: shared });
+      story().set(`a.${key}.n`, 2);
+      expect(vars().a[key]).toBe(vars().b);
+      expect(vars().b.n).toBe(2);
+      story().set('b.n', 3);
+      expect(vars().a[key].n).toBe(3);
+    },
+  );
 
   it('keeps a cycle', () => {
     const a: Record<string, unknown> = { n: 1 };

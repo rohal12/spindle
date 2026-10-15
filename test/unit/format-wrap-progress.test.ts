@@ -16,6 +16,8 @@ beforeAll(async () => {
   bundle = join(directory, 'formatter.mjs');
   await build({
     configFile: false,
+    // The subprocess imports a Node bundle, without a DOM.
+    resolve: { conditions: ['module', 'node'] },
     logLevel: 'silent',
     plugins: [peggyPlugin()],
     build: {

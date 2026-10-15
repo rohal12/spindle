@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
@@ -18,7 +19,7 @@ defineMacro({
       ctx.setValue!(options[nextIndex]);
     };
 
-    const actionId = useVariableAction(ctx, {
+    const action = useVariableAction(ctx, {
       type: 'cycle',
       label: ctx.value == null ? options[0] || '' : String(ctx.value),
       options,
@@ -34,9 +35,7 @@ defineMacro({
     return (
       <button
         type="button"
-        id={ctx.id}
-        data-action={actionId || undefined}
-        class={ctx.cls}
+        {...actionAttributes(action, ctx)}
         onClick={handleClick}
       >
         {ctx.value == null ? options[0] || '' : String(ctx.value)}

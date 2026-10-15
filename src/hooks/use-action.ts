@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useLayoutEffect, useRef } from 'preact/hooks';
+import { useCallback, useContext, useLayoutEffect, useRef } from 'preact/hooks';
 import {
   registerAction,
   generateActionId,
@@ -7,12 +7,49 @@ import {
   type ActionRegistration,
   type StoryAction,
 } from '../action-registry';
-import { DialogCloseContext } from '../components/dialog-close-context';
+import {
+  DialogCloseContext,
+  DialogPanelContext,
+} from '../components/dialog-close-context';
 
 /** The action to register, and what its ID is generated from. */
 export interface UseActionOptions extends Omit<StoryAction, 'id'> {
   key: string;
   authorId?: string;
+  /** The exact DOM control, including when authored action IDs collide. */
+  element?: { readonly current: Element | null };
+}
+
+interface ControlAction {
+  id: string;
+  ref: (element: Element | null) => void;
+}
+
+/** Register a built-in control with its own stable DOM association. */
+export function useControlAction(opts: UseActionOptions): ControlAction {
+  const element = useRef<Element | null>(null);
+  const ref = useCallback((value: Element | null) => {
+    element.current = value;
+  }, []);
+  return { id: useAction({ ...opts, element }), ref };
+}
+
+/** Associate a macro control's authored attributes with its runtime action. */
+export function actionAttributes(
+  action: ControlAction,
+  control: { id?: string; cls?: string },
+): {
+  id?: string;
+  class?: string;
+  'data-action'?: string;
+  ref: ControlAction['ref'];
+} {
+  return {
+    id: control.id,
+    class: control.cls,
+    'data-action': action.id || undefined,
+    ref: action.ref,
+  };
 }
 
 /**
@@ -26,6 +63,7 @@ export function useAction(opts: UseActionOptions): string {
   const disabled = useContext(ActionsDisabledContext);
   // The dialog the control renders in, for observe() to scope by
   const dialog = useContext(DialogCloseContext);
+  const panel = useContext(DialogPanelContext);
   const idRef = useRef<string>('');
   const performRef = useRef(opts.perform);
   performRef.current = opts.perform;
@@ -58,11 +96,11 @@ export function useAction(opts: UseActionOptions): string {
   const fresh = useRef(false);
   useLayoutEffect(() => {
     if (disabled) return;
-    const own = registerAction(buildAction(), dialog);
+    const own = registerAction(buildAction(), dialog, panel, opts.element);
     registration.current = own;
     fresh.current = true;
     return () => own.unregister();
-  }, [id, disabled, dialog]);
+  }, [id, disabled, dialog, panel, opts.element]);
 
   // When what the action exposes changes (e.g. an input's value), replace it
   // in place: one `actionsChanged` notification, and it keeps its position in
@@ -80,6 +118,8 @@ export function useAction(opts: UseActionOptions): string {
     id,
     disabled,
     dialog,
+    panel,
+    opts.element,
     opts.type,
     opts.label,
     opts.target,

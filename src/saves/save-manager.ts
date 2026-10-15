@@ -148,6 +148,7 @@ async function startNewPlaythroughNow(
   id: string = randomUUID(),
 ): Promise<string> {
   const backend = await getBackend();
+  await checkPlaythroughOwner(ifid, id);
   // Taking the next number is a read-modify-write other tabs do too
   await withTabLock(`spindle-playthrough-count:${ifid}`, async () => {
     const num = await nextPlaythroughNumber(ifid);
@@ -230,17 +231,44 @@ async function ensurePlaythrough(
   id: string,
   createdAt: string,
 ): Promise<void> {
-  if (!(await hasPlaythroughNow(ifid, id))) {
+  if (!(await checkPlaythroughOwner(ifid, id))) {
     await (
       await getBackend()
     ).putPlaythrough({ id, ifid, createdAt, label: 'Imported' });
   }
 }
 
+/** Globally keyed playthroughs must not be overwritten by another story. */
+async function checkPlaythroughOwner(
+  ifid: string,
+  id: string,
+): Promise<PlaythroughRecord | undefined> {
+  const record = await (await getBackend()).getPlaythrough(id);
+  if (record && record.ifid !== ifid) {
+    throw new Error('Playthrough belongs to a different story');
+  }
+  return record;
+}
+
+/** Keep imports of the same source playthrough together within this story. */
+async function importedPlaythrough(ifid: string, id: string): Promise<string> {
+  const backend = await getBackend();
+  const key = `${META_PREFIXES.importedPlaythroughs}${ifid}`;
+  const mappings = (await backend.getMeta<Record<string, string>>(key)) ?? {};
+  const mapped = Object.prototype.hasOwnProperty.call(mappings, id)
+    ? mappings[id]!
+    : id;
+  const owner = await backend.getPlaythrough(mapped);
+  if (!owner || owner.ifid === ifid) return mapped;
+  const fresh = randomUUID();
+  await backend.setMeta(key, { ...mappings, [id]: fresh });
+  return fresh;
+}
+
 /** Whether the story has a record of the playthrough `id`. */
 async function hasPlaythroughNow(ifid: string, id: string): Promise<boolean> {
   const backend = await getBackend();
-  return (await backend.getPlaythroughsByIfid(ifid)).some((p) => p.id === id);
+  return (await backend.getPlaythrough(id))?.ifid === ifid;
 }
 
 /**
@@ -277,10 +305,12 @@ export function establishPlaythrough(
     // and may belong to what another tab has done since (#356).
     const own = loadSessionPlaythrough(ifid);
     const ownExists = own !== undefined && (await hasPlaythroughNow(ifid, own));
+    const current = await backend.getMeta<string>(currentPlaythroughKey(ifid));
     const id = ownExists
       ? own
-      : ((await backend.getMeta<string>(currentPlaythroughKey(ifid))) ??
-        (await startNewPlaythroughNow(ifid)));
+      : current && (await hasPlaythroughNow(ifid, current))
+        ? current
+        : await startNewPlaythroughNow(ifid);
     saveSessionPlaythrough(ifid, id);
     return { id, knownSaves: await populateKnownSavesNow(ifid) };
   });
@@ -999,6 +1029,10 @@ async function prepareImport(data: unknown, ifid: string): Promise<SaveRecord> {
   // with it, whatever its own metadata says
   record.meta.ifid = ifid;
 
+  record.meta.playthroughId = await importedPlaythrough(
+    ifid,
+    record.meta.playthroughId,
+  );
   await ensurePlaythrough(
     ifid,
     record.meta.playthroughId,
@@ -1131,9 +1165,16 @@ export function deletePlaythroughData(
 ): Promise<boolean> {
   return inOrder(async () => {
     const backend = await getBackend();
-    const deletedSaveIds =
-      await backend.deleteSavesByPlaythrough(playthroughId);
-    await backend.deletePlaythroughById(playthroughId);
+    // Older saves may share a playthrough ID with another story. Only this
+    // story's saves, slots and playthrough record belong to this deletion.
+    const saves = (await backend.getSavesByIfid(ifid)).filter(
+      (record) => record.meta.playthroughId === playthroughId,
+    );
+    const deletedSaveIds = saves.map((record) => record.meta.id);
+    for (const id of deletedSaveIds) await backend.deleteSave(id);
+    if (await hasPlaythroughNow(ifid, playthroughId)) {
+      await backend.deletePlaythroughById(playthroughId);
+    }
 
     // Clear the slots that held deleted saves (pointer and slot index)
     const deletedSet = new Set(deletedSaveIds);

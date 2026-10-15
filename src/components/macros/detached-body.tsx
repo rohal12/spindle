@@ -110,7 +110,6 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
   const inIteration = useContext(ItemEditContext);
   const hasLeft = useContext(OutgoingContext);
   const displayOnly = useContext(DisplayOnlyContext);
-  const actionsDisabled = useContext(ActionsDisabledContext);
 
   const mounted = useRef<HTMLElement[]>([]);
   useEffect(() => {
@@ -156,9 +155,7 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
                         <ItemEditContext.Provider value={inIteration}>
                           <OutgoingContext.Provider value={hasLeft}>
                             <DisplayOnlyContext.Provider value={displayOnly}>
-                              <ActionsDisabledContext.Provider
-                                value={actionsDisabled}
-                              >
+                              <ActionsDisabledContext.Provider value={true}>
                                 {renderNodes(children, {
                                   nobr,
                                   inline,
