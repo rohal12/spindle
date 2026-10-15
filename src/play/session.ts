@@ -221,5 +221,11 @@ export function openPlaySessionWith(
       if (closed) return;
       failWorker(`spindle: play session worker exited with code ${code}`);
     });
+    // A session that is never closed does not keep Node running on its own
+    // (a call in progress still does, through its timer). After the
+    // listeners: adding a 'message' listener refs the worker again. The
+    // worker sends its stdout to stderr itself, because reading
+    // `worker.stdout` here would also keep Node running.
+    worker.unref();
   });
 }

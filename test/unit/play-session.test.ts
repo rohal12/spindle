@@ -43,6 +43,14 @@ describe('play session handle', () => {
     await s.close();
   });
 
+  it('rejects a call whose arguments cannot be cloned and stays open', async () => {
+    const s = await open({ html: 'x' });
+    await expect(s.step('x', () => 1)).rejects.toThrow(/could not be cloned/);
+    expect(s.closed).toBe(false);
+    expect(await s.observe()).toEqual({ echo: [] });
+    await s.close();
+  });
+
   it('terminates on timeout and rejects queued and later calls', async () => {
     const s = await open({ html: 'x', stepTimeoutMs: 200 });
     const hung = s.step('hang');

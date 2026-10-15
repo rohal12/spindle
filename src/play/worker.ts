@@ -12,6 +12,14 @@ import type { Op, Ready, Reply, Request, WorkerData } from './protocol';
 
 type HeadlessModule = typeof Headless;
 
+// Story output (`console.log` in a {do}) goes to stderr: a host speaking a
+// protocol on stdout (an MCP server over stdio) must not receive it.
+const stderr = process.stderr;
+Object.defineProperty(process, 'stdout', {
+  configurable: true,
+  get: () => stderr,
+});
+
 const port = parentPort!;
 const data = workerData as WorkerData;
 
@@ -26,13 +34,18 @@ async function installDom(): Promise<void> {
   const source = window as unknown as Record<string, unknown>;
   global.window = window;
   global.document = window.document;
-  // Node's own globals (navigator, fetch, ...) stay as they are,
+  // Node's own globals (fetch, URL, ...) stay as they are,
   for (const name of Object.getOwnPropertyNames(window)) {
     if (!(name in globalThis)) global[name] = source[name];
   }
-  // except the event classes: happy-dom's dispatchEvent() refuses events
-  // made with Node's (`new CustomEvent(':storyready')` at boot).
-  for (const name of DOM_EVENT_CLASSES) global[name] = source[name];
+  // except those the story must get from happy-dom.
+  for (const name of HAPPY_DOM_GLOBALS) {
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: source[name],
+    });
+  }
   // Node's BroadcastChannel reaches every worker thread in the process, so
   // sessions would hear each other's save-slot notices. Spindle works without
   // one (it falls back when the constructor is missing).
@@ -49,7 +62,23 @@ async function installDom(): Promise<void> {
   });
 }
 
-const DOM_EVENT_CLASSES = ['Event', 'CustomEvent', 'EventTarget'] as const;
+/**
+ * Globals happy-dom's window replaces even where Node has its own:
+ * - the event classes: happy-dom's dispatchEvent() refuses events made with
+ *   Node's (`new CustomEvent(':storyready')` at boot);
+ * - the storages: Node 25+ has a `localStorage` that is undefined without
+ *   `--localstorage-file`, and Node's would be shared by every session;
+ * - `navigator`: Node's `navigator.locks` is shared by every worker in the
+ *   process.
+ */
+const HAPPY_DOM_GLOBALS = [
+  'Event',
+  'CustomEvent',
+  'EventTarget',
+  'localStorage',
+  'sessionStorage',
+  'navigator',
+] as const;
 
 /**
  * A value as the reply will carry it (structured clone keeps Map, Set, Date
@@ -85,7 +114,12 @@ async function start(): Promise<void> {
     observe: () => story.observe(),
     step: ([id, value]) => transcript.step(id as string, value),
     goto: async ([passage]) => {
-      story.goto(passage as string);
+      const name = passage as string;
+      // Story.goto() reports a missing passage on the page and returns.
+      if (!headless.hasPassage(name)) {
+        throw new Error(`spindle: No passage named ${JSON.stringify(name)}`);
+      }
+      story.goto(name);
       await story.waitForActions();
       return story.observe();
     },

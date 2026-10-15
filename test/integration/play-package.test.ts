@@ -3,7 +3,8 @@
  * The play entry as published (`dist/pkg/play.js`): sessions run the story
  * in a worker on happy-dom. Requires `bun run build` first.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { spawnSync } from 'child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -84,7 +85,68 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await s.close();
   });
 
-  it('times out an infinite {do} loop', async () => {
+  it('rejects goto to an unknown passage and stays open', async () => {
+    const s = await openPlaySession({ html });
+    await expect(s.goto('Nowhere')).rejects.toThrow(
+      'spindle: No passage named "Nowhere"',
+    );
+    expect(s.closed).toBe(false);
+    expect((await s.observe()).passage).toBe('Start');
+    await s.close();
+  });
+
+  it("sends story console output to stderr, not the host's stdout", async () => {
+    const written = (spy: { mock: { calls: unknown[][] } }) =>
+      spy.mock.calls.map((c) => String(c[0])).join('');
+    const stdout = vi.spyOn(process.stdout, 'write');
+    // Swallow the story's line; let anything else through.
+    const realStderr = process.stderr.write.bind(process.stderr);
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(((chunk: unknown, ...rest: never[]) =>
+        String(chunk).includes('STORY-LOG')
+          ? true
+          : realStderr(
+              chunk as string,
+              ...rest,
+            )) as typeof process.stderr.write);
+    try {
+      const s = await openPlaySession({
+        html: storyHtml({
+          StoryVariables: '',
+          Start: '{do}console.log("STORY-LOG"){/do}Hi',
+        }),
+      });
+      await s.observe();
+      await vi.waitFor(() => expect(written(stderr)).toContain('STORY-LOG'));
+      await s.close();
+      expect(written(stdout)).not.toContain('STORY-LOG');
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  it("uses happy-dom's storage and navigator, separate per session", async () => {
+    const storyWith = storyHtml({
+      StoryVariables: '$same = 0\n$seen = 0',
+      StoryInit: [
+        "{do}Story.set('same', [localStorage === window.localStorage, sessionStorage === window.sessionStorage, navigator === window.navigator]){/do}",
+        "{do}Story.set('seen', localStorage.getItem('play-test')); localStorage.setItem('play-test', 'set'){/do}",
+      ].join(''),
+      Start: 'Hi',
+    });
+    const a = await openPlaySession({ html: storyWith });
+    expect(await a.get(['same', 'seen'])).toEqual({
+      same: [true, true, true],
+      seen: null,
+    });
+    const b = await openPlaySession({ html: storyWith });
+    expect(await b.get(['seen'])).toEqual({ seen: null });
+    await Promise.all([a.close(), b.close()]);
+  });
+
+  it('times out an infinite {do} loop', { timeout: 15_000 }, async () => {
     const s = await openPlaySession({
       html: storyHtml({
         StoryVariables: '',
@@ -99,6 +161,36 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     );
     expect(s.closed).toBe(true);
     await s.close();
+  });
+
+  it('lets Node exit with a session left open', () => {
+    // The child opens a session and never closes it. (A script file, not
+    // `-e`: workers inherit `--input-type`, which needs `-e`.)
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-play-'));
+    try {
+      const script = join(dir, 'open.mjs');
+      writeFileSync(
+        script,
+        `
+        const { openPlaySession } = await import(${JSON.stringify(playUrl)});
+        let html = '';
+        for await (const chunk of process.stdin) html += chunk;
+        const s = await openPlaySession({ html });
+        console.log((await s.observe()).passage);
+        `,
+      );
+      const child = spawnSync(process.execPath, [script], {
+        input: html,
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      expect(child.stderr).toBe('');
+      expect(child.signal).toBeNull(); // not killed by the timeout
+      expect(child.status).toBe(0);
+      expect(child.stdout.trim()).toBe('Start');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('rejects open when boot fails', async () => {

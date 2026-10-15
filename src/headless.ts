@@ -93,6 +93,15 @@ export function storyVariables(): Record<string, unknown> {
   return { ...useStoryStore.getState().variables };
 }
 
+/**
+ * Whether the story has a passage named `name`: the check `Story.goto()`
+ * makes before it navigates (it reports a missing passage on the page
+ * instead of throwing).
+ */
+export function hasPassage(name: string): boolean {
+  return useStoryStore.getState().storyData?.passages.has(name) ?? false;
+}
+
 /** One recorded step: what the reader saw, and what they chose. */
 export interface TranscriptEntry {
   turn: number;
