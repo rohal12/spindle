@@ -225,7 +225,7 @@ npm i -D happy-dom @rohal12/twee-ts
 
 A glob is compiled as Twee, so it must match Twee sources only: a glob of `.html` files is not read as HTML, and its compile fails. Name one `.html` file instead.
 
-For a project config, `sources`, `modules`, `headFile` and relative `exclude` patterns are resolved from the project directory, not from the working directory. An absolute `exclude` pattern is passed on as it is. A config whose `sources` is empty rejects with `spindle: <path> has a twee-ts config with no sources`.
+For a project config, `sources`, `modules`, `headFile` and `exclude` are resolved from the project directory, not from the working directory. An absolute `exclude` pattern works too: its leading folders are made relative to the working directory, where twee-ts matches excludes. A config whose `sources` is empty rejects with `spindle: <path> has a twee-ts config with no sources`.
 
 Compiles use the Spindle format installed with the package (`formatPaths` is its `dist` folder, `formatId` is `pkg` and `noRemote` is `true`). These override the project config's format options (and its `output`, `formatIndices`, `formatUrls`, `useTweegoPath` and the like are dropped), so a project that names another format, or a remote one, is still compiled with the installed Spindle. Compile errors reject with one `file:line: message` per error.
 
@@ -255,7 +255,7 @@ If the story throws while booting (a bad `StoryInit`, no `<tw-storydata>`), `ope
 | `close()`          | Stops the worker. Safe to call twice, or after a timeout.                                           |
 | `closed`           | `true` once the session is closed.                                                                  |
 
-Calls run one at a time, in the order they were made, even if you do not await each one. A call the story rejects (an unknown action ID, say) rejects with the story's message and leaves the session open. `goto()` to a passage the story does not have rejects the same way, with `spindle: No passage named "<name>"`.
+Calls run one at a time, in the order they were made, even if you do not await each one. A call the story rejects (an unknown action ID, say) rejects with the story's message and leaves the session open. `goto()` to a passage the story does not have rejects the same way, with `spindle: No passage named "<name>" (in passage "<current>")`, and so does `goto()` to a special passage (`spindle: Cannot navigate to special passage "StoryInit".`).
 
 `get()` returns each value as a structured clone: `Map`, `Set`, `Date` and cyclic objects arrive intact, and class instances arrive as plain objects. A value that cannot be cloned (a function, or a `Map` holding one) comes back as the string `"[unserializable: <reason>]"` instead of failing the call.
 

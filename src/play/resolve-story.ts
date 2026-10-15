@@ -61,6 +61,32 @@ async function expandGlob(pattern: string): Promise<string[]> {
   return matches.sort();
 }
 
+/** A path segment with glob syntax in it (as `path.matchesGlob` reads it). */
+const GLOB_SEGMENT = /[*?[\]{}()!+@]/;
+
+/**
+ * An `exclude` glob of the project config as twee-ts matches it: against
+ * paths relative to the working directory. A relative glob is relative to the
+ * project directory; an absolute one has its literal leading folders made
+ * relative. Either way the folder part added or rewritten is escaped.
+ */
+function rebaseExclude(dir: string, pattern: string): string {
+  let base = dir;
+  let rest = pattern.replace(/^\.\//, '');
+  if (isAbsolute(pattern)) {
+    const parts = pattern.split('/');
+    let literal = parts.findIndex((part) => GLOB_SEGMENT.test(part));
+    if (literal === -1) literal = parts.length;
+    base = parts.slice(0, literal).join('/') || '/';
+    rest = parts.slice(literal).join('/');
+  }
+  const fromCwd = globLiteral(
+    relative(process.cwd(), base).split(sep).join('/'),
+  );
+  if (fromCwd === '') return rest;
+  return rest === '' ? fromCwd : `${fromCwd}/${rest}`;
+}
+
 /**
  * The project config with its paths made independent of the working
  * directory. twee-ts reads `sources`, `modules` and `headFile` relative to
@@ -71,9 +97,6 @@ function rebaseConfig(
   dir: string,
   config: TweeTs.TweeTsConfig,
 ): TweeTs.TweeTsConfig {
-  const fromCwd = globLiteral(
-    relative(process.cwd(), dir).split(sep).join('/'),
-  );
   const rebased: TweeTs.TweeTsConfig = {
     ...config,
     sources: (config.sources ?? ['.']).map((s) => resolve(dir, s)),
@@ -83,10 +106,8 @@ function rebaseConfig(
   if (config.headFile !== undefined) {
     rebased.headFile = resolve(dir, config.headFile);
   }
-  if (config.exclude && fromCwd !== '') {
-    rebased.exclude = config.exclude.map((e) =>
-      isAbsolute(e) ? e : `${fromCwd}/${e.replace(/^\.\//, '')}`,
-    );
+  if (config.exclude) {
+    rebased.exclude = config.exclude.map((e) => rebaseExclude(dir, e));
   }
   return rebased;
 }

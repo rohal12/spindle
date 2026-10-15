@@ -260,25 +260,55 @@ describe('resolveStoryHtmlWith', () => {
       });
     });
 
-    it('keeps absolute exclude patterns as they are', async () => {
+    it('makes absolute exclude patterns relative to the working directory', async () => {
       const dir = join(tmp, 'absolute-exclude');
       await mkdir(dir, { recursive: true });
-      const absolute = join(dir, 'skip.twee');
       const cwd = process.cwd();
       process.chdir(tmp);
       try {
         const options = await compileOptions(dir, {
           sources: ['.'],
-          exclude: [absolute, 'rel/*.twee'],
+          exclude: [
+            join(dir, 'skip.twee'),
+            join(tmp, 'other', '*.twee'),
+            join(tmp, 'b[12]', 'x.twee'),
+            'rel/*.twee',
+          ],
         });
         expect(options.exclude).toEqual([
-          absolute,
+          'absolute-exclude/skip.twee',
+          'other/*.twee',
+          // A glob in the pattern stays a glob.
+          'b[12]/x.twee',
           'absolute-exclude/rel/*.twee',
         ]);
       } finally {
         process.chdir(cwd);
       }
     });
+  });
+
+  it('applies an absolute project exclude', async () => {
+    const dir = join(tmp, 'project-absolute-exclude');
+    await mkdir(join(dir, 'story'), { recursive: true });
+    await writeFile(
+      join(dir, 'twee-ts.config.json'),
+      JSON.stringify({
+        sources: ['story'],
+        exclude: [join(dir, 'story', 'skip*.twee')],
+      }),
+    );
+    await writeFile(join(dir, 'story', 'a.twee'), TWEE);
+    await writeFile(join(dir, 'story', 'skip.twee'), ':: Skipped\nNo\n');
+    const cwd = process.cwd();
+    process.chdir(tmp);
+    try {
+      const { html } = await resolveStoryHtmlWith({ path: dir }, env);
+      expect(html).toContain('name="Next"');
+      expect(html).not.toContain('name="Skipped"');
+    } finally {
+      process.chdir(cwd);
+    }
   });
 
   it('compiles the files a glob matches', async () => {
