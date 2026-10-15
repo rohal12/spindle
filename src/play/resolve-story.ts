@@ -1,0 +1,164 @@
+import { readFile, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type * as TweeTs from '@rohal12/twee-ts';
+import { errorMessage } from '../utils/error-message';
+import { loadOptional, type Importer } from './optional';
+
+/** A story to play: compiled HTML, or a path to HTML, Twee or a project. */
+export type StoryInput = { html: string } | { path: string };
+
+export interface ResolvedStory {
+  html: string;
+  /** Things worth telling the caller; never errors. */
+  notes: string[];
+}
+
+interface ResolveEnv {
+  /** Where twee-ts looks for the Spindle format (its subfolders). */
+  formatSearchDir: string;
+  /** The installed Spindle version. */
+  version: string;
+  importer?: Importer;
+}
+
+type TweeTsModule = typeof TweeTs;
+
+/**
+ * twee-ts takes a format ID to be the name of the folder holding format.js,
+ * not the name inside it. The package keeps its format in `dist/pkg/`, and
+ * `formatSearchDir` is `dist/`.
+ */
+const FORMAT_FOLDER = 'pkg';
+const HTML_PATH = /\.html?$/i;
+const GLOB_CHARS = /[*?[\]{}]/;
+
+/** `file:line: message` per error; just the message without a location. */
+function formatDiagnostic(d: {
+  message: string;
+  file?: string;
+  line?: number;
+}): string {
+  return d.file !== undefined && d.line !== undefined
+    ? `${d.file}:${d.line}: ${d.message}`
+    : d.message;
+}
+
+function diagnosticsError(
+  diagnostics: readonly TweeTs.Diagnostic[],
+  fallback: string,
+): Error {
+  const errors = diagnostics.filter((d) => d.level === 'error');
+  return new Error(
+    errors.length > 0 ? errors.map(formatDiagnostic).join('\n') : fallback,
+  );
+}
+
+/** The compile sources and project config for a path (or glob). */
+async function sourcesFor(
+  tweeTs: TweeTsModule,
+  path: string,
+): Promise<{ sources: string[]; config: TweeTs.TweeTsConfig }> {
+  let isDirectory = false;
+  try {
+    isDirectory = (await stat(path)).isDirectory();
+  } catch (err) {
+    if (!GLOB_CHARS.test(path)) {
+      throw new Error(
+        `spindle: cannot read story ${path}: ${errorMessage(err)}`,
+      );
+    }
+  }
+  if (!isDirectory) return { sources: [path], config: {} };
+  const config = tweeTs.loadConfig(path);
+  if (!config) return { sources: [path], config: {} };
+  return {
+    sources: (config.sources ?? [path]).map((s) => resolve(path, s)),
+    config,
+  };
+}
+
+async function compileTwee(path: string, env: ResolveEnv): Promise<string> {
+  const tweeTs = await loadOptional<TweeTsModule>(
+    '@rohal12/twee-ts',
+    'compiling Twee',
+    env.importer,
+  );
+  const { sources, config } = await sourcesFor(tweeTs, path);
+  // The format options are ours: the project's own format settings would
+  // compile for another format, or fetch one.
+  const { output: _output, ...rest } = config;
+  try {
+    const { output, diagnostics } = await tweeTs.compile({
+      ...rest,
+      sources,
+      outputMode: 'html',
+      formatPaths: [env.formatSearchDir],
+      formatId: FORMAT_FOLDER,
+      noRemote: true,
+    });
+    if (diagnostics.some((d) => d.level === 'error')) {
+      throw diagnosticsError(diagnostics, 'spindle: Twee did not compile');
+    }
+    return output;
+  } catch (err) {
+    // A fatal compile error is thrown with its diagnostics.
+    const diagnostics = (err as { diagnostics?: TweeTs.Diagnostic[] })
+      .diagnostics;
+    if (Array.isArray(diagnostics) && diagnostics.length > 0) {
+      throw diagnosticsError(diagnostics, errorMessage(err));
+    }
+    throw err;
+  }
+}
+
+/** The `format-version` of the story's `<tw-storydata>`, if it has one. */
+function storyFormatVersion(html: string): string | undefined {
+  return /<tw-storydata\b[^>]*?\sformat-version="([^"]*)"/.exec(html)?.[1];
+}
+
+/** `resolveStoryHtml` with its environment passed in, for tests. */
+export async function resolveStoryHtmlWith(
+  input: StoryInput,
+  env: ResolveEnv,
+): Promise<ResolvedStory> {
+  let html: string;
+  if ('html' in input) {
+    html = input.html;
+  } else if (HTML_PATH.test(input.path)) {
+    try {
+      html = await readFile(input.path, 'utf8');
+    } catch (err) {
+      throw new Error(
+        `spindle: cannot read story ${input.path}: ${errorMessage(err)}`,
+      );
+    }
+  } else {
+    html = await compileTwee(input.path, env);
+  }
+  const notes: string[] = [];
+  const compiledWith = storyFormatVersion(html);
+  if (compiledWith !== undefined && compiledWith !== env.version) {
+    notes.push(
+      `The story was compiled with Spindle ${compiledWith}; it runs on the installed Spindle ${env.version}.`,
+    );
+  }
+  return { html, notes };
+}
+
+/**
+ * Turn a story into HTML: inline HTML as given, an `.html` path read, and
+ * anything else (a `.twee` file, a glob or a project directory) compiled with
+ * the installed Spindle format.
+ */
+export async function resolveStoryHtml(
+  input: StoryInput,
+): Promise<ResolvedStory> {
+  const { version } = JSON.parse(
+    await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  return resolveStoryHtmlWith(input, {
+    formatSearchDir: fileURLToPath(new URL('..', import.meta.url)),
+    version,
+  });
+}
