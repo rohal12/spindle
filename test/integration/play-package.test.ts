@@ -85,10 +85,13 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await s.close();
   });
 
-  it('rejects goto to an unknown passage and stays open', async () => {
+  it('rejects goto to an unknown or special passage and stays open', async () => {
     const s = await openPlaySession({ html });
     await expect(s.goto('Nowhere')).rejects.toThrow(
       'spindle: No passage named "Nowhere"',
+    );
+    await expect(s.goto('StoryInit')).rejects.toThrow(
+      'spindle: Cannot navigate to special passage "StoryInit".',
     );
     expect(s.closed).toBe(false);
     expect((await s.observe()).passage).toBe('Start');
@@ -164,32 +167,45 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
   });
 
   it('lets Node exit with a session left open', () => {
-    // The child opens a session and never closes it. (A script file, not
-    // `-e`: workers inherit `--input-type`, which needs `-e`.)
-    const dir = mkdtempSync(join(tmpdir(), 'spindle-play-'));
-    try {
-      const script = join(dir, 'open.mjs');
-      writeFileSync(
-        script,
-        `
-        const { openPlaySession } = await import(${JSON.stringify(playUrl)});
-        let html = '';
-        for await (const chunk of process.stdin) html += chunk;
-        const s = await openPlaySession({ html });
-        console.log((await s.observe()).passage);
-        `,
-      );
-      const child = spawnSync(process.execPath, [script], {
+    // The child opens a session and never closes it.
+    const script = `
+      const { openPlaySession } = await import(${JSON.stringify(playUrl)});
+      let html = '';
+      for await (const chunk of process.stdin) html += chunk;
+      const s = await openPlaySession({ html });
+      console.log((await s.observe()).passage);
+    `;
+    const child = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-e', script],
+      { input: html, encoding: 'utf8', timeout: 10_000 },
+    );
+    expect(child.stderr).toBe('');
+    expect(child.signal).toBeNull(); // not killed by the timeout
+    expect(child.status).toBe(0);
+    expect(child.stdout.trim()).toBe('Start');
+  });
+
+  it('opens a session from a host run with --input-type', () => {
+    // Workers inherit the host's execArgv; `--input-type` (both spellings)
+    // would stop the worker from starting.
+    const script = `
+      const { openPlaySession } = await import(${JSON.stringify(playUrl)});
+      let html = '';
+      for await (const chunk of process.stdin) html += chunk;
+      const s = await openPlaySession({ html });
+      console.log((await s.observe()).passage);
+      await s.close();
+    `;
+    for (const flags of [['--input-type=module'], ['--input-type', 'module']]) {
+      const child = spawnSync(process.execPath, [...flags, '-e', script], {
         input: html,
         encoding: 'utf8',
         timeout: 10_000,
       });
       expect(child.stderr).toBe('');
-      expect(child.signal).toBeNull(); // not killed by the timeout
       expect(child.status).toBe(0);
       expect(child.stdout.trim()).toBe('Start');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
     }
   });
 

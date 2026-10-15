@@ -1,12 +1,34 @@
 import { describe, expect, it } from 'vitest';
 import {
   openPlaySessionWith,
+  workerExecArgv,
   type PlaySessionOptions,
 } from '../../src/play/session';
 
 const stubUrl = new URL('./play-session/stub-worker.mjs', import.meta.url);
 const open = (o: PlaySessionOptions) =>
   openPlaySessionWith(o, { workerUrl: stubUrl, headlessUrl: stubUrl });
+
+describe('workerExecArgv', () => {
+  it('drops --input-type in both spellings and keeps every other flag', () => {
+    expect(
+      workerExecArgv([
+        '--input-type=module',
+        '--no-warnings',
+        '--input-type',
+        'commonjs',
+        '--max-old-space-size=100',
+        '--conditions',
+        'dev',
+      ]),
+    ).toEqual([
+      '--no-warnings',
+      '--max-old-space-size=100',
+      '--conditions',
+      'dev',
+    ]);
+  });
+});
 
 describe('play session handle', () => {
   it('rejects open when the worker cannot boot', () =>

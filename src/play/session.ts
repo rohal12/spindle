@@ -25,7 +25,8 @@ export interface PlaySession {
   step(id: string, value?: unknown): Promise<Observation>;
   /**
    * Story.goto(), then waitForActions(), then observe(). Not recorded in the
-   * transcript. Rejects for a passage the story does not have.
+   * transcript. Rejects for a passage the story does not have, or a special
+   * passage (StoryInit, ...).
    */
   goto(passage: string): Promise<Observation>;
   /**
@@ -51,6 +52,21 @@ interface Job {
   args: unknown[];
   resolve(result: unknown): void;
   reject(error: Error): void;
+}
+
+/**
+ * The host's Node flags for the worker, less `--input-type` (as
+ * `--input-type=<type>` or `--input-type <type>`): it only applies to `-e`
+ * and stdin, and a worker started with it fails.
+ */
+export function workerExecArgv(execArgv: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < execArgv.length; i++) {
+    const arg = execArgv[i]!;
+    if (arg === '--input-type') i++;
+    else if (!arg.startsWith('--input-type=')) kept.push(arg);
+  }
+  return kept;
 }
 
 /**
@@ -96,7 +112,10 @@ export function openPlaySessionWith(
   };
 
   return new Promise<PlaySession>((resolveOpen, rejectOpen) => {
-    const worker = new Worker(urls.workerUrl, { workerData });
+    const worker = new Worker(urls.workerUrl, {
+      workerData,
+      execArgv: workerExecArgv(process.execArgv),
+    });
     let booted = false;
     let closed = false;
     let nextId = 1;

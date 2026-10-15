@@ -31,11 +31,12 @@ export function bootStory(options: BootStoryOptions): Promise<StoryAPI>;
 export function storyVariables(): Record<string, unknown>;
 
 /**
- * Whether the story has a passage named `name`: the check `Story.goto()`
- * makes before it navigates (it reports a missing passage on the page
- * instead of throwing).
+ * Why `Story.goto(name)` would not navigate, or `null` if it would: `name` is
+ * a special passage (StoryInit, ...) or names no passage. The message is the
+ * one Spindle logs (and, for a missing passage, shows on the page), since
+ * `Story.goto()` reports these instead of throwing.
  */
-export function hasPassage(name: string): boolean;
+export function gotoError(name: string): string | null;
 
 /** One recorded step: what the reader saw, and what they chose. */
 export interface TranscriptEntry {

@@ -42,6 +42,11 @@ export function showRuntimeError(context: string, error: unknown): void {
   );
 }
 
+/** The error for navigating to `name`, a special passage (StoryInit, ...). */
+export function specialPassageError(name: string): Error {
+  return new Error(`Cannot navigate to special passage "${name}".`);
+}
+
 /**
  * The error for `name`, a passage name that names no passage, used in the
  * passage `from`.

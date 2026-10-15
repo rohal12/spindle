@@ -208,7 +208,7 @@ const _validateMarkup: typeof PublishedValidateMarkup = (passages, options) =>
 // types/headless.d.ts or types/play.d.ts.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _headlessAndPlayTypes: [
-  Same<typeof SourceHeadless.hasPassage, typeof PublishedHeadless.hasPassage>,
+  Same<typeof SourceHeadless.gotoError, typeof PublishedHeadless.gotoError>,
   Same<
     typeof SourceHeadless.storyVariables,
     typeof PublishedHeadless.storyVariables

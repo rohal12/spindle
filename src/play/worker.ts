@@ -115,10 +115,9 @@ async function start(): Promise<void> {
     step: ([id, value]) => transcript.step(id as string, value),
     goto: async ([passage]) => {
       const name = passage as string;
-      // Story.goto() reports a missing passage on the page and returns.
-      if (!headless.hasPassage(name)) {
-        throw new Error(`spindle: No passage named ${JSON.stringify(name)}`);
-      }
+      // Story.goto() reports a passage it won't go to and returns.
+      const refused = headless.gotoError(name);
+      if (refused !== null) throw new Error(`spindle: ${refused}`);
       story.goto(name);
       await story.waitForActions();
       return story.observe();

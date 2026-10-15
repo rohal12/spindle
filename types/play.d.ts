@@ -41,8 +41,10 @@ export interface PlaySession {
   step(id: string, value?: unknown): Promise<Observation>;
   /**
    * Story.goto(), then waitForActions(), then observe(). Not recorded in the
-   * transcript. Rejects with `spindle: No passage named "<name>"` for a
-   * passage the story does not have; the session stays open.
+   * transcript. Rejects for a passage the story does not have
+   * (`spindle: No passage named "<name>" ...`) or a special passage such as
+   * StoryInit (`spindle: Cannot navigate to special passage ...`); the session
+   * stays open.
    */
   goto(passage: string): Promise<Observation>;
   /**
