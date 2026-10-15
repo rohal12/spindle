@@ -98,8 +98,9 @@ message` lines.
   result with `createTranscript(story, transcript)`.
 - **Messages:** `{ id, op, args }` comes in and `{ id, ok: true, result }` or
   `{ id, ok: false, error: { message } }` goes out.
-- **Values:** `get` results are passed through `JSON.parse(JSON.stringify())`.
-  A value that can't be serialized (a function, a cycle) becomes the string
+- **Values:** `get` results are cloned with `structuredClone`, so `Map`,
+  `Set`, `Date` and cycles survive. A value that can't be cloned (a
+  function, or a `Map` holding one) becomes the string
   `"[unserializable: <reason>]"`.
 - **Order:** calls run one at a time, in the order they arrived. Because the
   main-thread handle queues them, a caller can't run two steps at once.
