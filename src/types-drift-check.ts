@@ -37,6 +37,10 @@ import type {
 import type { bootStory as PublishedBootStory } from '../types/headless';
 import type * as SourceTooling from './tooling';
 import type * as PublishedTooling from '../types/tooling';
+import type * as SourceHeadless from './headless';
+import type * as PublishedHeadless from '../types/headless';
+import type * as SourcePlay from './play/index';
+import type * as PublishedPlay from '../types/play';
 
 /** What the source declares, by published name. */
 interface Source {
@@ -198,3 +202,54 @@ declare const validateStoryMarkup: typeof SourceValidateStoryMarkup;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _validateMarkup: typeof PublishedValidateMarkup = (passages, options) =>
   validateStoryMarkup(passages, [], options);
+
+// The rest of the headless entry point, and the play entry point
+// (`@rohal12/spindle/play`): each must be the same type in the source and in
+// types/headless.d.ts or types/play.d.ts.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _headlessAndPlayTypes: [
+  Same<typeof SourceHeadless.hasPassage, typeof PublishedHeadless.hasPassage>,
+  Same<
+    typeof SourceHeadless.storyVariables,
+    typeof PublishedHeadless.storyVariables
+  >,
+  Same<
+    typeof SourceHeadless.createTranscript,
+    typeof PublishedHeadless.createTranscript
+  >,
+  Same<SourceHeadless.BootStoryOptions, PublishedHeadless.BootStoryOptions>,
+  Same<SourceHeadless.Transcript, PublishedHeadless.Transcript>,
+  Same<SourceHeadless.TranscriptEntry, PublishedHeadless.TranscriptEntry>,
+  Same<SourceHeadless.TranscriptOptions, PublishedHeadless.TranscriptOptions>,
+  Same<typeof SourcePlay.openPlaySession, typeof PublishedPlay.openPlaySession>,
+  Same<
+    typeof SourcePlay.resolveStoryHtml,
+    typeof PublishedPlay.resolveStoryHtml
+  >,
+  Same<SourcePlay.PlaySession, PublishedPlay.PlaySession>,
+  Same<SourcePlay.PlaySessionOptions, PublishedPlay.PlaySessionOptions>,
+  Same<SourcePlay.StoryInput, PublishedPlay.StoryInput>,
+  Same<SourcePlay.ResolvedStory, PublishedPlay.ResolvedStory>,
+  Same<SourcePlay.Observation, PublishedPlay.Observation>,
+  Same<SourcePlay.ObservedAction, PublishedPlay.ObservedAction>,
+  Same<SourcePlay.TranscriptEntry, PublishedPlay.TranscriptEntry>,
+  Same<SourcePlay.TranscriptOptions, PublishedPlay.TranscriptOptions>,
+] = [
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+  true,
+];

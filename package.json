@@ -84,8 +84,8 @@
     "zustand": "^5.0.15"
   },
   "peerDependencies": {
-    "@rohal12/twee-ts": "^1.18",
-    "happy-dom": "^20"
+    "@rohal12/twee-ts": "^1.18.2",
+    "happy-dom": "^20.14.6"
   },
   "peerDependenciesMeta": {
     "@rohal12/twee-ts": {

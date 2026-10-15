@@ -3,6 +3,7 @@ import type {
   TranscriptEntry,
   TranscriptOptions,
 } from './headless';
+import type { ObservedAction } from './index';
 
 /** A story to play: compiled HTML, or a path to HTML, Twee or a project. */
 export type StoryInput = { html: string } | { path: string };
@@ -70,4 +71,4 @@ export function openPlaySession(
   options: PlaySessionOptions,
 ): Promise<PlaySession>;
 
-export type { Observation, TranscriptEntry, TranscriptOptions };
+export type { Observation, ObservedAction, TranscriptEntry, TranscriptOptions };

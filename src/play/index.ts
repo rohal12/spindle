@@ -12,3 +12,4 @@ export type {
   TranscriptEntry,
   TranscriptOptions,
 } from '../headless';
+export type { ObservedAction } from '../observe/observe';
