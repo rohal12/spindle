@@ -77,8 +77,10 @@ function openPlaySession(options: PlaySessionOptions): Promise<PlaySession>;
 - **Twee (`.tw` or `.twee`), a glob or a directory:** compiled with
   `@rohal12/twee-ts`.
   - The story format is the Spindle format installed beside this module
-    (`dist/pkg/format.js`), passed as `formatPaths: [<dist/pkg>]` with
-    `formatId: 'spindle'`.
+    (`dist/pkg/format.js`). twee-ts finds formats in subfolders of a search
+    directory, so it gets `formatPaths: [<package>/dist]`, `formatId:
+'spindle'` and `noRemote: true`. These override the project config's format
+    options, because the installed runtime is what runs the story.
   - For a directory, its `twee-ts.config.json` is used when there is one,
     and otherwise every `**/*.{tw,twee}` file under it.
   - Compile errors reject with the twee-ts diagnostics, as `file:line:
@@ -151,9 +153,19 @@ import.meta.url)`.
 ## Part 2: MCP play tools in `spindle-lsp`
 
 These are thin wrappers over `spindle/play`, registered in `src/mcp/server.ts`
-next to `spindle_check` and `spindle_format`. `spindle-lsp` adds happy-dom and
-`@rohal12/twee-ts` as dependencies, and raises its minimum Spindle version to
-the release that ships `./play`.
+next to `spindle_check` and `spindle_format`.
+
+- **Dependencies:** `spindle-lsp` adds happy-dom and `@rohal12/twee-ts` as
+  dependencies.
+- **Bundling:** `spindle-lsp` bundles itself with esbuild, which would break
+  the worker URLs in `spindle/play`. So `@rohal12/spindle/play`, happy-dom
+  and twee-ts are left out of the bundle and imported lazily by the play
+  tools.
+- **Spindle version:** the general minimum (`MINIMUM_SPINDLE_VERSION`) stays
+  as it is, so `spindle_check` keeps working with older Spindle. When the
+  installed Spindle lacks `./play`, the play tools fail with `spindle_play
+needs @rohal12/spindle <version> or later`, where `<version>` is the
+  release that ships `./play`.
 
 ### Tools
 
