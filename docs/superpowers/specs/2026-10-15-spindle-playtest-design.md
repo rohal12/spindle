@@ -49,10 +49,18 @@ spindle-playtest [story] [--config file] [--runs n] [--max-turns n] [--seed n]
 ```
 
 - **Story:** `story` is a path in any form `resolveStoryHtml` accepts. When
-  it's left out, the config's `story` is used.
+  it's left out, the config's `story` is used. A story argument is relative
+  to the working directory; a config `story` is relative to the config
+  file's directory.
 - **Config file:** the default is `spindle-playtest.json` in the working
   directory, if it exists.
-- **Flags:** a flag overrides the matching config field.
+- **Flags:** a flag overrides the matching config field. An empty or
+  non-numeric value for `--runs`, `--max-turns` or `--seed` is a config error
+  naming the field.
+- **Help:** `--help` or `-h` prints the usage line and exits 0. A missing
+  story or an unknown flag prints the error and the usage line.
+- **Notes:** notes from `resolveStoryHtml` (such as a Spindle version
+  mismatch) go to stderr.
 
 ## Config
 
@@ -90,22 +98,30 @@ command line.
 | `seed`             | random, printed in the summary | Seed for sampling                                             |
 
 - **API key:** taken from the `SPINDLE_PLAYTEST_API_KEY` environment
-  variable, never from the config. When it isn't set, no `Authorization`
-  header is sent.
+  variable, never from the config; an `apiKey` field in the file is an error
+  (`apiKey: not allowed in the config file; set SPINDLE_PLAYTEST_API_KEY`).
+  When it isn't set, no `Authorization` header is sent.
 - **Validation:** the config is checked on startup. An unknown field, a wrong
-  type, `runs`, `maxTurns` or `parallel` below 1, or `historyLimit` below 0
-  stops the CLI with exit code 1 and a message naming the field.
+  type, a `baseUrl` that isn't an http(s) URL, `runs`, `maxTurns` or
+  `parallel` below 1, or `historyLimit` below 0 stops the CLI with exit code
+  1 and a message naming the field.
+- **Inputs:** `name` and `$name` are the same variable, and giving both is an
+  error. Candidates are strings, numbers or booleans.
 
 ## One run
 
 1. Open a play session with `{ html, transcript: { limit: historyLimit } }`.
-2. `observe()`. When there are no actions, the run ends.
+2. `observe()`. When the passage is an ending, the run ends there, even if
+   it offers actions.
 3. Build the options from `observation.actions` (see "Options"). When there
-   are none, the run ends as if there were no actions (see "How a run ends").
+   are none, the run ends as a dead end (see "How a run ends").
 4. Build `state` (see "State") and send one Choice question with the id
    `next`.
 5. Pick an option by sampling from `probabilities` with the run's seeded
-   random generator (`seed + run index`). Step with its action id and value.
+   random generator (`seed + run index`). Negative, non-finite or missing
+   probabilities count as 0. When none is positive, the answer's `choice` is
+   taken if it names an option; otherwise the run ends as an error (`System
+One answered with no known option`). Step with its action id and value.
 6. Record the turn: passage, options, probabilities, confidence, the chosen
    option, and any `errors` in the new observation.
 7. Repeat from step 2 until `maxTurns` steps. Then close the session.
@@ -122,11 +138,17 @@ The runner keeps a map from each name back to `{ id, value }`.
 | `listbox`, `cycle`                              | one per entry in `options` (`"$weapon = sword"`)             | the option                         |
 | `checkbox`                                      | one that flips it (`"$brave: check"` or `"$brave: uncheck"`) | the new boolean                    |
 | `radiobutton`                                   | one (`"$color = blue"`)                                      | none (selecting it sets its value) |
-| `textbox`, `textarea`, `numberbox`              | one per configured candidate (`"$name = Alice"`)             | the candidate                      |
+| `textbox`, `textarea`, `numberbox`              | one per configured candidate (`"$name = \"Alice\""`)         | the candidate                      |
 
 - **Skipped:** disabled actions. Inputs whose current value already equals
-  the option's value, so the runner never chooses something that changes
-  nothing.
+  the option's value, compared as text (so `5` and `"5"` are equal), so the
+  runner never chooses something that changes nothing. A radio button whose
+  label equals the variable's value: an unlabeled radio is labeled with its
+  own value, so that one is selected. A labeled radio can't be compared until
+  Spindle exposes the radio's own value.
+- **Candidate names:** a candidate is written as JSON in the option name, so
+  strings are quoted (`$name = "Alice"`, `$name = ""`) and numbers aren't
+  (`$age = 30`).
 - **Duplicate names:** a number is added (`"Go north (2)"`).
 - **Descriptions:** an option's description says what kind of action it is,
   plus the link target when there is one (`"link to North Road"`).
@@ -144,7 +166,7 @@ Story context:
 <observation.context>          (left out when null)
 
 Recent history (oldest first):
-- <passage>: <text>  -> chose "<label>"
+- <passage>: <text>  -> chose "<option>"   (input options unquoted)
 ...                            (the transcript's entries)
 
 Current passage: <passage>
@@ -154,11 +176,20 @@ Open dialogs:
 - <passage>: <text>            (left out when there are none)
 ```
 
+A history line names the option the runner chose, because the
+transcript's label is stale for cycles and is only the variable for
+listboxes. A link, button or dialog option is quoted like a label
+(`-> chose "Go north"`); an input option is written bare, since its name can
+hold quotes of its own (`-> chose $weapon = axe`, `-> chose $name = "Ada"`).
+The transcript records every step the runner takes, so its entries line up
+with the runner's latest steps; an entry whose action id doesn't match falls
+back to the transcript's label and value (`-> chose "<label>" = <value>`).
+
 ### How a run ends
 
 | Outcome  | When                                                                                   |
 | -------- | -------------------------------------------------------------------------------------- |
-| ending   | no actions, and the passage is tagged `ending` or listed in `endings`                  |
+| ending   | arrives on a passage tagged `ending` or listed in `endings`, even one with actions     |
 | dead end | no actions, and not an ending                                                          |
 | turn cap | `maxTurns` reached                                                                     |
 | error    | a timeout, a step that rejects, too many options, or a decision error that stops a run |
@@ -173,11 +204,18 @@ Open dialogs:
 `src/decide.ts` uses `fetch`. No SDK is involved, because TypeSafe's SDK is
 Python only.
 
-- **Retries:** 429, 529, 5xx and network errors are retried with exponential
-  backoff (0.5 s, 1 s, 2 s, 4 s, 8 s), up to 5 retries. When retries run out,
-  that run ends as an error.
+- **Timeout:** each request times out after 60 seconds.
+- **Retries:** 429, 529, 5xx, timeouts and other network errors (a connection
+  reset, a body that drops partway) are retried with exponential backoff
+  (0.5 s, 1 s, 2 s, 4 s, 8 s), up to 5 retries. When retries run out, that
+  run ends as an error. A network error's message names its cause
+  (`network error: fetch failed (ECONNRESET)`).
+- **Unreachable server:** a connection refused or a host not found
+  (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`) aborts the whole command at once,
+  without retries: `cannot reach <baseUrl> (<code>); is the server running?`,
+  exit code 1.
 - **Stop everything:** 401 aborts the whole command with `authentication
-failed: check SPINDLE_PLAYTEST_API_KEY`, exit code 1. So do 400
+failed: check SPINDLE_PLAYTEST_API_KEY`, exit code 1. So do 413, 400
   `max_tokens_exceeded`, and 422 when the body mentions the token limit, with
   `state too long for <model>; lower historyLimit`.
 - **Other 4xx:** abort the command with the server's message, exit code 1.
@@ -193,7 +231,6 @@ spindle-playtest: 20 runs, kev (kev-latest), seed 1, 1,412 decisions, 512k input
 
 Endings        Epilogue 12 · Drowned 5
 Dead ends      Cellar 3
-Turn cap       0
 Errors         Market: $price is undefined (2 runs)
 Unused inputs  $nickname (textbox in Tavern)
 
@@ -210,8 +247,9 @@ Least confident choices (average confidence, at least 2 visits)
 - **Progress:** a counter goes to stderr while runs are going (`run 7/20`),
   only when stderr is a TTY.
 - **Exit code:** 0 when the command finished, even when runs hit dead ends,
-  errors or the turn cap. 1 for config, story resolution, authentication or
-  aborting API errors.
+  errors or the turn cap. 1 for config, story resolution, an unreachable
+  server, authentication or aborting API errors. Any other error is a bug and
+  is printed with its stack.
 
 ## Package
 
