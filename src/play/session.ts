@@ -23,7 +23,10 @@ export interface PlaySession {
   observe(): Promise<Observation>;
   /** Goes through the transcript, so the step is recorded. */
   step(id: string, value?: unknown): Promise<Observation>;
-  /** Story.goto(), then waitForActions(), then observe(). Not recorded in the transcript. */
+  /**
+   * Story.goto(), then waitForActions(), then observe(). Not recorded in the
+   * transcript. Rejects for a passage the story does not have.
+   */
   goto(passage: string): Promise<Observation>;
   /**
    * Story variables, by name with or without `$`. All of them when `names` is

@@ -39,7 +39,11 @@ export interface PlaySession {
   observe(): Promise<Observation>;
   /** Goes through the transcript, so the step is recorded. */
   step(id: string, value?: unknown): Promise<Observation>;
-  /** Story.goto(), then waitForActions(), then observe(). Not recorded in the transcript. */
+  /**
+   * Story.goto(), then waitForActions(), then observe(). Not recorded in the
+   * transcript. Rejects with `spindle: No passage named "<name>"` for a
+   * passage the story does not have; the session stays open.
+   */
   goto(passage: string): Promise<Observation>;
   /**
    * Story variables, by name with or without `$`. All of them when `names`
@@ -65,7 +69,10 @@ export interface PlaySession {
  * In the worker, `window` is happy-dom's window, not `globalThis`. Story code
  * sees `Story` and the DOM globals as in a browser, but a property set on
  * `window` (`window.foo = 1`) does not become a bare global `foo`. Sessions do
- * not share a `BroadcastChannel`, so they never hear each other.
+ * not share a `BroadcastChannel`, `localStorage` or `navigator`, so they never
+ * hear each other. The story's `console.log` goes to stderr, not stdout.
+ *
+ * A session left open does not keep Node running (a call in progress does).
  */
 export function openPlaySession(
   options: PlaySessionOptions,

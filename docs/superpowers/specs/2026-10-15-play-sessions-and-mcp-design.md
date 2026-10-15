@@ -78,9 +78,11 @@ function openPlaySession(options: PlaySessionOptions): Promise<PlaySession>;
   `@rohal12/twee-ts`.
   - The story format is the Spindle format installed beside this module
     (`dist/pkg/format.js`). twee-ts finds formats in subfolders of a search
-    directory, so it gets `formatPaths: [<package>/dist]`, `formatId:
-'spindle'` and `noRemote: true`. These override the project config's format
-    options, because the installed runtime is what runs the story.
+    directory, so it gets `formatPaths: [<package>/dist]`, `formatId: 'pkg'`
+    and `noRemote: true`. The format ID is the name of the folder holding
+    `format.js` (`dist/pkg/`), not the format's own name. These override the
+    project config's format options, because the installed runtime is what
+    runs the story.
   - For a directory, its `twee-ts.config.json` is used when there is one,
     and otherwise every `**/*.{tw,twee}` file under it.
   - Compile errors reject with the twee-ts diagnostics, as `file:line:
