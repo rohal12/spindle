@@ -2,8 +2,8 @@ import type {
   Observation,
   TranscriptEntry,
   TranscriptOptions,
-} from './headless';
-import type { ObservedAction } from './index';
+} from './headless.js';
+import type { ObservedAction } from './index.js';
 
 /** A story to play: compiled HTML, or a path to HTML, Twee or a project. */
 export type StoryInput = { html: string } | { path: string };
