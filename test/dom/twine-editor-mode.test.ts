@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 import { runLines } from '../support/twine-editor-mode';
 
 /** The tokens on line `line` (0-based) as [text, style] pairs. */
@@ -62,14 +63,23 @@ describe('Spindle CodeMirror mode', () => {
     expect(runLines(text)).toEqual([]);
   });
 
-  it('keeps a construct open for thousands of lines fast', () => {
-    const text = [
-      '{if $x',
-      ...Array.from({ length: 4999 }, (_, i) => `line ${i}`),
-    ].join('\n');
-    const started = performance.now();
-    const tokens = runLines(text);
-    expect(performance.now() - started).toBeLessThan(1000);
-    expect(tokens).toContainEqual([4999, 'line 4998', 'error']);
-  });
+  it(
+    'keeps a construct open for thousands of lines in linear time',
+    { timeout: LINEAR_TIMEOUT },
+    () => {
+      const open = (lines: number) =>
+        [
+          '{if $x',
+          ...Array.from({ length: lines - 1 }, (_, i) => `line ${i}`),
+        ].join('\n');
+      const small = open(625);
+      const large = open(5000);
+      expect(runLines(large)).toContainEqual([4999, 'line 4998', 'error']);
+      expectAboutLinear(
+        () => runLines(small),
+        () => runLines(large),
+        { rounds: 3 },
+      );
+    },
+  );
 });

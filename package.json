@@ -63,7 +63,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test && tsc -p test/types-consumer",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "duplication": "bun scripts/duplication.ts jscpd && bun scripts/duplication.ts cpd && bun scripts/duplication.ts fallow",
@@ -85,7 +85,7 @@
   },
   "peerDependencies": {
     "@rohal12/twee-ts": "^1.18.2",
-    "happy-dom": "^20.14.6"
+    "happy-dom": ">=20.14.6"
   },
   "peerDependenciesMeta": {
     "@rohal12/twee-ts": {
@@ -110,7 +110,7 @@
     "fake-indexeddb": "^6.2.5",
     "fallow": "3.33.1",
     "fast-check": "^4.10.2",
-    "happy-dom": "^20.14.6",
+    "happy-dom": "^21.0.3",
     "husky": "^9.1.7",
     "js-yaml": "^5.4.3",
     "jscpd": "5.4.1",

@@ -103,6 +103,9 @@ describe('lexJs', () => {
     expect(regex('f = () => {}\n/a"/.test(s)')).toEqual(['/a"/']);
     expect(regex('if (x) {} else {}\n/a"/.test(s)')).toEqual(['/a"/']);
     expect(regex('do {} while (x); try {} finally {}\n/a"/')).toEqual(['/a"/']);
+    // `do` takes an expression statement too, but its `{` is always a block
+    expect(regex('do { {} /a"/.test(s) } while (x)')).toEqual(['/a"/']);
+    expect(regex('do { {}\n/a"/ } while (x)')).toEqual(['/a"/']);
     expect(regex('function f() {}\n/a"/.test(s)')).toEqual(['/a"/']);
     // As an expression, `{} / a` is division, so the `"` opens a string.
     expect(literals('{}\n/a"/.test(s)')).toEqual(['"/.test(s)']);

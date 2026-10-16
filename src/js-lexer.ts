@@ -272,6 +272,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
   braceIsBlock(prevType: TokenType): boolean {
     if (prevType === tt.colon && this.colonEndsTernary) return false;
     if (prevType === tt.braceR && this.closedBlock) return true;
+    // acorn lets an expression follow `do`, but a `{` there is its body
+    if (prevType === tt._do) return true;
     // A class's static initialization block: `static { … }`
     if (prevType === tt.name && this.prevValue === 'static') return true;
     // A statement ended by a line break (`p⏎{ }`): a block starts
