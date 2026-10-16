@@ -96,6 +96,20 @@ const literalCases = [
   '```\ncode    \n\n',
 ];
 
+const markdownCases = [
+  '## A very long heading containing many different words\n',
+  'A very long setext heading containing many different words\n==========================================================\n',
+  '| one long cell | two long cell |\n| --- | --- |\n| third text here | fourth cell here |\n',
+  'one long cell | two long cell\n--- | ---\nthird text here | fourth cell here\n',
+  '- A very long list item containing many different words\n  - A nested list item containing many different words\n',
+  '> A very long blockquote containing many different words\n>\n> Second paragraph in the same blockquote\n',
+  'A paragraph with `many words inside an inline code span` after it.\n',
+  'A paragraph with [many words in a Markdown link](https://example.com "A long title") after it.\n',
+  'A paragraph with ![many words in an image label](image.png "A long title") after it.\n',
+  '[long-reference]: https://example.com/a-long-url "A long reference title"\n\n[reference][long-reference]\n',
+  '{if true}\n## A long heading inside a macro body\n\n| one long cell | two long cell |\n| --- | --- |\n| third text here | fourth cell here |\n{/if}\n',
+];
+
 describe('Format keeps what a passage displays', () => {
   for (const input of [...cases, ...literalCases]) {
     it(JSON.stringify(input), async () => {
@@ -106,6 +120,21 @@ describe('Format keeps what a passage displays', () => {
       const output = await formatPassage(input, options);
       expect(canonical(output)).toBe(canonical(input));
       expect(await formatPassage(output, options)).toBe(output);
+    });
+  }
+
+  for (const input of markdownCases) {
+    it(`keeps Markdown structure when wrapping: ${JSON.stringify(input)}`, async () => {
+      for (const maxLineLength of [18, 80]) {
+        const options = { maxLineLength };
+        const source =
+          maxLineLength === 80
+            ? input.replace(/long/g, 'very '.repeat(25))
+            : input;
+        const output = await formatPassage(source, options);
+        expect(canonical(output)).toBe(canonical(source));
+        expect(await formatPassage(output, options)).toBe(output);
+      }
     });
   }
 });

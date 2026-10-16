@@ -718,7 +718,9 @@ const o = Story.observe();
 
 - `turn`: the navigation count. A link moves it forward; an input or a button that only sets variables leaves it as it is.
 
-Observation text keeps table cells separated by tabs and rows by newlines. A closed `<details>` contributes only its first `<summary>`; errors in its collapsed body are omitted until it opens. Variable and inline expression failures are reported as local errors, and non-JSON control values do not stop observation.
+Observation text keeps table cells separated by tabs and rows by newlines. A closed `<details>` contributes only its first `<summary>`; errors in its collapsed body are omitted until it opens. Stylesheet rules such as `display: none` and `visibility: hidden` hide text and errors too, including in dialogs and `StoryContext`; a later observation reflects visibility changes. Variable and inline expression failures are reported as local errors.
+
+Action `value` fields are detached snapshots: JSON trees keep their strings, numbers, booleans, nulls, arrays and objects. Other values use Spindle's stable text description: for example, `1n` becomes `"1n"`, `Symbol('key')` becomes `'Symbol("key")'`, and a cyclic object can become `'{"self":<ref 0>}'`. Unreadable values become `"<unkeyable>"`. These descriptions are for inspection; pass a new input value to `step()` to edit a control. `getActions()` continues to expose the original values.
 
 Before the first passage is on screen, `observe()` throws `spindle: Story.observe() needs a mounted story`.
 

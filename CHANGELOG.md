@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Passage wrapping preserves Markdown headings, tables and other structures whose line breaks carry syntax (#575).
+- URI autolinks such as `<mailto:support@example.com>`, `<tel:12345>` and `<urn:isbn:12345>` reach the Markdown renderer without being mistaken for unclosed HTML tags during story validation (#576).
+- Observations omit stylesheet-hidden text and errors in passages, dialogs and `StoryContext`, and reflect later CSS visibility changes (#577).
+- Observed action values are detached, JSON-serializable snapshots, with stable text descriptions for BigInt, cycles, symbols and other non-JSON values (#578).
+
 - Imported saves remap playthrough IDs already owned by another story; deleting a playthrough removes only that story's saves and slots (#562).
 - Outgoing passage snapshots remove inline event handlers before resources can load or fail again, keeping transitions from changing destination state (#563).
 - Custom sub-macros build the documented branches in the runtime and tooling; replacing a parent releases companions that no other parent declares, with indexed companion lookups keeping parsing fast (#564, #571).

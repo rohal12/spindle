@@ -26,7 +26,9 @@ Story.defineMacro({
     });
     const el = storyContextElement()!;
     expect(el).not.toBeNull();
-    expect(observableText(el)).toContain('StoryContext: exploded');
-    expect(observableErrors(el)).toHaveLength(1);
+    expect(observableText(el, undefined, el)).toContain(
+      'StoryContext: exploded',
+    );
+    expect(observableErrors(el, undefined, el)).toHaveLength(1);
   });
 });

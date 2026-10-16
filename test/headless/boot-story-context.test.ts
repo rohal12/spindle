@@ -36,7 +36,7 @@ describe('bootStory with a StoryContext passage', () => {
     await Story.waitForActions();
     Story.set('gold', 4);
     await Story.waitForActions();
-    expect(observableText(el)).toContain('Gold: 4');
+    expect(observableText(el, undefined, el)).toContain('Gold: 4');
   });
 
   it('mounts it again when the page lost the element', async () => {
@@ -45,7 +45,7 @@ describe('bootStory with a StoryContext passage', () => {
     const again = storyContextElement()!;
     expect(again).not.toBe(el);
     expect(again.isConnected).toBe(true);
-    expect(observableText(again)).toContain('Gold:');
+    expect(observableText(again, undefined, again)).toContain('Gold:');
     // The lost tree was unmounted
     expect(el.childNodes).toHaveLength(0);
   });

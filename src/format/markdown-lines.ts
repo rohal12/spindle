@@ -3,14 +3,16 @@ import { analyzeMarkup } from '../markup/parse';
 import { markdownOptions } from '../markup/markdown';
 import type { PairedNode } from '../markup/pair';
 
-/** Source lines that belong to a fenced block in a runtime Markdown document. */
-export function fencedCodeLines(
+/** Source lines belonging to the given constructs in runtime Markdown documents. */
+export function markdownLines(
   source: string,
   isBlock: (name: string) => boolean,
+  types: ReadonlySet<string>,
 ): Set<number> {
   const found = new Set<number>();
   // Most passages contain no fence; avoid parsing their Markdown again.
-  if (!/`{3}|~{3}/.test(source)) return found;
+  if (types.size === 1 && types.has('codeFenced') && !/`{3}|~{3}/.test(source))
+    return found;
   const { nodes } = analyzeMarkup(source, { hooks: { isBlock } });
 
   function visit(nodes: PairedNode[]): void {
@@ -39,7 +41,7 @@ export function fencedCodeLines(
         .write(preprocess()(markdown, undefined, true)),
     );
     for (const [event, token] of events) {
-      if (event !== 'enter' || token.type !== 'codeFenced') continue;
+      if (event !== 'enter' || !types.has(token.type)) continue;
       for (const span of spans) {
         const start = Math.max(token.start.offset, span.start);
         const end = Math.min(token.end.offset, span.end);

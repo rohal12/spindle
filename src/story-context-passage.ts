@@ -78,7 +78,8 @@ function StoryContextView({ ast }: { ast: ASTNode[] }) {
  * story has none. It is mounted on the first call, hidden from the page and
  * with its controls registering no actions, and stays mounted: it follows the
  * story's variables, also across a restart. The element itself is not hidden
- * (its parent is), so observableText() reads it. A passage that can't be
+ * (its parent is), so observations bound visibility checks at the container.
+ * A passage that can't be
  * parsed or rendered shows its error as text in the element; this never
  * throws.
  */

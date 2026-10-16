@@ -2,6 +2,33 @@ import { describe, it, expect } from 'vitest';
 import { tokenizeMarkup } from '../../src/markup/parse';
 
 describe('tokenizeMarkup', () => {
+  describe('URI autolinks (#576)', () => {
+    it.each([
+      'mailto:support@example.com',
+      'tel:12345',
+      'urn:isbn:12345',
+      'https://example.com',
+      'ab:',
+      'a+.-012:test',
+      `${'a'.repeat(32)}:value`,
+    ])('keeps <%s> as text for Markdown', (uri) => {
+      const value = `Contact <${uri}>.`;
+      expect(tokenizeMarkup(value)).toEqual([
+        { type: 'text', value, start: 0, end: value.length },
+      ]);
+    });
+
+    it.each([
+      '<a:href>',
+      `<${'a'.repeat(33)}:value>`,
+      '<mailto:has space>',
+      '<mailto:has\nnewline>',
+      '<mailto:has\u007fcontrol>',
+    ])('does not recognize invalid URI autolinks: %s', (source) => {
+      expect(tokenizeMarkup(source)[0]?.type).toBe('html');
+    });
+  });
+
   describe('text', () => {
     it('returns a single text token for plain text', () => {
       const tokens = tokenizeMarkup('Hello world');
