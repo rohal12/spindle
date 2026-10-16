@@ -63,7 +63,11 @@ import {
 } from './structural';
 import { getByPath } from './utils/object-path';
 import { isIndexKey } from './utils/value-kinds';
-import { noPassageError, showRuntimeError } from './runtime-errors';
+import {
+  noPassageError,
+  showRuntimeError,
+  specialPassageError,
+} from './runtime-errors';
 import {
   snapshotPRNG,
   restorePRNG,
@@ -107,6 +111,11 @@ const SPECIAL_PASSAGES = new Set([
   'PassageDone',
   'StoryContext',
 ]);
+
+/** Whether `name` is a special passage, which navigation never goes to. */
+export function isSpecialPassage(name: string): boolean {
+  return SPECIAL_PASSAGES.has(name);
+}
 
 // ---------------------------------------------------------------------------
 // Patch-based variable history (module-level, outside Zustand)
@@ -1394,10 +1403,8 @@ export const useStoryStore = create<StoryState>()(
       const { storyData } = get();
       if (!storyData) return;
 
-      if (SPECIAL_PASSAGES.has(passageName)) {
-        console.error(
-          `spindle: Cannot navigate to special passage "${passageName}".`,
-        );
+      if (isSpecialPassage(passageName)) {
+        console.error(`spindle: ${specialPassageError(passageName).message}`);
         return;
       }
 

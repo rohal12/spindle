@@ -201,6 +201,113 @@ while (observation.actions.length > 0) {
 - Back and load are recorded like any other step, and the transcript does not rewind. A navigation the story triggers itself (`goto` inside `{do}`, `{watch ... goto}`) gets no entry; the next observation shows where it landed.
 - `observe().actions` leaves out back, forward, restart, save, load and dialog actions by default (see `Story.setObservedActions()`); `Story.step()` still accepts their IDs, and the transcript takes their labels from `Story.getActions()`.
 
+### Play sessions
+
+`@rohal12/spindle/play` runs a story in its own worker thread, so a story stuck in a loop can be stopped and several stories can run side by side. It is for Node only, and it needs two optional peer dependencies:
+
+```sh
+npm i -D happy-dom @rohal12/twee-ts
+```
+
+`happy-dom` provides the DOM the worker runs on. `@rohal12/twee-ts` is only needed to compile Twee: a session opened on ready-made HTML does not load it. A missing package rejects with `spindle: play sessions needs happy-dom; install it with npm i -D happy-dom` (or `spindle: compiling Twee needs @rohal12/twee-ts; install it with npm i -D @rohal12/twee-ts`).
+
+#### Getting the story's HTML
+
+`resolveStoryHtml(input)` resolves with `{ html, notes }`:
+
+| Input                       | What happens                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `{ html }`                  | Used as given.                                                                                                           |
+| `{ path: 'story.html' }`    | Read from disk (`.html` or `.htm`).                                                                                      |
+| `{ path: 'story.twee' }`    | Compiled with the installed Spindle format.                                                                              |
+| `{ path: 'src/**/*.twee' }` | A glob of Twee files. Spindle expands it, and rejects with `spindle: no story files match <pattern>` if nothing matches. |
+| `{ path: 'project/' }`      | A directory. A twee-ts config in it (`twee-ts.config.json`) is used; with no config, the directory itself is compiled.   |
+
+A glob is compiled as Twee, so it must match Twee sources only: a glob of `.html` files is not read as HTML, and its compile fails. Name one `.html` file instead.
+
+For a project config, `sources`, `modules`, `headFile` and `exclude` are resolved from the project directory, not from the working directory. An absolute `exclude` pattern works too: its leading folders are made relative to the working directory, where twee-ts matches excludes. A config whose `sources` is empty rejects with `spindle: <path> has a twee-ts config with no sources`.
+
+Compiles use the Spindle format installed with the package (`formatPaths` is its `dist` folder, `formatId` is `pkg` and `noRemote` is `true`). These override the project config's format options (and its `output`, `formatIndices`, `formatUrls`, `useTweegoPath` and the like are dropped), so a project that names another format, or a remote one, is still compiled with the installed Spindle. Compile errors reject with one `file:line: message` per error.
+
+`notes` holds things worth telling the caller; it is never an error. If the HTML was built by another Spindle version than the installed one, `notes` says so: `The story was compiled with Spindle 0.9.0; it runs on the installed Spindle 0.10.2.` The session runs the story on the installed version either way. Compiled Twee always matches.
+
+#### Opening a session
+
+`openPlaySession(options)` boots the story in a worker and resolves once the first passage is shown.
+
+| Option          | Default         | Meaning                                                                                     |
+| --------------- | --------------- | ------------------------------------------------------------------------------------------- |
+| `html`          | (required)      | The compiled story.                                                                         |
+| `stepTimeoutMs` | `10_000`        | The limit for one call, and for booting. A positive number up to 2147483647, or it rejects. |
+| `transcript`    | `{ limit: 10 }` | Passed to `createTranscript()` in the worker (`limit`, `include`).                          |
+| `transitions`   | `false`         | Keep passage transitions, as `bootStory()` does.                                            |
+
+If the story throws while booting (a bad `StoryInit`, no `<tw-storydata>`), `openPlaySession` rejects with that message and the worker is stopped.
+
+| Method             | Does                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `observe()`        | `Story.observe()`: resolves with the current [observation](#agent-playthroughs).                    |
+| `step(id, value?)` | `Story.step()` through the transcript, so the step is recorded. Resolves with the next observation. |
+| `goto(passage)`    | `Story.goto()`, then `waitForActions()`, then `observe()`. Not recorded in the transcript.          |
+| `get(names?)`      | Story variables by name, with or without the `$`. All of them if `names` is left out.               |
+| `set(values)`      | `Story.set()`, then `waitForActions()`.                                                             |
+| `transcript()`     | The recorded entries.                                                                               |
+| `close()`          | Stops the worker. Safe to call twice, or after a timeout.                                           |
+| `closed`           | `true` once the session is closed.                                                                  |
+
+Calls run one at a time, in the order they were made, even if you do not await each one. A call the story rejects (an unknown action ID, say) rejects with the story's message and leaves the session open. `goto()` to a passage the story does not have rejects the same way, with `spindle: No passage named "<name>" (in passage "<current>")`, and so does `goto()` to a special passage (`spindle: Cannot navigate to special passage "StoryInit".`).
+
+`get()` returns each value as a structured clone: `Map`, `Set`, `Date` and cyclic objects arrive intact, and class instances arrive as plain objects. A value that cannot be cloned (a function, or a `Map` holding one) comes back as the string `"[unserializable: <reason>]"` instead of failing the call.
+
+#### Timeouts and closing
+
+A call that takes longer than `stepTimeoutMs` closes the session: the worker is stopped (a loop in story code cannot be interrupted any other way), the call rejects with
+
+```
+spindle: play session timed out after <n> ms (the story may be stuck in a loop)
+```
+
+and every call queued behind it, and every later call, rejects with
+
+```
+spindle: play session is closed
+```
+
+If the worker dies on its own, the running call and every call queued behind it reject with the worker's error: the message it threw, or `spindle: play session worker exited with code <n>`. Only later calls get the closed message. `close()` also rejects pending calls with the closed message, and itself resolves with no error. The boot timeout rejects `openPlaySession` with the timeout message.
+
+A session you forget to close does not keep Node running: the worker does not hold the process open by itself. A call still in progress does, until it settles or times out. Close sessions anyway, to stop their workers.
+
+#### What differs from a browser
+
+- In the worker, `window` is happy-dom's window, not `globalThis`. Story code sees `Story` and the DOM globals as it does in a browser, but `window.foo = 1` does not make a bare global `foo`.
+- `BroadcastChannel` is unavailable. Sessions do not hear each other, and Spindle works without it.
+- `localStorage`, `sessionStorage` and `navigator` are happy-dom's, never Node's, and each session has its own: what one session stores, another does not see.
+- The story's `console.log` output goes to the host's stderr, not its stdout, so a host that speaks a protocol on stdout (an MCP server over stdio) is not disturbed. `console.error` goes to stderr as usual.
+- Arguments to `step()` and `set()` must be cloneable; a call whose arguments are not rejects without affecting the session.
+
+#### Example
+
+```typescript
+import { openPlaySession, resolveStoryHtml } from '@rohal12/spindle/play';
+
+const { html, notes } = await resolveStoryHtml({ path: 'story/' });
+for (const note of notes) console.warn(note);
+
+const session = await openPlaySession({ html, stepTimeoutMs: 5_000 });
+try {
+  let observation = await session.observe();
+  for (let turn = 0; turn < 100; turn++) {
+    // Follow the first link, or ask your model which action to take.
+    const choice = observation.actions.find((a) => a.type === 'link');
+    if (!choice) break;
+    observation = await session.step(choice.id);
+  }
+  console.log(await session.get(['gold']), await session.transcript());
+} finally {
+  await session.close();
+}
+```
+
 ### In the Browser Console
 
 Load your story, then:

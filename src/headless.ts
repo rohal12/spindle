@@ -8,7 +8,8 @@
  * same boot sequence directly.
  */
 import { boot } from './index';
-import { useStoryStore } from './store';
+import { isSpecialPassage, useStoryStore } from './store';
+import { noPassageError, specialPassageError } from './runtime-errors';
 import type { StoryAPI } from './story-api';
 import type { Observation } from './observe/observe';
 
@@ -83,6 +84,29 @@ export function bootStory(options: BootStoryOptions): Promise<StoryAPI> {
       reject(err);
     }
   });
+}
+
+/**
+ * The story's `$` variables: a shallow copy of the current values, keyed by
+ * name without the `$`. Values are the store's own (frozen) objects.
+ */
+export function storyVariables(): Record<string, unknown> {
+  return { ...useStoryStore.getState().variables };
+}
+
+/**
+ * Why `Story.goto(name)` would not navigate, or `null` if it would: `name` is
+ * a special passage (StoryInit, ...) or names no passage. The message is the
+ * one Spindle logs (and, for a missing passage, shows on the page), since
+ * `Story.goto()` reports these instead of throwing.
+ */
+export function gotoError(name: string): string | null {
+  const { storyData, currentPassage } = useStoryStore.getState();
+  if (isSpecialPassage(name)) return specialPassageError(name).message;
+  if (!storyData?.passages.has(name)) {
+    return noPassageError(name, currentPassage).message;
+  }
+  return null;
 }
 
 /** One recorded step: what the reader saw, and what they chose. */

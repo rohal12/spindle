@@ -36,6 +36,10 @@
     "./headless": {
       "types": "./types/headless.d.ts",
       "import": "./dist/pkg/headless.js"
+    },
+    "./play": {
+      "types": "./types/play.d.ts",
+      "import": "./dist/pkg/play.js"
     }
   },
   "files": [
@@ -43,6 +47,8 @@
     "dist/pkg/format.js",
     "dist/pkg/tooling.js",
     "dist/pkg/headless.js",
+    "dist/pkg/play.js",
+    "dist/pkg/play-worker.js",
     "dist/pkg/story-variables.js",
     "dist/pkg/macro-registry.json",
     "dist/pkg/macro-registry.js",
@@ -76,6 +82,18 @@
     "micromark-extension-gfm-table": "^2.1.2",
     "preact": "^11.0.1",
     "zustand": "^5.0.15"
+  },
+  "peerDependencies": {
+    "@rohal12/twee-ts": "^1.18.2",
+    "happy-dom": "^20.14.6"
+  },
+  "peerDependenciesMeta": {
+    "@rohal12/twee-ts": {
+      "optional": true
+    },
+    "happy-dom": {
+      "optional": true
+    }
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
