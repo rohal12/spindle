@@ -1,3 +1,4 @@
+import { ActionsDisabledContext } from './hooks/use-action';
 import { h, render } from 'preact';
 import { useStoryStore, recordStoryInitState, missingPassage } from './store';
 import { parseMarkup } from './markup/parse';
@@ -49,7 +50,11 @@ export function executeStoryInit() {
     document.body.appendChild(container);
     storyInitContainer = container;
     render(
-      h(() => renderNodes(ast), null),
+      h(
+        ActionsDisabledContext.Provider,
+        { value: true },
+        h(() => renderNodes(ast), null),
+      ),
       container,
     );
 

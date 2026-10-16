@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 
@@ -12,7 +13,7 @@ defineMacro({
   render(_props, ctx) {
     const label = ctx.args.label ?? '';
 
-    const actionId = useVariableAction(ctx, {
+    const action = useVariableAction(ctx, {
       type: 'checkbox',
       label: label || ctx.varName || '',
       value: !!ctx.value,
@@ -26,7 +27,7 @@ defineMacro({
       >
         <input
           type="checkbox"
-          data-action={actionId || undefined}
+          {...actionAttributes(action, {})}
           checked={!!ctx.value}
           onChange={(e) =>
             ctx.setValue!((e.target as HTMLInputElement).checked)

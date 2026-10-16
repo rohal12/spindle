@@ -1,3 +1,4 @@
+import { actionAttributes, useControlAction } from '../../hooks/use-action';
 import { useState } from 'preact/hooks';
 import { useStoryStore } from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
@@ -56,7 +57,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
             }
           : setup.perform;
 
-      ctx.useAction({
+      const action = useControlAction({
         type: config.actionType,
         key: config.name,
         authorId: ctx.id,
@@ -69,8 +70,7 @@ export function defineMenubarAction(config: MenubarActionConfig) {
         <>
           <button
             type="button"
-            id={ctx.id}
-            class={cls}
+            {...actionAttributes(action, { id: ctx.id, cls })}
             onClick={perform}
             disabled={disabled}
             title={title}

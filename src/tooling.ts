@@ -1,3 +1,4 @@
+import { branchParents } from './registry';
 /**
  * What the tooling entry point (`@rohal12/spindle/tooling`) bundles as
  * dist/pkg/story-variables.js: the StoryVariables parser and the markup
@@ -208,6 +209,7 @@ export function validateStoryMarkup(
     if (macro.block) blocks.add(name);
   }
   return validateMarkup(list, {
+    branchParents: (name) => branchParents(name, all),
     isKnownMacro: (name) => known.has(name),
     macroNames: known,
     parametersOf,

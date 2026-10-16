@@ -183,6 +183,7 @@ export interface StorageBackend {
   deleteSavesByPlaythrough(playthroughId: string): Promise<string[]>;
 
   putPlaythrough(record: PlaythroughRecord): Promise<void>;
+  getPlaythrough(id: string): Promise<PlaythroughRecord | undefined>;
   getPlaythroughsByIfid(ifid: string): Promise<PlaythroughRecord[]>;
   deletePlaythroughsByIfid(ifid: string): Promise<void>;
   deletePlaythroughById(id: string): Promise<void>;

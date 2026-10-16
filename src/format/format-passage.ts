@@ -1,7 +1,9 @@
 import { isBlockMacro } from '../markup/ast';
-import { tokenizeMarkupTolerant } from '../markup/parse';
+import { analyzeMarkup, tokenizeMarkupTolerant } from '../markup/parse';
+import type { PairedNode } from '../markup/pair';
 import type { MacroToken } from '../markup/tokens';
 import { segmentRegions } from './segment';
+import { fencedCodeLines } from './fenced-code';
 import {
   formatJS,
   formatCSS,
@@ -193,7 +195,7 @@ async function formatLf(
 ): Promise<string> {
   const { prettier, prettierOptions } = options;
   // Trailing blank lines are not part of the passage's text
-  const body = text.replace(/(?:[ \t]*\n)+[ \t]*$/, '\n');
+  let body = text;
 
   if (options.kind === 'script' || options.kind === 'stylesheet') {
     const format = options.kind === 'script' ? formatJS : formatCSS;
@@ -207,9 +209,29 @@ async function formatLf(
     options.isDedentingSubMacro ??
     ((name: string) => DEFAULT_DEDENTING.has(name.toLowerCase()));
   const sentinel = newlineSentinel(body);
+  // Hide literal lines before any token joining, HTML segmentation or prose
+  // formatting. Restore whole lines, including their original indentation.
+  // Region newline decoding must not consume literal-line placeholders.
+  const literalSentinel = newlineSentinel(body + sentinel);
+  const literalLines = new Map<string, string>();
+  const literalMarkers = new Set<string>();
+  const fenced = fencedCodeLines(body, isBlock);
+  const literalHtml = whitespaceSensitiveLines(body, isBlock);
+  body = body
+    .split('\n')
+    .map((line, index) => {
+      if (!fenced.has(index) && !literalHtml.has(index)) return line;
+      const marker = `${literalSentinel}L${literalLines.size}${literalSentinel}`;
+      literalLines.set(marker, line);
+      literalMarkers.add(marker);
+      return (line.match(/^[ \t]*/)?.[0] ?? '') + marker;
+    })
+    .join('\n')
+    .replace(/(?:[ \t]*\n)+[ \t]*$/, '\n');
   const lines: string[] = [];
   /** Indices in lines whose trailing two spaces are a hard line break. */
   const hardBreakLines = new Set<number>();
+  const preservedLines = new Set<number>();
 
   // Segment into regions. Multiline tokens are joined onto
   // one line first, so their inner lines are never taken for markup.
@@ -264,7 +286,12 @@ async function formatLf(
       // Whitespace that renders as written: the runtime keeps a line break
       // Prettier puts after `<pre>` (a browser's parser drops it), and
       // Prettier cannot see a `white-space` style. Leave such HTML as written.
-      if (WHITESPACE_AS_WRITTEN.test(htmlText)) {
+      if (
+        WHITESPACE_AS_WRITTEN.test(htmlText) ||
+        region.lines.some((line) => literalLines.has(line.trim()))
+      ) {
+        for (let i = 0; i < region.lines.length; i++)
+          preservedLines.add(lines.length + i);
         lines.push(...region.lines);
         continue;
       }
@@ -302,9 +329,14 @@ async function formatLf(
     }
 
     // Spindle/markdown region — apply macro indentation
-    let indented = indentMacros(region.lines, isBlock, isDedenting);
+    let indented = indentMacros(
+      region.lines,
+      isBlock,
+      isDedenting,
+      literalMarkers,
+    );
     if (options.maxLineLength) {
-      indented = wrapLines(indented, options.maxLineLength);
+      indented = wrapLines(indented, options.maxLineLength, literalLines);
     }
     for (const line of indented) {
       if (line.endsWith('  ')) hardBreakLines.add(lines.length);
@@ -314,15 +346,58 @@ async function formatLf(
   // Strip trailing whitespace (except Markdown hard breaks, already
   // normalized by indentMacros) and ensure single trailing newline
   let output = lines
-    .map((l, i) => (hardBreakLines.has(i) ? l : l.replace(/\s+$/, '')))
+    .map((l, i) =>
+      hardBreakLines.has(i) || preservedLines.has(i)
+        ? l
+        : l.replace(/\s+$/, ''),
+    )
     .join('\n');
   output = output.replace(/\n*$/, '\n');
 
-  return replaceAll(output, sentinel, '\n');
+  return replaceAll(
+    output
+      .split('\n')
+      .map((line) => literalLines.get(line.trim()) ?? line)
+      .join('\n'),
+    sentinel,
+    '\n',
+  );
 }
 
 /** HTML whose whitespace renders as written: a `<pre>` or `<textarea>`, or a `white-space` style. */
 const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea)[\s>]|white-space\s*:/i;
+
+/** Preserve whole literal elements, including openers beside nested tags. */
+function whitespaceSensitiveLines(
+  source: string,
+  isBlock: (name: string) => boolean,
+): Set<number> {
+  const lines = new Set<number>();
+  if (!WHITESPACE_AS_WRITTEN.test(source)) return lines;
+  const { nodes } = analyzeMarkup(source, { hooks: { isBlock } });
+  function visit(nodes: PairedNode[]): void {
+    for (const node of nodes) {
+      const { token, body } = node;
+      if (
+        token.type === 'html' &&
+        (['pre', 'textarea'].includes(token.tag.toLowerCase()) ||
+          Object.entries(token.attributes).some(
+            ([name, value]) =>
+              name.toLowerCase() === 'style' && /white-space\s*:/i.test(value),
+          ))
+      ) {
+        const first = source.slice(0, node.start).split('\n').length - 1;
+        const last = source.slice(0, node.end - 1).split('\n').length - 1;
+        for (let line = first; line <= last; line++) lines.add(line);
+      } else if (body) {
+        visit(body.children);
+        for (const branch of body.branches) visit(branch.children);
+      }
+    }
+  }
+  visit(nodes);
+  return lines;
+}
 
 /** A Markdown list item line (`- a`, `* a`, `+ a`, `1. a`, `1) a`). */
 const LIST_ITEM_REGEX = /^(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
@@ -342,6 +417,8 @@ interface MacroBody {
   minCol: number;
   /** True if leading indentation may be Markdown syntax (lists, code fences). */
   keepRelative: boolean;
+  /** Literal lines retain the indentation of their owning Markdown document. */
+  keepOriginal?: boolean;
 }
 
 /**
@@ -363,6 +440,7 @@ function indentMacros(
   lines: string[],
   isBlock: (name: string) => boolean,
   isDedenting: (name: string) => boolean,
+  literalMarkers: ReadonlySet<string>,
 ): string[] {
   const macrosOnLine = macroTokensByLine(lines);
   // Pass 1: assign each line to the body (Markdown document) it belongs to.
@@ -390,6 +468,7 @@ function indentMacros(
     body.minCol = Math.min(body.minCol, col);
     if (LIST_ITEM_REGEX.test(text) || CODE_FENCE_REGEX.test(text))
       body.keepRelative = true;
+    if (literalMarkers.has(text)) body.keepOriginal = true;
     info.push({ body: currentBody(), col, text });
   };
 
@@ -465,8 +544,10 @@ function indentMacros(
       const body = bodies[line.body]!;
       const isRoot = body.openLine === -1;
       const base = isRoot ? 0 : outCol[body.openLine]! + 2;
-      col =
-        base + (body.keepRelative ? line.col - (isRoot ? 0 : body.minCol) : 0);
+      col = body.keepOriginal
+        ? line.col
+        : base +
+          (body.keepRelative ? line.col - (isRoot ? 0 : body.minCol) : 0);
     }
     outCol.push(col);
     const hardBreak = / {2,}$/.test(lines[i]!) && info[i + 1] ? '  ' : '';
@@ -523,13 +604,21 @@ function indentColumn(line: string): number {
  * Preserves leading indentation. Skips pure macro lines and choice/link
  * lines, where wrapping would break syntax.
  */
-function wrapLines(lines: string[], maxLen: number): string[] {
+function wrapLines(
+  lines: string[],
+  maxLen: number,
+  literalLines: ReadonlyMap<string, string>,
+): string[] {
   const result: string[] = [];
   const javaScript = doBodyLines(lines);
 
   for (const [index, line] of lines.entries()) {
     // A `{do}` body is JavaScript: a line break there can change the program
-    if (line.length <= maxLen || javaScript.has(index)) {
+    if (
+      line.length <= maxLen ||
+      javaScript.has(index) ||
+      literalLines.has(line.trim())
+    ) {
       result.push(line);
       continue;
     }

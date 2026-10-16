@@ -1,3 +1,4 @@
+import { isHidden } from '../utils/element-visibility';
 import { getAction } from '../action-registry';
 
 /** Elements that start and end a line. */
@@ -19,29 +20,6 @@ const BLOCKS = new Set([
   'HEADER',
   'FOOTER',
 ]);
-
-/** Elements whose content is never text the reader reads. */
-const NOT_TEXT = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
-
-/**
- * Whether the reader can't see the element. Headless DOMs compute no layout,
- * so only what the markup says counts: the `hidden` attribute, an inline
- * `display: none` and `aria-hidden="true"`.
- */
-function isHidden(el: Element): boolean {
-  return (
-    el.hasAttribute('hidden') ||
-    el.getAttribute('aria-hidden') === 'true' ||
-    /(^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') ?? '') ||
-    NOT_TEXT.has(el.tagName) ||
-    (el.parentElement?.tagName === 'DETAILS' &&
-      !el.parentElement.hasAttribute('open') &&
-      el !==
-        Array.from(el.parentElement.children).find(
-          (c) => c.tagName === 'SUMMARY',
-        ))
-  );
-}
 
 function formatValue(value: unknown): string {
   try {
@@ -112,7 +90,11 @@ export function observableText(el: Element, skip?: string): string {
     const child = node as Element;
     if (isHidden(child) || (skip && child !== el && child.matches(skip)))
       return;
-    if (child.hasAttribute('data-action')) {
+    if (
+      child.hasAttribute('data-action') &&
+      (child.matches('input, textarea, select') ||
+        getAction(child.getAttribute('data-action')!)?.type === 'cycle')
+    ) {
       out += controlMarker(child);
       return;
     }

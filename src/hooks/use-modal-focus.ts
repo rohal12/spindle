@@ -1,3 +1,4 @@
+import { isRendered } from '../utils/element-visibility';
 import { useLayoutEffect } from 'preact/hooks';
 import type { RefObject } from 'preact';
 
@@ -15,36 +16,6 @@ const FOCUSABLE = [
   '[contenteditable]',
   '[tabindex]',
 ].join(',');
-
-/**
- * Whether `el` is in a closed `<details>`, other than in the summary that
- * toggles it: the browser renders none of that content (#389).
- */
-function inClosedDetails(el: HTMLElement): boolean {
-  for (let e = el.parentElement; e; e = e.parentElement) {
-    if (e.localName !== 'details' || e.hasAttribute('open')) continue;
-    const summary = Array.from(e.children).find(
-      (c) => c.localName === 'summary',
-    );
-    if (!summary?.contains(el)) return true;
-  }
-  return false;
-}
-
-/**
- * Whether CSS leaves `el` in the tab sequence: not `visibility: hidden`
- * (inherited, so the computed value covers ancestors), not inside a
- * `display: none` element and not in the hidden content of a closed
- * `<details>`.
- */
-function isRendered(el: HTMLElement): boolean {
-  const { visibility } = getComputedStyle(el);
-  if (visibility === 'hidden' || visibility === 'collapse') return false;
-  for (let e: HTMLElement | null = el; e; e = e.parentElement) {
-    if (getComputedStyle(e).display === 'none') return false;
-  }
-  return !inClosedDetails(el);
-}
 
 /**
  * Whether `el` can be focused at all: shown, rendered, enabled (also by its

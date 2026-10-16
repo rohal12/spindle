@@ -10,6 +10,7 @@
  * runtime reads it, or, when it matches one further out, closes that one and
  * what was open inside it stays unclosed.
  */
+import { branchParents } from '../registry';
 import { lineColumn } from './line-column';
 import { isBlockMacro, isRawMacro } from './ast';
 import type { HtmlToken, MacroToken, Span, Token } from './tokens';
@@ -72,6 +73,8 @@ export interface PairMarkupOptions {
    * tag, where the body would start, and the markup after it is not its body.
    */
   isRaw?(name: string): boolean;
+  /** Parents declaring a branching sub-macro (default: registered metadata). */
+  branchParents?(name: string): readonly string[];
   /**
    * The markup the tokens are of: lets a message say at which line and column
    * an element was opened (else it says at which offset).
@@ -95,11 +98,6 @@ export const BRANCH_PARENT: Readonly<Record<string, string>> = {
   default: 'switch',
   next: 'timed',
 };
-
-const isBranchTag = (token: Token): boolean =>
-  token.type === 'macro' &&
-  !token.isClose &&
-  Object.prototype.hasOwnProperty.call(BRANCH_PARENT, token.name.toLowerCase());
 
 const lowerName = (token: MacroToken | HtmlToken) =>
   nameOf(token).toLowerCase();
@@ -147,6 +145,15 @@ export function pairMarkup(
 ): PairedMarkup {
   const isBlock = options.isBlock ?? isBlockMacro;
   const isRaw = options.isRaw ?? isRawMacro;
+  const parentsOf = (name: string): readonly string[] => {
+    const lower = name.toLowerCase();
+    const builtin = Object.prototype.hasOwnProperty.call(BRANCH_PARENT, lower)
+      ? BRANCH_PARENT[lower]
+      : undefined;
+    return builtin
+      ? [builtin]
+      : (options.branchParents?.(name) ?? branchParents(name));
+  };
   const errors: PairingError[] = [];
   const noticedAtEnd = (tokens[tokens.length - 1]?.end ?? 0) + 1;
   const where = (offset: number) => {
@@ -177,7 +184,7 @@ export function pairMarkup(
     inside: MacroToken | HtmlToken | undefined,
     noticedAt: number,
   ) => {
-    const parent = BRANCH_PARENT[tag.name.toLowerCase()]!;
+    const parent = parentsOf(tag.name).join(' or ');
     const where = inside ? `, not inside ${tagLabel(inside)}` : '';
     report(
       'misplaced-branch',
@@ -205,8 +212,10 @@ export function pairMarkup(
     const open = node.token as MacroToken | HtmlToken;
     const noticedAt = close ? close.end : noticedAtEnd;
     for (const { tag } of body.branches) {
-      const parent = BRANCH_PARENT[tag.name.toLowerCase()]!;
-      if (open.type !== 'macro' || lowerName(open) !== parent) {
+      if (
+        open.type !== 'macro' ||
+        !parentsOf(tag.name).includes(lowerName(open))
+      ) {
         misplaced(tag, open, noticedAt);
       }
     }
@@ -260,7 +269,11 @@ export function pairMarkup(
       }
       continue;
     }
-    if (isBranchTag(token)) {
+    if (
+      token.type === 'macro' &&
+      !token.isClose &&
+      parentsOf(token.name).length > 0
+    ) {
       const tag = token as MacroToken;
       const frame = last(stack);
       if (!frame) {

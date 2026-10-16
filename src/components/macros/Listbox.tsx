@@ -1,3 +1,4 @@
+import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 import { display } from './display';
@@ -11,7 +12,7 @@ defineMacro({
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 
-    const actionId = useVariableAction(ctx, {
+    const action = useVariableAction(ctx, {
       type: 'listbox',
       label: ctx.varName!,
       options,
@@ -22,9 +23,7 @@ defineMacro({
 
     return (
       <select
-        id={ctx.id}
-        data-action={actionId || undefined}
-        class={ctx.cls}
+        {...actionAttributes(action, ctx)}
         value={display(ctx.value)}
         onChange={(e) => ctx.setValue!((e.target as HTMLSelectElement).value)}
       >

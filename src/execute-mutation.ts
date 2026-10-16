@@ -22,6 +22,7 @@ import {
   relinkPath,
   pathKey,
   sharedPaths,
+  type ObjectPath,
   type PathChange,
 } from './structural';
 import { getByPath, setByPath } from './utils/object-path';
@@ -93,7 +94,7 @@ type Cloner = <T>(value: T) => T;
  */
 function clonerFor(
   target: object,
-  paths?: ReadonlyMap<object, string[]>,
+  paths?: ReadonlyMap<object, ObjectPath>,
 ): Cloner {
   const seen = paths ? existingObjects(paths, target) : new Map();
   // Immer does not finalize a draft held as a Map key or Set member, so an
@@ -106,7 +107,7 @@ function clonerFor(
     const plain = currentDraft(copy) as object;
     // Where the object is in an entry of a Map or Set the path cannot be
     // written (see getByEntryPath): that entry keeps its own
-    if (!path.some(isEntryKey)) {
+    if (path.every((segment): segment is string => !isEntryKey(segment))) {
       setByPath(target as Record<string, unknown>, path, plain);
     }
     seen.set(original, plain);
@@ -117,7 +118,7 @@ function clonerFor(
 
 /** One cloner per target copy, made when first used. */
 const clonersFor = (
-  paths?: (target: object) => ReadonlyMap<object, string[]>,
+  paths?: (target: object) => ReadonlyMap<object, ObjectPath>,
 ) => {
   const made = new Map<object, Cloner>();
   return (target: object): Cloner => {
@@ -697,11 +698,14 @@ export function executeMutation(
     changesBetween(mergedLocals, localsClone, true).map((c) => c.path[0]!),
   );
   for (const group of sharedPaths(localsClone)) {
-    if (group.some((path) => changed.has(path[0]!))) {
+    if (
+      group.some((path) => typeof path[0] === 'string' && changed.has(path[0]))
+    ) {
       // Not a value kept by reference (an unregistered class instance)
       for (const path of group) {
-        if (localsClone[path[0]!] !== mergedLocals[path[0]!]) {
-          changed.add(path[0]!);
+        const key = path[0];
+        if (typeof key === 'string' && localsClone[key] !== mergedLocals[key]) {
+          changed.add(key);
         }
       }
     }

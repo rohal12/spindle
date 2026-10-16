@@ -55,6 +55,7 @@ export const META_PREFIXES = {
   autosave: 'autosave.',
   slot: 'slot.',
   slotIndex: 'slotIndex.',
+  importedPlaythroughs: 'importedPlaythroughs.',
   playthroughCount: 'playthroughCount.',
   currentPlaythrough: 'currentPlaythroughId.',
 } as const;
@@ -97,7 +98,7 @@ function createBackend(
   return {
     type,
     putSave: (record) => saves.put(record.meta.id, record),
-    getSave: (id) => saves.get(id),
+    getSave: saves.get,
     deleteSave: (id) => saves.delete(id),
     getSavesByIfid: (ifid) => saves.find('ifid', ifid),
     deleteSavesByIfid: async (ifid) => {
@@ -107,6 +108,7 @@ function createBackend(
       deleteFound(saves, saveId, 'playthroughId', id),
 
     putPlaythrough: (record) => playthroughs.put(record.id, record),
+    getPlaythrough: playthroughs.get,
     getPlaythroughsByIfid: (ifid) => playthroughs.find('ifid', ifid),
     deletePlaythroughsByIfid: async (ifid) => {
       await deleteFound(playthroughs, playthroughId, 'ifid', ifid);
