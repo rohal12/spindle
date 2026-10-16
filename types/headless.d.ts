@@ -1,4 +1,4 @@
-import type { Observation, StoryAPI } from './index';
+import type { Observation, StoryAPI } from './index.js';
 
 /** Options for {@link bootStory}. */
 export interface BootStoryOptions {
