@@ -58,6 +58,20 @@ describe('email autolinks (#395)', () => {
       [...el.querySelectorAll('a')].map((a) => a.getAttribute('href')),
     ).toEqual(['https://example.com', '#top']);
   });
+
+  it('keeps URI-shaped passage text and attributes reactive', () => {
+    setup({ n: 1 });
+    const el = renderPassage(
+      '<span title="<https://example.com/{$n}>"><https://example.com/{$n}></span>',
+    );
+    const span = el.querySelector('span')!;
+    expect(span.textContent).toBe('<https://example.com/1>');
+    expect(span.getAttribute('title')).toBe('<https://example.com/1>');
+
+    act(() => window.Story.set('n', 2));
+    expect(span.textContent).toBe('<https://example.com/2>');
+    expect(span.getAttribute('title')).toBe('<https://example.com/2>');
+  });
 });
 
 describe('radio groups in passages and dialogs (#396)', () => {

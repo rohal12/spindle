@@ -3,11 +3,27 @@ import { tokenizeMarkup } from '../../src/markup/parse';
 
 describe('tokenizeMarkup', () => {
   describe('URI autolinks (#576)', () => {
+    it('keeps passage interpolation inside URI-shaped text active', () => {
+      expect(
+        tokenizeMarkup('<https://example.com/{$n}>').map((t) => t.type),
+      ).toEqual(['text', 'variable', 'text']);
+    });
+
+    it.each(['[[Next]]', '[[Label->Next]]'])(
+      'keeps passage links inside URI-shaped text active: %s',
+      (link) => {
+        expect(
+          tokenizeMarkup(`<https://example.com/${link}>`).map((t) => t.type),
+        ).toEqual(['text', 'link', 'text']);
+      },
+    );
+
     it.each([
       'mailto:support@example.com',
       'tel:12345',
       'urn:isbn:12345',
       'https://example.com',
+      'https://[::1]/path',
       'ab:',
       'a+.-012:test',
       `${'a'.repeat(32)}:value`,

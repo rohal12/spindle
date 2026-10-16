@@ -207,7 +207,7 @@ TokenItem
   / Comment
   / LinkLexeme
   / EmailAutolink
-  / UriAutolink
+  / &{ return !textMode; } UriAutolink
   / &{ return !textMode; } tag:HtmlOpen { return tag; }
   / &{ return !textMode; } tag:HtmlClose { return VOID_TAGS.has(tag.lower) ? null : tag; }
   / Value
@@ -370,9 +370,9 @@ EmailAutolink
     &{ return EMAIL_AUTOLINK.test(value); }
     { return lexeme('text', location(), { value }); }
 
-/** CommonMark URI autolinks take precedence over HTML, even without slashes. */
+/** URI autolinks take precedence over HTML; Spindle markup stays active. */
 UriAutolink
-  = value:$("<" [a-zA-Z] [a-zA-Z0-9+.-]|1..31| ":" [^\x00-\x20\x7F<>]* ">")
+  = value:$("<" [a-zA-Z] [a-zA-Z0-9+.-]|1..31| ":" (!"[[" [^\x00-\x20\x7F<>{}])* ">")
     { return lexeme('text', location(), { value }); }
 
 HtmlOpen

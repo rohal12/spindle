@@ -222,6 +222,17 @@ describe('interpolate — passage markup (#225)', () => {
   };
   const text = (template: string) => interpolateText(template, scope);
 
+  it('evaluates interpolation inside URI-shaped text in attributes and labels', () => {
+    expect(text('<https://example.com/{$n}>')).toEqual({
+      text: '<https://example.com/1>',
+      errors: [],
+    });
+    expect(text('<mailto:{!$n}@example.com>')).toEqual({
+      text: '<mailto:false@example.com>',
+      errors: [],
+    });
+  });
+
   it('evaluates if / elseif / else, switch, for and print', () => {
     expect(text('{if $n > 1}a{elseif $n > 0}b{else}c{/if}').text).toBe('b');
     expect(text('{switch $n}{case 0}z{case 1}o{default}d{/switch}').text).toBe(
