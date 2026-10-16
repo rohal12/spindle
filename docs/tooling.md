@@ -197,7 +197,7 @@ The options:
 - `isBlock(name)`: which macros take a body. By default the built-in block macros and the names the passage itself closes with `{/name}`; pass your own to replace that default whole.
 - `blockMacros`: names of block macros to add to that default, such as the ones the story or an editor knows (`['dialog', 'my-widget']`). Ignored when `isBlock` is given.
 - `isDedentingSubMacro(name)`: default `else`, `elseif`, `next`, `case` and `default`.
-- `maxLineLength`: wrap prose lines longer than this at word boundaries, never inside a macro, an expression or a link, and never in a `{do}` body.
+- `maxLineLength`: wrap prose lines longer than this at word boundaries, never inside a macro, an expression or a link, and never in a `{do}` body. Lines belonging to Markdown headings, tables, lists, blockquotes, reference definitions, links, images or code stay intact to preserve their structure, even when longer than the limit.
 
 ```js
 import * as prettier from 'prettier';

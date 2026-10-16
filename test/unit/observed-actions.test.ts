@@ -64,6 +64,48 @@ describe('filterObservedActions', () => {
       structuredClone(filterObservedActions(ACTIONS, {})),
     ).not.toThrow();
   });
+
+  it('copies JSON values so changing an observation cannot mutate the action (#578)', () => {
+    const value = { items: [1, 'two', true, null] };
+    const original = { ...action('textbox'), value };
+    const seen = filterObservedActions([original], {})[0]!;
+    expect(seen.value).toEqual(value);
+    expect(seen.value).not.toBe(value);
+    (seen.value as typeof value).items.push(3);
+    expect(value.items).toHaveLength(4);
+    expect(JSON.parse(JSON.stringify(seen))).toEqual(seen);
+    expect(() => structuredClone(seen)).not.toThrow();
+  });
+
+  it('describes non-JSON values without exposing live objects or functions (#578)', () => {
+    const cycle: { self?: unknown } = {};
+    cycle.self = cycle;
+    const throwing = Object.defineProperty({}, 'bad', {
+      enumerable: true,
+      get() {
+        throw new Error('unreadable');
+      },
+    });
+    const cases: [unknown, string][] = [
+      [1n, '1n'],
+      [{ n: 1n }, '{"n":1n}'],
+      [cycle, '{"self":<ref 0>}'],
+      [Symbol('secret'), 'Symbol("secret")'],
+      [Infinity, 'Infinity'],
+      [NaN, 'NaN'],
+      [new Map([['key', 1n]]), 'Map[["key",1n]]'],
+      [throwing, '<unkeyable>'],
+    ];
+    for (const [value, expected] of cases) {
+      const seen = filterObservedActions(
+        [{ ...action('textbox'), value }],
+        {},
+      )[0]!;
+      expect(seen.value).toBe(expected);
+      expect(JSON.parse(JSON.stringify(seen))).toEqual(seen);
+      expect(() => structuredClone(seen)).not.toThrow();
+    }
+  });
 });
 
 describe('setObservedActions', () => {

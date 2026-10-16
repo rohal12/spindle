@@ -3,7 +3,7 @@ import { analyzeMarkup, tokenizeMarkupTolerant } from '../markup/parse';
 import type { PairedNode } from '../markup/pair';
 import type { MacroToken } from '../markup/tokens';
 import { segmentRegions } from './segment';
-import { fencedCodeLines } from './fenced-code';
+import { markdownLines } from './markdown-lines';
 import {
   formatJS,
   formatCSS,
@@ -215,7 +215,7 @@ async function formatLf(
   const literalSentinel = newlineSentinel(body + sentinel);
   const literalLines = new Map<string, string>();
   const literalMarkers = new Set<string>();
-  const fenced = fencedCodeLines(body, isBlock);
+  const fenced = markdownLines(body, isBlock, new Set(['codeFenced']));
   const literalHtml = whitespaceSensitiveLines(body, isBlock);
   body = body
     .split('\n')
@@ -336,7 +336,12 @@ async function formatLf(
       literalMarkers,
     );
     if (options.maxLineLength) {
-      indented = wrapLines(indented, options.maxLineLength, literalLines);
+      indented = wrapLines(
+        indented,
+        options.maxLineLength,
+        literalLines,
+        isBlock,
+      );
     }
     for (const line of indented) {
       if (line.endsWith('  ')) hardBreakLines.add(lines.length);
@@ -599,6 +604,21 @@ function indentColumn(line: string): number {
 // Line wrapping
 // ---------------------------------------------------------------------------
 
+/** Constructs whose line breaks or continuation prefixes carry Markdown syntax. */
+const NO_WRAP = new Set([
+  'atxHeading',
+  'setextHeading',
+  'table',
+  'listItem',
+  'blockQuote',
+  'definition',
+  'thematicBreak',
+  'htmlFlow',
+  'codeText',
+  'link',
+  'image',
+]);
+
 /**
  * Wrap lines that exceed maxLen at word boundaries.
  * Preserves leading indentation. Skips pure macro lines and choice/link
@@ -608,15 +628,18 @@ function wrapLines(
   lines: string[],
   maxLen: number,
   literalLines: ReadonlyMap<string, string>,
+  isBlock: (name: string) => boolean,
 ): string[] {
   const result: string[] = [];
   const javaScript = doBodyLines(lines);
+  const structured = markdownLines(lines.join('\n'), isBlock, NO_WRAP);
 
   for (const [index, line] of lines.entries()) {
     // A `{do}` body is JavaScript: a line break there can change the program
     if (
       line.length <= maxLen ||
       javaScript.has(index) ||
+      structured.has(index) ||
       literalLines.has(line.trim())
     ) {
       result.push(line);

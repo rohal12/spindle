@@ -15,9 +15,31 @@ import { storyContextElement } from '../story-context-passage';
 import { innermostOpenDialog, openDialogPanels } from '../triggers';
 import { checkObject, type Fail } from '../utils/field-checks';
 import { observableErrors, observableText } from './observable-text';
+import { stableKey } from '../utils/stable-key';
 
-/** An action as an observation lists it: what it is, not how to run it. */
-export type ObservedAction = Omit<StoryAction, 'perform'>;
+/** A JSON value in an observation, detached from live story state. */
+export type ObservedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ObservedValue[]
+  | { [key: string]: ObservedValue };
+
+/** An action as an observation lists it, with a portable value and no perform. */
+export type ObservedAction = Omit<StoryAction, 'perform' | 'value'> & {
+  value?: ObservedValue;
+};
+
+/** JSON trees as snapshots; other values use the shared value description. */
+function observedValue(value: unknown): ObservedValue {
+  const description = stableKey(value);
+  try {
+    return JSON.parse(description);
+  } catch {
+    return description;
+  }
+}
 
 /** Which actions an observation offers, besides the default ones. */
 export interface ObservedActionRules {
@@ -76,7 +98,9 @@ export function filterObservedActions(
         (!DEFAULT_EXCLUDED.has(action.type) ||
           matchesAny(action, rules.include)),
     )
-    .map(({ perform: _perform, ...rest }) => rest);
+    .map(({ perform: _perform, value, ...rest }) =>
+      value === undefined ? rest : { ...rest, value: observedValue(value) },
+    );
 }
 
 let observedRules: ObservedActionRules = {};
@@ -145,7 +169,8 @@ export function observe(): Observation {
     text: body ? observableText(body, DIALOG) : '',
   }));
   const errors = [passageEl, ...bodies.map((d) => d.body), contextEl].flatMap(
-    (el) => (el ? observableErrors(el, DIALOG) : []),
+    (el) =>
+      el ? observableErrors(el, DIALOG, el === contextEl ? el : undefined) : [],
   );
   // The runtime errors shown (as banners) until dismissed, with what failed
   for (const { context, message } of getRuntimeErrors()) {
@@ -154,7 +179,7 @@ export function observe(): Observation {
   return {
     passage: currentPassage,
     text: passageEl ? observableText(passageEl, DIALOG) : '',
-    context: contextEl ? observableText(contextEl) : null,
+    context: contextEl ? observableText(contextEl, undefined, contextEl) : null,
     dialogs,
     actions: filterObservedActions(offeredActions(), observedRules),
     errors,

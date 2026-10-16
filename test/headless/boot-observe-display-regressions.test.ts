@@ -25,6 +25,9 @@ it('contains display failures and observes visible details, table cells and BigI
   expect(seen.text).toContain('After');
   expect(seen.actions.some((a) => a.target === 'Next')).toBe(true);
   expect(seen.text).toContain('[numberbox $n: 1]');
+  expect(seen.actions.find((a) => a.type === 'numberbox')?.value).toBe('1n');
+  expect(JSON.parse(JSON.stringify(seen))).toEqual(seen);
+  expect(() => structuredClone(seen)).not.toThrow();
   expect(seen.text).toContain('1\t2\n3\t4');
   expect(seen.text).toContain('Hint');
   expect(seen.text).not.toContain('Secret answer');

@@ -207,6 +207,7 @@ TokenItem
   / Comment
   / LinkLexeme
   / EmailAutolink
+  / &{ return !textMode; } UriAutolink
   / &{ return !textMode; } tag:HtmlOpen { return tag; }
   / &{ return !textMode; } tag:HtmlClose { return VOID_TAGS.has(tag.lower) ? null : tag; }
   / Value
@@ -367,6 +368,11 @@ MacroName
 EmailAutolink
   = value:$("<" [a-zA-Z0-9.!#$%&'*+/=?^_`|~-]+ "@" [a-zA-Z0-9.-]+ ">")
     &{ return EMAIL_AUTOLINK.test(value); }
+    { return lexeme('text', location(), { value }); }
+
+/** URI autolinks take precedence over HTML; Spindle markup stays active. */
+UriAutolink
+  = value:$("<" [a-zA-Z] [a-zA-Z0-9+.-]|1..31| ":" (!"[[" [^\x00-\x20\x7F<>{}])* ">")
     { return lexeme('text', location(), { value }); }
 
 HtmlOpen

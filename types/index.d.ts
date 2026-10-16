@@ -235,8 +235,19 @@ export interface ActionMatcher {
   disabled?: boolean;
 }
 
-/** An action as `Story.observe()` lists it: without `perform`. */
-export type ObservedAction = Omit<StoryAction, 'perform'>;
+/** A JSON value in an observation, detached from live story state. */
+export type ObservedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ObservedValue[]
+  | { [key: string]: ObservedValue };
+
+/** An action as `Story.observe()` lists it, with a portable value and no perform. */
+export type ObservedAction = Omit<StoryAction, 'perform' | 'value'> & {
+  value?: ObservedValue;
+};
 
 /**
  * Which actions `Story.observe()` offers. `exclude` removes what it

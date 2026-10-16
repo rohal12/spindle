@@ -1,4 +1,4 @@
-import { isHidden } from '../utils/element-visibility';
+import { isHidden, isRendered } from '../utils/element-visibility';
 import { getAction } from '../action-registry';
 
 /** Elements that start and end a line. */
@@ -66,9 +66,14 @@ function controlMarker(el: Element): string {
  * The text a reader sees in the element, as lines: blocks and `<br>` break
  * lines, hidden elements are left out, and a control with a `data-action`
  * becomes a marker such as `[textbox $name: "Alice"]`. Elements inside `el`
- * that match `skip` are left out with their content.
+ * that match `skip` are left out with their content. `visibilityRoot` bounds
+ * ancestor checks when reading StoryContext inside its hidden host.
  */
-export function observableText(el: Element, skip?: string): string {
+export function observableText(
+  el: Element,
+  skip?: string,
+  visibilityRoot?: Element,
+): string {
   let out = '';
   const endLine = () => {
     if (out !== '' && !out.endsWith('\n')) out += '\n';
@@ -76,6 +81,8 @@ export function observableText(el: Element, skip?: string): string {
 
   const walk = (node: Node, inPre: boolean) => {
     if (node.nodeType === 3) {
+      if (node.parentElement && !isRendered(node.parentElement, visibilityRoot))
+        return;
       const data = node.textContent ?? '';
       if (inPre) out += data;
       else {
@@ -95,11 +102,12 @@ export function observableText(el: Element, skip?: string): string {
       (child.matches('input, textarea, select') ||
         getAction(child.getAttribute('data-action')!)?.type === 'cycle')
     ) {
+      if (!isRendered(child, visibilityRoot)) return;
       out += controlMarker(child);
       return;
     }
     if (child.tagName === 'BR') {
-      out += '\n';
+      if (isRendered(child, visibilityRoot)) out += '\n';
       return;
     }
     const block = BLOCKS.has(child.tagName);
@@ -134,7 +142,11 @@ export function observableText(el: Element, skip?: string): string {
  * the reader can't see (inside a hidden element, as observableText() does)
  * and those inside an element within `el` that matches `skip`.
  */
-export function observableErrors(el: Element, skip?: string): string[] {
+export function observableErrors(
+  el: Element,
+  skip?: string,
+  visibilityRoot?: Element,
+): string[] {
   const left = (e: Element) => {
     for (let at: Element | null = e; at; at = at.parentElement) {
       if (isHidden(at)) return true;
@@ -144,6 +156,6 @@ export function observableErrors(el: Element, skip?: string): string[] {
     return false;
   };
   return Array.from(el.querySelectorAll('.error'))
-    .filter((e) => !left(e))
-    .map((e) => (e.textContent ?? '').trim());
+    .filter((e) => !left(e) && isRendered(e, visibilityRoot))
+    .map((e) => observableText(e, skip, visibilityRoot).trim());
 }
