@@ -235,9 +235,17 @@ Compiles use the Spindle format installed with the package (`formatPaths` is its
 
 `openPlaySession(options)` boots the story in a worker and resolves once the first passage is shown.
 
+Pass `trusted: true` only for story code you trust. Story JavaScript runs with
+unrestricted access to the host's Node APIs, files, environment and subprocesses.
+Worker threads, happy-dom and timeouts do not provide a security sandbox. Calls
+without explicit trust reject before creating a worker or executing story code.
+To play distributed or otherwise untrusted content, use an isolated browser or a
+separately sandboxed environment instead of opting it into host access.
+
 | Option          | Default         | Meaning                                                                                     |
 | --------------- | --------------- | ------------------------------------------------------------------------------------------- |
 | `html`          | (required)      | The compiled story.                                                                         |
+| `trusted`       | `false`         | Must be `true` to permit story JavaScript to access the host's Node capabilities.           |
 | `stepTimeoutMs` | `10_000`        | The limit for one call, and for booting. A positive number up to 2147483647, or it rejects. |
 | `transcript`    | `{ limit: 10 }` | Passed to `createTranscript()` in the worker (`limit`, `include`).                          |
 | `transitions`   | `false`         | Keep passage transitions, as `bootStory()` does.                                            |
@@ -293,7 +301,12 @@ import { openPlaySession, resolveStoryHtml } from '@rohal12/spindle/play';
 const { html, notes } = await resolveStoryHtml({ path: 'story/' });
 for (const note of notes) console.warn(note);
 
-const session = await openPlaySession({ html, stepTimeoutMs: 5_000 });
+// Only opt in after establishing that the story code is trusted.
+const session = await openPlaySession({
+  html,
+  trusted: true,
+  stepTimeoutMs: 5_000,
+});
 try {
   let observation = await session.observe();
   for (let turn = 0; turn < 100; turn++) {
@@ -347,11 +360,15 @@ interface RunResult {
   success: boolean; // true if no errors
   stepsRun: number; // total steps executed
   errors: Array<{
-    step: number; // 0-based step index
+    step: number; // 0-based step index; -1 for a startup failure
     message: string; // description of the failure
   }>;
 }
 ```
+
+A missing or special `start` passage fails the run with `stepsRun: 0` and an
+error at step `-1`. No script steps run. A valid start may redirect to another
+passage while rendering.
 
 ## Examples
 

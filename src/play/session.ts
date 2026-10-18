@@ -11,6 +11,8 @@ import type { Op, Request, WorkerData, WorkerMessage } from './protocol';
 
 export interface PlaySessionOptions {
   html: string;
+  /** Explicitly allow story JavaScript to access host Node APIs. Default false. */
+  trusted?: boolean;
   /** Per call. Default 10_000. */
   stepTimeoutMs?: number;
   /** Passed to createTranscript() inside the worker. Default { limit: 10 }. */
@@ -73,6 +75,7 @@ export function workerExecArgv(execArgv: readonly string[]): string[] {
  * Opens a session that runs the story in a worker. There `window` is
  * happy-dom's window, not `globalThis`: story code sees `Story` and the DOM
  * globals, but `window.foo = 1` does not make a bare global `foo`.
+ * Requires `trusted: true`: story code has unrestricted host Node access.
  */
 export function openPlaySession(
   options: PlaySessionOptions,
@@ -90,6 +93,13 @@ export function openPlaySessionWith(
   options: PlaySessionOptions,
   urls: { workerUrl: URL; headlessUrl: URL },
 ): Promise<PlaySession> {
+  if (options.trusted !== true) {
+    return Promise.reject(
+      new Error(
+        'spindle: openPlaySession() requires trusted: true; story JavaScript has unrestricted access to host Node APIs, files and environment. Only run code you trust.',
+      ),
+    );
+  }
   const stepTimeoutMs = options.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
   if (
     typeof stepTimeoutMs !== 'number' ||

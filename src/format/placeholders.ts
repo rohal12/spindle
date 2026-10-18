@@ -82,7 +82,7 @@ export function scanSpindleMarkup(text: string): MarkupScan {
       }
     } else if (t.type !== 'text') {
       // The body of {do} is one text token, so nothing in it is a token
-      if (t.type === 'macro' && t.name === 'do') {
+      if (t.type === 'macro' && t.name.toLowerCase() === 'do') {
         if (!t.isClose) open = t;
         else if (open) {
           doBlocks.push({

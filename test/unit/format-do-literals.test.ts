@@ -11,6 +11,33 @@ import { formatPassage } from '../../src/format/format-passage';
 const fmt = (body: string) => formatPassage(body, { prettier });
 
 describe('multiline JavaScript literals in {do} bodies', () => {
+  it.each(['DO', 'Do', 'dO'])(
+    'protects %s bodies with and without Prettier',
+    async (name) => {
+      const text = `{${name}}\n$name = \`hello\n    world\`;\n{/${name}}\n`;
+      for (const prettierOption of [undefined, prettier]) {
+        const output = await formatPassage(text, {
+          prettier: prettierOption,
+          maxLineLength: 15,
+        });
+        expect(output).toContain('`hello\n    world`');
+        expect(
+          await formatPassage(output, {
+            prettier: prettierOption,
+            maxLineLength: 15,
+          }),
+        ).toBe(output);
+        const long = `{${name}}\nconst value = "one two three four five six seven";\n{/${name}}\n`;
+        expect(
+          await formatPassage(long, {
+            prettier: prettierOption,
+            maxLineLength: 15,
+          }),
+        ).toContain('const value = "one two three four five six seven";');
+      }
+    },
+  );
+
   it('a template literal keeps its second line', async () => {
     const text = '{do}\nconst value = `a\nb`;\n{/do}\n';
     expect(await fmt(text)).toBe('{do}\n  const value = `a\nb`;\n{/do}\n');

@@ -23,9 +23,30 @@ export async function runAutomation(
   let stepsRun = 0;
 
   // Navigate to start passage if specified
-  if (script.start) {
-    story.goto(script.start);
-    await story.waitForActions();
+  if (script.start !== undefined) {
+    let started = false;
+    // Observe the supplied runtime, which may come from a separate package
+    // bundle. Valid destinations emit before rendering (and any redirects).
+    const unsubscribe = story.on('beforenavigate', (passage) => {
+      if (passage === script.start) started = true;
+    });
+    try {
+      story.goto(script.start);
+      if (!started) {
+        throw new Error(
+          `Cannot start automation at passage "${script.start}": navigation was refused`,
+        );
+      }
+      await story.waitForActions();
+    } catch (err) {
+      return {
+        success: false,
+        stepsRun: 0,
+        errors: [{ step: -1, message: errorMessage(err) }],
+      };
+    } finally {
+      unsubscribe();
+    }
   }
 
   for (let i = 0; i < script.steps.length; i++) {
