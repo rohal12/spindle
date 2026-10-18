@@ -67,6 +67,31 @@ describe('input bindings below a shared object (#305)', () => {
     },
   );
 
+  it.each([
+    ['\\u0024foo', '$foo'],
+    ['\\u00e9', 'é'],
+    ['\\u{1d400}', '𝐀'],
+    ['d\\u0065fault', 'default'],
+  ])('binds escaped JavaScript member %s', (escaped, property) => {
+    useStoryStore.getState().init(storyData, { a: { [property]: 'Ada' } }, {});
+    const container = document.createElement('div');
+    act(() =>
+      render(
+        <Passage passage={{ ...start, content: `{textbox $a.${escaped}}` }} />,
+        container,
+      ),
+    );
+    const input = container.querySelector('input');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('Ada');
+    act(() => {
+      input!.value = 'Bob';
+      input!.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(vars().a).toEqual({ [property]: 'Bob' });
+    act(() => render(null, container));
+  });
+
   it.each(['$\\u005f_proto__', '$a.\\u005f_proto__'])(
     'rejects the decoded reserved name in %s',
     (reference) => {

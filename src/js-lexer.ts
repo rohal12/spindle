@@ -587,6 +587,24 @@ export function parseReferencePath(src: string): ReferencePath | null {
   return { sigil: sigil[0], name: sigil[1], nested };
 }
 
+/** Decode one dot-member identifier, including keywords and Unicode names. */
+export function parseMemberIdentifier(src: string): string | null {
+  const { ast } = parseWithAst(`x.${src}`, 'expression');
+  if (ast.type !== 'MemberExpression' || ast.computed) return null;
+  const object = ast.object as AnyNode;
+  const property = ast.property as AnyNode;
+  if (
+    object.type !== 'Identifier' ||
+    object.start !== 0 ||
+    object.end !== 1 ||
+    property.type !== 'Identifier' ||
+    property.start !== 2 ||
+    property.end !== src.length + 2
+  )
+    return null;
+  return property.name as string;
+}
+
 /**
  * Parse `src` as `goal`, reading `%` as `percentAt` says where it says, and
  * noting where it read a transient in `transientsRead`.

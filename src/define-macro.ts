@@ -28,7 +28,7 @@ import { evaluateDisplay } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
 import { RESERVED_NAME } from './utils/namespace';
-import { parseReferencePath } from './js-lexer';
+import { parseMemberIdentifier, parseReferencePath } from './js-lexer';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -273,10 +273,15 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
         segments = firstToken
           .replace(/^\$/, '')
           .split('.')
-          .map((segment) => {
+          .map((segment, index) => {
             if (!segment.includes('\\')) return segment;
-            // Use the same JavaScript parser as startup validation. Prefixing a
-            // member with $ lets it decode keyword-like member identifiers too.
+            // Members follow JavaScript's identifier grammar, which accepts
+            // more names than story-variable roots (for example $foo and é).
+            if (index > 0) {
+              const name = parseMemberIdentifier(segment);
+              if (name === null) throw new Error('Invalid bound identifier');
+              return name;
+            }
             const reference = parseReferencePath(`$${segment}`);
             if (!reference || reference.nested)
               throw new Error('Invalid bound identifier');
