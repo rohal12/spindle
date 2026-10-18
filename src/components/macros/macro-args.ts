@@ -176,7 +176,7 @@ function readOptions(
 }
 
 /** `inline %name` reads a transient variable; `inline % 2` is modulo. */
-const LEADING_OPERATOR_RE = /^(?:[-+*/&|^=<>?:,.]|%(?![A-Za-z_]))/;
+const LEADING_OPERATOR_RE = /^(?:[-+*/&|^=<>?:,]|\.(?!\d)|%(?![A-Za-z_]))/;
 
 /**
  * Where the rest of `src` is without the flag `word` as its last or first

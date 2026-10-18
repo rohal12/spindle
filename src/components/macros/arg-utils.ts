@@ -182,15 +182,8 @@ function startsLikeValue(token: string): boolean {
   if (first === '"' || first === "'" || first === '`') return true;
   // Variable ($var, _var, @var, %var), but not the modulo operator in `$a % 2`
   if (/^[$_@]\w|^%[A-Za-z_]/.test(token)) return true;
-  // Number literal
-  if (/\d/.test(first)) return true;
-  // Signed number (-1, +2)
-  if (
-    (first === '-' || first === '+') &&
-    token.length > 1 &&
-    /\d/.test(token[1]!)
-  )
-    return true;
+  // Number literal, optionally signed, including leading-dot decimals.
+  if (/^[+-]?(?:\d|\.\d)/.test(token)) return true;
   // Grouped expression or collection literal
   if (first === '(' || first === '[' || first === '{') return true;
   // Boolean / null / undefined, alone or leading an expression (true||$x)

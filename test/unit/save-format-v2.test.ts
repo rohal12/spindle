@@ -49,6 +49,56 @@ const exportOf = (encoded: unknown) => ({
 });
 
 describe('save format v2: the envelope rejects what it cannot load', () => {
+  it.each([
+    ['a story variable', (a: unknown[]) => a],
+    ['an object field', (a: unknown[]) => ({ items: a })],
+    ['a Map key', (a: unknown[]) => new Map([[a, 1]])],
+    ['a Map value', (a: unknown[]) => new Map([['items', a]])],
+    ['a Set member', (a: unknown[]) => new Set([a])],
+    [
+      'an Error cause',
+      (a: unknown[]) => Object.assign(new Error('items'), { cause: a }),
+    ],
+    [
+      'an Error message',
+      (a: unknown[]) =>
+        Object.defineProperty(new Error('items'), 'message', { value: a }),
+    ],
+    [
+      'an Error field',
+      (a: unknown[]) => Object.assign(new Error('items'), { items: a }),
+    ],
+    [
+      'a non-enumerable array index',
+      (a: unknown[]) => Object.defineProperty([], '0', { value: a }),
+    ],
+  ])('rejects an excessive sparse array in %s (#591)', (_name, hold) => {
+    const items = new Array(0xffffffff);
+    const bad = tampered((body) => {
+      body.history[0].variables.items = hold(items);
+    });
+    expect(() => decodePayload(bad)).toThrow(
+      'Save arrays cannot exceed 1000000 elements',
+    );
+    const live = payload();
+    live.variables.items = hold(items);
+    expect(() => encodePayload(live)).toThrow(
+      'Save arrays cannot exceed 1000000 elements',
+    );
+  });
+
+  it('accepts sparse arrays at the limit and keeps their holes and cycles (#591)', () => {
+    const live = payload();
+    const items = new Array(1_000_000);
+    items[42] = items;
+    live.variables.items = items;
+    const decoded = decodePayload(encodePayload(live)).variables
+      .items as unknown[];
+    expect(decoded.length).toBe(items.length);
+    expect(Object.keys(decoded)).toEqual(['42']);
+    expect(decoded[42]).toBe(decoded);
+  });
+
   it.each(['history', 'watchers'])(
     'rejects sparse %s without expanding it (#584)',
     (field) => {

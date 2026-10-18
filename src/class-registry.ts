@@ -3,6 +3,7 @@
 import { parse, stringify } from 'devalue';
 import { hasOwn } from './utils/namespace';
 import {
+  arrayIndices,
   extraKeys,
   mapEntries,
   regExpParts,
@@ -219,9 +220,8 @@ function classData(value: object): unknown {
   if (Array.isArray(value)) {
     // Holes stay holes
     const items = new Array(value.length) as unknown[];
-    for (let i = 0; i < value.length; i++) {
-      if (i in value) items[i] = value[i] as unknown;
-    }
+    for (const key of arrayIndices(value))
+      items[Number(key)] = value[Number(key)] as unknown;
     return ['Array', items, extra()];
   }
   if (value instanceof Map) {
@@ -391,11 +391,10 @@ function reviveBuiltin(name: string, ctor: Constructor, list: unknown[]) {
 /** Set the elements of a revived collection, with the built-in methods. */
 function fillCollection(made: object, contents: unknown[]): void {
   if (Array.isArray(made)) {
+    for (const key of arrayIndices(made)) delete made[Number(key)];
     made.length = contents.length;
-    for (let i = 0; i < contents.length; i++) {
-      if (hasOwn(contents, i)) made[i] = contents[i];
-      else delete made[i];
-    }
+    for (const key of arrayIndices(contents))
+      made[Number(key)] = contents[Number(key)];
   } else if (made instanceof Map) {
     Map.prototype.clear.call(made);
     for (const entry of contents) {
@@ -406,7 +405,16 @@ function fillCollection(made: object, contents: unknown[]): void {
     }
   } else {
     Set.prototype.clear.call(made);
-    for (const member of contents) Set.prototype.add.call(made, member);
+    // Holes contribute only undefined to a Set; do not expand a sparse list.
+    const indices = arrayIndices(contents);
+    let next = 0;
+    for (const key of indices) {
+      const i = Number(key);
+      if (i > next) Set.prototype.add.call(made, undefined);
+      Set.prototype.add.call(made, contents[i]);
+      next = i + 1;
+    }
+    if (next < contents.length) Set.prototype.add.call(made, undefined);
   }
 }
 

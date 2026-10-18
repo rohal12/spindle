@@ -189,6 +189,8 @@ Some parts of a value are not saved, without an error:
 
 Values can be nested about 2,000 levels deep (an object in an object in an object …). A deeper value makes the save throw a "Maximum call stack size exceeded" error; the exact depth depends on the browser.
 
+Each saved array can have at most 1,000,000 elements, counting holes toward its length. Saving, importing or restoring a save with a longer array fails before replacing a slot or the running game. This also applies to arrays nested in class instances, Maps, Sets and errors, preventing compact sparse values from blocking loading.
+
 ### Save Format
 
 Saves, exports and the session store a payload as `{ formatVersion, data }`: `data` is the payload serialized as text (with [devalue](https://github.com/sveltejs/devalue)), and `formatVersion` is the version of that format, currently `1`. Treat `data` as opaque; read saves through the Story API.

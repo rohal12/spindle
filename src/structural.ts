@@ -14,6 +14,7 @@ import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
 import {
   ERROR_HIDDEN_KEYS,
+  arrayIndices,
   collectionSize,
   extraKeys,
   isAtomic,
@@ -182,9 +183,8 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
     if (Array.isArray(val)) {
       // Holes stay holes
       const arr = builtin(obj, new Array(val.length) as unknown[]);
-      for (let i = 0; i < val.length; i++) {
-        if (i in val) arr[i] = clone(val[i]);
-      }
+      for (const key of arrayIndices(val))
+        arr[Number(key)] = clone(val[Number(key)]);
       return arr;
     }
 
@@ -360,9 +360,7 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     }
     if (Array.isArray(c) && Array.isArray(p)) {
       const out = collection(new Array(c.length) as unknown[]);
-      for (let i = 0; i < c.length; i++) {
-        if (i in c) out[i] = share(p[i], c[i]);
-      }
+      for (const key of arrayIndices(c)) out[Number(key)] = shareKey(key);
       return out;
     }
     if (mergesWith(p, c, false)) {
@@ -521,10 +519,10 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
   if (Array.isArray(a)) {
     const bc = b as unknown[];
     if (a.length !== bc.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (i in a !== i in bc || !equal(a[i], bc[i], assumed)) return false;
-    }
-    return equalExtraKeys(a, b, assumed);
+    return (
+      equalKeys(a, b, assumed, (v) => arrayIndices(v as unknown[])) &&
+      equalExtraKeys(a, b, assumed)
+    );
   }
 
   return equalKeys(a, b, assumed);
@@ -626,16 +624,21 @@ export function keyChanges(
   if (Array.isArray(after)) {
     const b = before as unknown as unknown[];
     const a = after as unknown[];
-    for (let i = 0; i < Math.min(b.length, a.length); i++) {
+    const indices = [...new Set([...arrayIndices(b), ...arrayIndices(a)])].sort(
+      (x, y) => Number(x) - Number(y),
+    );
+    for (const key of indices) {
+      const i = Number(key);
+      if (i >= Math.min(b.length, a.length)) continue;
       // A hole is no element: not the same as an undefined one
-      const key = String(i);
       if (i in b && i in a) compare(key, b[i], a[i]);
       else if (i in b) changes.push({ key, kind: 'deleted', hole: true });
       else if (i in a) changes.push({ key, kind: 'added', after: a[i] });
     }
     let next = b.length;
-    for (let i = b.length; i < a.length; i++) {
-      if (!(i in a)) continue;
+    for (const key of arrayIndices(a)) {
+      const i = Number(key);
+      if (i < b.length) continue;
       const gap = i - next;
       changes.push({
         key: String(i),
@@ -645,9 +648,9 @@ export function keyChanges(
       });
       next = i + 1;
     }
-    for (let i = a.length; i < b.length; i++) {
-      changes.push({ key: String(i), kind: 'deleted' });
-    }
+    // One truncation also removes trailing holes, however large the gap.
+    if (a.length < b.length)
+      changes.push({ key: String(a.length), kind: 'deleted' });
     // Holes at the end are in no index, only in the length
     if (a.length > next) {
       changes.push({ key: 'length', kind: 'holes', after: a.length - next });
@@ -824,11 +827,11 @@ export function underChange(
 
 /**
  * The segment standing for the entry `index` of a Map or Set in a path, or
- * for the `cause` or `errors` of an Error ('c', 'e'), or for the buffer a
- * typed array or DataView views ('b').
+ * for the `message`, `cause` or `errors` of an Error ('m', 'c', 'e'), or for
+ * the buffer a typed array or DataView views ('b').
  */
 interface EntrySegment {
-  kind: 'k' | 'v' | 's' | 'c' | 'e' | 'b';
+  kind: 'k' | 'v' | 's' | 'm' | 'c' | 'e' | 'b';
   index: number;
 }
 
@@ -847,8 +850,9 @@ export const isEntryKey = (
 
 /**
  * What a Map, Set, Error or view holds in place of properties (keys and
- * values, members, `cause` and `errors`, the buffer), each with the segment standing for it in
- * a path (see entryKey); undefined for any other value.
+ * values, members, `message`, `cause` and `errors`, the buffer), each with
+ * the segment standing for it in a path (see entryKey); undefined for any
+ * other value.
  */
 function entryChildren(value: object): [EntrySegment, unknown][] | undefined {
   const children: [EntrySegment, unknown][] = [];
@@ -864,10 +868,10 @@ function entryChildren(value: object): [EntrySegment, unknown][] | undefined {
       children.push([entryKey('s', index++), member]);
     }
   } else if (value instanceof Error) {
-    for (const key of ['cause', 'errors'] as const) {
+    for (const key of ERROR_HIDDEN_KEYS) {
       if (hasOwn(value, key)) {
         children.push([
-          entryKey(key === 'cause' ? 'c' : 'e', 0),
+          entryKey(key === 'message' ? 'm' : key === 'cause' ? 'c' : 'e', 0),
           (value as any)[key],
         ]);
       }
@@ -922,11 +926,17 @@ function setEntryValue(
 }
 
 /**
- * The own enumerable fields of a Map, Set, Date or RegExp (an instance of a
- * registered subclass may hold some besides its built-in content, #412);
+ * The own enumerable fields of an Error, Map, Set, Date or RegExp (an
+ * instance of a registered subclass may hold some besides its built-in
+ * content, #412). Hidden Error data is visited through entryChildren;
  * none for any other value.
  */
 function builtinFields(value: object): string[] {
+  if (value instanceof Error) {
+    return Object.keys(value).filter(
+      (key) => !ERROR_HIDDEN_KEYS.some((hidden) => hidden === key),
+    );
+  }
   return value instanceof Map ||
     value instanceof Set ||
     value instanceof Date ||
@@ -945,16 +955,16 @@ function sameBuiltin(x: object, y: object): boolean {
 
 /**
  * Every path each object (or array, or other value) of `root` is at, the
- * first appearance first, in depth-first order. Plain objects and arrays are
- * entered, where first met only (an object held in an array is one object,
- * however it was reached); other values are leaves. A path at or below one
- * of `skip` is left out.
+ * first appearance first, in depth-first order. Plain objects and arrays
+ * (including non-enumerable indices) are entered, where first met only (an
+ * object held in an array is one object, however it was reached); other
+ * values are leaves. A path at or below one of `skip` is left out.
  *
  * With `entries`, the objects held in a Map or Set (as key, value or member)
  * are placed too, after everything else: one met nowhere else is at the path
  * of its Map or Set and the entry's segment (see entryKey), which is no path
  * a value can be read at (see getByEntryPath), so only to tell where an
- * object is from; so are the `cause` and `errors` of an Error.
+ * object is from; so are the `message`, `cause` and `errors` of an Error.
  */
 function objectPaths(
   root: object,
@@ -980,7 +990,9 @@ function objectPaths(
   function walk(
     node: Record<string, unknown>,
     path: ObjectPath,
-    keys: string[] = Object.keys(node),
+    keys: string[] = Array.isArray(node)
+      ? [...arrayIndices(node), ...extraKeys(node)]
+      : Object.keys(node),
   ): void {
     for (const key of keys) {
       const value = node[key];
@@ -1011,6 +1023,19 @@ function firstPaths(
       paths[0]!,
     ]),
   );
+}
+
+/**
+ * Refuse arrays whose logical length would make downstream slot scans
+ * (including Immer's array freezing) excessive. Inspect populated keys and
+ * collection entries only, sharing the graph walk used for structural diffs.
+ */
+export function assertArrayLengths(root: object, maxLength: number): void {
+  for (const value of objectPaths({ root }, undefined, true).keys()) {
+    if (Array.isArray(value) && value.length > maxLength) {
+      throw new RangeError(`Save arrays cannot exceed ${maxLength} elements`);
+    }
+  }
 }
 
 /**

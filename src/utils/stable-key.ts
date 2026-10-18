@@ -2,6 +2,7 @@ import { hasOwn } from './namespace';
 import { registeredClassName } from '../class-registry';
 import {
   ERROR_HIDDEN_KEYS,
+  arrayIndices,
   extraKeys,
   isBoxed,
   isTemporal,
@@ -41,9 +42,6 @@ export function stableKey(value: unknown): string {
     return '<unkeyable>';
   }
 }
-
-/** The key of an array slot that holds no element. */
-const HOLE = '<hole>';
 
 /**
  * The key of `val`. `seen` numbers the objects keyed so far, in the order
@@ -106,9 +104,14 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     // A hole is no element, not an undefined one (#497), as for deepEqual
     // and a save; a plain `map` would skip it, giving `[,]` the key of `[]`
     const items: string[] = [];
-    for (let i = 0; i < val.length; i++) {
-      items.push(i in val ? keyOf(val[i], seen) : HOLE);
+    let next = 0;
+    for (const index of arrayIndices(val)) {
+      const i = Number(index);
+      if (i > next) items.push(`<holes ${i - next}>`);
+      items.push(keyOf(val[i], seen));
+      next = i + 1;
     }
+    if (val.length > next) items.push(`<holes ${val.length - next}>`);
     return withFields(`[${items.join(',')}]`);
   }
   const atomic = atomicKey(obj, seen);
