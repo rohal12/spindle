@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import { pathToFileURL } from 'url';
@@ -34,8 +34,34 @@ const html = storyHtml({
 });
 
 describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
+  it('requires explicit trust before authored code can touch host files (#583)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spindle-trust-'));
+    const marker = join(dir, 'executed');
+    const untrusted = storyHtml({
+      StoryVariables: '',
+      StoryInit: `{do}process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(marker)}, 'executed'){/do}`,
+      Start: 'Hi',
+    });
+    try {
+      for (const trusted of [undefined, false]) {
+        await expect(
+          openPlaySession({ html: untrusted, trusted }),
+        ).rejects.toThrow(/trusted: true/);
+        expect(existsSync(marker)).toBe(false);
+      }
+      const session = await openPlaySession({ html: untrusted, trusted: true });
+      try {
+        expect(existsSync(marker)).toBe(true);
+      } finally {
+        await session.close();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('plays a story: observe, step, goto, get/set, transcript, close', async () => {
-    const s = await openPlaySession({ html });
+    const s = await openPlaySession({ trusted: true, html });
     const first = await s.observe();
     expect(first.passage).toBe('Start');
     expect(first.context).toBe('Name: ?');
@@ -56,7 +82,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
   });
 
   it('steps with a value', async () => {
-    const s = await openPlaySession({ html });
+    const s = await openPlaySession({ trusted: true, html });
     const listbox = (await s.observe()).actions.find(
       (a) => a.type === 'listbox',
     )!;
@@ -68,8 +94,8 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
 
   it('runs two sessions in isolation', async () => {
     const [a, b] = await Promise.all([
-      openPlaySession({ html }),
-      openPlaySession({ html }),
+      openPlaySession({ trusted: true, html }),
+      openPlaySession({ trusted: true, html }),
     ]);
     await a.set({ name: 'Ada' });
     await b.set({ $name: 'Bo' });
@@ -79,14 +105,14 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
   });
 
   it('keeps the session usable after an unknown action', async () => {
-    const s = await openPlaySession({ html });
+    const s = await openPlaySession({ trusted: true, html });
     await expect(s.step('nope')).rejects.toThrow(/nope/);
     expect((await s.observe()).passage).toBe('Start');
     await s.close();
   });
 
   it('rejects goto to an unknown or special passage and stays open', async () => {
-    const s = await openPlaySession({ html });
+    const s = await openPlaySession({ trusted: true, html });
     await expect(s.goto('Nowhere')).rejects.toThrow(
       'spindle: No passage named "Nowhere"',
     );
@@ -115,6 +141,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
             )) as typeof process.stderr.write);
     try {
       const s = await openPlaySession({
+        trusted: true,
         html: storyHtml({
           StoryVariables: '',
           Start: '{do}console.log("STORY-LOG"){/do}Hi',
@@ -139,18 +166,19 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
       ].join(''),
       Start: 'Hi',
     });
-    const a = await openPlaySession({ html: storyWith });
+    const a = await openPlaySession({ trusted: true, html: storyWith });
     expect(await a.get(['same', 'seen'])).toEqual({
       same: [true, true, true],
       seen: null,
     });
-    const b = await openPlaySession({ html: storyWith });
+    const b = await openPlaySession({ trusted: true, html: storyWith });
     expect(await b.get(['seen'])).toEqual({ seen: null });
     await Promise.all([a.close(), b.close()]);
   });
 
   it('times out an infinite {do} loop', { timeout: 15_000 }, async () => {
     const s = await openPlaySession({
+      trusted: true,
       html: storyHtml({
         StoryVariables: '',
         Start: '[[Loop]]',
@@ -172,7 +200,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
       const { openPlaySession } = await import(${JSON.stringify(playUrl)});
       let html = '';
       for await (const chunk of process.stdin) html += chunk;
-      const s = await openPlaySession({ html });
+      const s = await openPlaySession({ trusted: true, html });
       console.log((await s.observe()).passage);
     `;
     const child = spawnSync(
@@ -193,7 +221,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
       const { openPlaySession } = await import(${JSON.stringify(playUrl)});
       let html = '';
       for await (const chunk of process.stdin) html += chunk;
-      const s = await openPlaySession({ html });
+      const s = await openPlaySession({ trusted: true, html });
       console.log((await s.observe()).passage);
       await s.close();
     `;
@@ -211,13 +239,14 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
 
   it('rejects open when boot fails', async () => {
     await expect(
-      openPlaySession({ html: '<html><body></body></html>' }),
+      openPlaySession({ trusted: true, html: '<html><body></body></html>' }),
     ).rejects.toThrow('no <tw-storydata>');
   });
 
   it('rejects open when StoryInit stops the story', async () => {
     await expect(
       openPlaySession({
+        trusted: true,
         html: storyHtml({
           StoryVariables: '',
           StoryInit: '{nosuchmacro}',
@@ -229,6 +258,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
 
   it('clones values, with a marker for those that cannot be cloned', async () => {
     const s = await openPlaySession({
+      trusted: true,
       html: storyHtml({
         StoryVariables:
           '$fn = 0\n$fnMap = 0\n$cycle = 0\n$map = 0\n$set = 0\n$date = 0\n$ok = 0',
@@ -278,6 +308,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
 
   it('gives each session no BroadcastChannel, so sessions cannot hear each other', async () => {
     const s = await openPlaySession({
+      trusted: true,
       html: storyHtml({
         StoryVariables: '$bc = ""',
         StoryInit: "{do}Story.set('bc', typeof BroadcastChannel){/do}",
@@ -339,7 +370,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
         ].join('\n'),
       );
       const { html: compiled } = await resolveStoryHtml({ path });
-      const s = await openPlaySession({ html: compiled });
+      const s = await openPlaySession({ trusted: true, html: compiled });
       expect((await s.observe()).passage).toBe('Start');
       await s.close();
     } finally {

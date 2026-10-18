@@ -28,10 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** Play sessions require explicit `trusted: true` before executing story code, which has unrestricted access to host Node APIs. Worker threads and happy-dom do not provide a security sandbox (#583).
 - **Breaking:** `{link}`'s target is a passage name as in `{goto}`: a quoted string or an expression, so `{link "Go" $dest}{/link}` navigates to the passage `$dest` names. A quoted name is checked when the story starts; an expression naming a missing passage shows an error in place.
 - **Breaking:** an argument that must be a quoted string and isn't (`{link Go north}`, `{option Red}`, `{watch $x > 0}`) is an error, reported when the story starts and in place when rendered, instead of being dropped or read loosely. An optional quoted string at the end (`{meter $hp 100}`) may still be left out.
 
 ### Fixed
+
+- Malformed sparse save histories and watcher lists are rejected without expanding their declared length into dense arrays (#584).
+- Formatter line mapping indexes source offsets and searches overlapping Markdown spans, avoiding quadratic scans across repeated constructs (#585).
+- Mixed-case `{DO}` and `{Do}` bodies retain JavaScript literal whitespace and are excluded from prose wrapping (#586).
+- Automation fails before running steps when its start passage is missing or special; valid starts may still redirect (#587).
+- Input bindings decode escaped root and member identifiers before reading or writing story variables (#588).
 
 - Passage wrapping preserves Markdown headings, tables and other structures whose line breaks carry syntax (#575).
 - URI autolinks such as `<mailto:support@example.com>`, `<tel:12345>` and `<urn:isbn:12345>` reach the Markdown renderer without being mistaken for unclosed HTML tags during story validation; URI-shaped passage text, attributes and labels keep their interpolations active (#576).

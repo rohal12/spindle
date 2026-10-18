@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { serialize, deserialize } from '../../src/class-registry';
 import {
   decodePayload,
@@ -49,6 +49,44 @@ const exportOf = (encoded: unknown) => ({
 });
 
 describe('save format v2: the envelope rejects what it cannot load', () => {
+  it.each(['history', 'watchers'])(
+    'rejects sparse %s without expanding it (#584)',
+    (field) => {
+      const bad = tampered((body) => {
+        body[field] = new Array(100_000_000);
+      });
+      const from = Array.from;
+      // Bound allocations during validation without risking an OOM in Vitest.
+      const guard = vi.spyOn(Array, 'from').mockImplementation(((
+        value: unknown,
+        ...args: unknown[]
+      ) => {
+        if (Array.isArray(value) && value.length >= 100_000)
+          throw new Error('Dense allocation exceeded resource budget');
+        return Reflect.apply(from, Array, [value, ...args]);
+      }) as typeof Array.from);
+      try {
+        expect(() => decodePayload(bad)).toThrow('Invalid save data');
+      } finally {
+        guard.mockRestore();
+      }
+    },
+  );
+
+  it.each(['history', 'watchers'])(
+    'rejects a hole after a valid %s entry',
+    (field) => {
+      const bad = tampered((body) => {
+        body[field] =
+          field === 'history'
+            ? [body.history[0]]
+            : [{ condition: 'true', options: {} }];
+        body[field].length = 2;
+      });
+      expect(() => decodePayload(bad)).toThrow('Invalid save data');
+    },
+  );
+
   it('round-trips a payload', () => {
     expect(decodePayload(encodePayload(payload()))).toEqual(payload());
   });

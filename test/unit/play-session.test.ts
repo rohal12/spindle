@@ -7,7 +7,10 @@ import {
 
 const stubUrl = new URL('./play-session/stub-worker.mjs', import.meta.url);
 const open = (o: PlaySessionOptions) =>
-  openPlaySessionWith(o, { workerUrl: stubUrl, headlessUrl: stubUrl });
+  openPlaySessionWith(
+    { trusted: true, ...o },
+    { workerUrl: stubUrl, headlessUrl: stubUrl },
+  );
 
 describe('workerExecArgv', () => {
   it('drops --input-type in both spellings and keeps every other flag', () => {
@@ -31,6 +34,19 @@ describe('workerExecArgv', () => {
 });
 
 describe('play session handle', () => {
+  it.each([undefined, false, 'true'])(
+    'refuses execution without explicit trust (%s)',
+    async (trusted) => {
+      const options = { html: 'fail', trusted } as PlaySessionOptions;
+      await expect(
+        openPlaySessionWith(options, {
+          workerUrl: stubUrl,
+          headlessUrl: stubUrl,
+        }),
+      ).rejects.toThrow(/trusted.*host Node/i);
+    },
+  );
+
   it('rejects open when the worker cannot boot', () =>
     expect(open({ html: 'fail' })).rejects.toThrow('boom'));
 

@@ -28,6 +28,7 @@ import { evaluateDisplay } from './expression';
 import { useStoryStore } from './store';
 import { getByPath, setByPath } from './utils/object-path';
 import { RESERVED_NAME } from './utils/namespace';
+import { parseReferencePath } from './js-lexer';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -255,8 +256,36 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
         );
       }
 
-      const varExpr = firstToken.replace(/["']/g, '').replace(/^\$/, '');
-      const segments = varExpr.split('.');
+      if (
+        !firstToken.startsWith('$') &&
+        firstToken.split('.')[0]!.includes('\\')
+      ) {
+        return h(MacroError, {
+          macro: config.name,
+          error: new Error(
+            'Escaped binding identifiers require a literal $ story-variable sigil',
+          ),
+        });
+      }
+
+      let segments: string[];
+      try {
+        segments = firstToken
+          .replace(/^\$/, '')
+          .split('.')
+          .map((segment) => {
+            if (!segment.includes('\\')) return segment;
+            // Use the same JavaScript parser as startup validation. Prefixing a
+            // member with $ lets it decode keyword-like member identifiers too.
+            const reference = parseReferencePath(`$${segment}`);
+            if (!reference || reference.nested)
+              throw new Error('Invalid bound identifier');
+            return reference.name;
+          });
+      } catch (error) {
+        return h(MacroError, { macro: config.name, error });
+      }
+      const varExpr = segments.join('.');
       if (segments.includes(RESERVED_NAME)) {
         return h(
           'span',

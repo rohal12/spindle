@@ -3,7 +3,7 @@
 
 import { assertTrustedWatchers } from '../triggers';
 import { deserialize, serialize } from '../class-registry';
-import { createCounts } from '../utils/namespace';
+import { createCounts, hasOwn } from '../utils/namespace';
 import type { SavePayload } from './types';
 
 /**
@@ -136,10 +136,22 @@ const isMoment = (value: unknown): boolean =>
   typeof value.timestamp === 'number' &&
   isOptionalPRNGSnapshot(value.prng);
 
+/** Visit holes too, rejecting malformed metadata before copying any entries. */
+function everyEntry(
+  value: unknown[],
+  valid: (entry: unknown) => boolean,
+): boolean {
+  for (let i = 0; i < value.length; i++) {
+    if (!hasOwn(value, i) || !valid(value[i])) return false;
+  }
+  return true;
+}
+
 const isWatchers = (value: unknown): boolean =>
   value === undefined ||
   (Array.isArray(value) &&
-    Array.from(value).every(
+    everyEntry(
+      value,
       (w) =>
         isRecord(w) && typeof w.condition === 'string' && isRecord(w.options),
     ));
@@ -160,9 +172,8 @@ function isPayload(value: unknown): value is Record<string, unknown> {
     return false;
   }
   const { history, historyIndex } = value;
-  // Array.from: every() skips the holes of a sparse array
   if (!Array.isArray(history) || history.length === 0) return false;
-  if (!Array.from(history).every(isMoment)) return false;
+  if (!everyEntry(history, isMoment)) return false;
   if (
     typeof historyIndex !== 'number' ||
     !Number.isInteger(historyIndex) ||

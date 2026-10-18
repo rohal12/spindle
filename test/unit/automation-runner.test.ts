@@ -19,6 +19,7 @@ function mockStoryAPI(overrides: Partial<StoryAPI> = {}): StoryAPI {
   const variables: Record<string, unknown> = {};
   let actions: StoryAction[] = [];
   let passage = 'Start';
+  const beforeNavigate = new Set<(name: string) => void>();
 
   return {
     get(name: string) {
@@ -32,6 +33,7 @@ function mockStoryAPI(overrides: Partial<StoryAPI> = {}): StoryAPI {
       }
     },
     goto(p: string) {
+      for (const callback of beforeNavigate) callback(p);
       passage = p;
     },
     back() {},
@@ -90,8 +92,9 @@ function mockStoryAPI(overrides: Partial<StoryAPI> = {}): StoryAPI {
       }
       return result;
     },
-    on() {
-      return () => {};
+    on(event: string, callback: (name: string) => void) {
+      if (event === 'beforenavigate') beforeNavigate.add(callback);
+      return () => beforeNavigate.delete(callback);
     },
     async waitForActions() {
       return actions;

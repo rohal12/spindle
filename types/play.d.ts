@@ -26,6 +26,8 @@ export function resolveStoryHtml(input: StoryInput): Promise<ResolvedStory>;
 /** Options for {@link openPlaySession}. */
 export interface PlaySessionOptions {
   html: string;
+  /** Explicitly allow story JavaScript to access host Node APIs. Default false. */
+  trusted?: boolean;
   /** Per call. Default 10_000. */
   stepTimeoutMs?: number;
   /** Passed to createTranscript() inside the worker. Default { limit: 10 }. */
@@ -67,6 +69,9 @@ export interface PlaySession {
  * peer dependency) and resolve with a session once the first passage is
  * shown. Calls run one at a time; a call that takes longer than
  * `stepTimeoutMs` closes the session.
+ * Requires `trusted: true`: story JavaScript has unrestricted access to host
+ * Node APIs, files and environment. Worker threads and happy-dom are not a
+ * security sandbox. Only run code you trust.
  *
  * In the worker, `window` is happy-dom's window, not `globalThis`. Story code
  * sees `Story` and the DOM globals as in a browser, but a property set on

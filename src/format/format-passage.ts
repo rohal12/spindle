@@ -4,6 +4,7 @@ import type { PairedNode } from '../markup/pair';
 import type { MacroToken } from '../markup/tokens';
 import { segmentRegions } from './segment';
 import { markdownLines } from './markdown-lines';
+import { sourceLines } from './source-lines';
 import {
   formatJS,
   formatCSS,
@@ -379,6 +380,7 @@ function whitespaceSensitiveLines(
 ): Set<number> {
   const lines = new Set<number>();
   if (!WHITESPACE_AS_WRITTEN.test(source)) return lines;
+  const lineAt = sourceLines(source);
   const { nodes } = analyzeMarkup(source, { hooks: { isBlock } });
   function visit(nodes: PairedNode[]): void {
     for (const node of nodes) {
@@ -391,8 +393,8 @@ function whitespaceSensitiveLines(
               name.toLowerCase() === 'style' && /white-space\s*:/i.test(value),
           ))
       ) {
-        const first = source.slice(0, node.start).split('\n').length - 1;
-        const last = source.slice(0, node.end - 1).split('\n').length - 1;
+        const first = lineAt(node.start);
+        const last = lineAt(node.end - 1);
         for (let line = first; line <= last; line++) lines.add(line);
       } else if (body) {
         visit(body.children);
@@ -678,9 +680,10 @@ function wrapLines(
 function doBodyLines(lines: string[]): Set<number> {
   const found = new Set<number>();
   const text = lines.join('\n');
+  const lineAt = sourceLines(text);
   for (const block of scanSpindleMarkup(text).doBlocks) {
-    const first = text.slice(0, block.bodyStart).split('\n').length - 1;
-    const last = text.slice(0, block.bodyEnd).split('\n').length - 1;
+    const first = lineAt(block.bodyStart);
+    const last = lineAt(block.bodyEnd);
     for (let i = first; i <= last; i++) found.add(i);
   }
   return found;
