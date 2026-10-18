@@ -14,6 +14,7 @@ import { hasOwn, setOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
 import {
   ERROR_HIDDEN_KEYS,
+  arrayIndices,
   collectionSize,
   extraKeys,
   isAtomic,
@@ -182,9 +183,8 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
     if (Array.isArray(val)) {
       // Holes stay holes
       const arr = builtin(obj, new Array(val.length) as unknown[]);
-      for (let i = 0; i < val.length; i++) {
-        if (i in val) arr[i] = clone(val[i]);
-      }
+      for (const key of arrayIndices(val))
+        arr[Number(key)] = clone(val[Number(key)]);
       return arr;
     }
 
@@ -360,9 +360,7 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     }
     if (Array.isArray(c) && Array.isArray(p)) {
       const out = collection(new Array(c.length) as unknown[]);
-      for (let i = 0; i < c.length; i++) {
-        if (i in c) out[i] = share(p[i], c[i]);
-      }
+      for (const key of arrayIndices(c)) out[Number(key)] = shareKey(key);
       return out;
     }
     if (mergesWith(p, c, false)) {
@@ -521,10 +519,10 @@ function equal(a: unknown, b: unknown, assumed: Pairs): boolean {
   if (Array.isArray(a)) {
     const bc = b as unknown[];
     if (a.length !== bc.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (i in a !== i in bc || !equal(a[i], bc[i], assumed)) return false;
-    }
-    return equalExtraKeys(a, b, assumed);
+    return (
+      equalKeys(a, b, assumed, (v) => arrayIndices(v as unknown[])) &&
+      equalExtraKeys(a, b, assumed)
+    );
   }
 
   return equalKeys(a, b, assumed);
@@ -626,16 +624,21 @@ export function keyChanges(
   if (Array.isArray(after)) {
     const b = before as unknown as unknown[];
     const a = after as unknown[];
-    for (let i = 0; i < Math.min(b.length, a.length); i++) {
+    const indices = [...new Set([...arrayIndices(b), ...arrayIndices(a)])].sort(
+      (x, y) => Number(x) - Number(y),
+    );
+    for (const key of indices) {
+      const i = Number(key);
+      if (i >= Math.min(b.length, a.length)) continue;
       // A hole is no element: not the same as an undefined one
-      const key = String(i);
       if (i in b && i in a) compare(key, b[i], a[i]);
       else if (i in b) changes.push({ key, kind: 'deleted', hole: true });
       else if (i in a) changes.push({ key, kind: 'added', after: a[i] });
     }
     let next = b.length;
-    for (let i = b.length; i < a.length; i++) {
-      if (!(i in a)) continue;
+    for (const key of arrayIndices(a)) {
+      const i = Number(key);
+      if (i < b.length) continue;
       const gap = i - next;
       changes.push({
         key: String(i),
@@ -645,9 +648,9 @@ export function keyChanges(
       });
       next = i + 1;
     }
-    for (let i = a.length; i < b.length; i++) {
-      changes.push({ key: String(i), kind: 'deleted' });
-    }
+    // One truncation also removes trailing holes, however large the gap.
+    if (a.length < b.length)
+      changes.push({ key: String(a.length), kind: 'deleted' });
     // Holes at the end are in no index, only in the length
     if (a.length > next) {
       changes.push({ key: 'length', kind: 'holes', after: a.length - next });
@@ -1011,6 +1014,19 @@ function firstPaths(
       paths[0]!,
     ]),
   );
+}
+
+/**
+ * Refuse arrays whose logical length would make downstream slot scans
+ * (including Immer's array freezing) excessive. Inspect populated keys and
+ * collection entries only, sharing the graph walk used for structural diffs.
+ */
+export function assertArrayLengths(root: object, maxLength: number): void {
+  for (const value of objectPaths({ root }, undefined, true).keys()) {
+    if (Array.isArray(value) && value.length > maxLength) {
+      throw new RangeError(`Save arrays cannot exceed ${maxLength} elements`);
+    }
+  }
 }
 
 /**

@@ -238,6 +238,7 @@ const numberLiteral: fc.Arbitrary<Expr> = fc
     fc.nat({ max: 0xffff }).map((n) => `0x${n.toString(16)}`),
     fc.nat({ max: 999 }).map((n) => `1_${String(n).padStart(3, '0')}`),
     fc.nat({ max: 99 }).map((n) => `${n}e3`),
+    fc.nat({ max: 999 }).map((n) => `.${n}`),
   )
   .map((src) => ({
     src,
@@ -326,7 +327,7 @@ export interface ExprArbs {
   /**
    * A standalone argument for the whitespace-separated form of widget
    * arguments (docs/widgets.md): no whitespace outside literals and
-   * brackets, and starting with a quote, sigil, digit, sign + digit, bracket,
+   * brackets, and starting with a quote, sigil, number, signed number, bracket,
    * `!`, or `true`/`false`/`null`/`undefined`.
    */
   standalone: fc.Arbitrary<Expr>;
@@ -559,7 +560,7 @@ export function exprArbs(opts: ExprOptions = {}): ExprArbs {
     const head = fc.oneof(
       string,
       template(depth),
-      numberLiteral.filter((e) => /^\d/.test(e.src)),
+      numberLiteral,
       bigintLiteral,
       variable,
       keywordLiteral,
@@ -567,7 +568,6 @@ export function exprArbs(opts: ExprOptions = {}): ExprArbs {
     );
     const signed = fc
       .tuple(fc.constantFrom('-', '+'), numberLiteral)
-      .filter(([, n]) => /^\d/.test(n.src))
       .map(([sign, n]) => ({
         src: sign + n.src,
         value: sign === '-' ? -(n.value as number) : n.value,

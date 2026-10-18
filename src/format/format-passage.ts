@@ -611,12 +611,14 @@ const NO_WRAP = new Set([
   'atxHeading',
   'setextHeading',
   'table',
-  'listItem',
+  'listOrdered',
+  'listUnordered',
   'blockQuote',
   'definition',
   'thematicBreak',
   'htmlFlow',
   'codeText',
+  'codeFenced',
   'link',
   'image',
 ]);
@@ -668,6 +670,15 @@ function wrapLines(
     const indent = indentMatch?.[1] ?? '';
 
     const wrapped = wordWrap(trimmed, maxLen, indent);
+    // A new line before inline punctuation can turn prose into a heading,
+    // list, quote, fence, etc. Keep the source line when wrapping adds syntax.
+    if (
+      wrapped.length > 1 &&
+      markdownLines(wrapped.join('\n'), isBlock, NO_WRAP).size
+    ) {
+      result.push(line);
+      continue;
+    }
     // Keep a Markdown hard break on the last wrapped line
     if (line.endsWith('  ')) wrapped[wrapped.length - 1] += '  ';
     result.push(...wrapped);

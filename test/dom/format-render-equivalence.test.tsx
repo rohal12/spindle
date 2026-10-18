@@ -111,6 +111,37 @@ const markdownCases = [
 ];
 
 describe('Format keeps what a passage displays', () => {
+  it.each([
+    '# Heading',
+    '> quoted',
+    '- item',
+    '+ item',
+    '* item',
+    '1. item',
+    '1) item',
+    '---',
+    '***',
+    '===',
+    '```code',
+    '~~~code',
+    '[ref]: /url',
+  ])(
+    'does not turn inline %s into a Markdown block (#592)',
+    async (punctuation) => {
+      for (const maxLineLength of [10, 80]) {
+        const prefix =
+          maxLineLength === 10
+            ? 'Some words'
+            : 'Some words ' + 'ordinary prose '.repeat(5);
+        const source = `${prefix} ${punctuation} and more words at the end.`;
+        const options = { maxLineLength };
+        const output = await formatPassage(source, options);
+        expect(canonical(output)).toBe(canonical(source));
+        expect(await formatPassage(output, options)).toBe(output);
+      }
+    },
+  );
+
   for (const input of [...cases, ...literalCases]) {
     it(JSON.stringify(input), async () => {
       const options = {

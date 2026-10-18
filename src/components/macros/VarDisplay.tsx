@@ -1,4 +1,4 @@
-import { useStoryStore } from '../../store';
+import { useStoryFields } from '../../hooks/use-story-fields';
 import { useLiveLocals } from '../../hooks/use-merged-locals';
 import { useInterpolate } from '../../hooks/use-interpolate';
 import { ownValue, variableNameError } from '../../utils/namespace';
@@ -23,9 +23,11 @@ export function VarDisplay({ node }: { node: VariableNode }) {
   const parts = name.split('.');
   const root = parts[0]!;
   // Own entries only, as the expression engine reads them
-  const storeValue = useStoryStore((s) =>
-    scope === 'local' ? undefined : ownValue(s[STORE_NAMESPACES[scope]], root),
-  );
+  const state = useStoryFields('variables', 'temporary', 'transient');
+  const storeValue =
+    scope === 'local'
+      ? undefined
+      : ownValue(state[STORE_NAMESPACES[scope]], root);
 
   const sigil = SCOPE_SIGILS[scope];
   const nameError = variableNameError(root, sigil + root);

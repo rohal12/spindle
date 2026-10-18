@@ -25,7 +25,7 @@ import {
 import type { ASTNode } from './markup/ast';
 import { executeMutation, mutateState, readState } from './execute-mutation';
 import { evaluateDisplay } from './expression';
-import { useStoryStore } from './store';
+import { useStoryFields } from './hooks/use-story-fields';
 import { getByPath, setByPath } from './utils/object-path';
 import { RESERVED_NAME } from './utils/namespace';
 import { parseMemberIdentifier, parseReferencePath } from './js-lexer';
@@ -299,7 +299,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
         );
       }
       ctx.varName = varExpr;
-      ctx.value = useStoryStore((s) => getByPath(s.variables, segments));
+      ctx.value = getByPath(useStoryFields('variables').variables, segments);
       // In program order, also when mutation code performs the input
       ctx.getValue = () => getByPath(readState().variables, segments);
       ctx.setValue = displayOnly

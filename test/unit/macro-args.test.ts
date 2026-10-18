@@ -8,6 +8,21 @@ import {
 import type { StoryData } from '../../src/parser';
 
 describe('parseMacroArgs', () => {
+  it('keeps a leading-dot number after a flag distinct from member access (#594)', () => {
+    const params = [
+      { name: 'inline', type: 'flag' },
+      { name: 'value', type: 'expression', required: true },
+    ] as const;
+    expect(parseMacroArgs('inline .5', params)).toEqual({
+      inline: true,
+      value: '.5',
+    });
+    expect(parseMacroArgs('inline .field', params)).toEqual({
+      inline: false,
+      value: 'inline .field',
+    });
+  });
+
   it('gives the last parameter the rest of the arguments', () => {
     expect(
       parseMacroArgs('$hp $str * 2', [

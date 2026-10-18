@@ -3,6 +3,7 @@
 
 import { assertTrustedWatchers } from '../triggers';
 import { deserialize, serialize } from '../class-registry';
+import { assertArrayLengths } from '../structural';
 import { createCounts, hasOwn } from '../utils/namespace';
 import type { SavePayload } from './types';
 
@@ -12,6 +13,9 @@ import type { SavePayload } from './types';
  * migration from the previous version to MIGRATIONS.
  */
 export const SAVE_FORMAT_VERSION = 1;
+
+// Immer and author-facing array methods may scan logical slots, even holes.
+const MAX_SAVE_ARRAY_LENGTH = 1_000_000;
 
 /**
  * A payload as stored: `data` is the payload serialized in one piece (see
@@ -94,6 +98,7 @@ function variablePathError(err: unknown): unknown {
  */
 export function encodePayload(payload: SavePayload): EncodedPayload {
   try {
+    assertArrayLengths(payload, MAX_SAVE_ARRAY_LENGTH);
     return {
       formatVersion: SAVE_FORMAT_VERSION,
       data: serialize({
@@ -211,6 +216,7 @@ export function decodePayload(encoded: unknown): SavePayload {
   if (typeof data !== 'string') throw invalid();
   const body = deserialize(migrate(formatVersion, data));
   if (!isPayload(body)) throw invalid();
+  assertArrayLengths(body, MAX_SAVE_ARRAY_LENGTH);
   assertTrustedWatchers(
     (body.watchers ?? []) as NonNullable<SavePayload['watchers']>,
   );

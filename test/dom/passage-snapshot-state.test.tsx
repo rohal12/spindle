@@ -87,6 +87,16 @@ describe('outgoing passage snapshots keep what cloneNode drops (#512, #525, #536
     return snapshot as HTMLElement;
   }
 
+  it('keeps temporary variable displays in the outgoing snapshot (#593)', () => {
+    leave(
+      '{set _n = 7}<div class="values">{_n} vs {print _n} vs {_n + 0}</div>',
+    );
+    expect(container.querySelector('.values')?.textContent).toBe('7 vs 7 vs 7');
+    const snapshot = navigate();
+    expect(useStoryStore.getState().temporary.n).toBeUndefined();
+    expect(snapshot.querySelector('.values')?.textContent).toBe('7 vs 7 vs 7');
+  });
+
   it('copies each canvas bitmap into the matching cloned canvas', () => {
     leave(
       '<canvas id="a" width="100" height="50"></canvas><div><canvas width="7" height="9"></canvas></div>',

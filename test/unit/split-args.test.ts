@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { splitArgs } from '../../src/components/macros/WidgetInvocation';
 
 describe('splitArgs', () => {
+  it.each(['.5', '-.5', '+.5', '.5e2', '-.5e-2', '+.5_0'])(
+    'splits a leading-dot number %s from its label (#594)',
+    (number) => {
+      expect(splitArgs(`${number} "half"`)).toEqual([number, '"half"']);
+      expect(splitArgs(`${number} + 1`)).toEqual([`${number} + 1`]);
+    },
+  );
+
   // ── Comma-separated (existing behaviour) ──────────────────────────
 
   it('splits on top-level commas', () => {

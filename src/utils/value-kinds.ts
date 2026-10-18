@@ -53,6 +53,10 @@ export const ERROR_HIDDEN_KEYS = ['message', 'cause', 'errors'] as const;
 export const isIndexKey = (key: string): boolean =>
   key !== '4294967295' && String(Number(key) >>> 0) === key;
 
+/** Populated own array indices, in order, without visiting holes. */
+export const arrayIndices = (value: unknown[]): string[] =>
+  Object.getOwnPropertyNames(value).filter(isIndexKey);
+
 /**
  * The own enumerable string keys of a collection (an Array, Map or Set) that
  * are not its elements: what an instance of a subclass may hold besides
