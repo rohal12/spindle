@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Sparse story arrays are cloned, compared, shared, keyed and revived by populated indices. Saves refuse arrays longer than 1,000,000 elements before replacing live state, bounding downstream array scans during loading (#591).
+- Sparse story arrays are cloned, compared, shared, keyed and revived by populated indices. Saves refuse arrays longer than 1,000,000 elements, including those held in non-enumerable array indices and Error messages or custom fields, before replacing live state, bounding downstream array scans during loading (#591).
 - Prose wrapping preserves the source line when new breaks would introduce Markdown headings, lists, quotes or other block syntax (#592).
 - Simple variable displays and bound controls retain outgoing values until transition snapshots are captured (#593).
 - Space-separated widget arguments accept leading-dot numbers, including signed forms such as `-.5` (#594).

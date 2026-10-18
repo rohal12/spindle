@@ -827,11 +827,11 @@ export function underChange(
 
 /**
  * The segment standing for the entry `index` of a Map or Set in a path, or
- * for the `cause` or `errors` of an Error ('c', 'e'), or for the buffer a
- * typed array or DataView views ('b').
+ * for the `message`, `cause` or `errors` of an Error ('m', 'c', 'e'), or for
+ * the buffer a typed array or DataView views ('b').
  */
 interface EntrySegment {
-  kind: 'k' | 'v' | 's' | 'c' | 'e' | 'b';
+  kind: 'k' | 'v' | 's' | 'm' | 'c' | 'e' | 'b';
   index: number;
 }
 
@@ -850,8 +850,9 @@ export const isEntryKey = (
 
 /**
  * What a Map, Set, Error or view holds in place of properties (keys and
- * values, members, `cause` and `errors`, the buffer), each with the segment standing for it in
- * a path (see entryKey); undefined for any other value.
+ * values, members, `message`, `cause` and `errors`, the buffer), each with
+ * the segment standing for it in a path (see entryKey); undefined for any
+ * other value.
  */
 function entryChildren(value: object): [EntrySegment, unknown][] | undefined {
   const children: [EntrySegment, unknown][] = [];
@@ -867,10 +868,10 @@ function entryChildren(value: object): [EntrySegment, unknown][] | undefined {
       children.push([entryKey('s', index++), member]);
     }
   } else if (value instanceof Error) {
-    for (const key of ['cause', 'errors'] as const) {
+    for (const key of ERROR_HIDDEN_KEYS) {
       if (hasOwn(value, key)) {
         children.push([
-          entryKey(key === 'cause' ? 'c' : 'e', 0),
+          entryKey(key === 'message' ? 'm' : key === 'cause' ? 'c' : 'e', 0),
           (value as any)[key],
         ]);
       }
@@ -925,11 +926,17 @@ function setEntryValue(
 }
 
 /**
- * The own enumerable fields of a Map, Set, Date or RegExp (an instance of a
- * registered subclass may hold some besides its built-in content, #412);
+ * The own enumerable fields of an Error, Map, Set, Date or RegExp (an
+ * instance of a registered subclass may hold some besides its built-in
+ * content, #412). Hidden Error data is visited through entryChildren;
  * none for any other value.
  */
 function builtinFields(value: object): string[] {
+  if (value instanceof Error) {
+    return Object.keys(value).filter(
+      (key) => !ERROR_HIDDEN_KEYS.some((hidden) => hidden === key),
+    );
+  }
   return value instanceof Map ||
     value instanceof Set ||
     value instanceof Date ||
@@ -948,16 +955,16 @@ function sameBuiltin(x: object, y: object): boolean {
 
 /**
  * Every path each object (or array, or other value) of `root` is at, the
- * first appearance first, in depth-first order. Plain objects and arrays are
- * entered, where first met only (an object held in an array is one object,
- * however it was reached); other values are leaves. A path at or below one
- * of `skip` is left out.
+ * first appearance first, in depth-first order. Plain objects and arrays
+ * (including non-enumerable indices) are entered, where first met only (an
+ * object held in an array is one object, however it was reached); other
+ * values are leaves. A path at or below one of `skip` is left out.
  *
  * With `entries`, the objects held in a Map or Set (as key, value or member)
  * are placed too, after everything else: one met nowhere else is at the path
  * of its Map or Set and the entry's segment (see entryKey), which is no path
  * a value can be read at (see getByEntryPath), so only to tell where an
- * object is from; so are the `cause` and `errors` of an Error.
+ * object is from; so are the `message`, `cause` and `errors` of an Error.
  */
 function objectPaths(
   root: object,
@@ -983,7 +990,9 @@ function objectPaths(
   function walk(
     node: Record<string, unknown>,
     path: ObjectPath,
-    keys: string[] = Object.keys(node),
+    keys: string[] = Array.isArray(node)
+      ? [...arrayIndices(node), ...extraKeys(node)]
+      : Object.keys(node),
   ): void {
     for (const key of keys) {
       const value = node[key];

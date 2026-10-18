@@ -59,6 +59,19 @@ describe('save format v2: the envelope rejects what it cannot load', () => {
       'an Error cause',
       (a: unknown[]) => Object.assign(new Error('items'), { cause: a }),
     ],
+    [
+      'an Error message',
+      (a: unknown[]) =>
+        Object.defineProperty(new Error('items'), 'message', { value: a }),
+    ],
+    [
+      'an Error field',
+      (a: unknown[]) => Object.assign(new Error('items'), { items: a }),
+    ],
+    [
+      'a non-enumerable array index',
+      (a: unknown[]) => Object.defineProperty([], '0', { value: a }),
+    ],
   ])('rejects an excessive sparse array in %s (#591)', (_name, hold) => {
     const items = new Array(0xffffffff);
     const bad = tampered((body) => {
