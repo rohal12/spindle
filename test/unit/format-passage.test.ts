@@ -6,6 +6,24 @@ const fmt = (body: string, options: Parameters<typeof formatPassage>[1] = {}) =>
   formatPassage(body, { prettier, ...options });
 
 describe('formatPassage', () => {
+  it.each([
+    '<div>\n{do}\n$s = "<!--SP:1-->";\n{/do}\n{set $n = 1}\n</div>',
+    '<div>\n<span title="{print \'__SP1__\'}">{print "second"}</span>\n</div>',
+    '<div>\n{do}$s = "<!--SVG:0-->";{/do}\n<svg><circle /></svg>\n</div>',
+    '<div>\n<svg><text><!--SP:0--></text></svg>\n{set $n = 1}\n</div>',
+  ])(
+    'preserves source containing placeholder spellings: %j (#597)',
+    async (source) => {
+      const output = await fmt(source);
+      const { scanSpindleMarkup } =
+        await import('../../src/format/placeholders');
+      expect(scanSpindleMarkup(output).tokens.map((t) => t.token)).toEqual(
+        scanSpindleMarkup(source).tokens.map((t) => t.token),
+      );
+      expect(await fmt(output)).toBe(output);
+    },
+  );
+
   // -- Indentation ------------------------------------------------------
 
   it('indents content inside {if} by 2 spaces', async () => {

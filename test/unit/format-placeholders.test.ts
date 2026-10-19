@@ -12,6 +12,24 @@ const scanSpindleTokens = (text: string) => scanSpindleMarkup(text).tokens;
 /** Sequences String.prototype.replace interprets in a replacement string. */
 const REPLACEMENT_PATTERNS = ['$&', "$'", '$`', '$$', '$1', '$<name>'];
 
+describe('literal placeholder spellings (#597)', () => {
+  it.each([
+    '<div>\n{do}\n$s = "<!--SP:1-->";\n{/do}\n{set $n = 1}\n</div>',
+    '<span title="{print \'__SP1__\'}">{print "second"}</span>',
+    '<span title="{print \'<!--SP:1-->\'}">{print "second"}</span>',
+    '<div>{print "__SP1__"}<span title="{$n}">text</span></div>',
+  ])('round trips Spindle source %j', (source) => {
+    const { text, tokens } = replaceSpindleTokens(source);
+    expect(restoreSpindleTokens(text, tokens)).toBe(source);
+  });
+
+  it('round trips SVGs whose bodies spell another placeholder', () => {
+    const source = '<svg><text><!--SVG:1--></text></svg><svg><circle /></svg>';
+    const { text, tokens } = replaceSvgBlocks(source);
+    expect(restoreSvgBlocks(text, tokens)).toBe(source);
+  });
+});
+
 describe('replaceSpindleTokens', () => {
   it('replaces macro calls with comment placeholders', () => {
     const input = '<div>{set $x = 1}</div>';

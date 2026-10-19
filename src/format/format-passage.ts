@@ -14,9 +14,8 @@ import {
 import {
   multilineJsLiterals,
   replaceSpindleTokens,
-  restoreSpindleTokens,
+  restoreHtmlTokens,
   replaceSvgBlocks,
-  restoreSvgBlocks,
   placeholdersIntact,
   sameSpindleTokens,
   SPINDLE_PLACEHOLDERS,
@@ -318,11 +317,11 @@ async function formatLf(
         continue;
       }
       // A token's line breaks are its payload: keep them out of the line steps below
-      const restoredSpindle = restoreSpindleTokens(
+      const restored = restoreHtmlTokens(
         formatted.trim(),
         tokens.map((t) => replaceAll(t, '\n', sentinel)),
+        svgTokens,
       );
-      const restored = restoreSvgBlocks(restoredSpindle, svgTokens);
       for (const fLine of restored.split('\n')) {
         lines.push(fLine);
       }

@@ -951,6 +951,32 @@ describe('useStoryStore', () => {
       expect(unsub).toHaveBeenCalledOnce();
     });
 
+    it('releases manual cleanups before restart and makes them idempotent (#599)', () => {
+      useStoryStore.getState().init(makeStoryData([makePassage(1, 'Start')]));
+      enterRuntimePhase();
+      const cleanup = vi.fn();
+      const off = trackRuntimeUnsub(cleanup);
+      off();
+      off();
+      useStoryStore.getState().restart();
+      expect(cleanup).toHaveBeenCalledOnce();
+    });
+
+    it('drains remaining cleanups when one removes another (#599)', () => {
+      useStoryStore.getState().init(makeStoryData([makePassage(1, 'Start')]));
+      enterRuntimePhase();
+      let offSecond: () => void;
+      trackRuntimeUnsub(() => offSecond());
+      const second = vi.fn();
+      offSecond = trackRuntimeUnsub(second);
+      const last = vi.fn();
+      trackRuntimeUnsub(last);
+      useStoryStore.getState().restart();
+      offSecond();
+      expect(second).toHaveBeenCalledOnce();
+      expect(last).toHaveBeenCalledOnce();
+    });
+
     it('does not call startup-phase unsubs on restart', () => {
       const startupUnsub = vi.fn();
       trackRuntimeUnsub(startupUnsub);

@@ -765,17 +765,25 @@ export const subscribeStateReplacement = replacementListeners.subscribe;
 // Runtime handler cleanup (auto-unsub on restart)
 // ---------------------------------------------------------------------------
 
-let runtimeUnsubs: Array<() => void> = [];
+let runtimeUnsubs = new Set<() => void>();
 let inRuntimePhase = false;
 
 /**
  * Track an unsubscribe function for automatic cleanup on restart.
- * No-op if called during the startup phase (before enterRuntimePhase).
+ * Return its manual cleanup, which also releases the tracked entry.
+ * Startup subscriptions (before enterRuntimePhase) survive restart.
  */
-export function trackRuntimeUnsub(unsub: () => void): void {
-  if (inRuntimePhase) {
-    runtimeUnsubs.push(unsub);
-  }
+export function trackRuntimeUnsub(unsub: () => void): () => void {
+  if (!inRuntimePhase) return unsub;
+  let cleanup: (() => void) | undefined = unsub;
+  const tracked = () => {
+    const call = cleanup;
+    cleanup = undefined;
+    runtimeUnsubs.delete(tracked);
+    call?.();
+  };
+  runtimeUnsubs.add(tracked);
+  return tracked;
 }
 
 /** Mark the start of the runtime phase. Called before executeStoryInit(). */
@@ -786,13 +794,13 @@ export function enterRuntimePhase(): void {
 /** Call all tracked unsubs and reset the runtime phase. */
 function cleanupRuntimeHandlers(): void {
   for (const unsub of runtimeUnsubs) unsub();
-  runtimeUnsubs = [];
+  runtimeUnsubs.clear();
   inRuntimePhase = false;
 }
 
 /** Test-only: reset runtime phase state between tests. */
 export function _resetRuntimePhase(): void {
-  runtimeUnsubs = [];
+  runtimeUnsubs = new Set();
   inRuntimePhase = false;
 }
 
@@ -1417,9 +1425,14 @@ export const useStoryStore = create<StoryState>()(
       }
 
       const previousPassage = get().currentPassage;
-      // A callback that restarted or loaded replaced the game this
-      // navigation was requested in: it does not carry on into the new one
-      if (replacesState(() => emit('beforenavigate', passageName))) return;
+      // A callback may replace the game or move elsewhere. Like a history
+      // traversal, this navigation must then give way to the callback's.
+      const navigation = get().navigationId;
+      if (
+        replacesState(() => emit('beforenavigate', passageName)) ||
+        get().navigationId !== navigation
+      )
+        return;
 
       // Compute variable delta before Immer set(). Read the variables after
       // beforenavigate so changes made by its handlers are recorded.
