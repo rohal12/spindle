@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Loop rows reconcile before their computed expressions react to new story state, avoiding evaluations with indices removed by a shrinking array (#596).
-- Formatting restores Spindle and SVG placeholders in one pass, preserving literals that spell other placeholders (#597).
+- Formatting restores Spindle and SVG placeholders in one pass, preserving literals that spell other placeholders; HTML with ambiguous SVG markers stays as written (#597).
 - Navigation gives way to a redirect or history traversal performed by a `beforenavigate` callback, without recording the superseded destination (#598).
 - Unsubscribing runtime event handlers releases their captured data immediately instead of retaining it until restart (#599).
 - Code and passage-reference checks scan plain-text `{do}` and `{dialog}` bodies without repeatedly visiting earlier tokens (#600).

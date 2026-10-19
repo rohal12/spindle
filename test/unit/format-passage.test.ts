@@ -6,6 +6,16 @@ const fmt = (body: string, options: Parameters<typeof formatPassage>[1] = {}) =>
   formatPassage(body, { prettier, ...options });
 
 describe('formatPassage', () => {
+  it.each(['<p><!--SVG:0--></p>', '<span title="<!--SVG:0-->">text</span>'])(
+    'keeps SVG placement when a literal marker appears in %j (#597)',
+    async (literal) => {
+      const source = `<div>\n{set $n = 1}<svg><text>Actual</text></svg>\n${literal}\n</div>\n`;
+      const output = await fmt(source);
+      expect(output).toBe(source);
+      expect(await fmt(output)).toBe(output);
+    },
+  );
+
   it.each([
     '<div>\n{do}\n$s = "<!--SP:1-->";\n{/do}\n{set $n = 1}\n</div>',
     '<div>\n<span title="{print \'__SP1__\'}">{print "second"}</span>\n</div>',

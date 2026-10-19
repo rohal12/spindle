@@ -298,6 +298,12 @@ async function formatLf(
       // HTML block — placeholder substitution + Prettier
       const { text: svgPlaceholdered, tokens: svgTokens } =
         replaceSvgBlocks(htmlText);
+      // A later whole-line Spindle token may hide an SVG marker. Check
+      // before that pass so a literal marker cannot stand in for it.
+      if (!placeholdersIntact(svgPlaceholdered, svgTokens, SVG_PLACEHOLDERS)) {
+        lines.push(...region.lines);
+        continue;
+      }
       const { text: placeholdered, tokens } =
         replaceSpindleTokens(svgPlaceholdered);
       const formatted = await formatHTMLPrettier(
