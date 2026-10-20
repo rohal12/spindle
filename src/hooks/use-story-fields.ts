@@ -16,6 +16,15 @@ export const FrozenStateContext = createContext<
 >(null);
 
 /**
+ * Whether a loop has yet to reconcile its rows with newer namespaces.
+ * Queued row effects wait for that reconciliation. This differs from a
+ * detached click body's permanent freeze: its initial effects still run.
+ */
+export const PendingIterationContext = createContext<
+  ((state: StoryState) => boolean) | null
+>(null);
+
+/**
  * Tells a timer ({repeat}, {timed}) whether the passage it belongs to has
  * been left: it must not run a new body then, for that would write into the
  * destination's state until the outgoing tree unmounts (#410). Null outside

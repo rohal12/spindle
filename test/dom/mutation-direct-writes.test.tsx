@@ -311,6 +311,23 @@ describe('macros reacting synchronously to mutation code', () => {
     expect(state().temporary).toMatchObject({ n: 'undefined', twice: 8 });
   });
 
+  it.each([0, 1, 2])(
+    'computed catches up in a detached body with %i loops',
+    (depth) => {
+      state().setVariable('n', 1);
+      renderMarkup(
+        '{button "Compute"}' +
+          '{for @i of [1]}'.repeat(depth) +
+          '{computed $result = $n}{set $n = 2}' +
+          '{/for}'.repeat(depth) +
+          '{/button}',
+      );
+      act(() => performAll('button'));
+      expect(vars().n).toBe(2);
+      expect(vars().result).toBe(2);
+    },
+  );
+
   it('{goto} in a link body the code performs', () => {
     renderMarkup('{link "L"}{goto "Room"}{/link}');
     run('$n = 1; perform("link"); $n = 2');

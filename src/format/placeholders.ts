@@ -198,29 +198,45 @@ export function sameSpindleTokens(before: string, after: string): boolean {
 }
 
 /**
- * Put each of `tokens` back in place of its placeholders (those that
- * `placeholdersOf` gives for its index): the first of each.
+ * Restore the first occurrence of each marker in the unchanged document.
+ * Never search inserted source: literals may spell any other marker.
  */
 function restorePlaceholders(
   text: string,
-  tokens: string[],
-  placeholdersOf: PlaceholdersOf,
+  groups: readonly (readonly [readonly string[], PlaceholdersOf])[],
 ): string {
-  let result = text;
-  tokens.forEach((token, index) => {
-    for (const placeholder of placeholdersOf(index)) {
-      // Callback form: a replacement string would expand `$&`, `$'`, etc.
-      result = result.replace(placeholder, () => token);
-    }
+  const replacements = new Map<string, string>();
+  for (const [tokens, placeholdersOf] of groups) {
+    tokens.forEach((token, index) => {
+      for (const marker of placeholdersOf(index))
+        replacements.set(marker, token);
+    });
+  }
+  return text.replace(/<!--(?:SP|SVG):\d+-->|__SP\d+__/g, (marker) => {
+    const token = replacements.get(marker);
+    replacements.delete(marker);
+    // Callback form also preserves literal `$&`, `$'`, etc.
+    return token ?? marker;
   });
-  return result;
+}
+
+/** Restore both families together, so neither can consume the other's source. */
+export function restoreHtmlTokens(
+  text: string,
+  spindle: string[],
+  svg: string[],
+): string {
+  return restorePlaceholders(text, [
+    [spindle, SPINDLE_PLACEHOLDERS],
+    [svg, SVG_PLACEHOLDERS],
+  ]);
 }
 
 /**
  * Restore SVG blocks from placeholders.
  */
 export function restoreSvgBlocks(text: string, tokens: string[]): string {
-  return restorePlaceholders(text, tokens, SVG_PLACEHOLDERS);
+  return restorePlaceholders(text, [[tokens, SVG_PLACEHOLDERS]]);
 }
 
 /**
@@ -312,5 +328,5 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
  * Restore original Spindle tokens from placeholders.
  */
 export function restoreSpindleTokens(text: string, tokens: string[]): string {
-  return restorePlaceholders(text, tokens, SPINDLE_PLACEHOLDERS);
+  return restorePlaceholders(text, [[tokens, SPINDLE_PLACEHOLDERS]]);
 }

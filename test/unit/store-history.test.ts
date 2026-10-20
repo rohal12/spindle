@@ -48,6 +48,55 @@ describe('history navigation', () => {
     useStoryStore.setState({ maxHistory: 40 });
   });
 
+  describe('superseded normal navigation (#598)', () => {
+    it('keeps a callback redirect and records only that visit', () => {
+      store().init(makeStoryData(), { n: 0 });
+      const after: string[] = [];
+      emitterOn('afternavigate', (to) => after.push(to));
+      emitterOn('beforenavigate', (to) => {
+        if (to === 'B') {
+          store().setVariable('n', 7);
+          store().navigate('C');
+        }
+      });
+      store().navigate('B');
+      expect(store().currentPassage).toBe('C');
+      expect(store().history.map((m) => m.passage)).toEqual(['A', 'C']);
+      expect(historySnapshots()).toEqual([{ n: 0 }, { n: 7 }]);
+      expect(store().visitCounts.B).toBeUndefined();
+      expect(store().visitCounts.C).toBe(1);
+      expect(after).toEqual(['C']);
+    });
+
+    it.each(['goBack', 'goForward'] as const)(
+      'keeps a callback %s without adding a new moment',
+      (action) => {
+        store().init(makeStoryData(), { n: 0 });
+        store().setVariable('n', 1);
+        store().navigate('B');
+        if (action === 'goForward') store().goBack();
+        emitterOn('beforenavigate', (to) => {
+          if (to === 'D') store()[action]();
+        });
+        store().navigate('D');
+        const index = action === 'goBack' ? 0 : 1;
+        expect(store().currentPassage).toBe(index === 0 ? 'A' : 'B');
+        expect(store().historyIndex).toBe(index);
+        expect(store().variables.n).toBe(index);
+        expect(store().history.map((m) => m.passage)).toEqual(['A', 'B']);
+        expect(store().visitCounts.D).toBeUndefined();
+      },
+    );
+
+    it('allows variable-only callbacks to update the entered moment', () => {
+      store().init(makeStoryData(), { n: 0 });
+      emitterOn('beforenavigate', () => store().setVariable('n', 4));
+      store().navigate('B');
+      expect(store().currentPassage).toBe('B');
+      expect(historySnapshots()).toEqual([{ n: 0 }, { n: 4 }]);
+    });
+  });
+
   describe('back/forward restore recorded snapshots (#159)', () => {
     it('discards changes to variables untouched by the transition', () => {
       store().init(makeStoryData(), { y: 0 });

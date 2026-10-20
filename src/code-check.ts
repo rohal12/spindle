@@ -334,15 +334,19 @@ export function* codeAndText(
   tokens: readonly Token[],
   parametersOf: ParametersOf,
 ): Generator<Piece> {
-  /** The index of the closing tag of the `name` macro opened at `t`. */
-  const closeOf = (t: number, name: string) =>
-    tokens.findIndex(
-      (c, k) =>
-        k > t &&
-        c.type === 'macro' &&
-        c.isClose &&
-        c.name.toLowerCase() === name,
-    );
+  // Only a plain-text body is read here: raw JavaScript in {do}, or a
+  // passage name in {dialog}. Start at the opener and stop at any markup,
+  // including a nested opener, rather than rescanning the token prefix.
+  const closeOfTextBody = (t: number, name: string): number => {
+    for (let k = t + 1; k < tokens.length; k++) {
+      const c = tokens[k]!;
+      if (c.type === 'text') continue;
+      return c.type === 'macro' && c.isClose && c.name.toLowerCase() === name
+        ? k
+        : -1;
+    }
+    return -1;
+  };
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
     if (token.type === 'link') {
@@ -393,7 +397,7 @@ export function* codeAndText(
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
       if (name === 'do') {
-        const close = closeOf(t, name);
+        const close = closeOfTextBody(t, name);
         if (close < 0) continue;
         const body = src.slice(token.end, tokens[close]!.start);
         yield {
@@ -409,9 +413,8 @@ export function* codeAndText(
       const args = token.rawArgs;
       if (PASSAGE_BODIES.has(name)) {
         // The body names the passage when it is only text
-        const close = closeOf(t, name);
-        const body = tokens.slice(t + 1, close);
-        if (close > t + 1 && body.every((b) => b.type === 'text')) {
+        const close = closeOfTextBody(t, name);
+        if (close > t + 1) {
           const text = src.slice(token.end, tokens[close]!.start);
           const written = text.trim();
           yield {

@@ -87,4 +87,47 @@ describe.skipIf(!built && !process.env.CI)('package under native Node', () => {
     expect(summary.actions).toContain('link:Start');
     expect(summary.text).toContain('You are rich.');
   });
+
+  it('releases unsubscribed runtime captures before restart (#599)', () => {
+    const out = node([
+      '--expose-gc',
+      '--input-type=module',
+      '-e',
+      `import { Window } from 'happy-dom';
+      const dom = new Window({ url: 'http://localhost/' });
+      for (const key of Object.getOwnPropertyNames(dom)) {
+        if (!(key in globalThis) || ['Event', 'EventTarget', 'CustomEvent'].includes(key))
+          globalThis[key] = dom[key];
+      }
+      globalThis.window = globalThis;
+      globalThis.document = dom.document;
+      const { bootStory } = await import(${JSON.stringify(pathToFileURL(headlessPath).href)});
+      const Story = await bootStory({ html: ${JSON.stringify(STORY_HTML)} });
+      await Story.waitForActions();
+      function subscribe() {
+        const captured = { data: new Uint8Array(1024 * 1024) };
+        const ref = new WeakRef(captured);
+        const off = Story.on('afternavigate', () => captured.data.length);
+        return { ref, off };
+      }
+      async function collect() {
+        for (let i = 0; i < 8; i++) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          globalThis.gc();
+        }
+      }
+      const subscription = subscribe();
+      await collect();
+      const active = subscription.ref.deref() !== undefined;
+      subscription.off();
+      await collect();
+      const released = subscription.ref.deref() === undefined;
+      subscription.off();
+      Story.restart();
+      console.log(JSON.stringify({ active, released }));
+      await dom.happyDOM.abort();
+      process.exit(0);`,
+    ]);
+    expect(JSON.parse(out)).toEqual({ active: true, released: true });
+  });
 });

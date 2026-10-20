@@ -1,4 +1,4 @@
-import { useMemo } from 'preact/hooks';
+import { useContext, useMemo } from 'preact/hooks';
 import { defineMacro } from '../../define-macro';
 import { MacroError } from './MacroError';
 import { stableKey } from '../../utils/stable-key';
@@ -11,6 +11,11 @@ import type { ASTNode } from '../../markup/ast';
 import { checkVariableName } from '../../utils/namespace';
 import { readState } from '../../execute-mutation';
 import { LocalsScope } from './locals-scope';
+import {
+  FrozenStateContext,
+  PendingIterationContext,
+} from '../../hooks/use-story-fields';
+import type { StoryState } from '../../store';
 
 /**
  * Check the arguments of "@item, @i of $list" or "@item of $list".
@@ -97,6 +102,26 @@ defineMacro({
     { name: 'list', type: 'expression', required: true },
   ],
   render({ rawArgs, children = [] }, ctx) {
+    const enclosingFreeze = useContext(FrozenStateContext);
+    const enclosingPending = useContext(PendingIterationContext);
+    const [variables, temporary, , transient] = ctx.merged!;
+    // Until this loop reconciles its rows, descendants still have the old
+    // @item/@i. Keep them from independently reacting to newer namespaces.
+    const pending = useMemo(
+      () => (state: StoryState) =>
+        !!enclosingPending?.(state) ||
+        // A detached owner keeps its snapshot permanently: there is no
+        // pending reconciliation for its initial effects to wait for.
+        ((state.variables !== variables ||
+          state.temporary !== temporary ||
+          state.transient !== transient) &&
+          !enclosingFreeze?.(state)),
+      [enclosingPending, enclosingFreeze, variables, temporary, transient],
+    );
+    const freeze = useMemo(
+      () => (state: StoryState) => !!enclosingFreeze?.(state) || pending(state),
+      [enclosingFreeze, pending],
+    );
     const keys = ctx.hooks.useRef<IterationKeys>({
       contents: [],
       generations: [],
@@ -158,9 +183,13 @@ defineMacro({
     ));
 
     return ctx.wrap(
-      <ItemEditContext.Provider value={true}>
-        {content}
-      </ItemEditContext.Provider>,
+      <FrozenStateContext.Provider value={freeze}>
+        <PendingIterationContext.Provider value={pending}>
+          <ItemEditContext.Provider value={true}>
+            {content}
+          </ItemEditContext.Provider>
+        </PendingIterationContext.Provider>
+      </FrozenStateContext.Provider>,
     );
   },
   text({ rawArgs, children = [] }, ctx) {

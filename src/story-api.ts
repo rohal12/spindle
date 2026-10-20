@@ -447,8 +447,7 @@ function createStoryAPI(): StoryAPI {
         ensureVariableChangedSubscription();
       }
       const unsub = emitterOn(event, callback);
-      trackRuntimeUnsub(unsub);
-      return unsub;
+      return trackRuntimeUnsub(unsub);
     },
 
     async waitForActions(): Promise<StoryAction[]> {

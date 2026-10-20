@@ -14,9 +14,8 @@ import {
 import {
   multilineJsLiterals,
   replaceSpindleTokens,
-  restoreSpindleTokens,
+  restoreHtmlTokens,
   replaceSvgBlocks,
-  restoreSvgBlocks,
   placeholdersIntact,
   sameSpindleTokens,
   SPINDLE_PLACEHOLDERS,
@@ -299,6 +298,12 @@ async function formatLf(
       // HTML block — placeholder substitution + Prettier
       const { text: svgPlaceholdered, tokens: svgTokens } =
         replaceSvgBlocks(htmlText);
+      // A later whole-line Spindle token may hide an SVG marker. Check
+      // before that pass so a literal marker cannot stand in for it.
+      if (!placeholdersIntact(svgPlaceholdered, svgTokens, SVG_PLACEHOLDERS)) {
+        lines.push(...region.lines);
+        continue;
+      }
       const { text: placeholdered, tokens } =
         replaceSpindleTokens(svgPlaceholdered);
       const formatted = await formatHTMLPrettier(
@@ -318,11 +323,11 @@ async function formatLf(
         continue;
       }
       // A token's line breaks are its payload: keep them out of the line steps below
-      const restoredSpindle = restoreSpindleTokens(
+      const restored = restoreHtmlTokens(
         formatted.trim(),
         tokens.map((t) => replaceAll(t, '\n', sentinel)),
+        svgTokens,
       );
-      const restored = restoreSvgBlocks(restoredSpindle, svgTokens);
       for (const fLine of restored.split('\n')) {
         lines.push(fLine);
       }
