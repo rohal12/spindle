@@ -35,7 +35,7 @@ const VALUELESS_INPUTS = new Set([
  * elements pair up by position. Best effort: a canvas or video that can not
  * be drawn from stays as cloned.
  */
-function copyLiveState(source: Element, clone: Element): void {
+function copyLiveState(source: ParentNode, clone: ParentNode): void {
   const pairs = <T extends Element>(
     selector: string,
     each: (a: T, b: T) => void,
@@ -76,6 +76,7 @@ function copyLiveState(source: Element, clone: Element): void {
         const input = to as HTMLInputElement;
         input.checked = from.checked;
         input.indeterminate = from.indeterminate;
+        if (from.type === 'file') input.files = from.files;
         if (!VALUELESS_INPUTS.has(from.type)) input.value = from.value;
       } else {
         to.value = from.value;
@@ -120,13 +121,22 @@ type ScrollOffset = [element: Element, top: number, left: number];
  * scrolled, keyed by the matching element of `clone`. Applied once the clone
  * is in the page: a detached element has nothing to scroll.
  */
-function scrollOffsets(source: Element, clone: Element): ScrollOffset[] {
-  const from = [source, ...source.querySelectorAll('*')];
-  const to = [clone, ...clone.querySelectorAll('*')];
+function scrollOffsets(source: ParentNode, clone: ParentNode): ScrollOffset[] {
+  const from = [
+    ...(source instanceof Element ? [source] : []),
+    ...source.querySelectorAll('*'),
+  ];
+  const to = [
+    ...(clone instanceof Element ? [clone] : []),
+    ...clone.querySelectorAll('*'),
+  ];
   const offsets: ScrollOffset[] = [];
   from.forEach((el, i) => {
     if (to[i] && (el.scrollTop || el.scrollLeft)) {
       offsets.push([to[i]!, el.scrollTop, el.scrollLeft]);
+    }
+    if (el.shadowRoot && to[i]?.shadowRoot) {
+      offsets.push(...scrollOffsets(el.shadowRoot, to[i]!.shadowRoot!));
     }
   });
   return offsets;
@@ -145,6 +155,67 @@ function appendSnapshot(container: Element, snapshot: HTMLElement): void {
 }
 
 /**
+ * Build a visual tree without cloning upgraded custom elements: cloneNode
+ * runs their constructors, and insertion runs their connection callbacks.
+ * Autonomous elements become styled spans; customized built-ins are created
+ * as ordinary native elements, without an `is` option (even if the original
+ * has since removed its `is` attribute).
+ */
+function cloneSnapshotTree(source: Element, freezeStyles = false): Element {
+  const html = source.namespaceURI === 'http://www.w3.org/1999/xhtml';
+  const custom = html && source.localName.includes('-');
+  freezeStyles ||= custom || source.hasAttribute('is');
+  const clone = document.createElementNS(
+    source.namespaceURI,
+    custom ? 'span' : source.localName,
+  );
+  for (const attr of [...source.attributes]) {
+    if (
+      attr.name === 'id' ||
+      attr.name === 'data-action' ||
+      attr.name === 'is' ||
+      attr.name.toLowerCase().startsWith('on')
+    )
+      continue;
+    if (attr.namespaceURI)
+      clone.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+    else clone.setAttribute(attr.name, attr.value);
+  }
+  if (freezeStyles) {
+    // Tag-name selectors no longer match the stand-in or its descendants.
+    // Keep the component subtree's current appearance through computed CSS.
+    const style = getComputedStyle(source);
+    const target = (clone as HTMLElement).style;
+    for (let i = 0; i < style.length; i++) {
+      const name = style[i]!;
+      target.setProperty(name, style.getPropertyValue(name));
+    }
+  }
+  // Recreated scripts must remain inert when inserted, just like the
+  // already-executed script nodes that cloneNode used to produce.
+  if (source.localName === 'script')
+    clone.setAttribute('type', 'application/x-spindle-snapshot');
+  const from = source instanceof HTMLTemplateElement ? source.content : source;
+  const to = clone instanceof HTMLTemplateElement ? clone.content : clone;
+  const copyChildren = (from: ParentNode, to: ParentNode) => {
+    for (const node of from.childNodes) {
+      to.appendChild(
+        node instanceof Element
+          ? cloneSnapshotTree(node, freezeStyles)
+          : node.cloneNode(false),
+      );
+    }
+  };
+  copyChildren(from, to);
+  if (source.shadowRoot) {
+    const shadow = clone.attachShadow({ mode: 'open' });
+    copyChildren(source.shadowRoot, shadow);
+    copyLiveState(source.shadowRoot, shadow);
+  }
+  return clone;
+}
+
+/**
  * Create a snapshot clone of a .passage element for outgoing transitions.
  * - Strips IDs, action associations and event handlers from the clone tree
  * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
@@ -158,19 +229,7 @@ function createSnapshot(
   passageEl: Element,
   transitionType: string,
 ): HTMLElement {
-  const clone = passageEl.cloneNode(true) as HTMLElement;
-  // Resource events still fire on inert nodes. Remove handlers before any
-  // media copying or insertion can reload a resource in the destination state.
-  for (const el of [clone, ...clone.querySelectorAll('*')]) {
-    for (const attr of [...el.attributes]) {
-      if (
-        attr.name === 'id' ||
-        attr.name === 'data-action' ||
-        attr.name.toLowerCase().startsWith('on')
-      )
-        el.removeAttribute(attr.name);
-    }
-  }
+  const clone = cloneSnapshotTree(passageEl) as HTMLElement;
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 

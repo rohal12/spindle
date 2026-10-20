@@ -108,6 +108,8 @@ validateStoryMarkup(otherProjectsPassages, builtinMacros); // no `alert` here
 
 It is tolerant: a half-typed definition is reported without `closeStart`, one whose arguments cannot be read is left out. `macros` is the list `validateStoryMarkup` takes, for the parameters that hold markup. `parseWidgetDef(rawArgs)` reads the arguments alone (`{ name, params }`). The runtime's startup, `validateStoryMarkup` and these exports read definitions with the same code.
 
+Story-wide validation uses the last closed definition of each widget, with `StoryInit` definitions taking precedence over tagged widget passages regardless of passage order. Both markup and variable checks use that definition's parameter names and holds; unclosed definitions do not replace it.
+
 ```js
 import { widgetDefinitions, builtinMacros } from '@rohal12/spindle/tooling';
 

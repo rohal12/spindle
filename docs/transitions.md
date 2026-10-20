@@ -136,3 +136,5 @@ Spindle respects `prefers-reduced-motion` automatically. Users with reduced moti
 - **Back/forward:** Transitions apply normally via the resolution chain.
 
 Outgoing snapshots replace embedded browsing contexts (`iframe`, `object`, `embed`) with empty placeholders sized to the original elements. This prevents a transition from loading the embedded document again or replaying its scripts.
+
+Custom elements become passive spans with their current computed styles, light DOM, and open shadow DOM content. Customized built-ins become ordinary native elements. Taking a snapshot therefore does not run another constructor or connection callback. Closed shadow roots cannot be copied.
