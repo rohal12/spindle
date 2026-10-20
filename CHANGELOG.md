@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Story startup validates other passages' variable references after StoryInit applies macro overrides, while checking StoryInit before executing it (#601).
-- Outgoing transition snapshots use passive stand-ins for custom elements and ordinary native elements for customized built-ins, avoiding repeated constructors and connection callbacks (#607).
+- Outgoing transition snapshots use passive stand-ins for custom elements and ordinary native elements for customized built-ins, avoiding repeated constructors and connection callbacks while preserving generated pseudo-element content. Embedded documents inside open shadow roots also become passive placeholders (#607).
 - Prose wrapping keeps inline HTML tags intact, preserving attribute values and JavaScript event handlers (#608).
 - Tooling validates widget arguments against the effective closed definitions, including StoryInit overrides regardless of passage order (#609).
 - Formatting checks placeholder counts in one document pass and advances through HTML tags in source order, avoiding quadratic scans in passages with many interpolations (#611).

@@ -44,7 +44,7 @@ window.connected = 0;
 customElements.define('story-counter', class extends HTMLElement {
   constructor() {
     super(); window.constructed++; Story.set('n', Number(Story.get('n')) + 1);
-    this.attachShadow({mode:'open'}).innerHTML = '<style>.shadow {font-size:23px}</style><slot></slot><span class="shadow">Shadow content</span><input class="shadow-input"><div class="shadow-scroll" style="overflow:auto;width:20px;height:20px"><div style="height:100px">Scroll</div></div>';
+    this.attachShadow({mode:'open'}).innerHTML = '<style>.shadow {font-size:23px} story-mark::before {content:"Shadow badge";color:rgb(12,34,56)}</style><slot></slot><span class="shadow">Shadow content</span><story-mark class="shadow-mark"></story-mark><input class="shadow-input"><div class="shadow-scroll" style="overflow:auto;width:20px;height:20px"><div style="height:100px">Scroll</div></div>';
   }
   connectedCallback() { window.connected++; }
 });
@@ -56,6 +56,13 @@ customElements.define('story-button', class extends HTMLButtonElement {
 :: Styles [stylesheet]
 story-counter { display: block; color: rgb(123, 45, 67); padding: 7px; }
 story-counter > b { display: block; color: rgb(23, 45, 67); }
+story-counter::before { content: "★"; color: rgb(12, 34, 56); }
+story-counter::after { content: "End component"; color: rgb(12, 34, 56); }
+story-counter > b::after { content: "After component"; color: rgb(12, 34, 56); }
+[is="story-button"]::before { content: "Button badge"; color: rgb(12, 34, 56); }
+story-list-item { display: list-item; margin-left: 60px; }
+story-list-item::marker { content: "Badge: "; color: rgb(12, 34, 56); }
+.tail:last-child { color: rgb(255, 0, 0); }
 
 :: StoryInit
 {do}
@@ -70,10 +77,13 @@ Story.defineMacro({name:'caption', parameters:[{name:'value', type:'string'}], r
 {caption "{$missing}"} {label "{$alsoMissing}"}
 
 :: Custom
-<story-counter class="counter"><b xml:lang="en">Component content</b></story-counter>
+<story-counter class="counter"><b xml:lang="en">Component content</b><story-list-item class="marker">Message</story-list-item></story-counter>
 
 :: Next
 Next {$n}
+
+:: DisplayDialog
+{passage}
 
 :: Original
 ${original}
@@ -146,6 +156,7 @@ it.each(['fade-through', 'crossfade'])(
         button.setAttribute('is', 'story-button');
         if (!keepAttribute) button.removeAttribute('is');
         button.className = 'customized';
+        button.classList.add(keepAttribute ? 'with-is' : 'without-is');
         button.textContent = 'Custom button';
         document.querySelector('.passage')!.appendChild(button);
       }
@@ -159,6 +170,10 @@ it.each(['fade-through', 'crossfade'])(
       selection.items.add(new File(['chosen content'], 'picked.txt'));
       file.files = selection.files;
       document.querySelector('.passage')!.appendChild(file);
+      const tail = document.createElement('p');
+      tail.className = 'tail';
+      tail.textContent = 'Final paragraph';
+      document.querySelector('.passage')!.appendChild(tail);
       const shadow = document.querySelector('story-counter')!.shadowRoot!;
       shadow.querySelector('input')!.value = 'edited shadow value';
       shadow.querySelector('.shadow-scroll')!.scrollTop = 35;
@@ -170,11 +185,39 @@ it.each(['fade-through', 'crossfade'])(
         (window as any).Story.get('n'),
       ]),
     ).toEqual([3, 3, 3]);
+    const pseudos = [
+      ['.counter', '::before', '"★"'],
+      ['.counter', '::after', '"End component"'],
+      ['.counter b', '::after', '"After component"'],
+      ['.customized.with-is', '::before', '"Button badge"'],
+      ['.counter .shadow-mark', '::before', '"Shadow badge"'],
+      ['.counter .marker', '::marker', '"Badge: "'],
+    ] as const;
+    const checkPseudos = async (root: string) => {
+      for (const [selector, pseudo, content] of pseudos) {
+        expect(
+          await page.locator(`${root} ${selector}`).evaluate((el, pseudo) => {
+            const style = getComputedStyle(el, pseudo);
+            return [style.content, style.color];
+          }, pseudo),
+        ).toEqual([content, 'rgb(12, 34, 56)']);
+      }
+    };
+    await checkPseudos('.passage');
+    const sheetsBefore = await page.evaluate(
+      () => document.adoptedStyleSheets.length,
+    );
     await page.evaluate((type) => {
       (window as any).Story.setTransition({ type, duration: 1000 });
       (window as any).Story.goto('Next');
     }, type);
     await page.locator('.passage-snapshot').waitFor();
+    expect(
+      await page.locator('.passage-snapshot .tail').evaluate((el) => {
+        return getComputedStyle(el).color;
+      }),
+    ).toBe('rgb(255, 0, 0)');
+    await checkPseudos('.passage-snapshot');
     expect(
       await page.evaluate(() => [
         (window as any).constructed,
@@ -231,6 +274,9 @@ it.each(['fade-through', 'crossfade'])(
     await page.waitForFunction(
       () => !document.querySelector('.passage-snapshot'),
     );
+    expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(
+      sheetsBefore,
+    );
     expect(await page.locator('.passage').textContent()).toContain('Next 3');
     expect(
       await page.evaluate(() => [
@@ -262,4 +308,90 @@ it('preserves click behavior when wrapping inline HTML (#608)', async () => {
     );
   }
   expect(errors).toEqual([]);
+});
+
+it.each(['fade-through', 'crossfade'])(
+  'keeps embedded shadow documents passive in %s snapshots',
+  async (type) => {
+    await page.evaluate(async () => {
+      const Story = (window as any).Story;
+      Story.goto('Custom');
+      await Story.waitForActions();
+      const host = document.createElement('div');
+      const shadow = host.attachShadow({ mode: 'open' });
+      const frame = document.createElement('iframe');
+      frame.className = 'shadow-frame';
+      frame.style.cssText = 'width:120px;height:60px;border:3px solid';
+      frame.srcdoc =
+        '<script>parent.shadowFrameRuns = (parent.shadowFrameRuns || 0) + 1</script>';
+      shadow.appendChild(frame);
+      document.querySelector('story-counter')!.shadowRoot!.appendChild(host);
+      await new Promise<void>((done) => {
+        frame.onload = () => done();
+      });
+    });
+    expect(await page.evaluate(() => (window as any).shadowFrameRuns)).toBe(1);
+    expect(
+      await page.locator('.shadow-frame').evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return [rect.width, rect.height];
+      }),
+    ).toEqual([126, 66]);
+    await page.evaluate((type) => {
+      (window as any).Story.setTransition({ type, duration: 1000 });
+      (window as any).Story.goto('Next');
+    }, type);
+    await page.locator('.passage-snapshot').waitFor();
+    expect(await page.locator('.passage-snapshot iframe').count()).toBe(0);
+    const placeholder = page.locator('.passage-snapshot .shadow-frame');
+    expect(await placeholder.evaluate((el) => el.localName)).toBe('div');
+    const size = await placeholder.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return [rect.width, rect.height];
+    });
+    expect(size[0]).toBeCloseTo(126, 3);
+    expect(size[1]).toBeCloseTo(66, 3);
+    await page.waitForFunction(
+      () => !document.querySelector('.passage-snapshot'),
+    );
+    expect(await page.evaluate(() => (window as any).shadowFrameRuns)).toBe(1);
+  },
+);
+
+it('releases snapshot styles when displays unmount or transitions are cancelled', async () => {
+  await page.evaluate(async () => {
+    const Story = (window as any).Story;
+    Story.goto('Custom');
+    await Story.waitForActions();
+    Story.openDialog('DisplayDialog');
+    await Story.waitForActions();
+  });
+  const sheetsBefore = await page.evaluate(
+    () => document.adoptedStyleSheets.length,
+  );
+  await page.evaluate(() => {
+    (window as any).Story.setTransition({ type: 'crossfade', duration: 5000 });
+    (window as any).Story.goto('Next');
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll('.passage-snapshot').length === 2,
+  );
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(
+    sheetsBefore + 2,
+  );
+  await page.evaluate(() => (window as any).Story.closeDialog());
+  await page.waitForFunction(
+    (count) => document.adoptedStyleSheets.length === count,
+    sheetsBefore + 1,
+  );
+  await page.evaluate(async () => {
+    const Story = (window as any).Story;
+    Story.setTransition({ type: 'none' });
+    Story.goto('Original');
+    await Story.waitForActions();
+  });
+  expect(await page.locator('.passage-snapshot').count()).toBe(0);
+  expect(await page.evaluate(() => document.adoptedStyleSheets.length)).toBe(
+    sheetsBefore,
+  );
 });
