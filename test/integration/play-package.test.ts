@@ -176,7 +176,7 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await Promise.all([a.close(), b.close()]);
   });
 
-  it('times out an infinite {do} loop', { timeout: 15_000 }, async () => {
+  it('times out an infinite {do} loop', { timeout: 30_000 }, async () => {
     const s = await openPlaySession({
       trusted: true,
       html: storyHtml({
@@ -184,11 +184,11 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
         Start: '[[Loop]]',
         Loop: '{do}for(;;){}{/do}',
       }),
-      stepTimeoutMs: 1000,
+      // Use the default budget to boot the real renderer before entering the loop.
     });
     const link = (await s.observe()).actions[0]!;
     await expect(s.step(link.id)).rejects.toThrow(
-      'spindle: play session timed out after 1000 ms (the story may be stuck in a loop)',
+      'spindle: play session timed out after 10000 ms (the story may be stuck in a loop)',
     );
     expect(s.closed).toBe(true);
     await s.close();

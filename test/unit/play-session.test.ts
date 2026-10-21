@@ -142,7 +142,9 @@ describe('play session handle', () => {
       'spindle: play session is closed',
     );
 
-    const b = await open({ html: 'x', stepTimeoutMs: 100 });
+    // This checks close after a timed-out step, so allow Node 24 worker startup
+    // enough time to reach that step before the boot deadline expires.
+    const b = await open({ html: 'x', stepTimeoutMs: 500 });
     await expect(b.step('hang')).rejects.toThrow(/timed out/);
     await b.close();
     expect(b.closed).toBe(true);

@@ -26,6 +26,7 @@
  * be declared (`let _x`, `(_a) => …`) or be property names (`a.@x`), and
  * code must be valid modern JavaScript (a non-strict script).
  */
+import type { Span } from './markup/tokens';
 import {
   Parser,
   tokTypes as tt,
@@ -496,15 +497,16 @@ function bracketsBefore(
 // Parsing: references, string text, errors
 // ---------------------------------------------------------------------------
 
-export interface VariableRef {
+export interface VariableRef extends Span {
   sigil: Sigil;
   /** The name after the sigil. */
   name: string;
-  /** Range of the sigil and name in the source. */
-  start: number;
-  end: number;
   /** A shorthand property (`{ $gold }`): its key is to be written out. */
   shorthand: boolean;
+  /** Whether evaluating this occurrence reads the binding. */
+  read: boolean;
+  /** Whether this occurrence assigns or deletes the binding itself (not a member). */
+  write: boolean;
 }
 
 export interface ParsedCode {
@@ -693,14 +695,19 @@ function walk(
   out: ParsedCode,
   binding: boolean,
   shorthand: boolean,
+  access: 'read' | 'write' | 'readwrite' = 'read',
 ): void {
   if (Array.isArray(node)) {
-    for (const n of node) walk(n, src, out, binding, false);
+    for (const n of node) walk(n, src, out, binding, false, access);
     return;
   }
   if (!isNode(node)) return;
-  const sub = (child: unknown, bind = false, short = false) =>
-    walk(child, src, out, bind, short);
+  const sub = (
+    child: unknown,
+    bind = false,
+    short = false,
+    role: typeof access = 'read',
+  ) => walk(child, src, out, bind, short, role);
   switch (node.type) {
     case 'Identifier': {
       const sigil = sigilOf(node, src);
@@ -718,6 +725,8 @@ function walk(
         start: node.start,
         end: node.end,
         shorthand,
+        read: access !== 'write',
+        write: access !== 'read',
       });
       return;
     }
@@ -740,13 +749,13 @@ function walk(
       if (node.shorthand) {
         const value = node.value as AnyNode;
         if (value.type === 'AssignmentPattern') {
-          sub(value.left, binding, true);
+          sub(value.left, binding, true, access);
           sub(value.right);
         } else {
-          sub(value, binding, true);
+          sub(value, binding, true, access);
         }
       } else {
-        sub(node.value, binding);
+        sub(node.value, binding, false, access);
       }
       return;
     case 'MethodDefinition':
@@ -784,15 +793,41 @@ function walk(
       sub(node.param, true);
       sub(node.body);
       return;
+    case 'AssignmentExpression':
+      sub(
+        node.left,
+        false,
+        false,
+        node.operator === '=' ? 'write' : 'readwrite',
+      );
+      sub(node.right);
+      return;
+    case 'UnaryExpression':
+      sub(
+        node.argument,
+        false,
+        false,
+        node.operator === 'delete' ? 'write' : 'read',
+      );
+      return;
+    case 'UpdateExpression':
+      sub(node.argument, false, false, 'readwrite');
+      return;
+    case 'ForInStatement':
+    case 'ForOfStatement':
+      sub(node.left, false, false, 'write');
+      sub(node.right);
+      sub(node.body);
+      return;
     case 'AssignmentPattern':
-      sub(node.left, binding);
+      sub(node.left, binding, false, access);
       sub(node.right);
       return;
     case 'ObjectPattern':
     case 'ArrayPattern':
     case 'RestElement':
       for (const key of ['properties', 'elements', 'argument']) {
-        sub(node[key], binding);
+        sub(node[key], binding, false, access);
       }
       return;
     default:

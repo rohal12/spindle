@@ -203,13 +203,13 @@ while (observation.actions.length > 0) {
 
 ### Play sessions
 
-`@rohal12/spindle/play` runs a story in its own worker thread, so a story stuck in a loop can be stopped and several stories can run side by side. It is for Node only, and it needs two optional peer dependencies:
+`@rohal12/spindle/play` runs a story in its own worker thread, so a story stuck in a loop can be stopped and several stories can run side by side. It requires Node.js 24 or later, and it needs two optional peer dependencies:
 
 ```sh
 npm i -D happy-dom @rohal12/twee-ts
 ```
 
-`happy-dom` provides the DOM the worker runs on. `@rohal12/twee-ts` is only needed to compile Twee: a session opened on ready-made HTML does not load it. A missing package rejects with `spindle: play sessions needs happy-dom; install it with npm i -D happy-dom` (or `spindle: compiling Twee needs @rohal12/twee-ts; install it with npm i -D @rohal12/twee-ts`).
+The optional compiler integration uses twee-ts 2.x. `happy-dom` provides the DOM the worker runs on. `@rohal12/twee-ts` is only needed to compile Twee: a session opened on ready-made HTML does not load it. A missing package rejects with `spindle: play sessions needs happy-dom; install it with npm i -D happy-dom` (or `spindle: compiling Twee needs @rohal12/twee-ts; install it with npm i -D @rohal12/twee-ts`).
 
 #### Getting the story's HTML
 
@@ -225,7 +225,7 @@ npm i -D happy-dom @rohal12/twee-ts
 
 A glob is compiled as Twee, so it must match Twee sources only: a glob of `.html` files is not read as HTML, and its compile fails. Name one `.html` file instead.
 
-For a project config, `sources`, `modules`, `headFile` and `exclude` are resolved from the project directory, not from the working directory. An absolute `exclude` pattern works too: its leading folders are made relative to the working directory, where twee-ts matches excludes. A config whose `sources` is empty rejects with `spindle: <path> has a twee-ts config with no sources`.
+For a project config, twee-ts resolves `sources`, `modules`, `headFile` and relative `exclude` patterns from the project directory. Absolute `exclude` patterns are preserved. Structured exclude globs keep folders with glob characters literal. A config whose `sources` is empty rejects with `spindle: <path> has a twee-ts config with no sources`.
 
 Compiles use the Spindle format installed with the package (`formatPaths` is its `dist` folder, `formatId` is `pkg` and `noRemote` is `true`). These override the project config's format options (and its `output`, `formatIndices`, `formatUrls`, `useTweegoPath` and the like are dropped), so a project that names another format, or a remote one, is still compiled with the installed Spindle. Compile errors reject with one `file:line: message` per error.
 

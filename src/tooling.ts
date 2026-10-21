@@ -55,13 +55,24 @@ export type {
 } from './story-variables';
 export { checkParameterTypes } from './registry';
 export { formatDiagnostic } from './markup/validate';
-export { parseWidgetDef } from './widgets/widget-def';
+export {
+  effectiveWidgetDefinitions,
+  parseWidgetDef,
+} from './widgets/widget-def';
 export type { WidgetDef, WidgetDefinition } from './widgets/widget-def';
 
 // The parsing rules (see "Tooling API" in docs/tooling.md): the leaf rules
 // the runtime parses with, so editor tooling needn't mirror them.
-export { findCodeEnd, lexJs, lexTemplate, scanStringLiteral } from './js-lexer';
+export {
+  findCodeEnd,
+  lexJs,
+  lexTemplate,
+  parseCode,
+  scanStringLiteral,
+} from './js-lexer';
 export type {
+  ParsedCode,
+  VariableRef,
   FindCodeEndOptions,
   JsGoal,
   JsLexHandlers,
@@ -116,10 +127,14 @@ export {
 } from './components/macros/arg-utils';
 export { splitIncludeFlag } from './components/macros/include-args';
 export {
+  macroArgumentSpans,
   evaluatePassageName,
   passageTarget,
 } from './components/macros/macro-args';
-export type { PassageTarget } from './components/macros/macro-args';
+export type {
+  MacroArgumentSpan,
+  PassageTarget,
+} from './components/macros/macro-args';
 export { transform } from './transform';
 export type {
   ArgumentErrorPiece,
@@ -164,13 +179,13 @@ export interface ToolingMacro {
    * Its declared parameters: their types tell which arguments are code, and
    * what a `string` or `text` argument holds (see ParameterDef.holds).
    */
+  parameters?: readonly ParameterDef[];
   /**
    * For a widget: its `@` parameters and what the ones that declare it hold
    * (`@target:passage`, see WidgetDef), so that a call is checked like the
    * call of a macro whose `string` parameter has that `holds`.
    */
   widget?: Pick<WidgetDef, 'params' | 'holds'>;
-  parameters?: readonly ParameterDef[];
   /** Whether it resolves markup: its strings hold markup by default. */
   interpolate?: boolean;
   /** Whether its first argument names the story variable it binds. */

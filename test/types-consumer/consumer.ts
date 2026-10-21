@@ -21,4 +21,19 @@ export const checks: [
   Resolved<PlaySession['observe']>,
   Resolved<StoryAPI['observe']>,
   Resolved<keyof typeof Tooling>,
+  Resolved<Tooling.ToolingMacro['widget']>,
 ] = [] as never;
+
+export const widgetMacro: Tooling.ToolingMacro = {
+  name: 'caption',
+  block: false,
+  subMacros: [],
+  widget: { params: ['@value'], holds: { '@value': 'markup' } },
+};
+
+export const parameter: Tooling.ParameterDef = {
+  name: 'value',
+  type: 'string',
+  // @ts-expect-error Widget metadata belongs to ToolingMacro, not ParameterDef.
+  widget: widgetMacro.widget,
+};

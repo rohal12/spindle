@@ -85,7 +85,7 @@ $visited_rooms = 0
 $character = { strength: 5, dexterity: 5, intelligence: 5, name: "Adventurer", alive: true, level: 1 }
 ```
 
-These defaults are applied before `StoryInit` runs and are restored on restart.
+These defaults are applied before `StoryInit` runs and are restored on restart. A `null` default means “no value yet” and permits a later value of any shape; for example, `$target = null` can later hold an object or a string.
 
 When `StoryVariables` is present, Spindle validates all `$variable` references across your passages at startup. Referencing an undeclared variable stops the story with a validation error, helping catch typos early.
 

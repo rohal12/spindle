@@ -1,5 +1,5 @@
 import { glob, readFile, stat } from 'node:fs/promises';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type * as TweeTs from '@rohal12/twee-ts';
 import { errorMessage } from '../utils/error-message';
@@ -61,57 +61,6 @@ async function expandGlob(pattern: string): Promise<string[]> {
   return matches.sort();
 }
 
-/** A path segment with glob syntax in it (as `path.matchesGlob` reads it). */
-const GLOB_SEGMENT = /[*?[\]{}()!+@]/;
-
-/**
- * An `exclude` glob of the project config as twee-ts matches it: against
- * paths relative to the working directory. A relative glob is relative to the
- * project directory; an absolute one has its literal leading folders made
- * relative. Either way the folder part added or rewritten is escaped.
- */
-function rebaseExclude(dir: string, pattern: string): string {
-  let base = dir;
-  let rest = pattern.replace(/^\.\//, '');
-  if (isAbsolute(pattern)) {
-    const parts = pattern.split('/');
-    let literal = parts.findIndex((part) => GLOB_SEGMENT.test(part));
-    if (literal === -1) literal = parts.length;
-    base = parts.slice(0, literal).join('/') || '/';
-    rest = parts.slice(literal).join('/');
-  }
-  const fromCwd = globLiteral(
-    relative(process.cwd(), base).split(sep).join('/'),
-  );
-  if (fromCwd === '') return rest;
-  return rest === '' ? fromCwd : `${fromCwd}/${rest}`;
-}
-
-/**
- * The project config with its paths made independent of the working
- * directory. twee-ts reads `sources`, `modules` and `headFile` relative to
- * the working directory, and matches `exclude` globs against paths relative
- * to it, so each is rebased from the project directory.
- */
-function rebaseConfig(
-  dir: string,
-  config: TweeTs.TweeTsConfig,
-): TweeTs.TweeTsConfig {
-  const rebased: TweeTs.TweeTsConfig = {
-    ...config,
-    sources: (config.sources ?? ['.']).map((s) => resolve(dir, s)),
-  };
-  if (config.modules)
-    rebased.modules = config.modules.map((m) => resolve(dir, m));
-  if (config.headFile !== undefined) {
-    rebased.headFile = resolve(dir, config.headFile);
-  }
-  if (config.exclude) {
-    rebased.exclude = config.exclude.map((e) => rebaseExclude(dir, e));
-  }
-  return rebased;
-}
-
 /**
  * The project config less its output and format options. Those are ours: the
  * project's own would write a file, compile for another format, or fetch one.
@@ -128,15 +77,6 @@ function withoutFormatOptions(
         key !== 'noRemote',
     ),
   );
-}
-
-/**
- * `text` as a glob matching only itself, for Node's `path.matchesGlob` (which
- * twee-ts uses): a metacharacter goes in brackets. Braces and `!` cannot be
- * bracketed there, so each becomes `?` (any one character).
- */
-function globLiteral(text: string): string {
-  return text.replace(/[*?[\]()+@]/g, (c) => `[${c}]`).replace(/[{}!]/g, '?');
 }
 
 /** The compile sources and project config for a path (or glob). */
@@ -163,11 +103,13 @@ async function sourcesFor(
   if (!isDirectory) return { sources: [path], config: {} };
   const found = tweeTs.loadConfig(path);
   if (!found) return { sources: [path], config: {} };
-  const config = rebaseConfig(resolve(path), found);
+  // twee-ts resolves config paths and structured excludes against the project
+  // directory itself. Rebasing them again would duplicate relative prefixes.
+  const config = found;
   if (config.sources?.length === 0) {
     throw new Error(`spindle: ${path} has a twee-ts config with no sources`);
   }
-  return { sources: config.sources ?? [], config };
+  return { sources: [...(config.sources ?? [resolve(path)])], config };
 }
 
 /** The diagnostics a thrown twee-ts error carries, when it has any. */

@@ -116,6 +116,9 @@ describe('@rohal12/spindle/tooling', async () => {
     for (const name of [
       'lexJs',
       'lexTemplate',
+      'parseCode',
+      'macroArgumentSpans',
+      'effectiveWidgetDefinitions',
       'findCodeEnd',
       'scanStringLiteral',
       'parseSelectors',

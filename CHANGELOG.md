@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tooling exports the runtime’s `parseCode` with executable read/write roles, tolerant `macroArgumentSpans`, and identity-preserving `effectiveWidgetDefinitions`. Published widget metadata includes `holds`, `badHolds` and `ToolingMacro.widget` (#574, #589, #610).
+
 - Tooling (`@rohal12/spindle/tooling`): `formatPassage(body, { kind?, prettier?, prettierOptions?, isBlock?, isDedentingSubMacro?, maxLineLength? })` formats the text of a passage: block macro bodies indented, trailing whitespace removed, `<script>` and HTML blocks formatted with an injected Prettier, and everything the runtime executes (macros, links, `{do}` bodies, multi-line template literals) kept as written, in the line endings of the text.
 - Tooling (`@rohal12/spindle/tooling`): `validateStoryMarkup(passages, macros)` and `collectStoryPassageReferences(source, macros)` take the macros to check against and keep no state, so one process can analyse several projects; `builtinMacros` is the built-in macro list as data, loaded without `fs` so a bundler inlines it (`getMacroRegistry()` read `macro-registry.json` next to the file, and was empty in a bundle) (#446).
 - Tooling: a `MarkupDiagnostic` has a stable `code`, the `start` and `end` of the offending text in the passage's content, and `data` naming what it is about (the macro, the passage, the closest known name); a `MarkupError` has `code`, `end` and `data` too (#447).
@@ -27,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Twine editor extensions: the format's `format.js` carries a `hydrate` that adds, in Twine 2.4 and later, syntax highlighting for Spindle markup in the passage editor (a CodeMirror 5 mode on the tooling's tokenizer), dotted story-map lines for the passages named by `{goto}`, `{include}`, `{link}`, `{dialog}` and `{watch}`, and a toolbar with snippet menus (Links, Logic, Variables, Inputs, UI), **Check** (underlines the problems of the passage) and **Format** (`formatPassage` with a bundled Prettier). `format.js` grows by about 1.1 MB; compiled stories are unchanged. Twine's **Use Editor Extensions** setting turns them off. See [Twine Editor Extensions](docs/twine-editor.md).
 
 ### Changed
+
+- **Breaking:** Node entry points now require Node.js 24 or later. The optional compiler peer and development compiler now use twee-ts 2.x, including its resolved project configuration paths (#612).
+- Documentation covers null defaults, computed loop locals, the four merged variable scopes, passage lifecycle hooks, loading controls and save/settings dialog customization (#603–#606).
 
 - **Breaking:** Play sessions require explicit `trusted: true` before executing story code, which has unrestricted access to host Node APIs. Worker threads and happy-dom do not provide a security sandbox (#583).
 - **Breaking:** `{link}`'s target is a passage name as in `{goto}`: a quoted string or an expression, so `{link "Go" $dest}{/link}` navigates to the passage `$dest` names. A quoted name is checked when the story starts; an expression naming a missing passage shows an error in place.

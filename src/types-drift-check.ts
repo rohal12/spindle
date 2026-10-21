@@ -86,12 +86,26 @@ const _publishedToSource: Source = {} as Published;
 /** `true` if `A` and `B` are assignable to each other, else `false`. */
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
+/** Also catch missing optional fields, which mutual assignability allows. */
+type SameShape<A, B> = Same<A, B> extends true ? Same<keyof A, keyof B> : false;
+
 // The rest of the tooling entry point: what it parses and returns (tokens,
 // pieces, pairing, declarations) and the stateless checks. Each must be the
 // same type in the source and in types/tooling.d.ts, or `false` here is no
 // `true`.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _toolingTypes: [
+type AssertTrue<T extends readonly true[]> = T;
+type ToolingChecks = [
+  Same<typeof SourceTooling.parseCode, typeof PublishedTooling.parseCode>,
+  Same<
+    typeof SourceTooling.macroArgumentSpans,
+    typeof PublishedTooling.macroArgumentSpans
+  >,
+  Same<
+    typeof SourceTooling.effectiveWidgetDefinitions,
+    typeof PublishedTooling.effectiveWidgetDefinitions
+  >,
+  SameShape<SourceTooling.WidgetDefinition, PublishedTooling.WidgetDefinition>,
   Same<SourceTooling.MarkupError, PublishedTooling.MarkupError>,
   Same<SourceTooling.Token, PublishedTooling.Token>,
   Same<SourceTooling.Piece, PublishedTooling.Piece>,
@@ -99,7 +113,7 @@ const _toolingTypes: [
   Same<SourceTooling.PairingError, PublishedTooling.PairingError>,
   Same<SourceTooling.Declaration, PublishedTooling.Declaration>,
   Same<SourceTooling.DeclarationError, PublishedTooling.DeclarationError>,
-  Same<SourceTooling.ToolingMacro, PublishedTooling.ToolingMacro>,
+  SameShape<SourceTooling.ToolingMacro, PublishedTooling.ToolingMacro>,
   Same<typeof SourceTooling.pairMarkup, typeof PublishedTooling.pairMarkup>,
   Same<
     typeof SourceTooling.passagePieces,
@@ -139,28 +153,8 @@ const _toolingTypes: [
     typeof SourceTooling.formatPassage,
     typeof PublishedTooling.formatPassage
   >,
-] = [
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
 ];
+type _toolingTypes = AssertTrue<ToolingChecks>;
 
 // A typical custom macro written against the published types must type-check,
 // and misuse of the hooks must not (no `any` leaking through).

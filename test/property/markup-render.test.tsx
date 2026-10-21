@@ -26,7 +26,7 @@ import {
   type TextPiece,
   type TextVars,
 } from './markup-text';
-import { parseMarkup } from '../../src/markup/parse';
+import { parseMarkup, tokenizeMarkup } from '../../src/markup/parse';
 import {
   registerWidget,
   clearWidgets,
@@ -225,7 +225,18 @@ describe('markdown parity', () => {
       { maxLength: 25 },
     )
     .map((parts) => parts.join(''))
-    .filter((s) => !s.includes('[['));
+    .filter(
+      (s) =>
+        !s.includes('[[') &&
+        // Brace escapes are Spindle markup too: in an unclosed HTML comment
+        // CommonMark keeps their backslashes while Spindle consumes them.
+        // Closed comments remain eligible because the tokenizer keeps them opaque.
+        tokenizeMarkup(s).every(
+          (token) =>
+            token.type === 'text' &&
+            token.value === s.slice(token.start, token.end),
+        ),
+    );
 
   test.prop([markupFreeText], domOptions)(
     'markup-free text renders the same HTML as micromark',
