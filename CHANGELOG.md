@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Object-path writes preserve changes between positive and negative zero in Immer drafts, including array elements.
+- Story startup validates other passages' variable references after StoryInit applies macro overrides, while checking StoryInit before executing it (#601).
+- Outgoing transition snapshots use passive stand-ins for custom elements and ordinary native elements for customized built-ins, avoiding repeated constructors and connection callbacks while preserving generated pseudo-element content. Embedded documents inside open shadow roots also become passive placeholders (#607).
+- Prose wrapping keeps inline HTML tags intact, preserving attribute values and JavaScript event handlers (#608).
+- Tooling validates widget arguments against the effective closed definitions, including StoryInit overrides regardless of passage order (#609).
+- Formatting checks placeholder counts in one document pass and advances through HTML tags in source order, avoiding quadratic scans in passages with many interpolations (#611).
+
 - Loop rows reconcile before their computed expressions react to new story state, avoiding evaluations with indices removed by a shrinking array (#596).
 - Formatting restores Spindle and SVG placeholders in one pass, preserving literals that spell other placeholders; HTML with ambiguous SVG markers stays as written (#597).
 - Navigation gives way to a redirect or history traversal performed by a `beforenavigate` callback, without recording the superseded destination (#598).

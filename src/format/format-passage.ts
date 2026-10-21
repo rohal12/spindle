@@ -640,14 +640,14 @@ function wrapLines(
   isBlock: (name: string) => boolean,
 ): string[] {
   const result: string[] = [];
-  const javaScript = doBodyLines(lines);
+  const verbatim = verbatimLines(lines);
   const structured = markdownLines(lines.join('\n'), isBlock, NO_WRAP);
 
   for (const [index, line] of lines.entries()) {
     // A `{do}` body is JavaScript: a line break there can change the program
     if (
       line.length <= maxLen ||
-      javaScript.has(index) ||
+      verbatim.has(index) ||
       structured.has(index) ||
       literalLines.has(line.trim())
     ) {
@@ -692,14 +692,22 @@ function wrapLines(
   return result;
 }
 
-/** The indices of `lines` that hold part of a `{do}` body. */
-function doBodyLines(lines: string[]): Set<number> {
+/** Lines holding JavaScript or a multiline HTML tag must not be wrapped. */
+function verbatimLines(lines: string[]): Set<number> {
   const found = new Set<number>();
   const text = lines.join('\n');
   const lineAt = sourceLines(text);
-  for (const block of scanSpindleMarkup(text).doBlocks) {
+  const { doBlocks, tags } = scanSpindleMarkup(text);
+  for (const block of doBlocks) {
     const first = lineAt(block.bodyStart);
     const last = lineAt(block.bodyEnd);
+    for (let i = first; i <= last; i++) found.add(i);
+  }
+  for (const tag of tags) {
+    const first = lineAt(tag.start);
+    const last = lineAt(tag.end - 1);
+    if (first === last) continue;
+    // Continuation lines cannot be tokenized as HTML on their own.
     for (let i = first; i <= last; i++) found.add(i);
   }
   return found;
@@ -715,7 +723,7 @@ function wordWrap(text: string, maxLen: number, indent: string): string[] {
   /** Whether the character is inside a token whose text must stay as written. */
   const inToken = new Array<boolean>(text.length).fill(false);
   for (const token of tokenizeMarkupTolerant(text).tokens) {
-    if (token.type === 'text' || token.type === 'html') continue;
+    if (token.type === 'text') continue;
     inToken.fill(true, token.start, token.end);
   }
   const room = maxLen - indentColumn(indent);

@@ -35,7 +35,7 @@ const VALUELESS_INPUTS = new Set([
  * elements pair up by position. Best effort: a canvas or video that can not
  * be drawn from stays as cloned.
  */
-function copyLiveState(source: Element, clone: Element): void {
+function copyLiveState(source: ParentNode, clone: ParentNode): void {
   const pairs = <T extends Element>(
     selector: string,
     each: (a: T, b: T) => void,
@@ -76,6 +76,7 @@ function copyLiveState(source: Element, clone: Element): void {
         const input = to as HTMLInputElement;
         input.checked = from.checked;
         input.indeterminate = from.indeterminate;
+        if (from.type === 'file') input.files = from.files;
         if (!VALUELESS_INPUTS.has(from.type)) input.value = from.value;
       } else {
         to.value = from.value;
@@ -120,19 +121,29 @@ type ScrollOffset = [element: Element, top: number, left: number];
  * scrolled, keyed by the matching element of `clone`. Applied once the clone
  * is in the page: a detached element has nothing to scroll.
  */
-function scrollOffsets(source: Element, clone: Element): ScrollOffset[] {
-  const from = [source, ...source.querySelectorAll('*')];
-  const to = [clone, ...clone.querySelectorAll('*')];
+function scrollOffsets(source: ParentNode, clone: ParentNode): ScrollOffset[] {
+  const from = [
+    ...(source instanceof Element ? [source] : []),
+    ...source.querySelectorAll('*'),
+  ];
+  const to = [
+    ...(clone instanceof Element ? [clone] : []),
+    ...clone.querySelectorAll('*'),
+  ];
   const offsets: ScrollOffset[] = [];
   from.forEach((el, i) => {
     if (to[i] && (el.scrollTop || el.scrollLeft)) {
       offsets.push([to[i]!, el.scrollTop, el.scrollLeft]);
+    }
+    if (el.shadowRoot && to[i]?.shadowRoot) {
+      offsets.push(...scrollOffsets(el.shadowRoot, to[i]!.shadowRoot!));
     }
   });
   return offsets;
 }
 
 const pendingScrolls = new WeakMap<Element, ScrollOffset[]>();
+const snapshotStyleCleanup = new WeakMap<Element, () => void>();
 
 /** Add `snapshot` to `container`, scrolled as what it shows was. */
 function appendSnapshot(container: Element, snapshot: HTMLElement): void {
@@ -142,6 +153,143 @@ function appendSnapshot(container: Element, snapshot: HTMLElement): void {
     el.scrollLeft = left;
   }
   pendingScrolls.delete(snapshot);
+}
+
+function copyComputedStyle(
+  style: CSSStyleDeclaration,
+  target: CSSStyleDeclaration,
+): void {
+  for (let i = 0; i < style.length; i++) {
+    const name = style[i]!;
+    target.setProperty(name, style.getPropertyValue(name));
+  }
+}
+
+function installSnapshotStyles(
+  root: Document | ShadowRoot,
+  rules: string[],
+): (() => void) | undefined {
+  if (!rules.length) return;
+  // A style element would change :last-child and other structural selectors.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(rules.join('\n'));
+  root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+  return () => {
+    root.adoptedStyleSheets = root.adoptedStyleSheets.filter(
+      (current) => current !== sheet,
+    );
+  };
+}
+
+let snapshotPseudoId = 0;
+
+/**
+ * Build a visual tree without cloning upgraded custom elements: cloneNode
+ * runs their constructors, and insertion runs their connection callbacks.
+ * Autonomous elements become styled spans; customized built-ins are created
+ * as ordinary native elements, without an `is` option (even if the original
+ * has since removed its `is` attribute).
+ */
+function cloneSnapshotTree(
+  source: Element,
+  freezeStyles = false,
+  pseudoRules: string[] = [],
+): Element {
+  const html = source.namespaceURI === 'http://www.w3.org/1999/xhtml';
+  const custom = html && source.localName.includes('-');
+  freezeStyles ||= custom || source.hasAttribute('is');
+  const clone = document.createElementNS(
+    source.namespaceURI,
+    custom ? 'span' : source.localName,
+  );
+  for (const attr of [...source.attributes]) {
+    if (
+      attr.name === 'id' ||
+      attr.name === 'data-action' ||
+      attr.name === 'is' ||
+      attr.name.toLowerCase().startsWith('on')
+    )
+      continue;
+    if (attr.namespaceURI)
+      clone.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+    else clone.setAttribute(attr.name, attr.value);
+  }
+  if (freezeStyles) {
+    // Tag-name selectors no longer match the stand-in or its descendants.
+    // Keep the component subtree's current appearance through computed CSS.
+    copyComputedStyle(getComputedStyle(source), (clone as HTMLElement).style);
+    // Generated content needs CSS rules in the same document or shadow root.
+    // A unique selector keeps simultaneous snapshots from styling each other.
+    let id: string | undefined;
+    for (const pseudo of ['::before', '::after', '::marker']) {
+      const style = getComputedStyle(source, pseudo);
+      if (!style.content || ['none', 'normal'].includes(style.content))
+        continue;
+      id ??= String(++snapshotPseudoId);
+      clone.setAttribute('data-spindle-snapshot-pseudo', id);
+      const target = document.createElement('span').style;
+      copyComputedStyle(style, target);
+      pseudoRules.push(
+        `[data-spindle-snapshot-pseudo="${id}"]${pseudo}{${target.cssText}}`,
+      );
+    }
+  }
+  // Recreated scripts must remain inert when inserted, just like the
+  // already-executed script nodes that cloneNode used to produce.
+  if (source.localName === 'script')
+    clone.setAttribute('type', 'application/x-spindle-snapshot');
+  const from = source instanceof HTMLTemplateElement ? source.content : source;
+  const to = clone instanceof HTMLTemplateElement ? clone.content : clone;
+  const copyChildren = (
+    from: ParentNode,
+    to: ParentNode,
+    rules = pseudoRules,
+  ) => {
+    for (const node of from.childNodes) {
+      to.appendChild(
+        node instanceof Element
+          ? cloneSnapshotTree(node, freezeStyles, rules)
+          : node.cloneNode(false),
+      );
+    }
+  };
+  copyChildren(from, to);
+  if (source.shadowRoot) {
+    const shadow = clone.attachShadow({ mode: 'open' });
+    const rules: string[] = [];
+    copyChildren(source.shadowRoot, shadow, rules);
+    copyLiveState(source.shadowRoot, shadow);
+    installSnapshotStyles(shadow, rules);
+  }
+  return clone;
+}
+
+/** Replace browsing contexts throughout the snapshot, including shadow trees. */
+function replaceEmbeddedContexts(source: ParentNode, clone: ParentNode): void {
+  const originals = source.querySelectorAll('*');
+  const copies = clone.querySelectorAll('*');
+  copies.forEach((embedded, i) => {
+    const original = originals[i];
+    if (!original) return;
+    if (original.shadowRoot && embedded.shadowRoot) {
+      replaceEmbeddedContexts(original.shadowRoot, embedded.shadowRoot);
+    }
+    if (!embedded.matches('iframe, object, embed')) return;
+    const placeholder = document.createElement('div');
+    for (const name of ['class', 'style', 'width', 'height']) {
+      const value = embedded.getAttribute(name);
+      if (value !== null) placeholder.setAttribute(name, value);
+    }
+    const rect = original.getBoundingClientRect();
+    // Unlike an iframe, an empty inline div does not honor width and height.
+    if (getComputedStyle(original).display === 'inline')
+      placeholder.style.display = 'inline-block';
+    // The measured dimensions already include any copied border and padding.
+    placeholder.style.boxSizing = 'border-box';
+    placeholder.style.width = `${rect.width}px`;
+    placeholder.style.height = `${rect.height}px`;
+    embedded.replaceWith(placeholder);
+  });
 }
 
 /**
@@ -158,40 +306,19 @@ function createSnapshot(
   passageEl: Element,
   transitionType: string,
 ): HTMLElement {
-  const clone = passageEl.cloneNode(true) as HTMLElement;
-  // Resource events still fire on inert nodes. Remove handlers before any
-  // media copying or insertion can reload a resource in the destination state.
-  for (const el of [clone, ...clone.querySelectorAll('*')]) {
-    for (const attr of [...el.attributes]) {
-      if (
-        attr.name === 'id' ||
-        attr.name === 'data-action' ||
-        attr.name.toLowerCase().startsWith('on')
-      )
-        el.removeAttribute(attr.name);
-    }
-  }
+  const pseudoRules: string[] = [];
+  const clone = cloneSnapshotTree(passageEl, false, pseudoRules) as HTMLElement;
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
   // A cloned browsing context would reload and execute scripts on insertion.
   // Keep its authored size/style as a passive placeholder instead.
-  const originals = passageEl.querySelectorAll('iframe, object, embed');
-  const copies = clone.querySelectorAll('iframe, object, embed');
-  copies.forEach((embedded, i) => {
-    const placeholder = document.createElement('div');
-    for (const name of ['class', 'style', 'width', 'height']) {
-      const value = embedded.getAttribute(name);
-      if (value !== null) placeholder.setAttribute(name, value);
-    }
-    const original = originals[i];
-    if (original) {
-      const rect = original.getBoundingClientRect();
-      placeholder.style.width = `${rect.width}px`;
-      placeholder.style.height = `${rect.height}px`;
-    }
-    embedded.replaceWith(placeholder);
-  });
+  replaceEmbeddedContexts(passageEl, clone);
+  const cleanup = installSnapshotStyles(
+    passageEl.getRootNode() as Document | ShadowRoot,
+    pseudoRules,
+  );
+  if (cleanup) snapshotStyleCleanup.set(clone, cleanup);
 
   // Disable interaction
   clone.style.pointerEvents = 'none';
@@ -240,7 +367,10 @@ function cleanupSnapshots(containerEl: Element | null): void {
   containerEl.classList.remove('passage-container--crossfading');
   const snapshots = containerEl.querySelectorAll('.passage-snapshot');
   for (let i = 0; i < snapshots.length; i++) {
-    snapshots[i]!.remove();
+    const snapshot = snapshots[i]!;
+    snapshotStyleCleanup.get(snapshot)?.();
+    snapshotStyleCleanup.delete(snapshot);
+    snapshot.remove();
   }
 }
 
@@ -356,7 +486,14 @@ defineMacro({
     }, []);
 
     // A transition still running on unmount must not fire into it.
-    useEffect(() => cancelTransition, [cancelTransition]);
+    useEffect(() => {
+      const container = containerRef.current;
+      return () => {
+        cancelTransition();
+        // The ref may already be cleared when the display unmounts.
+        cleanupSnapshots(container);
+      };
+    }, [cancelTransition]);
 
     // State machine effect — triggers on every navigation
     useEffect(() => {

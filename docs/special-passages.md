@@ -22,6 +22,8 @@ Any macro works in `StoryInit` — all macros execute through the normal renderi
 
 The defaults declared in `StoryVariables` are applied _before_ `StoryInit` runs, so `StoryInit` can override or build on those defaults.
 
+At startup, Spindle checks `StoryInit`'s own markup and variable references before executing it. Other passages' references are checked afterward, using the macro definitions and parameter types that `StoryInit` installed. Initialization can therefore run before an invalid reference in another passage is reported.
+
 ## `StoryVariables`
 
 Required. Declares all story variables with their default values. Each line must follow `$name = expression`. A story without variables still needs the passage; leave it empty:

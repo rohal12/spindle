@@ -100,7 +100,18 @@ export function setByPath(
   options: SetByPathOptions = {},
 ): void {
   const parent = walkToParent(root, segments, options.createMissing ?? false);
-  parent[segments[segments.length - 1]!] = value;
+  const key = segments[segments.length - 1]!;
+  if (
+    value === 0 &&
+    isDraft(parent) &&
+    parent[key] === 0 &&
+    !Object.is(parent[key], value) &&
+    !(Array.isArray(parent) && key === 'length')
+  ) {
+    // Immer's assignment uses === after copying, losing a zero's changed sign.
+    parent[key] = undefined;
+  }
+  parent[key] = value;
 }
 
 /**

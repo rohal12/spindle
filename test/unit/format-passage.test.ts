@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as prettier from 'prettier';
 import { formatPassage } from '../../src/format/format-passage';
+import { tokenizeMarkupTolerant } from '../../src/markup/parse';
 
 const fmt = (body: string, options: Parameters<typeof formatPassage>[1] = {}) =>
   formatPassage(body, { prettier, ...options });
@@ -552,6 +553,35 @@ describe('formatPassage', () => {
       'aaa bbb\nccc ddd  \nnext\n',
     );
   });
+
+  it.each([25, 80])(
+    'keeps inline HTML attributes intact at width %i (#608)',
+    async (maxLineLength) => {
+      const tags = [
+        `<button onclick="window.answer='hello world from here and many more words in a working control'">`,
+        `<span title='a long title with spaces and a > character inside'>`,
+        '<img alt="a long description with several words" src="image.png">',
+        '<span data-label="{print \'many words inside a nested token\'}">',
+        `<button\n onclick="window.answer='hello world from here'">`,
+        `<span\n title="a long title with spaces"\n data-label="{print \`many\nwords\`}">`,
+      ];
+      for (const tag of tags) {
+        const close = tag.startsWith('<button')
+          ? '</button>'
+          : tag.startsWith('<img')
+            ? ''
+            : '</span>';
+        const source = `Some prose before ${tag}press${close} and many more words after the inline HTML element.`;
+        const formatted = await fmt(source, { maxLineLength });
+        const attributes = (text: string) =>
+          tokenizeMarkupTolerant(text)
+            .tokens.filter((t) => t.type === 'html')
+            .map((t) => t.attributes);
+        expect(attributes(formatted)).toEqual(attributes(source));
+        expect(await fmt(formatted, { maxLineLength })).toBe(formatted);
+      }
+    },
+  );
 
   it('keeps nested list indentation in top-level prose', async () => {
     const input = '- a\n  - b\n    - c\n- d\n\n  continued item\n';

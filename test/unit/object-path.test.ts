@@ -8,6 +8,36 @@ import {
 
 enableMapSet();
 
+it.each([0, -0])(
+  'preserves the sign when replacing a zero in a draft (%s)',
+  (value) => {
+    const before = -value;
+    const state = { object: { value: before }, list: [before], other: {} };
+    const next = produce(state, (draft) => {
+      setByPath(draft, ['object', 'value'], value);
+      setByPath(draft, ['list', '0'], value);
+    });
+    expect(Object.is(next.object.value, value)).toBe(true);
+    expect(Object.is(next.list[0], value)).toBe(true);
+    expect(Object.is(state.object.value, before)).toBe(true);
+    expect(Object.is(state.list[0], before)).toBe(true);
+    expect(next.object).not.toBe(state.object);
+    expect(next.list).not.toBe(state.list);
+    expect(next.other).toBe(state.other);
+    expect(
+      produce(next, (draft) => setByPath(draft, ['object', 'value'], value)),
+    ).toBe(next);
+  },
+);
+
+it('normalizes a drafted array length of negative zero to zero', () => {
+  const state = { list: [] };
+  const next = produce(state, (draft) =>
+    setByPath(draft, ['list', 'length'], -0),
+  );
+  expect(Object.is(next.list.length, 0)).toBe(true);
+});
+
 class Counter {
   n = 0;
 }

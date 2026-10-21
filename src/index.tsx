@@ -101,9 +101,10 @@ function storeVarMacroNames(): string[] {
 function variableErrors(
   storyData: StoryData,
   schema: Parameters<typeof validatePassages>[1],
+  only: (passage: MarkupPassage) => boolean = () => true,
 ): string[] {
   return validatePassages(
-    storyData.passages,
+    new Map([...storyData.passages].filter(([, passage]) => only(passage))),
     schema,
     storeVarMacroNames(),
     knownParameters(),
@@ -168,7 +169,7 @@ export function boot() {
   // External scripts can register custom macros (including block macros) here.
   document.dispatchEvent(new CustomEvent(':storystartup'));
 
-  // Parse StoryVariables and validate all passages
+  // Parse StoryVariables and validate StoryInit before it executes
   let defaults: Record<string, unknown> = {};
   const storyVarsPassage = storyData.passages.get('StoryVariables');
 
@@ -192,7 +193,11 @@ export function boot() {
     setBlockWidget(name, block);
   }
 
-  const errors = variableErrors(storyData, schema);
+  const errors = variableErrors(
+    storyData,
+    schema,
+    (p) => p.name === 'StoryInit',
+  );
   // StoryInit's markup must be valid before it runs; the other passages are
   // validated once it has run, as it may define macros (see below).
   errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));

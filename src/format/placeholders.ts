@@ -128,15 +128,6 @@ export function multilineJsLiterals(code: string): [number, number][] {
   return spans;
 }
 
-/** Whether an HTML tag (opening, closing or self-closing) overlaps the range. */
-function lineHasTag(
-  tags: { start: number; end: number }[],
-  start: number,
-  end: number,
-): boolean {
-  return tags.some((tag) => tag.start < end && tag.end > start);
-}
-
 export interface PlaceholderResult {
   text: string;
   tokens: string[];
@@ -166,6 +157,8 @@ export const SPINDLE_PLACEHOLDERS: PlaceholdersOf = (i) => [
   `__SP${i}__`,
 ];
 
+const PLACEHOLDER_PATTERN = /<!--(?:SP|SVG):\d+-->|__SP\d+__/g;
+
 /**
  * Whether `text` (what a formatter made of the placeholdered text) holds
  * the placeholder of every one of `tokens` exactly once. If not, the
@@ -177,13 +170,17 @@ export function placeholdersIntact(
   tokens: readonly string[],
   placeholdersOf: PlaceholdersOf,
 ): boolean {
-  return tokens.every(
-    (_, index) =>
-      placeholdersOf(index).reduce(
-        (count, placeholder) => count + text.split(placeholder).length - 1,
-        0,
-      ) === 1,
-  );
+  if (tokens.length === 0) return true;
+  const indices = new Map<string, number>();
+  const counts = new Array<number>(tokens.length).fill(0);
+  tokens.forEach((_, index) => {
+    for (const marker of placeholdersOf(index)) indices.set(marker, index);
+  });
+  for (const [marker] of text.matchAll(PLACEHOLDER_PATTERN)) {
+    const index = indices.get(marker);
+    if (index !== undefined && ++counts[index]! > 1) return false;
+  }
+  return counts.every((count) => count === 1);
 }
 
 /** Whether `before` and `after` hold the same Spindle tokens, in the same order. */
@@ -212,7 +209,7 @@ function restorePlaceholders(
         replacements.set(marker, token);
     });
   }
-  return text.replace(/<!--(?:SP|SVG):\d+-->|__SP\d+__/g, (marker) => {
+  return text.replace(PLACEHOLDER_PATTERN, (marker) => {
     const token = replacements.get(marker);
     replacements.delete(marker);
     // Callback form also preserves literal `$&`, `$'`, etc.
@@ -276,6 +273,7 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
   const tokens: string[] = [];
   const resultLines: string[] = [];
   let unit = 0;
+  let tag = 0;
   let lineStart = 0;
   while (lineStart <= html.length) {
     // A line ends at a line break outside every unit
@@ -296,10 +294,14 @@ export function replaceSpindleTokens(html: string): PlaceholderResult {
     }
     const line = html.slice(lineStart, lineEnd);
     const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    // Lines and tags are ordered: visit each tag only once, keeping a tag
+    // that spans several lines until its end is behind the current line.
+    while (tag < tags.length && tags[tag]!.end <= lineStart) tag++;
+    const hasTag = tag < tags.length && tags[tag]!.start < lineEnd;
 
     if (lineUnits.length === 0) {
       resultLines.push(line);
-    } else if (!lineHasTag(tags, lineStart, lineEnd)) {
+    } else if (!hasTag) {
       // Spindle tokens but no HTML: one placeholder for the whole line
       const idx = tokens.length;
       tokens.push(line.trim());

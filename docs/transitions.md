@@ -135,4 +135,6 @@ Spindle respects `prefers-reduced-motion` automatically. Users with reduced moti
 - **`{include}` passages:** Transitions only apply to the main `{passage}` macro. Included passages render inline without animation.
 - **Back/forward:** Transitions apply normally via the resolution chain.
 
-Outgoing snapshots replace embedded browsing contexts (`iframe`, `object`, `embed`) with empty placeholders sized to the original elements. This prevents a transition from loading the embedded document again or replaying its scripts.
+Outgoing snapshots replace embedded browsing contexts (`iframe`, `object`, `embed`), including those inside open shadow roots, with empty placeholders sized to the original elements. This prevents a transition from loading the embedded document again or replaying its scripts.
+
+Custom elements become passive spans with their current computed styles, generated `::before`, `::after`, and `::marker` content, light DOM, and open shadow DOM content. Customized built-ins become ordinary native elements. Taking a snapshot therefore does not run another constructor or connection callback. Closed shadow roots cannot be copied.

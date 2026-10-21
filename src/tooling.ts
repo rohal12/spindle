@@ -192,11 +192,11 @@ export function validateStoryMarkup(
   const all = [...macros];
   const known = new Set<string>();
   // The calls of widgets that declare what their arguments hold are checked
-  const widgets = readWidgetDefinitions(list, parameterLookup(all));
+  const widgets = effectiveWidgetDefinitions(
+    readWidgetDefinitions(list, parameterLookup(all)),
+  );
   const blocks = new Set(
-    effectiveWidgetDefinitions(widgets)
-      .filter((def) => def.block)
-      .map((def) => def.name.toLowerCase()),
+    widgets.filter((def) => def.block).map((def) => def.name.toLowerCase()),
   );
   const parametersOf = parameterLookup([
     ...all,
@@ -315,7 +315,9 @@ function referenceOptions(
   passages: readonly MarkupPassage[] = [],
 ) {
   const list = [...macros];
-  const widgets = readWidgetDefinitions(passages, parameterLookup(list));
+  const widgets = effectiveWidgetDefinitions(
+    readWidgetDefinitions(passages, parameterLookup(list)),
+  );
   return {
     all,
     storeVarMacros: new Set(
