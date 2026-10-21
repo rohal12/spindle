@@ -15,6 +15,7 @@
  * empty).
  */
 import { parseDelay } from '../../utils/parse-delay';
+import type { Span as SourceSpan } from '../../markup/tokens';
 import type { MacroArgs, ParameterDef } from '../../registry';
 import type { StoryState } from '../../store';
 import { noPassageError } from '../../runtime-errors';
@@ -42,6 +43,8 @@ interface Place {
   /** The index in the raw arguments of the text being read. */
   at: number;
   spans: ArgSpans | undefined;
+  /** Full parameter spans for tolerant editor input, including keywords. */
+  toolingSpans?: ArgSpans;
 }
 
 /** The terms of `src`: the runs of text between its depth-0 whitespace. */
@@ -80,11 +83,18 @@ export class MacroArgumentError extends Error {
 
 /** Read `src`, at `place`, as `param` says. */
 function readValue(param: ParameterDef, src: string, place: Place): unknown {
-  place.spans?.set(param, [place.at, place.at + src.length]);
+  const span: Span = [place.at, place.at + src.length];
+  place.spans?.set(param, span);
+  place.toolingSpans?.set(param, span);
   switch (param.type) {
     case 'string': {
       const value = readWholeQuoted(src);
-      if (value === null) throw new MacroArgumentError(param, src);
+      if (value === null) {
+        if (place.toolingSpans && (src[0] === '"' || src[0] === "'")) {
+          return readText(src);
+        }
+        throw new MacroArgumentError(param, src);
+      }
       return value;
     }
     case 'text':
@@ -128,7 +138,7 @@ function matchAt(re: RegExp, src: string, pos: number): string | null {
 function readOptions(
   params: readonly ParameterDef[],
   src: string,
-  { at, spans }: Place,
+  { at, spans, toolingSpans }: Place,
 ): Record<string, unknown> {
   const options: Record<string, unknown> = {};
   let i = 0;
@@ -139,6 +149,7 @@ function readOptions(
       i = readQuoted(src, i)?.end ?? i + 1;
       continue;
     }
+    const keyAt = i;
     i += key.length;
 
     // A value is a quoted string, which may follow the keyword directly
@@ -161,8 +172,9 @@ function readOptions(
     if (param && param.type !== 'flag' && val !== undefined) {
       spans?.set(param, [at + j, at + i]);
     }
+    if (param) toolingSpans?.set(param, [at + keyAt, at + i]);
     // A keyword that takes a string was given anything else, or nothing
-    if (param?.type === 'string' && !quoted) {
+    if (param?.type === 'string' && !quoted && !toolingSpans) {
       throw new MacroArgumentError(
         param,
         matchAt(WORD_OR_PUNCT_RE, src, j) ?? '',
@@ -210,7 +222,11 @@ function takeFlag(src: string, word: string, alone: boolean): Span | null {
  * term with terms on both sides; `=` is an assignment at depth 0, not part
  * of `==` or `!=`.
  */
-function findSeparator(src: string, word: string): Span | null {
+function findSeparator(
+  src: string,
+  word: string,
+  tolerant = false,
+): Span | null {
   if (word === '=') {
     const indices = topLevelIndices(src, (ch) => ch === '=');
     for (let k = 0; k < indices.length; k++) {
@@ -224,9 +240,9 @@ function findSeparator(src: string, word: string): Span | null {
     return null;
   }
   const spans = terms(src);
-  for (let k = 1; k < spans.length - 1; k++) {
+  for (let k = 1; k < spans.length - (tolerant ? 0 : 1); k++) {
     if (slice(src, spans[k]!) === word) {
-      return [spans[k - 1]![1], spans[k + 1]![0]];
+      return [spans[k - 1]![1], spans[k + 1]?.[0] ?? src.length];
     }
   }
   return null;
@@ -252,7 +268,7 @@ function readGroup(
   params: readonly ParameterDef[],
   src: string | null,
   args: Record<string, unknown>,
-  { at: srcAt, spans }: Place,
+  { at: srcAt, spans, toolingSpans }: Place,
 ): void {
   let [text, at] = trimmed(src ?? '', srcAt);
   // A lone word is the passage of {include inline}, not its flag
@@ -260,7 +276,14 @@ function readGroup(
   for (const flag of params.filter((p) => p.type === 'flag')) {
     const rest = src === null ? null : takeFlag(text, flag.name, alone);
     args[flag.name] = rest !== null;
-    if (rest) [text, at] = trimmed(slice(text, rest), at + rest[0]);
+    if (rest) {
+      const flagSpan: Span =
+        rest[0] > 0
+          ? [0, text.indexOf(flag.name) + flag.name.length]
+          : [text.lastIndexOf(flag.name), text.length];
+      toolingSpans?.set(flag, [at + flagSpan[0], at + flagSpan[1]]);
+      [text, at] = trimmed(slice(text, rest), at + rest[0]);
+    }
   }
   const positional = params.filter((p) => p.type !== 'flag');
   if (positional.length === 0) return;
@@ -271,10 +294,21 @@ function readGroup(
   );
   const restIndex = lastText < 0 ? positional.length - 1 : lastText;
   /** Read `param` from the text from `start` to `end`. */
-  const read = (param: ParameterDef, [start, end]: Span) =>
-    start === end
-      ? unset(param)
-      : readValue(param, text.slice(start, end), { at: at + start, spans });
+  const read = (param: ParameterDef, [start, end]: Span, tolerant = true) => {
+    if (start === end) return unset(param);
+    try {
+      return readValue(param, text.slice(start, end), {
+        at: at + start,
+        spans,
+        toolingSpans,
+      });
+    } catch (error) {
+      if (toolingSpans && tolerant && error instanceof MacroArgumentError) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
 
   // One parameter reads the whole text: no need to split it.
   if (positional.length === 1) {
@@ -292,7 +326,7 @@ function readGroup(
   // `string` that isn't quoted) belongs to the rest, as in {meter $hp 100}
   const readTrailing = (param: ParameterDef, span: Span) => {
     try {
-      return read(param, span);
+      return read(param, span, false);
     } catch (error) {
       if (error instanceof MacroArgumentError) return undefined;
       throw error;
@@ -306,7 +340,10 @@ function readGroup(
     args[param.name] = value ?? unset(param);
     if (value !== undefined) to--;
     // A term it didn't take
-    else spans?.delete(param);
+    else {
+      spans?.delete(param);
+      toolingSpans?.delete(param);
+    }
   }
   const rest = positional[restIndex]!;
   args[rest.name] =
@@ -328,6 +365,7 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   rawArgs: string,
   parameters: P,
   spans?: ArgSpans,
+  toolingSpans?: ArgSpans,
 ): MacroArgs<P> {
   const args: Record<string, unknown> = {};
   // The text after the last separator read, null once one is missing
@@ -335,18 +373,31 @@ export function parseMacroArgs<const P extends readonly ParameterDef[]>(
   let groupStart = 0;
   parameters.forEach((separator, i) => {
     if (separator.type !== 'separator') return;
-    const at = rest === null ? null : findSeparator(rest, separator.name);
+    const at =
+      rest === null
+        ? null
+        : findSeparator(rest, separator.name, !!toolingSpans);
     args[separator.name] = at !== null;
+    if (at && toolingSpans) {
+      const start =
+        restAt + at[0] + rest!.slice(at[0], at[1]).indexOf(separator.name);
+      toolingSpans.set(separator, [start, start + separator.name.length]);
+    }
     const before = at ? rest!.slice(0, at[0]) : rest;
     readGroup(parameters.slice(groupStart, i), before, args, {
       at: restAt,
       spans,
+      toolingSpans,
     });
     rest = at ? rest!.slice(at[1]) : null;
     if (at) restAt += at[1];
     groupStart = i + 1;
   });
-  readGroup(parameters.slice(groupStart), rest, args, { at: restAt, spans });
+  readGroup(parameters.slice(groupStart), rest, args, {
+    at: restAt,
+    spans,
+    toolingSpans,
+  });
   return args as MacroArgs<P>;
 }
 
@@ -398,4 +449,47 @@ export function readBoundVariable(rawArgs: string): string {
   const src = rawArgs.trim();
   const first = terms(src)[0];
   return first ? slice(src, first) : '';
+}
+
+/** A consumed argument and its declared parameter, with UTF-16 source offsets. */
+export interface MacroArgumentSpan extends SourceSpan {
+  /** The original parameter object, including for nested keyword options. */
+  parameter: ParameterDef;
+  /** Index of the top-level parameter, for signature help. */
+  parameterIndex: number;
+  /** Indices through nested options, starting at parameterIndex. */
+  parameterPath: number[];
+}
+
+/**
+ * The runtime's argument grouping, tolerant of missing or unclosed strings.
+ * Includes quotes, flags, separators and option keywords; offsets are into
+ * rawArgs. Absent arguments have no span. Options also have their enclosing
+ * parameter span, so consumers can choose the most specific overlapping span.
+ * No expressions are evaluated. Parameter identities are preserved.
+ */
+export function macroArgumentSpans(
+  rawArgs: string,
+  parameters: readonly ParameterDef[],
+): MacroArgumentSpan[] {
+  const spans: ArgSpans = new Map();
+  parseMacroArgs(rawArgs, parameters, undefined, spans);
+  const result: MacroArgumentSpan[] = [];
+  const add = (params: readonly ParameterDef[], path: number[]) => {
+    params.forEach((parameter, index) => {
+      const parameterPath = [...path, index];
+      const span = spans.get(parameter);
+      if (span)
+        result.push({
+          parameter,
+          parameterIndex: parameterPath[0]!,
+          parameterPath,
+          start: span[0],
+          end: span[1],
+        });
+      if (parameter.parameters) add(parameter.parameters, parameterPath);
+    });
+  };
+  add(parameters, []);
+  return result.sort((a, b) => a.start - b.start || b.end - a.end);
 }

@@ -15,7 +15,7 @@ const env = {
 
 const STORY_DATA =
   ':: StoryData\n{"ifid":"D674C58C-DEFA-4F70-B7A2-27742230C0FC","format":"spindle"}\n\n';
-const TWEE = `${STORY_DATA}:: Start\n[[Next]]\n\n:: Next\nThe end\n`;
+const TWEE = `${STORY_DATA}:: StoryTitle\nPlay test\n\n:: Start\n[[Next]]\n\n:: Next\nThe end\n`;
 
 const missing = (pkg: string) => async () => {
   throw Object.assign(new Error(`Cannot find package '${pkg}'`), {
@@ -234,11 +234,24 @@ describe('resolveStoryHtmlWith', () => {
       return options;
     }
 
+    it('preserves twee-ts 2 rebased paths and structured excludes (#612)', async () => {
+      const dir = join(tmp, 'new-config');
+      await mkdir(dir, { recursive: true });
+      const config = {
+        sources: ['new-config/story'],
+        modules: ['new-config/app.js'],
+        headFile: 'new-config/head.html',
+        exclude: [{ base: dir, glob: 'story/skip.twee' }],
+      };
+      const options = await compileOptions(dir, config);
+      expect(options).toMatchObject(config);
+    });
+
     it('drops every format and output option of the project config', async () => {
       const dir = join(tmp, 'format-options');
       await mkdir(dir, { recursive: true });
       const options = await compileOptions(dir, {
-        sources: ['.'],
+        sources: [dir],
         output: 'out.html',
         outputMode: 'twee3',
         formatId: 'sugarcube-2',
@@ -260,7 +273,7 @@ describe('resolveStoryHtmlWith', () => {
       });
     });
 
-    it('makes absolute exclude patterns relative to the working directory', async () => {
+    it('preserves excludes already resolved by the compiler', async () => {
       const dir = join(tmp, 'absolute-exclude');
       await mkdir(dir, { recursive: true });
       const cwd = process.cwd();
@@ -276,11 +289,10 @@ describe('resolveStoryHtmlWith', () => {
           ],
         });
         expect(options.exclude).toEqual([
-          'absolute-exclude/skip.twee',
-          'other/*.twee',
-          // A glob in the pattern stays a glob.
-          'b[12]/x.twee',
-          'absolute-exclude/rel/*.twee',
+          join(dir, 'skip.twee'),
+          join(tmp, 'other', '*.twee'),
+          join(tmp, 'b[12]', 'x.twee'),
+          'rel/*.twee',
         ]);
       } finally {
         process.chdir(cwd);

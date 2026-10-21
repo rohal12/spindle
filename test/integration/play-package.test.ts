@@ -184,11 +184,12 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
         Start: '[[Loop]]',
         Loop: '{do}for(;;){}{/do}',
       }),
-      stepTimeoutMs: 1000,
+      // Include enough time for Node 24 to boot the real story worker.
+      stepTimeoutMs: 2000,
     });
     const link = (await s.observe()).actions[0]!;
     await expect(s.step(link.id)).rejects.toThrow(
-      'spindle: play session timed out after 1000 ms (the story may be stuck in a loop)',
+      'spindle: play session timed out after 2000 ms (the story may be stuck in a loop)',
     );
     expect(s.closed).toBe(true);
     await s.close();

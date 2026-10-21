@@ -55,6 +55,7 @@ export interface ParameterDef {
   /** What a `string` or `text` argument holds (see StringHolds). */
   holds?: StringHolds;
   /** The options of an `options` parameter. */
+  widget?: Pick<WidgetDef, 'params' | 'holds'>;
   parameters?: readonly ParameterDef[];
 }
 
@@ -777,6 +778,8 @@ export interface WidgetDef {
   name: string;
   /** The `@` parameters. */
   params: string[];
+  holds?: Record<string, StringHolds>;
+  badHolds?: { param: string; written: string }[];
 }
 
 /**
@@ -1186,3 +1189,52 @@ export declare function formatPassage(
   body: string,
   options?: PassageFormatOptions,
 ): Promise<string>;
+
+/** The runtime's selected closed widgets, preserving input object identities.
+ * Tagged passages register before StoryInit; later names replace earlier ones
+ * case-insensitively. Map definitions to documents before calling this function.
+ */
+export declare function effectiveWidgetDefinitions(
+  definitions: readonly WidgetDefinition[],
+): WidgetDefinition[];
+
+/** One executable sigil reference, with UTF-16 offsets into the code. */
+export interface VariableRef {
+  sigil: Sigil;
+  name: string;
+  start: number;
+  end: number;
+  shorthand: boolean;
+  read: boolean;
+  write: boolean;
+}
+
+export interface ParsedCode {
+  refs: VariableRef[];
+  strings: string[];
+}
+
+/** Parse executable code using the runtime grammar. Throws for malformed code
+ * (including sigil declarations); lexJs remains available for tolerant scanning.
+ * Member assignments read their root binding; only direct targets write it.
+ */
+export declare function parseCode(src: string, goal?: JsGoal): ParsedCode;
+
+/** A consumed argument and its original parameter (including option keywords). */
+export interface MacroArgumentSpan {
+  parameter: ParameterDef;
+  parameterIndex: number;
+  parameterPath: number[];
+  start: number;
+  end: number;
+}
+
+/** Runtime argument grouping, tolerant of missing/unclosed strings. UTF-16
+ * offsets include quotes, flags, separators and option keywords. Absent
+ * arguments have no span. Options also have an enclosing parameter span.
+ * No expressions are evaluated; parameter object identities are preserved.
+ */
+export declare function macroArgumentSpans(
+  rawArgs: string,
+  parameters: readonly ParameterDef[],
+): MacroArgumentSpan[];

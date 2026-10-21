@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - run: bun install --frozen-lockfile
 
@@ -31,9 +31,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
 
       - run: bun install --frozen-lockfile
 
@@ -54,15 +51,10 @@ jobs:
           fi
 
       - name: Run tests with coverage
-        if: matrix.node-version == 22
         run: bun run test:coverage
 
-      - name: Run tests
-        if: matrix.node-version != 22
-        run: bun run test
-
       - name: Coverage report
-        if: matrix.node-version == 22 && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         uses: davelosert/vitest-coverage-report-action@v2
         with:
           vite-config-path: vitest.config.ts
@@ -76,7 +68,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - run: bun install --frozen-lockfile
 

@@ -285,3 +285,21 @@ for (const token of tokenizeMarkup('{.hint link "Go, now" "Hall"}')) {
   if (token.type === 'macro') console.log(token.name, splitArgs(token.rawArgs));
 }
 ```
+
+## Effective widget definitions
+
+`widgetDefinitions(passages, macros?)` returns every declaration, including incomplete ones. `effectiveWidgetDefinitions(definitions)` selects the closed definitions the runtime uses: tagged widget passages register first, then `StoryInit`, with later names replacing earlier ones case-insensitively. An unclosed definition never replaces a closed one.
+
+The returned definitions are the same objects as in the input. For documents with duplicate passage names, call `widgetDefinitions` for each passage separately and map each returned definition object to its source document before combining the lists. Pass that combined list to `effectiveWidgetDefinitions`; use the identity map to recover each selected definition’s document and interpret its UTF-16 offsets there. `WidgetDef.holds` and `ToolingMacro.widget` carry the widget argument contracts.
+
+## Executable read and write roles
+
+`parseCode(source, goal = 'expression')` exposes the runtime’s JavaScript analysis. Use `'statements'` for a `{do}` body. It returns `{ refs, strings }`; each reference has `sigil`, `name`, `start`, `end`, `shorthand`, `read` and `write`. Offsets are UTF-16 offsets into the code string.
+
+A direct assignment, deletion or destructuring target writes its binding. Compound assignments and updates read and write. A member assignment reads its root binding, and computed keys and default initializers are reads. For example, `parseCode('[_x = _x + 1] = []')` reports the first `_x` as write-only and the second as read-only. It throws for malformed code and invalid sigil declarations, just as the runtime does; use `lexJs` for tolerant lexical scanning when parsing fails.
+
+## Macro argument spans
+
+`macroArgumentSpans(rawArgs, parameters)` groups arguments using the runtime’s parameter rules without evaluating expressions. Each result contains the original `parameter` object, its top-level `parameterIndex`, its `parameterPath` through nested options, and UTF-16 `start`/`end` offsets into `rawArgs`. Quotes, flag words, separators and option keywords are included. Options have both an enclosing span and individual keyword spans; choose the most specific overlapping span for nested option help.
+
+For parameters `label: string` and `value: expression`, `"label" 1 + 2` maps `1 + 2` to `value`, even though it has several whitespace-separated terms. Names and rest text similarly map to their single declared parameter. Results survive missing or unclosed strings so an editor can offer help while typing. Missing arguments have no span; on whitespace after the last argument, an editor may keep that argument active or select the next parameter according to its UI policy.

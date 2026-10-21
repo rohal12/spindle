@@ -116,7 +116,16 @@ Reactively compute a value. Re-evaluates when dependencies change and only updat
 {computed $total = $items.reduce((sum, item) => sum + item.value, 0)}
 ```
 
-Works with both story variables (`$`) and temporary variables (`_`).
+Works with story variables (`$`), temporary variables (`_`) and block-local variables (`@`). Use a local target for a separate computed value in each loop iteration:
+
+```
+{for @item of $items}
+  {computed @total = @item.price * @item.quantity}
+  {@item.name}: {@total}
+{/for}
+```
+
+Each row owns its `@total`. A `_total` target would be one passage-wide temporary, overwritten by every iteration.
 
 ## Output
 
@@ -622,3 +631,23 @@ Displays the story's title.
 ```
 {story-title}
 ```
+
+### `{save-manager}`
+
+Renders the built-in save/load controls in place, including save slots, playthrough groups, and import/export controls. It takes no arguments. Use it in a custom `SaveLoad` passage or wherever the save manager should appear:
+
+```
+{save-manager}
+```
+
+See [Saves](saves.md) and [dialog overrides](special-passages.md#saveload-and-settings).
+
+### `{settings-controls}`
+
+Renders controls for the settings registered through `Story.settings` (toggles, lists and ranges). It takes no arguments. Controls read the current values and follow changes made through other controls or `Story.settings.set()`.
+
+```
+{settings-controls}
+```
+
+Use it in a custom `Settings` passage or inline in a passage. See [Settings](settings.md).

@@ -91,7 +91,18 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 // same type in the source and in types/tooling.d.ts, or `false` here is no
 // `true`.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _toolingTypes: [
+type AssertTrue<T extends readonly true[]> = T;
+type ToolingChecks = [
+  Same<typeof SourceTooling.parseCode, typeof PublishedTooling.parseCode>,
+  Same<
+    typeof SourceTooling.macroArgumentSpans,
+    typeof PublishedTooling.macroArgumentSpans
+  >,
+  Same<
+    typeof SourceTooling.effectiveWidgetDefinitions,
+    typeof PublishedTooling.effectiveWidgetDefinitions
+  >,
+  Same<SourceTooling.WidgetDefinition, PublishedTooling.WidgetDefinition>,
   Same<SourceTooling.MarkupError, PublishedTooling.MarkupError>,
   Same<SourceTooling.Token, PublishedTooling.Token>,
   Same<SourceTooling.Piece, PublishedTooling.Piece>,
@@ -139,28 +150,8 @@ const _toolingTypes: [
     typeof SourceTooling.formatPassage,
     typeof PublishedTooling.formatPassage
   >,
-] = [
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
-  true,
 ];
+type _toolingTypes = AssertTrue<ToolingChecks>;
 
 // A typical custom macro written against the published types must type-check,
 // and misuse of the hooks must not (no `any` leaking through).

@@ -362,17 +362,17 @@ The promise rejects, and the slot is left unchanged, if `data` is not a valid sa
 
 Register a custom macro. See [Custom Macros](custom-macros.md) for full details.
 
-| Property      | Type        | Description                                                                    |
-| ------------- | ----------- | ------------------------------------------------------------------------------ |
-| `name`        | `string`    | Macro name (case-insensitive)                                                  |
-| `block`       | `boolean?`  | Declare as block macro (`{macro}...{/macro}`). Auto-set when `subMacros` given |
-| `interpolate` | `boolean?`  | Resolve variable interpolations in className/id                                |
-| `merged`      | `boolean?`  | Provide `ctx.merged` variable 3-tuple + `ctx.evaluate()`                       |
-| `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()`            |
-| `subMacros`   | `string[]?` | Register sub-macro names for branching                                         |
-| `description` | `string?`   | Optional description for tooling (LSP hover, doc generation)                   |
-| `parameters`  | `array?`    | Optional parameter definitions for tooling (see below)                         |
-| `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function                          |
+| Property      | Type        | Description                                                                                     |
+| ------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `name`        | `string`    | Macro name (case-insensitive)                                                                   |
+| `block`       | `boolean?`  | Declare as block macro (`{macro}...{/macro}`). Auto-set when `subMacros` given                  |
+| `interpolate` | `boolean?`  | Resolve variable interpolations in className/id                                                 |
+| `merged`      | `boolean?`  | Provide `ctx.merged` 4-tuple: variables, temporaries, locals, transients; plus `ctx.evaluate()` |
+| `storeVar`    | `boolean?`  | Bind to a `$variable`: `ctx.varName`, `ctx.value`, `ctx.setValue()`                             |
+| `subMacros`   | `string[]?` | Register sub-macro names for branching                                                          |
+| `description` | `string?`   | Optional description for tooling (LSP hover, doc generation)                                    |
+| `parameters`  | `array?`    | Optional parameter definitions for tooling (see below)                                          |
+| `render`      | `function`  | `(props, ctx) => VNode \| null` — the render function                                           |
 
 ```
 {do}
@@ -434,6 +434,23 @@ Register a class so its instances can be cloned, saved, and restored with their 
 ```
 
 See [Using Classes](variables.md#using-classes) for full details.
+
+### `Story.deferRender()` and `Story.ready()`
+
+`Story.deferRender()` pauses the main passage display, showing the optional [`StoryLoading`](special-passages.md#storyloading) passage instead. Call it from story JavaScript or `StoryInit` before starting asynchronous setup. `Story.ready()` resumes the current passage display once that work finishes. Both return `void`.
+
+```
+:: StoryInit
+{do}
+  Story.deferRender();
+  fetch("data.json")
+    .then(response => response.json())
+    .then(data => Story.set("data", data))
+    .finally(() => Story.ready());
+{/do}
+```
+
+Declare `$data` in `StoryVariables`, for example with a `null` default. Always call `ready()`, including on failure, to release the loading display. Repeated `deferRender()` calls while already waiting share one pending wait; a single `ready()` releases it. Calling `ready()` without a pending wait does nothing.
 
 ## Passage Lookup
 

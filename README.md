@@ -18,7 +18,7 @@ A modern [Twine 2](https://twinery.org/) story format built with [Preact](https:
 npm install @rohal12/spindle
 ```
 
-The package (the compiler entry point, `@rohal12/spindle/tooling`, `@rohal12/spindle/headless` and `@rohal12/spindle/play`) needs Node.js 22.17 or later. Compiled stories run in current browsers.
+The package (the compiler entry point, `@rohal12/spindle/tooling`, `@rohal12/spindle/headless` and `@rohal12/spindle/play`) needs Node.js 24 or later. Compiled stories run in current browsers.
 
 ## Features
 
@@ -43,6 +43,8 @@ const result = await compile({
   format: spindle,
 });
 ```
+
+Spindle’s optional compiler/play integration requires twee-ts 2.x.
 
 Or install both and let twee-ts auto-discover the format via the `twine-story-format` keyword.
 

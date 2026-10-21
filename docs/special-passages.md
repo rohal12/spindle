@@ -44,6 +44,8 @@ $character = { strength: 5, dexterity: 5, intelligence: 5 }
 
 Spindle validates every `$variable` reference in your story at startup. Undeclared variables and invalid field accesses stop the story with a list of validation errors. A `$` inside a string literal, a comment, or plain prose is not a variable reference and is not validated.
 
+`null` is a supported default meaning “no value yet”: `$target = null` declares a variable that may later hold a value of any shape. Other defaults establish the variable’s type.
+
 See [Variables](variables.md) for details.
 
 ## `StoryTransients`
@@ -63,7 +65,7 @@ Variable names must be unique across `StoryVariables` and `StoryTransients`. See
 
 ### Checking declarations in tests
 
-A bad declaration (for example `$target = null`, which has no supported type) only fails when the story boots in the browser. To catch it in a unit test or editor tooling, use the parser Spindle runs at boot. It is exported from the Node.js tooling entry point:
+A bad declaration (for example `$target = undefined`, which has no supported type) only fails when the story boots in the browser. To catch it in a unit test or editor tooling, use the parser Spindle runs at boot. It is exported from the Node.js tooling entry point:
 
 ```ts
 import { parseStoryVariables } from '@rohal12/spindle/tooling';
@@ -146,3 +148,38 @@ return variables.name + " — " + passage;
 If this passage is not defined, save titles default to `passage name - HH:MM`.
 
 You can also set a title generator from JavaScript via `Story.saves.setTitleGenerator()` — see [Story API](story-api.md).
+
+## Passage lifecycle passages
+
+These optional passages run whenever a passage is displayed, including revisits:
+
+| Passage         | When and where it renders                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `PassageReady`  | Hidden, before the current passage renders. Use it for per-passage setup. It is skipped while rendering is deferred. |
+| `PassageHeader` | Visible, immediately before the current passage’s content.                                                           |
+| `PassageFooter` | Visible, immediately after the current passage’s content.                                                            |
+| `PassageDone`   | Hidden, after the current passage’s DOM has committed. Use it for code that needs the rendered passage.              |
+
+Header and footer content uses ordinary Spindle markup. `PassageReady` and `PassageDone` can contain `{set}` or `{do}` for their side effects; their text is hidden. The lifecycle passages themselves do not receive these header/footer/done wrappers.
+
+## `StoryLoading`
+
+Shown in the passage area while [`Story.deferRender()`](story-api.md#storydeferrender-and-storyready) holds rendering. If it is absent, the passage area is empty until `Story.ready()` resumes rendering. Define it with ordinary markup, such as `Loading…`.
+
+## `SaveLoad` and `Settings`
+
+`SaveLoad` replaces the save/load dialog content opened by `{saves}`. `Settings` replaces the settings dialog content opened by `{settings}`; that button still requires at least one setting definition. Each override renders when its dialog opens.
+
+Use the built-in controls inside a custom layout:
+
+```
+:: SaveLoad
+Your adventures
+{save-manager}
+
+:: Settings
+Make yourself comfortable
+{settings-controls}
+```
+
+Without these passages the dialogs use `{save-manager}` and `{settings-controls}` respectively. See [Saves](saves.md) and [Settings](settings.md).
