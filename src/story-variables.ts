@@ -177,7 +177,7 @@ function initializerSyntaxError(
 ): { message: string; pos: number } | undefined {
   const prefix = 'return (';
   try {
-    parse(prefix + expr + ')', {
+    parse(prefix + expr + '\n)', {
       ecmaVersion: 'latest',
       allowReturnOutsideFunction: true,
     });
@@ -335,7 +335,7 @@ export function parseStoryVariables(
     const expr = content.slice(valueStart, valueEnd);
     let value: unknown;
     try {
-      value = new Function('return (' + expr + ')')();
+      value = new Function('return (' + expr + '\n)')();
     } catch (err) {
       throw new Error(
         `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${errorMessage(err)}`,
