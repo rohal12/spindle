@@ -333,6 +333,39 @@ describe('runtime parameter spans (#589)', () => {
     ]);
   });
 
+  it.each(['goto "unfinished', "goto 'once", 'goto"once'])(
+    'keeps an unfinished quoted option value within its parameter: %s',
+    (raw) => {
+      const params = [
+        {
+          name: 'options',
+          type: 'options',
+          parameters: [
+            { name: 'goto', type: 'string' },
+            { name: 'once', type: 'flag' },
+          ],
+        },
+      ] as const;
+      expect(argumentSummary(raw, params)).toEqual([
+        ['options', 0, [0], raw],
+        ['goto', 0, [0, 0], raw],
+      ]);
+    },
+  );
+
+  it('does not interpret a stray unfinished string as option keywords', () => {
+    const params = [
+      {
+        name: 'options',
+        type: 'options',
+        parameters: [{ name: 'once', type: 'flag' }],
+      },
+    ] as const;
+    expect(argumentSummary('"once', params)).toEqual([
+      ['options', 0, [0], '"once'],
+    ]);
+  });
+
   it('keeps an unquoted trailing term in the expression', () => {
     const params = [
       { name: 'value', type: 'expression' },

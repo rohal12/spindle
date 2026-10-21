@@ -116,6 +116,17 @@ describe('readQuoted', () => {
     expect(readQuoted('abc', 0)).toBeNull();
     expect(readQuoted('`abc`', 0)).toBeNull();
   });
+
+  it('keeps the final character and escaped quotes in tolerant strings', () => {
+    expect(readQuoted('"abc', 0, true)).toEqual({ value: 'abc', end: 4 });
+    const raw = String.raw`"abc\"`;
+    expect(readQuoted(raw, 0, true)).toEqual({
+      value: 'abc"',
+      end: raw.length,
+    });
+    expect(readQuoted('"', 0, true)).toEqual({ value: '', end: 1 });
+    expect(readQuoted('abc', 0, true)).toBeNull();
+  });
 });
 
 describe('readWholeQuoted', () => {

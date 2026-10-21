@@ -55,7 +55,6 @@ export interface ParameterDef {
   /** What a `string` or `text` argument holds (see StringHolds). */
   holds?: StringHolds;
   /** The options of an `options` parameter. */
-  widget?: Pick<WidgetDef, 'params' | 'holds'>;
   parameters?: readonly ParameterDef[];
 }
 
@@ -121,7 +120,7 @@ export interface VariableSchema extends FieldSchema {
  * Parse the content of a `StoryVariables` (`$name = value`) or
  * `StoryTransients` (`%name = value`, pass `sigil: '%'`) passage into a
  * schema map, exactly as Spindle does at boot.
- * Throws on invalid declarations or unsupported value types (e.g. `null`).
+ * Throws on invalid declarations or unsupported value types (e.g. `undefined`).
  */
 export declare function parseStoryVariables(
   content: string,
@@ -535,10 +534,12 @@ export declare function splitTopLevel(
  * Read the `"…"` or `'…'` string whose opening quote is at `start`: its
  * unescaped value (`\"`, `\'` and `\\` only) and the index just past it, or
  * `null` if there is none or it is unterminated.
+ * With `tolerant`, an unterminated string instead extends to its scanned end.
  */
 export declare function readQuoted(
   src: string,
   start: number,
+  tolerant?: boolean,
 ): { value: string; end: number } | null;
 
 /** Undo `\"`, `\'` and `\\` in the body of a quoted macro argument. */
@@ -654,6 +655,8 @@ export interface ToolingMacro {
   name: string;
   block: boolean;
   subMacros: string[];
+  /** A widget's parameters and their argument contracts. */
+  widget?: Pick<WidgetDef, 'params' | 'holds'>;
   /**
    * Its declared parameters: their types tell which arguments are code, and
    * what a `string` or `text` argument holds (see `ParameterDef.holds`).

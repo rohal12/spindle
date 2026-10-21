@@ -146,7 +146,7 @@ function readOptions(
     const key = matchAt(WORD_RE, src, i);
     if (!key) {
       // Skip whitespace and stray characters, or a stray quoted string.
-      i = readQuoted(src, i)?.end ?? i + 1;
+      i = readQuoted(src, i, !!toolingSpans)?.end ?? i + 1;
       continue;
     }
     const keyAt = i;
@@ -158,7 +158,7 @@ function readOptions(
     let val: string | undefined;
     let j = i;
     while (j < src.length && isWhitespace(src[j]!)) j++;
-    const quoted = readQuoted(src, j);
+    const quoted = readQuoted(src, j, !!toolingSpans);
     const digits = quoted || j === i ? null : matchAt(NUMBER_RE, src, j);
     if (quoted) {
       val = quoted.value;

@@ -86,6 +86,9 @@ const _publishedToSource: Source = {} as Published;
 /** `true` if `A` and `B` are assignable to each other, else `false`. */
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
+/** Also catch missing optional fields, which mutual assignability allows. */
+type SameShape<A, B> = Same<A, B> extends true ? Same<keyof A, keyof B> : false;
+
 // The rest of the tooling entry point: what it parses and returns (tokens,
 // pieces, pairing, declarations) and the stateless checks. Each must be the
 // same type in the source and in types/tooling.d.ts, or `false` here is no
@@ -102,7 +105,7 @@ type ToolingChecks = [
     typeof SourceTooling.effectiveWidgetDefinitions,
     typeof PublishedTooling.effectiveWidgetDefinitions
   >,
-  Same<SourceTooling.WidgetDefinition, PublishedTooling.WidgetDefinition>,
+  SameShape<SourceTooling.WidgetDefinition, PublishedTooling.WidgetDefinition>,
   Same<SourceTooling.MarkupError, PublishedTooling.MarkupError>,
   Same<SourceTooling.Token, PublishedTooling.Token>,
   Same<SourceTooling.Piece, PublishedTooling.Piece>,
@@ -110,7 +113,7 @@ type ToolingChecks = [
   Same<SourceTooling.PairingError, PublishedTooling.PairingError>,
   Same<SourceTooling.Declaration, PublishedTooling.Declaration>,
   Same<SourceTooling.DeclarationError, PublishedTooling.DeclarationError>,
-  Same<SourceTooling.ToolingMacro, PublishedTooling.ToolingMacro>,
+  SameShape<SourceTooling.ToolingMacro, PublishedTooling.ToolingMacro>,
   Same<typeof SourceTooling.pairMarkup, typeof PublishedTooling.pairMarkup>,
   Same<
     typeof SourceTooling.passagePieces,

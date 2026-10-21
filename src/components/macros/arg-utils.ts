@@ -48,16 +48,21 @@ export function unescapeQuoted(body: string): string {
  * Read the `"…"` or `'…'` string whose opening quote is at `start`.
  * Returns its unescaped value and the index just past the closing quote, or
  * `null` if there is no such quote at `start` or the string is unterminated.
+ * With `tolerant`, an unterminated string instead extends to its scanned end.
  */
 export function readQuoted(
   src: string,
   start: number,
+  tolerant = false,
 ): { value: string; end: number } | null {
   const quote = src[start];
   if (quote !== '"' && quote !== "'") return null;
   const { end, closed } = scanStringLiteral(src, start);
-  if (!closed) return null;
-  return { value: unescapeQuoted(src.slice(start + 1, end - 1)), end };
+  if (!closed && !tolerant) return null;
+  return {
+    value: unescapeQuoted(src.slice(start + 1, closed ? end - 1 : end)),
+    end,
+  };
 }
 
 /**

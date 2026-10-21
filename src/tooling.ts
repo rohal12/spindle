@@ -179,13 +179,13 @@ export interface ToolingMacro {
    * Its declared parameters: their types tell which arguments are code, and
    * what a `string` or `text` argument holds (see ParameterDef.holds).
    */
+  parameters?: readonly ParameterDef[];
   /**
    * For a widget: its `@` parameters and what the ones that declare it hold
    * (`@target:passage`, see WidgetDef), so that a call is checked like the
    * call of a macro whose `string` parameter has that `holds`.
    */
   widget?: Pick<WidgetDef, 'params' | 'holds'>;
-  parameters?: readonly ParameterDef[];
   /** Whether it resolves markup: its strings hold markup by default. */
   interpolate?: boolean;
   /** Whether its first argument names the story variable it binds. */
