@@ -797,7 +797,10 @@ function collectTokenRefs(
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
-      if (storeVarMacros.has(token.name.toLowerCase())) {
+      if (
+        storeVarMacros.has(token.name.toLowerCase()) &&
+        !parametersOf.widget?.(token.name)
+      ) {
         const lead = token.rawArgs.length - token.rawArgs.trimStart().length;
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
         const quoted = QUOTED_VAR_ARG_RE.exec(first);

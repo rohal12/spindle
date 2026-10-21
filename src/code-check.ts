@@ -226,9 +226,10 @@ export function widgetParameters(
 export interface ParametersOf {
   (macro: string): readonly ParameterDef[] | undefined;
   /**
-   * The parameters of the widget `name` if it declares what some argument
-   * holds. Its arguments are read as a widget call reads them (separated by
-   * commas or spaces, see splitArgs), not by parseMacroArgs.
+   * The parameters of the widget `name`, or an empty array if it declares
+   * no holds. Its presence identifies a widget even without holds, so a
+   * shadowed macro's metadata cannot apply. Arguments are separated by
+   * commas or spaces (see splitArgs), not by parseMacroArgs.
    */
   widget?(name: string): readonly WidgetParameter[] | undefined;
 }
@@ -278,10 +279,11 @@ export function parameterLookup(
   for (const { name, parameters: params, interpolate, widget } of macros) {
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
-    const declared = widget && widgetParameters(widget.params, widget.holds);
-    if (declared) widgets.set(name, declared);
+    if (widget)
+      widgets.set(name, widgetParameters(widget.params, widget.holds) ?? []);
   }
   const lookup: ParametersOf = (name) => {
+    if (widgets.has(name)) return undefined;
     let params = parameters.get(name);
     if (!params) {
       const sub = subMacroParameters(name);
