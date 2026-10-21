@@ -821,7 +821,10 @@ function collectTokenRefs(
         }
       }
 
-      if (token.name.toLowerCase() === 'do') {
+      if (
+        token.name.toLowerCase() === 'do' &&
+        !parametersOf.widget?.(token.name)
+      ) {
         // A {do} body is JavaScript: scan its source text as code, however
         // the markup tokens split it up.
         let close = t + 1;

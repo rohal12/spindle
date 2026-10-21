@@ -398,7 +398,8 @@ export function* codeAndText(
       }
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
-      if (name === 'do') {
+      const widget = parametersOf.widget?.(name);
+      if (name === 'do' && !widget) {
         const close = closeOfTextBody(t, name);
         if (close < 0) continue;
         const body = src.slice(token.end, tokens[close]!.start);
@@ -413,7 +414,7 @@ export function* codeAndText(
         continue;
       }
       const args = token.rawArgs;
-      if (PASSAGE_BODIES.has(name)) {
+      if (PASSAGE_BODIES.has(name) && !widget) {
         // The body names the passage when it is only text
         const close = closeOfTextBody(t, name);
         if (close > t + 1) {
@@ -432,7 +433,7 @@ export function* codeAndText(
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
       const argsAt = token.argsStart;
-      if (CONDITION_MACROS.has(name)) {
+      if (CONDITION_MACROS.has(name) && !widget) {
         yield {
           kind: 'code',
           code: args,
@@ -444,7 +445,6 @@ export function* codeAndText(
       }
       const params = parametersOf(name);
       if (params) yield* argPieces(args, argsAt, params, token.name, label);
-      const widget = parametersOf.widget?.(name);
       if (widget) yield* widgetPieces(args, argsAt, widget, token.name, label);
     }
   }

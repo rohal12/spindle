@@ -94,4 +94,25 @@ describe('widgets shadow macro validation metadata (#618)', () => {
       variableReferences('{textbox "$missing"}', [...macros, widget]),
     ).toEqual([]);
   });
+
+  it.each(['if', 'do', 'dialog'])(
+    'does not apply special %s macro checks to a block widget',
+    (name) => {
+      expect(
+        validateStoryMarkup(
+          [
+            {
+              name: 'StoryInit',
+              content: `{widget "${name}" @first @second}{@first}{@children}{/widget}`,
+            },
+            {
+              name: 'Start',
+              content: `{${name} "Hello" "world"}plain prose{/${name}}`,
+            },
+          ],
+          macros,
+        ),
+      ).toEqual([]);
+    },
+  );
 });
