@@ -164,7 +164,7 @@ Header and footer content uses ordinary Spindle markup. `PassageReady` and `Pass
 
 ## `StoryLoading`
 
-Shown in the passage area while [`Story.deferRender()`](story-api.md#storydeferrender-and-storyready) holds rendering. If it is absent, the passage area is empty until `Story.ready()` resumes rendering. Define it with ordinary markup, such as `Loading…`.
+Shown in the passage area while [`Story.deferRender()`](story-api.md#story-deferrender-and-story-ready) holds rendering. If it is absent, the passage area is empty until `Story.ready()` resumes rendering. Define it with ordinary markup, such as `Loading…`.
 
 ## `SaveLoad` and `Settings`
 

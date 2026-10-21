@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { decodeSavePayload } from '../../src/saves/save-manager';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -130,6 +130,12 @@ describe('SaveManagerContent', () => {
     await trackStorage();
     const ptId = await startNewPlaythrough(IFID);
     useStoryStore.setState({ playthroughId: ptId });
+  });
+
+  afterEach(() => {
+    act(() => render(null, container));
+    container.remove();
+    vi.restoreAllMocks();
   });
 
   it('renders with mode toggle', async () => {
