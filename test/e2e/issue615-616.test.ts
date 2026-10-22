@@ -8,6 +8,8 @@ import { compileToFile } from '@rohal12/twee-ts';
 
 let directory: string;
 let server: ReturnType<typeof createServer>;
+let cssServer: ReturnType<typeof createServer>;
+let cssUrl: string;
 let browser: Browser;
 let page: Page;
 let baseUrl: string;
@@ -82,6 +84,12 @@ Next
   });
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  cssServer = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/css' });
+    response.end('.imported-art { stroke: green }');
+  });
+  await new Promise<void>((done) => cssServer.listen(0, '127.0.0.1', done));
+  cssUrl = `http://127.0.0.1:${(cssServer.address() as { port: number }).port}`;
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROMIUM || undefined,
   });
@@ -91,6 +99,9 @@ afterAll(async () => {
   await browser?.close();
   await new Promise<void>((done) =>
     server ? server.close(() => done()) : done(),
+  );
+  await new Promise<void>((done) =>
+    cssServer ? cssServer.close(() => done()) : done(),
   );
   if (directory) rmSync(directory, { recursive: true, force: true });
 });
@@ -122,6 +133,39 @@ async function navigate(type: string) {
     }
   });
 }
+
+it('navigates with an opaque imported stylesheet in the outgoing passage', async () => {
+  await page.locator('.passage').evaluate(async (element, url) => {
+    const style = document.createElement('style');
+    const loaded = new Promise<void>((resolve, reject) => {
+      style.onload = () => resolve();
+      style.onerror = () => reject(new Error('Stylesheet failed to load'));
+    });
+    style.textContent = `@import url("${url}/art.css");`;
+    element.appendChild(style);
+    element.insertAdjacentHTML(
+      'beforeend',
+      '<svg class="imported-svg" width="40" height="40"><rect class="imported-art" width="40" height="40"/></svg>',
+    );
+    await loaded;
+    const imported = (style.sheet!.cssRules[0] as CSSImportRule).styleSheet!;
+    try {
+      void imported.cssRules;
+      throw new Error('Expected an opaque cross-origin stylesheet');
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'SecurityError')
+        throw error;
+    }
+  }, cssUrl);
+  await navigate('fade-through');
+  expect(await page.locator('.passage-snapshot').count()).toBe(1);
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(
+        document.querySelector('.passage-snapshot .imported-art')!,
+      ).stroke === 'rgb(0, 128, 0)',
+  );
+});
 
 async function visualStyles(root: string) {
   return page.locator(root).evaluate((root) => {
@@ -214,6 +258,146 @@ it.each(['fade-through', 'crossfade'])(
       }),
     ).toBe('passage-fade-out');
     expect(await page.locator('.passage-snapshot #hero').count()).toBe(0);
+  },
+);
+
+it.each(['fade-through', 'crossfade'])(
+  'preserves styles selected by important passage rules in %s snapshots (#615)',
+  async (type) => {
+    await page.addStyleTag({
+      content:
+        'h1 { color: blue !important } .passage h1 { color: red !important }',
+    });
+    expect(
+      await page.locator('.passage h1').evaluate((element) => {
+        return getComputedStyle(element).color;
+      }),
+    ).toBe('rgb(255, 0, 0)');
+    await navigate(type);
+    expect(
+      await page.locator('.passage-snapshot h1').evaluate((element) => {
+        return getComputedStyle(element).color;
+      }),
+    ).toBe('rgb(255, 0, 0)');
+  },
+);
+
+it.each(['fade-through', 'crossfade'])(
+  'preserves inherited colors of SVG use instances in %s snapshots (#616)',
+  async (type) => {
+    await page.addStyleTag({
+      content:
+        '#fixed-tile { fill: gold } .passage .ancestor-only { fill: red }' +
+        '[id="attribute-tile"] { fill: blue } x-card .custom-in-svg { fill: red }' +
+        '@media all { .passage { .css-nested { fill: lime } } }' +
+        '@layer { .layered { fill:red } .layered-important { fill:red!important } }' +
+        '@layer named { .layered { fill:blue } .layered-important { fill:blue!important } }' +
+        '#absent, .specific-tile { fill: gold } .specific-tile.extra { fill: green }',
+    });
+    await page
+      .addStyleTag({
+        content: 'svg { fill: purple !important }',
+      })
+      .then((style) =>
+        style.evaluate((element) => {
+          (element as HTMLStyleElement).sheet!.disabled = true;
+        }),
+      );
+    await page.locator('.passage').evaluate((element) => {
+      element.insertAdjacentHTML(
+        'beforeend',
+        '<svg class="inherited-svg" width="400" height="40">' +
+          '<defs><rect id="tile" width="40" height="40"/>' +
+          '<rect id="color-tile" width="40" height="40" fill="currentColor"/>' +
+          '<rect id="fixed-tile" width="40" height="40"/>' +
+          '<rect id="specific-tile" class="specific-tile extra" width="40" height="40"/>' +
+          '<rect id="ancestor-tile" class="ancestor-only" width="40" height="40"/></defs>' +
+          '<use href="#tile" fill="red"/>' +
+          '<use href="#tile" x="40" fill="blue"/>' +
+          '<use href="#color-tile" x="80" color="red"/>' +
+          '<use href="#color-tile" x="120" color="blue"/>' +
+          '<use href="#fixed-tile" x="160" fill="blue"/>' +
+          '<use href="#ancestor-tile" x="200" fill="blue"/>' +
+          '<rect class="css-nested" x="240" width="40" height="40"/>' +
+          '<use href="#specific-tile" x="280"/>' +
+          '<rect class="layered" x="320" width="40" height="40"/>' +
+          '<rect class="layered-important" x="360" width="40" height="40"/></svg>',
+      );
+      const host = document.createElement('span');
+      host.className = 'shadow-svg-host';
+      host.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>#tile {fill:currentColor}</style>' +
+        '<svg width="40" height="40"><defs><rect id="tile" width="40" height="40"/></defs>' +
+        '<use href="#tile" color="red"/></svg>';
+      const adopted = new CSSStyleSheet();
+      adopted.replaceSync('#tile { stroke: lime; stroke-width: 2px }');
+      host.shadowRoot!.adoptedStyleSheets = [adopted];
+      element.appendChild(host);
+      element.insertAdjacentHTML(
+        'beforeend',
+        '<x-card class="custom-svg-host"><svg width="80" height="40">' +
+          '<rect id="attribute-tile" width="40" height="40"/>' +
+          '<rect class="custom-in-svg" x="40" width="40" height="40"/></svg></x-card>',
+      );
+      element.insertAdjacentHTML(
+        'beforeend',
+        '<style>#local-tile {fill:red}</style><svg class="local-svg" width="40" height="40">' +
+          '<rect id="local-tile" width="40" height="40"/></svg>',
+      );
+    });
+    const before = await page.locator('.passage .inherited-svg').screenshot();
+    const shadowBefore = await page
+      .locator('.passage .shadow-svg-host svg')
+      .screenshot();
+    const customBefore = await page
+      .locator('.passage .custom-svg-host svg')
+      .screenshot();
+    const localBefore = await page.locator('.passage .local-svg').screenshot();
+    const stylesheets = () =>
+      page.evaluate(() =>
+        [...document.styleSheets]
+          .filter(
+            (sheet) =>
+              !sheet.ownerNode ||
+              !document.querySelector('.passage')?.contains(sheet.ownerNode),
+          )
+          .map((sheet) =>
+            [...sheet.cssRules].map((rule) => rule.cssText).join('\n'),
+          ),
+      );
+    const stylesBefore = await stylesheets();
+    await navigate(type);
+    const after = await page
+      .locator('.passage-snapshot .inherited-svg')
+      .screenshot();
+    expect(await pixelDifference(before, after)).toBeLessThanOrEqual(1);
+    const shadowAfter = await page
+      .locator('.passage-snapshot .shadow-svg-host svg')
+      .screenshot();
+    expect(
+      await pixelDifference(shadowBefore, shadowAfter),
+    ).toBeLessThanOrEqual(1);
+    const customAfter = await page
+      .locator('.passage-snapshot .custom-svg-host svg')
+      .screenshot();
+    expect(
+      await pixelDifference(customBefore, customAfter),
+    ).toBeLessThanOrEqual(1);
+    const localAfter = await page
+      .locator('.passage-snapshot .local-svg')
+      .screenshot();
+    expect(await pixelDifference(localBefore, localAfter)).toBeLessThanOrEqual(
+      1,
+    );
+    await page.evaluate(() => {
+      const Story = (window as any).Story;
+      Story.setTransition({ type: 'none' });
+      Story.goto('Start');
+    });
+    await page.waitForFunction(
+      () => !document.querySelector('.passage-snapshot'),
+    );
+    expect(await stylesheets()).toEqual(stylesBefore);
   },
 );
 

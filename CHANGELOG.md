@@ -39,8 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Outgoing transition snapshots retain native Markdown styling, authored ID styles, generated content and list marker colors without restoring authored IDs (#615).
-- Outgoing SVG snapshots use fresh local IDs and preserve gradients, clipping, masks, filters and both modern and namespaced fragment references, including definitions in templates and open shadow roots (#616).
+- Outgoing transition snapshots retain native Markdown styling, authored ID styles, important declarations, generated content and list marker colors without restoring authored IDs (#615).
+- Outgoing SVG snapshots use fresh local IDs and preserve gradients, clipping, masks, filters and both modern and namespaced fragment references, including definitions in templates and open shadow roots. Reused artwork retains inherited colors, `currentColor`, stylesheet precedence and passage-local styles (#616).
 - Variable and transient initializers may end with JavaScript line comments in both story startup and tooling validation (#617).
 - Widgets override same-named macro argument, special validation and variable-binding metadata, including widgets without `holds` declarations (#618).
 

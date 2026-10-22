@@ -14,6 +14,7 @@ import {
 import { Passage, renderPassageContent } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
+import { skipString } from './arg-utils';
 
 /** Input types whose `value` is not what the user sees or edits. */
 const VALUELESS_INPUTS = new Set([
@@ -162,7 +163,11 @@ function copyComputedStyle(
 ): void {
   for (let i = 0; i < style.length; i++) {
     const name = style[i]!;
-    target.setProperty(name, snapshotUrls(style.getPropertyValue(name), ids));
+    target.setProperty(
+      name,
+      snapshotUrls(style.getPropertyValue(name), ids),
+      'important',
+    );
   }
 }
 
@@ -171,9 +176,9 @@ let snapshotFragmentId = 0;
 /** SVG definitions need local targets without sharing IDs with live passages. */
 function snapshotIds(root: ParentNode): Map<string, string> {
   const ids = new Map<string, string>();
+  if (root instanceof Element && root.id) ids.set(root.id, '');
   for (const element of root.querySelectorAll('[id]')) {
-    if (element.namespaceURI === 'http://www.w3.org/2000/svg')
-      ids.set(element.id, '');
+    ids.set(element.id, '');
   }
   for (const original of ids.keys()) {
     let id: string;
@@ -205,15 +210,214 @@ function snapshotFragment(value: string, ids: ReadonlyMap<string, string>) {
 }
 
 /** URL-valued presentation attributes, inline CSS and computed CSS alike. */
-function snapshotUrls(value: string, ids: ReadonlyMap<string, string>) {
+function snapshotUrls(
+  value: string,
+  ids: ReadonlyMap<string, string>,
+  base?: string,
+) {
   return value.replace(
     /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi,
     (match, double, single, bare) => {
       const original: string = double ?? single ?? bare;
-      const rewritten = snapshotFragment(original, ids);
-      return original === rewritten ? match : `url("${rewritten}")`;
+      try {
+        const resolved = base ? new URL(original, base).href : original;
+        const rewritten = snapshotFragment(resolved, ids);
+        return original === rewritten ? match : `url("${rewritten}")`;
+      } catch {
+        return match;
+      }
     },
   );
+}
+
+/** Keep SVG's specified CSS: a use instance inherits from its use element,
+ * rather than from the definition's original parent. Computed defaults on
+ * definitions would replace that inheritance (and resolve currentColor).
+ */
+const snapshotSvgRules = new WeakSet<CSSRule>();
+
+/** A detached style element has no sheet yet. Carry its CSSOM, including
+ * script-inserted rules and imported styles, into the passive tree.
+ */
+function copySnapshotSheet(
+  source: CSSStyleSheet,
+  ids: ReadonlyMap<string, string>,
+  onOpaque?: () => void,
+): CSSStyleSheet {
+  const seen = new Set<CSSStyleSheet>();
+  const textOf = (sheet: CSSStyleSheet): string => {
+    if (seen.has(sheet)) return '';
+    seen.add(sheet);
+    let rules: CSSRule[];
+    try {
+      rules = [...sheet.cssRules];
+    } catch {
+      // Imported cross-origin CSS is opaque to the CSSOM. It must not
+      // prevent an otherwise valid passage from navigating.
+      onOpaque?.();
+      return '';
+    }
+    return rules
+      .filter((rule) => !snapshotSvgRules.has(rule))
+      .map((rule) => {
+        if (rule instanceof CSSImportRule && rule.styleSheet) {
+          let css = textOf(rule.styleSheet);
+          if (rule.layerName !== null) css = `@layer ${rule.layerName}{${css}}`;
+          if (rule.supportsText)
+            css = `@supports (${rule.supportsText}){${css}}`;
+          if (rule.media.mediaText)
+            css = `@media ${rule.media.mediaText}{${css}}`;
+          return css;
+        }
+        return snapshotUrls(rule.cssText, ids, sheet.href ?? document.baseURI);
+      })
+      .join('\n');
+  };
+  const copy = new CSSStyleSheet({
+    media: source.media.mediaText,
+    disabled: source.disabled,
+  });
+  copy.replaceSync(textOf(source));
+  return copy;
+}
+
+function installSnapshotSvgStyles(
+  root: Document | ShadowRoot,
+  ids: ReadonlyMap<string, string>,
+  marker: string,
+  targetSheets: readonly CSSStyleSheet[] = [
+    ...root.styleSheets,
+    ...root.adoptedStyleSheets,
+  ],
+): () => void {
+  if (!root.querySelector('svg')) return () => {};
+  const customTags = new Set(
+    [
+      ...(root instanceof ShadowRoot ? [root.host] : []),
+      ...root.querySelectorAll('*'),
+    ]
+      .filter((element) => element.localName.includes('-'))
+      .map((element) => element.localName),
+  );
+  const identity =
+    /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\[(?:\\.|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\]"'\\])*\]|([#.])?((?:\\[0-9a-fA-F]{1,6}\s?|\\.|[\w-]|[^\x00-\x7f])+)/g;
+  const selectorOf = (selector: string, scoped = true) => {
+    const rewritten = selector.replace(
+      identity,
+      (written, sigil, escaped, at) => {
+        if (!escaped)
+          return written.replace(
+            /^\[\s*id(?=[\s~|^$*=\]])/,
+            '[data-spindle-snapshot-original-id',
+          );
+        const name = escaped.replace(
+          /\\([0-9a-fA-F]{1,6})\s?|\\(.)/g,
+          (_: string, hex: string, char: string) =>
+            hex ? String.fromCodePoint(parseInt(hex, 16)) : char,
+        );
+        if (sigil === '.' && name === 'passage')
+          return ':is(.passage,.passage-snapshot)';
+        if (!sigil && customTags.has(name) && selector[at - 1] !== ':')
+          return `:is(${CSS.escape(name)},:where([data-spindle-snapshot-tag="${name}"]))`;
+        const id = sigil === '#' && ids.get(name);
+        return id
+          ? `:is(#${id},:where([data-spindle-snapshot-id="${id}"]))`
+          : written;
+      },
+    );
+    if (!scoped) return rewritten;
+    // Keep each selector's specificity, including lists with unequal members.
+    const selectors: string[] = [];
+    let start = 0;
+    let depth = 0;
+    for (let i = 0; i <= rewritten.length; i++) {
+      const ch = rewritten[i];
+      if (ch === '\\') i++;
+      else if (ch === '"' || ch === "'") i = skipString(rewritten, i) - 1;
+      else if (ch === '(' || ch === '[') depth++;
+      else if (ch === ')' || ch === ']') depth--;
+      else if (i === rewritten.length || (ch === ',' && depth === 0)) {
+        selectors.push(
+          `:where([data-spindle-snapshot-svg="${marker}"]):is(${rewritten.slice(start, i)})`,
+        );
+        start = i + 1;
+      }
+    }
+    return selectors.join(',');
+  };
+  const rulesOf = (rules: Iterable<CSSRule>, base: string): string[] => {
+    const result: string[] = [];
+    for (const rule of rules) {
+      if (rule instanceof CSSStyleRule) {
+        const css = snapshotUrls(rule.style.cssText, ids, base);
+        result.push(`${selectorOf(rule.selectorText)}{${css}}`);
+        if (rule.cssRules.length) {
+          // Keep the parent selector as the native nesting context. Only
+          // declaration targets get the snapshot marker, so an HTML parent
+          // can still select an SVG descendant.
+          result.push(
+            `${selectorOf(rule.selectorText, false)}{${rulesOf(rule.cssRules, base).join('\n')}}`,
+          );
+        }
+      } else if ('cssRules' in rule && !(rule instanceof CSSKeyframesRule)) {
+        const contents = rulesOf((rule as CSSGroupingRule).cssRules, base);
+        result.push(
+          `${rule.cssText.slice(0, rule.cssText.indexOf('{'))}{${contents.join('\n')}}`,
+        );
+      }
+    }
+    return result;
+  };
+  type RuleContainer = CSSStyleSheet | CSSGroupingRule;
+  const inserted: [RuleContainer, CSSRule][] = [];
+  const sheets = new Set<CSSStyleSheet>();
+  const sheetRules = (sheet: CSSStyleSheet) => {
+    if (
+      sheets.has(sheet) ||
+      sheet.disabled ||
+      !matchMedia(sheet.media.mediaText || 'all').matches
+    )
+      return;
+    sheets.add(sheet);
+    try {
+      visit(sheet, sheet.href ?? document.baseURI);
+    } catch {
+      // Cross-origin sheets cannot be inspected. Their unchanged selectors
+      // still apply to the passive SVG tree.
+    }
+  };
+  const visit = (parent: RuleContainer, base: string) => {
+    for (const rule of [...parent.cssRules]) {
+      if (snapshotSvgRules.has(rule)) continue;
+      if (rule instanceof CSSStyleRule) {
+        let index = [...parent.cssRules].indexOf(rule) + 1;
+        for (const css of rulesOf([rule], base)) {
+          parent.insertRule(css, index);
+          const insertedRule = parent.cssRules[index++]!;
+          inserted.push([parent, insertedRule]);
+          snapshotSvgRules.add(insertedRule);
+        }
+      } else if (rule instanceof CSSImportRule) {
+        if (
+          rule.styleSheet &&
+          matchMedia(rule.media.mediaText || 'all').matches
+        )
+          sheetRules(rule.styleSheet);
+      } else if ('cssRules' in rule && !(rule instanceof CSSKeyframesRule)) {
+        visit(rule as CSSGroupingRule, base);
+      }
+    }
+  };
+  // Adjacent aliases keep the original layer identity and cascade order,
+  // including anonymous layers. They match snapshot elements only.
+  for (const sheet of targetSheets) sheetRules(sheet);
+  return () => {
+    for (const [parent, rule] of inserted) {
+      const index = [...parent.cssRules].indexOf(rule);
+      if (index >= 0) parent.deleteRule(index);
+      snapshotSvgRules.delete(rule);
+    }
+  };
 }
 
 function installSnapshotStyles(
@@ -245,6 +449,8 @@ function cloneSnapshotTree(
   source: Element,
   ids: ReadonlyMap<string, string>,
   pseudoRules: string[] = [],
+  svgMarker = String(++snapshotPseudoId),
+  cleanups: (() => void)[] = [],
 ): Element {
   const html = source.namespaceURI === 'http://www.w3.org/1999/xhtml';
   const svg = source.namespaceURI === 'http://www.w3.org/2000/svg';
@@ -274,10 +480,16 @@ function cloneSnapshotTree(
   if (svg && source.id) {
     clone.id = ids.get(source.id)!;
   }
+  if (source.id)
+    clone.setAttribute('data-spindle-snapshot-id', ids.get(source.id)!);
+  if (source.id)
+    clone.setAttribute('data-spindle-snapshot-original-id', source.id);
+  if (custom) clone.setAttribute('data-spindle-snapshot-tag', source.localName);
+  if (svg) clone.setAttribute('data-spindle-snapshot-svg', svgMarker);
   // IDs and the passage class are removed, and custom tags become spans.
   // Freeze native and custom content before those selectors stop matching.
   const computed = getComputedStyle(source);
-  copyComputedStyle(computed, (clone as HTMLElement).style, ids);
+  if (!svg) copyComputedStyle(computed, (clone as HTMLElement).style, ids);
   // Generated content needs CSS rules in the same document or shadow root.
   // A unique selector keeps simultaneous snapshots from styling each other.
   let pseudoId: string | undefined;
@@ -313,7 +525,7 @@ function cloneSnapshotTree(
     for (const node of from.childNodes) {
       to.appendChild(
         node instanceof Element
-          ? cloneSnapshotTree(node, localIds, rules)
+          ? cloneSnapshotTree(node, localIds, rules, svgMarker, cleanups)
           : node.cloneNode(false),
       );
     }
@@ -324,16 +536,43 @@ function cloneSnapshotTree(
     pseudoRules,
     source instanceof HTMLTemplateElement ? snapshotIds(from) : ids,
   );
+  if (source instanceof HTMLStyleElement && source.sheet) {
+    const root = source.getRootNode() as Document | ShadowRoot;
+    if (root.querySelector('svg')) {
+      let opaque = false;
+      const copy = copySnapshotSheet(source.sheet, ids, () => {
+        opaque = true;
+      });
+      // A real style element can retain opaque @imports; constructed sheets
+      // discard them. Serialize the original CSSOM with aliases in that case.
+      const sheet = opaque ? source.sheet : copy;
+      const dispose = installSnapshotSvgStyles(root, ids, svgMarker, [sheet]);
+      clone.textContent = snapshotUrls(
+        [...sheet.cssRules].map((rule) => rule.cssText).join('\n'),
+        ids,
+        source.sheet.href ?? document.baseURI,
+      );
+      dispose();
+      if (source.sheet.disabled) clone.setAttribute('media', 'not all');
+    }
+  }
   if (source.shadowRoot) {
     const shadow = clone.attachShadow({ mode: 'open' });
     const rules: string[] = [];
-    copyChildren(
-      source.shadowRoot,
-      shadow,
-      rules,
-      snapshotIds(source.shadowRoot),
+    const shadowIds = snapshotIds(source.shadowRoot);
+    copyChildren(source.shadowRoot, shadow, rules, shadowIds);
+    shadow.adoptedStyleSheets = source.shadowRoot.adoptedStyleSheets.map(
+      (sheet) => copySnapshotSheet(sheet, shadowIds),
     );
     copyLiveState(source.shadowRoot, shadow);
+    cleanups.push(
+      installSnapshotSvgStyles(
+        source.shadowRoot,
+        shadowIds,
+        svgMarker,
+        shadow.adoptedStyleSheets,
+      ),
+    );
     installSnapshotStyles(shadow, rules);
   }
   return clone;
@@ -360,9 +599,11 @@ function replaceEmbeddedContexts(source: ParentNode, clone: ParentNode): void {
     if (getComputedStyle(original).display === 'inline')
       placeholder.style.display = 'inline-block';
     // The measured dimensions already include any copied border and padding.
-    placeholder.style.boxSizing = 'border-box';
-    placeholder.style.width = `${rect.width}px`;
-    placeholder.style.height = `${rect.height}px`;
+    placeholder.style.removeProperty('inline-size');
+    placeholder.style.removeProperty('block-size');
+    placeholder.style.setProperty('box-sizing', 'border-box', 'important');
+    placeholder.style.setProperty('width', `${rect.width}px`, 'important');
+    placeholder.style.setProperty('height', `${rect.height}px`, 'important');
     embedded.replaceWith(placeholder);
   });
 }
@@ -383,26 +624,37 @@ function createSnapshot(
   transitionType: string,
 ): HTMLElement {
   const pseudoRules: string[] = [];
+  const cleanups: (() => void)[] = [];
+  const ids = snapshotIds(passageEl);
+  const svgMarker = String(++snapshotPseudoId);
   const clone = cloneSnapshotTree(
     passageEl,
-    snapshotIds(passageEl),
+    ids,
     pseudoRules,
+    svgMarker,
+    cleanups,
   ) as HTMLElement;
   // These belong to the outgoing transition and container, not its frozen
   // visual content. In particular, copied entrance animation must not win.
   clone.style.removeProperty('animation');
   clone.style.removeProperty('grid-area');
+  for (const name of ['opacity', 'transform']) {
+    // Normal declarations let the outgoing keyframes animate these values.
+    clone.style.setProperty(name, clone.style.getPropertyValue(name));
+  }
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
   // A cloned browsing context would reload and execute scripts on insertion.
   // Keep its authored size/style as a passive placeholder instead.
   replaceEmbeddedContexts(passageEl, clone);
-  const cleanup = installSnapshotStyles(
-    passageEl.getRootNode() as Document | ShadowRoot,
-    pseudoRules,
+  const root = passageEl.getRootNode() as Document | ShadowRoot;
+  cleanups.push(installSnapshotSvgStyles(root, ids, svgMarker));
+  const cleanup = installSnapshotStyles(root, pseudoRules);
+  if (cleanup) cleanups.push(cleanup);
+  snapshotStyleCleanup.set(clone, () =>
+    cleanups.forEach((dispose) => dispose()),
   );
-  if (cleanup) snapshotStyleCleanup.set(clone, cleanup);
 
   // Disable interaction
   clone.style.pointerEvents = 'none';
