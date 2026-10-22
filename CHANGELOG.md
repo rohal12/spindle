@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Widgets named `if`, `switch`, `timed` or `do` preserve their invocation markup and selectors; tooling also reads a `do` widget's child links and variables (#620, #621).
+- Widgets named `if`, `switch`, `timed` or `do` preserve their invocation markup and selectors, including calls during `StoryInit` validation; tooling also reads a `do` widget's child links and variables (#620, #621).
 - Static macro discovery reuses binding facts and parsed configuration literals when many registrations share one object (#622).
 - Validation bounds optional name-suggestion work and indexes source positions for passages with many diagnostics (#623, #624).
 - Dialog keyboard navigation visits authored open shadow roots and slotted controls, restores shadow-root openers, and enters iframe controls during initial focus even when the frame loads later (#625, #460).
