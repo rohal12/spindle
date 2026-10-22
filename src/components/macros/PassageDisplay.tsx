@@ -158,11 +158,62 @@ function appendSnapshot(container: Element, snapshot: HTMLElement): void {
 function copyComputedStyle(
   style: CSSStyleDeclaration,
   target: CSSStyleDeclaration,
+  ids: ReadonlyMap<string, string>,
 ): void {
   for (let i = 0; i < style.length; i++) {
     const name = style[i]!;
-    target.setProperty(name, style.getPropertyValue(name));
+    target.setProperty(name, snapshotUrls(style.getPropertyValue(name), ids));
   }
+}
+
+let snapshotFragmentId = 0;
+
+/** SVG definitions need local targets without sharing IDs with live passages. */
+function snapshotIds(root: ParentNode): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const element of root.querySelectorAll('[id]')) {
+    if (element.namespaceURI === 'http://www.w3.org/2000/svg')
+      ids.set(element.id, '');
+  }
+  for (const original of ids.keys()) {
+    let id: string;
+    do {
+      id = `spindle-snapshot-${++snapshotFragmentId}`;
+    } while (ids.has(id) || document.getElementById(id));
+    ids.set(original, id);
+  }
+  return ids;
+}
+
+/** Rewrite only fragments in this document; external SVG URLs stay external. */
+function snapshotFragment(value: string, ids: ReadonlyMap<string, string>) {
+  try {
+    const url = new URL(value, document.baseURI);
+    const current = new URL(document.URL);
+    if (url.href.split('#')[0] !== current.href.split('#')[0]) return value;
+    let fragment = url.hash.slice(1);
+    try {
+      fragment = decodeURIComponent(fragment);
+    } catch {
+      // Browsers also resolve authored IDs containing a literal percent sign.
+    }
+    const id = ids.get(fragment);
+    return id ? `#${id}` : value;
+  } catch {
+    return value;
+  }
+}
+
+/** URL-valued presentation attributes, inline CSS and computed CSS alike. */
+function snapshotUrls(value: string, ids: ReadonlyMap<string, string>) {
+  return value.replace(
+    /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi,
+    (match, double, single, bare) => {
+      const original: string = double ?? single ?? bare;
+      const rewritten = snapshotFragment(original, ids);
+      return original === rewritten ? match : `url("${rewritten}")`;
+    },
+  );
 }
 
 function installSnapshotStyles(
@@ -192,12 +243,12 @@ let snapshotPseudoId = 0;
  */
 function cloneSnapshotTree(
   source: Element,
-  freezeStyles = false,
+  ids: ReadonlyMap<string, string>,
   pseudoRules: string[] = [],
 ): Element {
   const html = source.namespaceURI === 'http://www.w3.org/1999/xhtml';
+  const svg = source.namespaceURI === 'http://www.w3.org/2000/svg';
   const custom = html && source.localName.includes('-');
-  freezeStyles ||= custom || source.hasAttribute('is');
   const clone = document.createElementNS(
     source.namespaceURI,
     custom ? 'span' : source.localName,
@@ -210,29 +261,42 @@ function cloneSnapshotTree(
       attr.name.toLowerCase().startsWith('on')
     )
       continue;
+    const value =
+      svg && attr.localName === 'href'
+        ? snapshotFragment(attr.value, ids)
+        : svg || attr.localName === 'style'
+          ? snapshotUrls(attr.value, ids)
+          : attr.value;
     if (attr.namespaceURI)
-      clone.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
-    else clone.setAttribute(attr.name, attr.value);
+      clone.setAttributeNS(attr.namespaceURI, attr.name, value);
+    else clone.setAttribute(attr.name, value);
   }
-  if (freezeStyles) {
-    // Tag-name selectors no longer match the stand-in or its descendants.
-    // Keep the component subtree's current appearance through computed CSS.
-    copyComputedStyle(getComputedStyle(source), (clone as HTMLElement).style);
-    // Generated content needs CSS rules in the same document or shadow root.
-    // A unique selector keeps simultaneous snapshots from styling each other.
-    let id: string | undefined;
-    for (const pseudo of ['::before', '::after', '::marker']) {
-      const style = getComputedStyle(source, pseudo);
-      if (!style.content || ['none', 'normal'].includes(style.content))
-        continue;
-      id ??= String(++snapshotPseudoId);
-      clone.setAttribute('data-spindle-snapshot-pseudo', id);
-      const target = document.createElement('span').style;
-      copyComputedStyle(style, target);
-      pseudoRules.push(
-        `[data-spindle-snapshot-pseudo="${id}"]${pseudo}{${target.cssText}}`,
-      );
-    }
+  if (svg && source.id) {
+    clone.id = ids.get(source.id)!;
+  }
+  // IDs and the passage class are removed, and custom tags become spans.
+  // Freeze native and custom content before those selectors stop matching.
+  const computed = getComputedStyle(source);
+  copyComputedStyle(computed, (clone as HTMLElement).style, ids);
+  // Generated content needs CSS rules in the same document or shadow root.
+  // A unique selector keeps simultaneous snapshots from styling each other.
+  let pseudoId: string | undefined;
+  for (const pseudo of ['::before', '::after', '::marker']) {
+    const style = getComputedStyle(source, pseudo);
+    const nativeMarker =
+      pseudo === '::marker' && computed.display === 'list-item';
+    if (
+      !nativeMarker &&
+      (!style.content || ['none', 'normal'].includes(style.content))
+    )
+      continue;
+    pseudoId ??= String(++snapshotPseudoId);
+    clone.setAttribute('data-spindle-snapshot-pseudo', pseudoId);
+    const target = document.createElement('span').style;
+    copyComputedStyle(style, target, ids);
+    pseudoRules.push(
+      `[data-spindle-snapshot-pseudo="${pseudoId}"]${pseudo}{${target.cssText}}`,
+    );
   }
   // Recreated scripts must remain inert when inserted, just like the
   // already-executed script nodes that cloneNode used to produce.
@@ -244,20 +308,31 @@ function cloneSnapshotTree(
     from: ParentNode,
     to: ParentNode,
     rules = pseudoRules,
+    localIds = ids,
   ) => {
     for (const node of from.childNodes) {
       to.appendChild(
         node instanceof Element
-          ? cloneSnapshotTree(node, freezeStyles, rules)
+          ? cloneSnapshotTree(node, localIds, rules)
           : node.cloneNode(false),
       );
     }
   };
-  copyChildren(from, to);
+  copyChildren(
+    from,
+    to,
+    pseudoRules,
+    source instanceof HTMLTemplateElement ? snapshotIds(from) : ids,
+  );
   if (source.shadowRoot) {
     const shadow = clone.attachShadow({ mode: 'open' });
     const rules: string[] = [];
-    copyChildren(source.shadowRoot, shadow, rules);
+    copyChildren(
+      source.shadowRoot,
+      shadow,
+      rules,
+      snapshotIds(source.shadowRoot),
+    );
     copyLiveState(source.shadowRoot, shadow);
     installSnapshotStyles(shadow, rules);
   }
@@ -294,7 +369,8 @@ function replaceEmbeddedContexts(source: ParentNode, clone: ParentNode): void {
 
 /**
  * Create a snapshot clone of a .passage element for outgoing transitions.
- * - Strips IDs, action associations and event handlers from the clone tree
+ * - Strips authored IDs, action associations and event handlers; SVG IDs and
+ *   their fragment references receive snapshot-local names
  * - Disables interaction (pointer-events, user-select, inert, aria-hidden)
  * - Pauses/mutes any <audio>/<video>
  * - Copies what cloneNode leaves behind: canvas pixels, the state of form
@@ -307,7 +383,15 @@ function createSnapshot(
   transitionType: string,
 ): HTMLElement {
   const pseudoRules: string[] = [];
-  const clone = cloneSnapshotTree(passageEl, false, pseudoRules) as HTMLElement;
+  const clone = cloneSnapshotTree(
+    passageEl,
+    snapshotIds(passageEl),
+    pseudoRules,
+  ) as HTMLElement;
+  // These belong to the outgoing transition and container, not its frozen
+  // visual content. In particular, copied entrance animation must not win.
+  clone.style.removeProperty('animation');
+  clone.style.removeProperty('grid-area');
   copyLiveState(passageEl, clone);
   pendingScrolls.set(clone, scrollOffsets(passageEl, clone));
 
