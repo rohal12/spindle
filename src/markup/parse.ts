@@ -14,7 +14,7 @@ import {
 import type { Selectors, Token } from './tokens';
 import { isCodeAttribute } from './code-attributes';
 import { defaultCodeEnd, type CodeEnd } from './code-end';
-import { lineColumn } from './line-column';
+import { lineColumn, sourcePositions } from './line-column';
 
 export { lineColumn };
 
@@ -160,9 +160,10 @@ export function analyzeMarkup(
     damage[i]! + 0.5,
     e,
   ]);
+  const position = paired.errors.length ? sourcePositions(source) : undefined;
   for (const error of paired.errors) {
     if (!inDamage(error.start)) {
-      noticed.push([error.noticedAt, pairingError(source, error)]);
+      noticed.push([error.noticedAt, pairingError(position!, error)]);
     }
   }
   // Array.prototype.sort is stable: equal ones stay in the order found
@@ -185,8 +186,11 @@ export function parseMarkup(
 }
 
 /** A pairing problem as the MarkupError it is for `source`. */
-function pairingError(source: string, error: PairingError): MarkupError {
-  const { line, column } = lineColumn(source, error.start);
+function pairingError(
+  position: ReturnType<typeof sourcePositions>,
+  error: PairingError,
+): MarkupError {
+  const { line, column } = position(error.start);
   return new MarkupError(
     error.message,
     error.start,
@@ -260,6 +264,7 @@ export function scanMarkupTolerant(
   const tokens: Token[] = [];
   const errors: MarkupError[] = [];
   const damage: number[] = [];
+  let position: ReturnType<typeof sourcePositions> | undefined;
   // The code of a tag ends at a }: with none after it, the tag is unclosed
   // without reading its code to the end of the source, which every
   // unclosed tag would do again (#265).
@@ -292,7 +297,8 @@ export function scanMarkupTolerant(
       break;
     }
     const at = base + result.offset;
-    const { line, column } = lineColumn(source, at);
+    position ??= sourcePositions(source);
+    const { line, column } = position(at);
     errors.push(
       new MarkupError(
         result.reason,

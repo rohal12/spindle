@@ -6,6 +6,7 @@ import {
   tokenizeMarkupTolerant,
 } from './markup/parse';
 import { isCodeAttribute } from './markup/code-attributes';
+import { isRawMacro } from './markup/ast';
 import { errorMessage } from './utils/error-message';
 import {
   CodeSyntaxError,
@@ -46,11 +47,21 @@ import { parse } from 'acorn';
 function tokensOf(
   text: string,
   textMode: boolean,
-  { tolerant }: { tolerant?: boolean } = {},
+  {
+    tolerant,
+    parametersOf,
+  }: { tolerant?: boolean; parametersOf?: ParametersOf } = {},
 ): Token[] {
-  if (tolerant) return tokenizeMarkupTolerant(text, { text: textMode }).tokens;
+  const options = {
+    text: textMode,
+    hooks: parametersOf && {
+      isRaw: (name: string) =>
+        isRawMacro(name, parametersOf.widget?.(name) !== undefined),
+    },
+  };
+  if (tolerant) return tokenizeMarkupTolerant(text, options).tokens;
   try {
-    return tokenizeMarkup(text, { text: textMode });
+    return tokenizeMarkup(text, options);
   } catch (err) {
     if (err instanceof MarkupError) return [];
     throw err;

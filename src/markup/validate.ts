@@ -7,7 +7,6 @@
  */
 import {
   analyzeMarkup,
-  lineColumn,
   MarkupError,
   parseMarkup,
   tokenizeMarkup,
@@ -24,6 +23,8 @@ import {
   type ParametersOf,
 } from '../code-check';
 import { CodeSyntaxError } from '../js-lexer';
+import { sourcePositions } from './line-column';
+import { isRawMacro } from './ast';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -158,14 +159,24 @@ function closestName(
   name: string,
   names: Iterable<string>,
 ): string | undefined {
+  // Suggestions are optional: oversized authored names must not hold up validation.
+  if (name.length > 256) return undefined;
   const lower = name.toLowerCase();
   let best: string | undefined;
   let bestDistance = Math.max(2, Math.floor(lower.length / 3)) + 1;
+  let budget = 100_000;
+  let candidates = 1000;
   for (const candidate of names) {
+    if (--candidates < 0) break;
+    if (candidate.length > 256) continue;
+    if (Math.abs(candidate.length - lower.length) >= bestDistance) continue;
+    budget -= lower.length * candidate.length;
+    if (budget < 0) break;
     const d = distance(lower, candidate.toLowerCase());
     if (d < bestDistance) {
       best = candidate;
       bestDistance = d;
+      if (d === 0) break;
     }
   }
   return best;
@@ -202,9 +213,20 @@ export function validateMarkup(
   options: MarkupValidationOptions,
 ): MarkupDiagnostic[] {
   const diagnostics: MarkupDiagnostic[] = [];
+  const positions = new Map<
+    MarkupPassage,
+    ReturnType<typeof sourcePositions>
+  >();
   const hooks = {
     ...(options.isBlockMacro && { isBlock: options.isBlockMacro }),
     ...(options.branchParents && { branchParents: options.branchParents }),
+    isRaw: (name: string) =>
+      isRawMacro(
+        name,
+        options.parametersOf
+          ? options.parametersOf.widget?.(name) !== undefined
+          : undefined,
+      ),
   };
   const report = (
     passage: MarkupPassage,
@@ -214,7 +236,12 @@ export function validateMarkup(
     message: string,
     data?: MarkupDiagnosticData,
   ) => {
-    const { line, column } = lineColumn(passage.content, start);
+    let position = positions.get(passage);
+    if (!position) {
+      position = sourcePositions(passage.content);
+      positions.set(passage, position);
+    }
+    const { line, column } = position(start);
     const d: MarkupDiagnostic = {
       passage: passage.name,
       line,
@@ -276,7 +303,7 @@ export function validateMarkup(
     }
     try {
       // The tokens first: they don't depend on which macros take a body
-      const tokens = tokenizeMarkup(passage.content);
+      const tokens = tokenizeMarkup(passage.content, { hooks });
       addWidgets(tokens);
       if (!reported) continue;
       parseMarkup(passage.content, { hooks });

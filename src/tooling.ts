@@ -10,7 +10,7 @@ import {
   type MarkupDiagnostic,
   type MarkupPassage,
 } from './markup/validate';
-import { isBlockMacro } from './markup/ast';
+import { isBlockMacro, isRawMacro } from './markup/ast';
 import { tokenizeMarkupTolerant } from './markup/parse';
 import {
   parameterLookup,
@@ -263,10 +263,17 @@ export function passagePieces(
   source: string,
   macros: Iterable<ToolingMacro> = [],
 ): Piece[] {
+  const all = [...macros];
+  const parametersOf = parameterLookup(all);
   return passagePiecesOfTokens(
     source,
-    macros,
-    tokenizeMarkupTolerant(source).tokens,
+    all,
+    tokenizeMarkupTolerant(source, {
+      hooks: {
+        isRaw: (name) =>
+          isRawMacro(name, parametersOf.widget?.(name) !== undefined),
+      },
+    }).tokens,
   );
 }
 

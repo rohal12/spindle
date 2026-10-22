@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getMacroRegistry } from '../../src/registry';
 import {
+  collectStoryPassageReferences,
   passagePieces,
   validateStoryMarkup,
   validateVariableReferences,
@@ -18,6 +19,35 @@ const caption: ToolingMacro = {
 };
 
 describe('widgets shadow macro validation metadata (#618)', () => {
+  it('validates markup inside a do widget body (#621)', () => {
+    expect(
+      validateStoryMarkup(
+        [
+          { name: 'StoryInit', content: '{widget "do"}{@children}{/widget}' },
+          { name: 'Start', content: '{do}{unknown}{/do}' },
+        ],
+        macros,
+      ),
+    ).toMatchObject([
+      { passage: 'Start', code: 'unknown-macro', data: { name: 'unknown' } },
+    ]);
+  });
+
+  it('reads references in a do widget body as markup (#621)', () => {
+    const widget: ToolingMacro = {
+      name: 'do',
+      block: true,
+      subMacros: [],
+      widget: { params: [] },
+    };
+    expect(
+      collectStoryPassageReferences('{do}[[Hall]]{/do}', [...macros, widget]),
+    ).toMatchObject([{ target: { kind: 'name', name: 'Hall' } }]);
+    expect(
+      variableReferences('{do}{$missing}{/do}', [...macros, widget]),
+    ).toMatchObject([{ name: 'missing', sigil: '$' }]);
+  });
+
   it.each(['print', 'caption'])(
     'checks a %s widget with its own arguments',
     (name) => {

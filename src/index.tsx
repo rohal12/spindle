@@ -18,14 +18,18 @@ import {
   extractDefaults,
 } from './story-variables';
 import { getMacro, getMacroRegistry, isSubMacro } from './registry';
-import { parameterLookup } from './code-check';
+import { parameterLookup, type ParametersOf } from './code-check';
 import { getWidget, widgetMacros } from './widgets/widget-registry';
 import {
   formatDiagnostic,
   validateMarkup,
   type MarkupPassage,
 } from './markup/validate';
-import { effectiveWidgets, parseWidgetDef } from './widgets/widget-def';
+import {
+  effectiveWidgets,
+  parseWidgetDef,
+  type WidgetDefinition,
+} from './widgets/widget-def';
 import { parseMarkup } from './markup/parse';
 import { setBlockWidget } from './markup/ast';
 import { registerWidgetDefinitions } from './widgets/register-widget-def';
@@ -82,8 +86,12 @@ function orStop<T>(parse: () => T, where = ''): T {
  * the declared parameters of macros and what the parameters of widgets hold.
  * (The markup and the variable references are read by the same.)
  */
-function knownParameters() {
-  return parameterLookup([...getMacroRegistry(), ...widgetMacros()]);
+function knownParameters(declared: readonly WidgetDefinition[] = []) {
+  return parameterLookup([
+    ...getMacroRegistry(),
+    ...declared.map((widget) => ({ name: widget.name, widget })),
+    ...widgetMacros(),
+  ]);
 }
 
 /** The names of the registered macros that bind a variable (the inputs). */
@@ -102,12 +110,13 @@ function variableErrors(
   storyData: StoryData,
   schema: Parameters<typeof validatePassages>[1],
   only: (passage: MarkupPassage) => boolean = () => true,
+  parametersOf: ParametersOf = knownParameters(),
 ): string[] {
   return validatePassages(
     new Map([...storyData.passages].filter(([, passage]) => only(passage))),
     schema,
     storeVarMacroNames(),
-    knownParameters(),
+    parametersOf,
   );
 }
 
@@ -119,12 +128,13 @@ function variableErrors(
 function markupErrors(
   storyData: StoryData,
   only: (passage: MarkupPassage) => boolean,
+  parametersOf: ParametersOf = knownParameters(),
 ): string[] {
   return validateMarkup(storyData.passages.values(), {
     isKnownMacro: (name) =>
       !!getMacro(name) || isSubMacro(name) || !!getWidget(name),
     macroNames: getMacroRegistry().map((m) => m.name),
-    parametersOf: knownParameters(),
+    parametersOf,
     only,
   }).map(formatDiagnostic);
 }
@@ -187,20 +197,29 @@ export function boot() {
   // widgets and widget bodies using other block widgets parse correctly
   // regardless of passage or definition order. A widget defined more than
   // once is what its latest definition is.
-  for (const { name, block } of orStop(() =>
-    effectiveWidgets(storyData.passages.values()),
-  )) {
+  const widgets = orStop(() => effectiveWidgets(storyData.passages.values()));
+  for (const { name, block } of widgets) {
     setBlockWidget(name, block);
   }
+  // The preflight check runs before widget bodies are registered. Read their
+  // invocation contracts now too, so a do widget's body is markup here.
+  const startupParameters = knownParameters(widgets);
 
   const errors = variableErrors(
     storyData,
     schema,
     (p) => p.name === 'StoryInit',
+    startupParameters,
   );
   // StoryInit's markup must be valid before it runs; the other passages are
   // validated once it has run, as it may define macros (see below).
-  errors.push(...markupErrors(storyData, (p) => p.name === 'StoryInit'));
+  errors.push(
+    ...markupErrors(
+      storyData,
+      (p) => p.name === 'StoryInit',
+      startupParameters,
+    ),
+  );
 
   // Parse StoryTransients (optional — no error if missing)
   let transientDefaults: Record<string, unknown> = {};
