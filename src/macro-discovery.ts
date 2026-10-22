@@ -329,6 +329,7 @@ function macroOf(config: Datum): DiscoveredMacro | undefined {
 export function discoverMacros(source: string): DiscoveredMacro[] {
   const { code, regexes } = codeOnly(source);
   const found: DiscoveredMacro[] = [];
+  const configs = new Map<number, Datum | undefined>();
   let bindings: Bindings | undefined;
   for (const call of code.matchAll(CALL_RE)) {
     let at = call.index + call[0].length;
@@ -340,9 +341,12 @@ export function discoverMacros(source: string): DiscoveredMacro[] {
       if (object === undefined) continue;
       at = object;
     }
-    const reader = new ConfigReader(source, { goal: 'statements', regexes });
-    reader.i = at;
-    const config = reader.datum();
+    if (!configs.has(at)) {
+      const reader = new ConfigReader(source, { goal: 'statements', regexes });
+      reader.i = at;
+      configs.set(at, reader.datum());
+    }
+    const config = configs.get(at);
     const macro = config && macroOf(config);
     if (macro) found.push(macro);
   }

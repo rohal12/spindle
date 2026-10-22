@@ -71,6 +71,8 @@ const BLOCK_MACROS = new NameSet([
  * definition is, whereas the macros in BLOCK_MACROS stay blocks.
  */
 const BLOCK_WIDGETS = new NameSet();
+/** All widgets, including inline ones, override built-in parsing semantics. */
+const WIDGETS = new NameSet();
 
 /** Classification owned by defineMacro, independent of explicit registrations. */
 const DEFINED_BLOCK_MACROS = new NameSet();
@@ -89,8 +91,8 @@ function setClassification(names: NameSet, name: string, block: boolean): void {
 const RAW_BODY_MACROS = new Set(['do']);
 
 /** Whether a macro's body is JavaScript, kept verbatim (`{do}`). */
-export function isRawMacro(name: string): boolean {
-  return RAW_BODY_MACROS.has(name);
+export function isRawMacro(name: string, widget = WIDGETS.has(name)): boolean {
+  return RAW_BODY_MACROS.has(name.toLowerCase()) && !widget;
 }
 
 /** Whether a macro takes a body closed by `{/name}`. */
@@ -112,12 +114,14 @@ export function registerBlockMacro(name: string): void {
  * does. A block macro registered under the same name stays a block.
  */
 export function setBlockWidget(name: string, isBlock: boolean): void {
+  WIDGETS.add(name);
   setClassification(BLOCK_WIDGETS, name, isBlock);
 }
 
 /** Forget which widgets take a body (see clearWidgets). */
 export function clearBlockWidgets(): void {
   BLOCK_WIDGETS.clear();
+  WIDGETS.clear();
 }
 
 /** Unregister a custom block macro (for test cleanup). */
@@ -180,7 +184,8 @@ function astNode({ token, body }: PairedNode): ASTNode {
       };
       if (!body) return withSelectors(node, token);
       const children = buildAst(body.children);
-      if (!BRANCHING.has(name) && body.branches.length === 0) {
+      const branching = BRANCHING.has(name) && !WIDGETS.has(name);
+      if (!branching && body.branches.length === 0) {
         node.children = children;
         return withSelectors(node, token);
       }
@@ -193,14 +198,14 @@ function astNode({ token, body }: PairedNode): ASTNode {
           { rawArgs: tag.rawArgs, children: branchChildren },
           tag,
         );
-      if (!BRANCHING.has(name)) node.children = children;
+      if (!branching) node.children = children;
       node.branches = [
-        ...(BRANCHING.has(name) ? [branch(token, children)] : []),
+        ...(branching ? [branch(token, children)] : []),
         ...body.branches.map(({ tag, children: c }: PairedBranch) =>
           branch(tag, buildAst(c)),
         ),
       ];
-      return BRANCHING.has(name) ? node : withSelectors(node, token);
+      return branching ? node : withSelectors(node, token);
     }
   }
 }

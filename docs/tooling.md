@@ -240,6 +240,8 @@ A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, beside
 - `start` and `end`, UTF-16 offsets into `passage.content`: the offending text. `line` and `column` are those of `start`.
 - `data`, what the diagnostic names.
 
+Name suggestions are optional and use a bounded comparison budget. Diagnostics still report unknown names when an oversized name or a large candidate set exhausts that budget; `suggestions` may then be empty.
+
 | `code`                                                                                               | What                                                                                                          | `data`                                                                                          |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `unclosed-link`, `unclosed-expression`, `unclosed-macro`, `unclosed-tag`, `unclosed-attribute`       | `[[` with no `]]`; `{$…` with no `}`; `{name…` with no `}`; `<div` with no `>`; a value with no closing quote | none                                                                                            |

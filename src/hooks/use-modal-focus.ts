@@ -17,18 +17,58 @@ const FOCUSABLE = [
   '[tabindex]',
 ].join(',');
 
+/** The parent in the rendered tree, including slots and shadow hosts. */
+function composedParent(el: Element): Element | null {
+  return (
+    el.assignedSlot ??
+    el.parentElement ??
+    (el.getRootNode() as ShadowRoot).host ??
+    null
+  );
+}
+
+function composedChildren(root: ParentNode): Element[] {
+  if ((root as Element).localName === 'slot') {
+    const assigned = (root as HTMLSlotElement).assignedNodes({
+      flatten: true,
+    });
+    return assigned.filter((node): node is Element => node.nodeType === 1);
+  }
+  return Array.from(root.children);
+}
+
+/** Authored elements in rendered order; unassigned light DOM is not rendered. */
+function* composedElements(root: ParentNode): Generator<HTMLElement> {
+  for (const el of composedChildren(root)) {
+    yield el as HTMLElement;
+    yield* composedElements(el.shadowRoot ?? el);
+  }
+}
+
 /**
  * Whether `el` can be focused at all: shown, rendered, enabled (also by its
  * fieldset) and not inert.
  */
 function isAvailable(el: HTMLElement): boolean {
-  return (
-    !el.hidden &&
-    !el.closest('[hidden], [inert]') &&
-    // Also covers controls disabled by a <fieldset disabled> ancestor
-    !el.matches(':disabled') &&
-    isRendered(el)
-  );
+  if (!isRendered(el)) return false;
+  // Visibility and inertness of a host apply to its whole shadow tree too.
+  for (let at: Element | null = el; at; at = composedParent(at)) {
+    if (at.hasAttribute('hidden') || at.hasAttribute('inert')) return false;
+    if (at.ownerDocument.defaultView?.getComputedStyle(at).display === 'none')
+      return false;
+    const parent = composedParent(at);
+    if (
+      parent?.localName === 'details' &&
+      !parent.hasAttribute('open') &&
+      at !==
+        Array.from(parent.children).find(
+          (child) => child.localName === 'summary',
+        )
+    )
+      return false;
+  }
+  // Also covers controls disabled by a <fieldset disabled> ancestor
+  return !el.matches(':disabled');
 }
 
 /** The `tabindex` of `el` as an integer, or null when absent or invalid. */
@@ -96,17 +136,40 @@ function isTabStop(el: HTMLElement): boolean {
  * others in document order.
  */
 function focusables(root: ParentNode): HTMLElement[] {
-  const stops = Array.from(
-    root.querySelectorAll<HTMLElement>(FOCUSABLE),
-  ).filter((el) => isAvailable(el) && isTabStop(el));
+  // Each shadow host/slot owns a separate tabindex scope. Sort the owners in
+  // this scope, then expand their contents in place, as native Tab does.
+  const scopes: { el: HTMLElement; stops: HTMLElement[] }[] = [];
+  const collect = (parent: ParentNode) => {
+    for (const element of composedChildren(parent)) {
+      const el = element as HTMLElement;
+      const nested = el.shadowRoot ?? (el.localName === 'slot' ? el : null);
+      const stop = el.matches(FOCUSABLE) && isAvailable(el) && isTabStop(el);
+      if (nested) {
+        // A visibility:hidden host can contain explicitly visible controls.
+        // Each stop checks its own visibility and its ancestors' subtree gates.
+        if ((tabIndexAttr(el) ?? 0) < 0) continue;
+        scopes.push({
+          el,
+          stops: [
+            ...(stop && !el.shadowRoot?.delegatesFocus ? [el] : []),
+            ...focusables(nested),
+          ],
+        });
+      } else {
+        if (stop) scopes.push({ el, stops: [el] });
+        collect(el);
+      }
+    }
+  };
+  collect(root);
   const positive = (el: HTMLElement) => Math.max(tabIndexAttr(el) ?? 0, 0);
   // Array.prototype.sort is stable: equal tabindexes keep document order
   return [
-    ...stops
-      .filter((el) => positive(el) > 0)
-      .sort((a, b) => positive(a) - positive(b)),
-    ...stops.filter((el) => positive(el) === 0),
-  ];
+    ...scopes
+      .filter(({ el }) => positive(el) > 0)
+      .sort((a, b) => positive(a.el) - positive(b.el)),
+    ...scopes.filter(({ el }) => positive(el) === 0),
+  ].flatMap(({ stops }) => stops);
 }
 
 /** An element that can take focus: HTML or SVG, of this realm or another. */
@@ -174,6 +237,23 @@ function frameDocument(frame: HTMLIFrameElement): Document | null {
   }
 }
 
+/** Focus an element, entering accessible frames at the appropriate edge. */
+function enter(el: HTMLElement, backwards: boolean): void {
+  if (isFrame(el)) {
+    const doc = frameDocument(el);
+    const inner = doc ? focusables(doc) : [];
+    const edge = backwards ? inner[inner.length - 1] : inner[0];
+    if (edge) return enter(edge, backwards);
+  }
+  el.focus();
+}
+
+/** document.activeElement exposes a shadow host; follow it to the control. */
+function activeElement(root: Document | ShadowRoot): Element | null {
+  const el = root.activeElement;
+  return el?.shadowRoot?.activeElement ? activeElement(el.shadowRoot) : el;
+}
+
 /** The iframe element that holds `doc`, null for the top document. */
 function frameOf(doc: Document): HTMLElement | null {
   try {
@@ -196,10 +276,11 @@ function nextStop(
 ): HTMLElement | undefined {
   const at = from ? items.indexOf(from as HTMLElement) : -1;
   if (at !== -1) return items[at + (backwards ? -1 : 1)];
-  if (from && from !== root && root.contains(from)) {
+  const order = from ? [...composedElements(root)] : [];
+  const position = order.indexOf(from as HTMLElement);
+  if (position !== -1) {
     // Inside the root but not a tab stop: continue from its position
-    const after = (el: HTMLElement) =>
-      !!(from.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const after = (el: HTMLElement) => order.indexOf(el) > position;
     return backwards
       ? items.filter((el) => !after(el)).pop()
       : items.find(after);
@@ -217,13 +298,17 @@ function nextStop(
  */
 function activeChain(): OpenerChain {
   const chain: OpenerChain = [];
-  let doc: Document | null = document;
-  while (doc) {
-    const el: Element | null = doc.activeElement;
-    if (!el || (chain.length > 0 && el === doc.body)) break;
+  let root: Document | ShadowRoot | null = document;
+  while (root) {
+    const el: Element | null = root.activeElement;
+    if (!el || (chain.length > 0 && el === (root as Document).body)) break;
     if (typeof (el as HTMLElement).focus !== 'function') break;
     chain.push(el as Focusable);
-    doc = isFrame(el) ? frameDocument(el) : null;
+    root = el.shadowRoot?.activeElement
+      ? el.shadowRoot
+      : isFrame(el)
+        ? frameDocument(el)
+        : null;
   }
   return chain;
 }
@@ -261,12 +346,12 @@ export function useModalFocus(
     // An autofocus element that can't take focus (hidden, disabled, inert)
     // must not shadow the eligible controls (#426).
     const initial =
-      Array.from(panel.querySelectorAll<HTMLElement>('[autofocus]')).find(
-        isAvailable,
+      [...composedElements(panel)].find(
+        (el) => el.hasAttribute('autofocus') && isAvailable(el),
       ) ??
       focusables(body)[0] ??
       panel;
-    initial.focus();
+    enter(initial, false);
 
     return () => {
       const i = openModals.indexOf(entry);
@@ -295,19 +380,6 @@ export function useModalFocus(
     if (!panel) return;
 
     const top = () => openModals[openModals.length - 1]?.panel === panel;
-
-    /** Focus `el`; a frame is entered at its first (or last) control (#460). */
-    const enter = (el: HTMLElement, backwards: boolean) => {
-      if (isFrame(el)) {
-        const doc = frameDocument(el);
-        const inner = doc ? focusables(doc) : [];
-        const edge = backwards ? inner[inner.length - 1] : inner[0];
-        // A frame inside the frame is entered in turn
-        if (edge) return enter(edge, backwards);
-        // Not accessible or without controls: the frame itself takes focus
-      }
-      el.focus();
-    };
 
     /**
      * Move focus to the next (or previous) modal control from `from`. The
@@ -365,7 +437,7 @@ export function useModalFocus(
         }
 
         if (e.key !== 'Tab') return;
-        const active = doc.activeElement;
+        const active = activeElement(doc);
         if (frame) {
           steppingNative = null;
           const inner = focusables(doc);
@@ -396,7 +468,7 @@ export function useModalFocus(
     // Focus that lands outside the dialog anyway, e.g. leaving a frame whose
     // document can't be reached, is brought back in.
     const onFocusIn = (e: FocusEvent) => {
-      const target = e.target;
+      const target = e.composedPath()[0] ?? e.target;
       if (steppingNative && target !== steppingNative.el && top()) {
         // Focus left the media controls: on to the modal's next control
         const { from, backwards } = steppingNative;
@@ -404,7 +476,14 @@ export function useModalFocus(
         moveFocus(from, backwards);
         return;
       }
-      if (!top() || !(target instanceof Node) || panel.contains(target)) return;
+      if (
+        !top() ||
+        !(target instanceof Node) ||
+        (target instanceof Element &&
+          [...composedElements(panel)].includes(target as HTMLElement)) ||
+        panel.contains(target)
+      )
+        return;
       if (target === document.body || target === document.documentElement) {
         return;
       }
@@ -416,7 +495,12 @@ export function useModalFocus(
     // modal's next control takes it at once.
     const onFocusOut = (e: FocusEvent) => {
       const pending = steppingNative;
-      if (!pending || e.target !== pending.el || e.relatedTarget || !top()) {
+      if (
+        !pending ||
+        (e.composedPath()[0] ?? e.target) !== pending.el ||
+        e.relatedTarget ||
+        !top()
+      ) {
         return;
       }
       steppingNative = null;
@@ -436,6 +520,7 @@ export function useModalFocus(
     };
     const frameDocs = new Map<HTMLIFrameElement, Document>();
     const observers: MutationObserver[] = [];
+    const watched = new WeakSet<Node>();
     const attachFrame = (frame: HTMLIFrameElement) => {
       const doc = frameDocument(frame);
       // Already listening to this document
@@ -443,12 +528,21 @@ export function useModalFocus(
       frameDocs.set(frame, doc);
       listen(doc, frame);
       watchFrames(doc);
+      // Initial focus may have reached the frame before its document loaded.
+      const chain = activeChain();
+      if (top() && chain[chain.length - 1] === frame) enter(frame, false);
     };
     // Attach to the frames in `root`, now and as they come and navigate.
     // load doesn't bubble; a frame's document is replaced when it navigates
-    const watchFrames = (root: HTMLElement | Document) => {
-      const attachAll = () =>
-        root.querySelectorAll('iframe').forEach(attachFrame);
+    const watchFrames = (root: HTMLElement | Document | ShadowRoot) => {
+      if (watched.has(root)) return;
+      watched.add(root);
+      const attachAll = () => {
+        for (const el of composedElements(root)) {
+          if (el.shadowRoot) watchFrames(el.shadowRoot);
+          if (isFrame(el)) attachFrame(el);
+        }
+      };
       root.addEventListener(
         'load',
         (e) => {

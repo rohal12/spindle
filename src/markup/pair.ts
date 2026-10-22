@@ -11,7 +11,7 @@
  * what was open inside it stays unclosed.
  */
 import { branchParents } from '../registry';
-import { lineColumn } from './line-column';
+import { sourcePositions } from './line-column';
 import { isBlockMacro, isRawMacro } from './ast';
 import type { HtmlToken, MacroToken, Span, Token } from './tokens';
 
@@ -156,9 +156,11 @@ export function pairMarkup(
   };
   const errors: PairingError[] = [];
   const noticedAtEnd = (tokens[tokens.length - 1]?.end ?? 0) + 1;
+  let position: ReturnType<typeof sourcePositions> | undefined;
   const where = (offset: number) => {
     if (options.source === undefined) return `offset ${offset}`;
-    const { line, column } = lineColumn(options.source, offset);
+    position ??= sourcePositions(options.source);
+    const { line, column } = position(offset);
     return `line ${line}, column ${column}`;
   };
   const report = (

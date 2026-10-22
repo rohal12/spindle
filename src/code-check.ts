@@ -28,12 +28,7 @@
  */
 import type { HtmlToken, Token } from './markup/tokens';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
-import {
-  analyzeMarkup,
-  lineColumn,
-  MarkupError,
-  mapOffsets,
-} from './markup/parse';
+import { analyzeMarkup, MarkupError, mapOffsets } from './markup/parse';
 import {
   CodeSyntaxError,
   parseCode,
@@ -53,6 +48,8 @@ import { subMacroParameters } from './components/macros/option-utils';
 import { splitArgSpans } from './components/macros/arg-utils';
 import { NameMap } from './utils/macro-names';
 import { hasOwn } from './utils/namespace';
+import { isRawMacro } from './markup/ast';
+import { sourcePositions } from './markup/line-column';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -471,7 +468,19 @@ export function* passagePiecesOf(
   parametersOf: ParametersOf,
   options: PieceOptions = {},
 ): Generator<Piece> {
-  yield* expand(src, src, tokens, parametersOf, options, (i) => i, undefined);
+  let position: ReturnType<typeof sourcePositions> | undefined;
+  const locate = (offset: number) =>
+    (position ??= sourcePositions(src))(offset);
+  yield* expand(
+    src,
+    src,
+    tokens,
+    parametersOf,
+    options,
+    (i) => i,
+    undefined,
+    locate,
+  );
 }
 
 /**
@@ -487,6 +496,7 @@ function* expand(
   options: PieceOptions,
   toRoot: (offset: number) => number,
   where: string | undefined,
+  locate: ReturnType<typeof sourcePositions>,
 ): Generator<Piece> {
   for (const flat of codeAndText(src, tokens, parametersOf)) {
     const piece = where ? nestedPiece(flat, toRoot, where) : flat;
@@ -498,13 +508,17 @@ function* expand(
     const toText = (i: number) => toRoot(pieceOffset(flat, i));
     const inner = analyzeMarkup(flat.text, {
       text: true,
-      hooks: options.isBlock && { isBlock: options.isBlock },
+      hooks: {
+        ...(options.isBlock && { isBlock: options.isBlock }),
+        isRaw: (name) =>
+          isRawMacro(name, parametersOf.widget?.(name) !== undefined),
+      },
     });
     yield {
       ...(piece as TextPiece),
       tokens: inner.tokens.map((t) => mapOffsets(t, toText)),
       errors: inner.errors.map((e) => {
-        const { line, column } = lineColumn(root, toText(e.offset));
+        const { line, column } = locate(toText(e.offset));
         return new MarkupError(
           e.reason,
           toText(e.offset),
@@ -524,6 +538,7 @@ function* expand(
       options,
       toText,
       flat.where,
+      locate,
     );
   }
 }

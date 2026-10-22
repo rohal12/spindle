@@ -78,6 +78,11 @@ export class Bindings {
   private readonly byOpen = new Map<number, Group>();
   private readonly byClose = new Map<number, Group>();
   private readonly functions = new Map<Group, boolean>();
+  private readonly functionStarts = new Map<number, number>();
+  private readonly facts = new Map<
+    ReadonlySet<string>,
+    Map<string, Binding[]>
+  >();
   private readonly top: Scope = { start: -1, end: Infinity };
 
   constructor(private readonly code: string) {
@@ -97,6 +102,22 @@ export class Bindings {
     at: number,
     properties: ReadonlySet<string>,
   ): number | undefined {
+    let names = this.facts.get(properties);
+    if (!names) this.facts.set(properties, (names = new Map()));
+    let bindings = names.get(name);
+    if (!bindings) {
+      bindings = this.readBindings(name, properties);
+      names.set(name, bindings);
+    }
+    const found = this.innermostVisible(bindings, at);
+    return found.length === 1 ? found[0]!.object : undefined;
+  }
+
+  /** Declaration and write facts are immutable for this source and property set. */
+  private readBindings(
+    name: string,
+    properties: ReadonlySet<string>,
+  ): Binding[] {
     const { code } = this;
     const escaped = name.replace(/\$/g, '\\$');
     const bindings: Binding[] = [];
@@ -114,8 +135,7 @@ export class Bindings {
           this.innermostVisible(declarations, b.at)[0]?.scope ?? this.top;
       }
     }
-    const found = this.innermostVisible(bindings, at);
-    return found.length === 1 ? found[0]!.object : undefined;
+    return bindings;
   }
 
   /**
@@ -213,9 +233,15 @@ export class Bindings {
 
   /** The start of the function that has `index` in its body, or -1. */
   private functionStart(index: number): number {
+    const known = this.functionStarts.get(index);
+    if (known !== undefined) return known;
     for (let g = this.innermost(index, '{'); g; g = g.parent) {
-      if (g.kind === '{' && this.isFunctionBody(g)) return g.open;
+      if (g.kind === '{' && this.isFunctionBody(g)) {
+        this.functionStarts.set(index, g.open);
+        return g.open;
+      }
     }
+    this.functionStarts.set(index, -1);
     return -1;
   }
 
