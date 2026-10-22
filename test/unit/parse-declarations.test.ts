@@ -419,10 +419,21 @@ describe('parseDeclarations (#449)', () => {
     });
 
     it('reads what the runtime evaluates, not what looks balanced', () => {
-      // `return (1) + (2)` is well-formed, and a comment swallows the `)`
+      // `return (1) + (2)` is well-formed.
       expect(parseDeclarations('$x = 1) + (2').errors).toEqual([]);
-      expect(parseDeclarations('$x = 1 // c').errors[0]!.code).toBe('syntax');
     });
+
+    it.each(['$', '%'] as const)(
+      'accepts trailing initializer comments for %s declarations (#617)',
+      (sigil) => {
+        const content = `${sigil}gold = 100 // initial gold\n${sigil}label = "https://example.com" // label`;
+        const { declarations, errors } = parseDeclarations(content, sigil);
+        expect(errors).toEqual([]);
+        expect(declarations.map((d) => d.name)).toEqual(['gold', 'label']);
+        expect(declarations[0]!.schema).toEqual({ type: 'number' });
+        expect(declarations[1]!.schema).toEqual({ type: 'string' });
+      },
+    );
 
     it('works for transients too', () => {
       const { errors } = parseDeclarations('%t = (', '%');

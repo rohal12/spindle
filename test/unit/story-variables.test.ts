@@ -19,6 +19,20 @@ function makePassages(...entries: [string, string][]): Map<string, Passage> {
 }
 
 describe('parseStoryVariables', () => {
+  it.each(['$', '%'] as const)(
+    'evaluates %s initializers ending in line comments (#617)',
+    (sigil) => {
+      const schema = parseStoryVariables(
+        `${sigil}gold = 100 // initial gold\n${sigil}label = "https://example.com" // label`,
+        sigil,
+      );
+      expect(extractDefaults(schema)).toEqual({
+        gold: 100,
+        label: 'https://example.com',
+      });
+    },
+  );
+
   it('parses number declarations', () => {
     const schema = parseStoryVariables('$health = 100');
     expect(schema.get('health')).toEqual({

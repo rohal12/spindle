@@ -226,9 +226,10 @@ export function widgetParameters(
 export interface ParametersOf {
   (macro: string): readonly ParameterDef[] | undefined;
   /**
-   * The parameters of the widget `name` if it declares what some argument
-   * holds. Its arguments are read as a widget call reads them (separated by
-   * commas or spaces, see splitArgs), not by parseMacroArgs.
+   * The parameters of the widget `name`, or an empty array if it declares
+   * no holds. Its presence identifies a widget even without holds, so a
+   * shadowed macro's metadata cannot apply. Arguments are separated by
+   * commas or spaces (see splitArgs), not by parseMacroArgs.
    */
   widget?(name: string): readonly WidgetParameter[] | undefined;
 }
@@ -278,10 +279,11 @@ export function parameterLookup(
   for (const { name, parameters: params, interpolate, widget } of macros) {
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
-    const declared = widget && widgetParameters(widget.params, widget.holds);
-    if (declared) widgets.set(name, declared);
+    if (widget)
+      widgets.set(name, widgetParameters(widget.params, widget.holds) ?? []);
   }
   const lookup: ParametersOf = (name) => {
+    if (widgets.has(name)) return undefined;
     let params = parameters.get(name);
     if (!params) {
       const sub = subMacroParameters(name);
@@ -396,7 +398,8 @@ export function* codeAndText(
       }
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
-      if (name === 'do') {
+      const widget = parametersOf.widget?.(name);
+      if (name === 'do' && !widget) {
         const close = closeOfTextBody(t, name);
         if (close < 0) continue;
         const body = src.slice(token.end, tokens[close]!.start);
@@ -411,7 +414,7 @@ export function* codeAndText(
         continue;
       }
       const args = token.rawArgs;
-      if (PASSAGE_BODIES.has(name)) {
+      if (PASSAGE_BODIES.has(name) && !widget) {
         // The body names the passage when it is only text
         const close = closeOfTextBody(t, name);
         if (close > t + 1) {
@@ -430,7 +433,7 @@ export function* codeAndText(
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
       const argsAt = token.argsStart;
-      if (CONDITION_MACROS.has(name)) {
+      if (CONDITION_MACROS.has(name) && !widget) {
         yield {
           kind: 'code',
           code: args,
@@ -442,7 +445,6 @@ export function* codeAndText(
       }
       const params = parametersOf(name);
       if (params) yield* argPieces(args, argsAt, params, token.name, label);
-      const widget = parametersOf.widget?.(name);
       if (widget) yield* widgetPieces(args, argsAt, widget, token.name, label);
     }
   }

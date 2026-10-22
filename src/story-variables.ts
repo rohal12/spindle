@@ -177,7 +177,7 @@ function initializerSyntaxError(
 ): { message: string; pos: number } | undefined {
   const prefix = 'return (';
   try {
-    parse(prefix + expr + ')', {
+    parse(prefix + expr + '\n)', {
       ecmaVersion: 'latest',
       allowReturnOutsideFunction: true,
     });
@@ -335,7 +335,7 @@ export function parseStoryVariables(
     const expr = content.slice(valueStart, valueEnd);
     let value: unknown;
     try {
-      value = new Function('return (' + expr + ')')();
+      value = new Function('return (' + expr + '\n)')();
     } catch (err) {
       throw new Error(
         `${passageName}: Failed to evaluate "${sigil}${name} = ${expr}": ${errorMessage(err)}`,
@@ -797,7 +797,10 @@ function collectTokenRefs(
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
-      if (storeVarMacros.has(token.name.toLowerCase())) {
+      if (
+        storeVarMacros.has(token.name.toLowerCase()) &&
+        !parametersOf.widget?.(token.name)
+      ) {
         const lead = token.rawArgs.length - token.rawArgs.trimStart().length;
         const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
         const quoted = QUOTED_VAR_ARG_RE.exec(first);
@@ -818,7 +821,10 @@ function collectTokenRefs(
         }
       }
 
-      if (token.name.toLowerCase() === 'do') {
+      if (
+        token.name.toLowerCase() === 'do' &&
+        !parametersOf.widget?.(token.name)
+      ) {
         // A {do} body is JavaScript: scan its source text as code, however
         // the markup tokens split it up.
         let close = t + 1;
