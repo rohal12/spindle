@@ -73,47 +73,38 @@ export function astContainsChildren(
     ) {
       return true;
     }
-    if (node.type === 'html') {
-      // A token in name only: the scan reads its attribute values
-      const tag: Token = {
-        isClose: false,
-        isSelfClose: false,
-        tagNameStart: 0,
-        tagNameEnd: 0,
-        attributeSpans: [],
-        ...node,
-        start: 0,
-        end: 0,
-      };
-      if (
-        tokenTextContainsChildren(tag, parametersOf, '', hooks) ||
-        astContainsChildren(node.children, parametersOf, hooks)
-      ) {
-        return true;
-      }
+    if (node.type !== 'html' && node.type !== 'macro') continue;
+    if (node.type === 'macro' && node.name.toLowerCase() === 'widget') continue;
+    // A token in name only: the scan reads its label or attribute values.
+    const span = { isClose: false, start: 0, end: 0 };
+    const tag: Token =
+      node.type === 'html'
+        ? {
+            ...node,
+            ...span,
+            isSelfClose: false,
+            tagNameStart: 0,
+            tagNameEnd: 0,
+            attributeSpans: [],
+          }
+        : {
+            ...node,
+            ...span,
+            nameStart: 0,
+            nameEnd: 0,
+            argsStart: 0,
+            argsEnd: 0,
+          };
+    if (
+      tokenTextContainsChildren(tag, parametersOf, '', hooks) ||
+      astContainsChildren(node.children, parametersOf, hooks)
+    ) {
+      return true;
     }
-    if (node.type === 'macro') {
-      if (node.name.toLowerCase() === 'widget') continue;
-      const tag: Token = {
-        isClose: false,
-        nameStart: 0,
-        nameEnd: 0,
-        argsStart: 0,
-        argsEnd: 0,
-        ...node,
-        start: 0,
-        end: 0,
-      };
-      if (
-        tokenTextContainsChildren(tag, parametersOf, '', hooks) ||
-        astContainsChildren(node.children, parametersOf, hooks)
-      ) {
-        return true;
-      }
-      if (node.branches) {
-        for (const branch of node.branches) {
-          if (astContainsChildren(branch.children, parametersOf, hooks))
-            return true;
+    if (node.type === 'macro' && node.branches) {
+      for (const branch of node.branches) {
+        if (astContainsChildren(branch.children, parametersOf, hooks)) {
+          return true;
         }
       }
     }
