@@ -11,6 +11,7 @@ export {
   validateStoryMarkup,
   collectStoryPassageReferences,
   passagePieces,
+  completionContext,
   pieceOffset,
   pairMarkup,
   isBlockMacro,

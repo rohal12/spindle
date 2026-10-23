@@ -5,6 +5,7 @@ import type { StoryData } from './parser';
 import { evaluate } from './expression';
 import { executeMutation, readState } from './execute-mutation';
 import { useStoryStore } from './store';
+import { getRenderedNavigationId } from './passage-render-state';
 import { createListeners } from './utils/listeners';
 
 export interface WatchOptions {
@@ -23,7 +24,10 @@ export interface QueuedDialog {
   dismissible?: boolean;
 }
 
+let registrations = 0;
+
 interface Trigger {
+  order: number;
   name?: string;
   condition: string;
   callback?: () => void;
@@ -75,6 +79,7 @@ function registerTrigger(
   const callback = isCallback ? callbackOrOptions : undefined;
 
   const trigger: Trigger = {
+    order: registrations++,
     name: options?.name,
     condition,
     callback,
@@ -123,6 +128,97 @@ export function addMacroTrigger(
 export interface SavedWatcher {
   condition: string;
   options: WatchOptions;
+}
+
+// A passage replays its entry variables on load. Watchers removed by its
+// initial render must replay too; removals after player actions stay removed.
+let macroRenderDepth = 0;
+let entryRenderDepth = 0;
+let replayNavigation = -1;
+const replayRemoved = new Map<
+  string,
+  { watcher: SavedWatcher; order: number }
+>();
+
+/** Entry lifecycle callbacks and deferred initial passage subtrees replay on load. */
+export function duringEntryRender<T>(render: () => T): T {
+  entryRenderDepth++;
+  try {
+    return render();
+  } finally {
+    entryRenderDepth--;
+  }
+}
+
+function isEntryRender(): boolean {
+  return (
+    entryRenderDepth > 0 ||
+    (macroRenderDepth > 0 &&
+      getRenderedNavigationId() !== useStoryStore.getState().navigationId)
+  );
+}
+
+export function duringMacroRender<T>(render: () => T): T {
+  macroRenderDepth++;
+  try {
+    return render();
+  } finally {
+    macroRenderDepth--;
+  }
+}
+
+/** Forget replay removals whose effects have become part of a recorded entry. */
+export function clearReplayWatchers(): void {
+  replayRemoved.clear();
+}
+
+function replayRemovals() {
+  const navigation = useStoryStore.getState().navigationId;
+  if (navigation !== replayNavigation) {
+    replayRemoved.clear();
+    replayNavigation = navigation;
+  }
+  return replayRemoved;
+}
+
+function rememberRemoval(trigger: Trigger): void {
+  const removed = replayRemovals();
+  if (!trigger.macroKey || !trigger.options) return;
+  if (isEntryRender()) {
+    // A once watcher may be re-declared and consumed again in this entry.
+    // Replay begins with its first registration, before surviving peers.
+    if (removed.has(trigger.macroKey)) return;
+    removed.set(trigger.macroKey, {
+      watcher: {
+        condition: trigger.condition,
+        options: { ...trigger.options },
+      },
+      order: trigger.order,
+    });
+  } else {
+    removed.delete(trigger.macroKey);
+  }
+}
+
+/** Entry-render removals plus still active watchers, absent when none need replay. */
+export function savedReplayWatchers(): SavedWatcher[] | undefined {
+  const removed = replayRemovals();
+  if (!removed.size) return undefined;
+  const all = new Map(removed);
+  for (const trigger of triggers) {
+    if (!trigger.macroKey || !trigger.options || all.has(trigger.macroKey))
+      continue;
+    all.set(trigger.macroKey, {
+      watcher: {
+        condition: trigger.condition,
+        options: { ...trigger.options },
+      },
+      order: trigger.order,
+    });
+  }
+  return [...all.values()]
+    .sort((a, b) => a.order - b.order)
+    .map(({ watcher }) => watcher);
 }
 
 /** Canonical identity includes every option, so an imported action cannot change it. */
@@ -251,6 +347,15 @@ export function restoreMacroWatchers(
 }
 
 export function removeTrigger(name: string): void {
+  for (const trigger of triggers) {
+    if (trigger.name === name) rememberRemoval(trigger);
+  }
+  // An explicit later unwatch also removes a consumed entry watcher.
+  if (!isEntryRender()) {
+    for (const [key, { watcher }] of replayRemovals()) {
+      if (watcher.options.name === name) replayRemoved.delete(key);
+    }
+  }
   triggers = triggers.filter((t) => t.name !== name);
 }
 
@@ -310,6 +415,7 @@ function runCheckLoop(): void {
         anyFired = true;
 
         if (trigger.options?.once) {
+          rememberRemoval(trigger);
           triggers = triggers.filter((t) => t !== trigger);
         }
 
@@ -406,6 +512,7 @@ export function reinitTriggerState(): void {
  */
 export function resetTriggers(): void {
   triggers = [];
+  replayRemoved.clear();
   resets++;
   closeAllOpenDialogs();
   resetListeners.notify();

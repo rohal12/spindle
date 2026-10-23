@@ -18,7 +18,12 @@ import { useStoryFields } from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
-import { markPassageRendered } from '../passage-render-state';
+import { duringEntryRender } from '../triggers';
+import type { ComponentChildren } from 'preact';
+import {
+  EntryRenderContext,
+  markPassageRendered,
+} from '../passage-render-state';
 import { errorMessage } from '../utils/error-message';
 
 /**
@@ -74,6 +79,19 @@ const CODE_PASSAGES = new Set([
   'PassageFooter',
   'PassageDone',
 ]);
+
+/** PassageDone mounts after the main passage committed, but replays on load. */
+function EntryRenderBoundary({ children }: { children: ComponentChildren }) {
+  const phase = useRef({ pending: true });
+  useLayoutEffect(() => {
+    phase.current.pending = false;
+  }, []);
+  return (
+    <EntryRenderContext.Provider value={phase.current}>
+      {children}
+    </EntryRenderContext.Provider>
+  );
+}
 
 export function Passage({
   passage,
@@ -131,7 +149,10 @@ export function Passage({
   useLayoutEffect(() => {
     if (navigationId !== undefined) markPassageRendered(navigationId);
     if (elRef.current) {
-      emitFromRender('passagerender', passage.name, elRef.current);
+      const element = elRef.current;
+      const emit = () => emitFromRender('passagerender', passage.name, element);
+      if (navigationId !== undefined) duringEntryRender(emit);
+      else emit();
     }
   }, [passage.name, navigationId]);
 
@@ -151,7 +172,11 @@ export function Passage({
           {headerContent && <div class="passage-header">{headerContent}</div>}
           {content}
           {footerContent && <div class="passage-footer">{footerContent}</div>}
-          {doneContent && <div hidden>{doneContent}</div>}
+          {doneContent && (
+            <EntryRenderBoundary>
+              <div hidden>{doneContent}</div>
+            </EntryRenderBoundary>
+          )}
         </div>
       </ViewScopeContext.Provider>
     </InterfaceContext.Provider>

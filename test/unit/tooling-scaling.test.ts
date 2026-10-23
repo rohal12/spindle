@@ -40,6 +40,28 @@ it('resolves a reused macro config without repeatedly scanning its uses (#622)',
   expect(bindingScans).toBeLessThanOrEqual(1);
 });
 
+it.each([
+  ['arrays', '['.repeat(3000) + '0' + ']'.repeat(3000)],
+  ['objects', '{extra:'.repeat(3000) + '0' + '}'.repeat(3000)],
+  ['spreads', '{...'.repeat(3000) + '{}' + '}'.repeat(3000)],
+  ['groups', '('.repeat(3000) + '0' + ')'.repeat(3000)],
+  ['templates', '`x${'.repeat(3000) + '0' + '}`'.repeat(3000)],
+])('bounds config reading for deeply nested %s (#631)', (_kind, value) => {
+  const source = `Story.defineMacro({extra: ${value}, name: "First", block: true});
+Story.defineMacro({name: "Later"});`;
+  expect(
+    discoverMacros(source).map(({ name, block }) => [name, block]),
+  ).toEqual([
+    ['First', true],
+    ['Later', false],
+  ]);
+});
+
+it('keeps properties after a deeply nested config spread (#631)', () => {
+  const source = `Story.defineMacro({...${'{...'.repeat(3000)}{}${'}'.repeat(3000)}, name: "After"});`;
+  expect(discoverMacros(source).map(({ name }) => name)).toEqual(['After']);
+});
+
 it('reports long unknown names without quadratic suggestion work (#623)', () => {
   const name = 'a'.repeat(2000);
   const min = Math.min;

@@ -91,12 +91,18 @@ function run(
   source: string,
   startRule: 'Tokens' | 'SelectorsPrefix',
   options: ParseMarkupOptions,
+  completion = false,
 ): unknown {
   const hooks = options.hooks
     ? { ...defaultHooks, ...options.hooks }
     : defaultHooks;
   try {
-    return pegParse(source, { startRule, text: options.text === true, hooks });
+    return pegParse(source, {
+      startRule,
+      text: options.text === true,
+      hooks,
+      completion,
+    });
   } catch (err) {
     const { location, code } = err as {
       location?: { start: { offset: number }; end: { offset: number } };
@@ -260,6 +266,7 @@ export function tokenizeMarkupTolerant(
 export function scanMarkupTolerant(
   source: string,
   options: ParseMarkupOptions = {},
+  completion = false,
 ): TolerantTokens & { damage: number[] } {
   const tokens: Token[] = [];
   const errors: MarkupError[] = [];
@@ -280,9 +287,9 @@ export function scanMarkupTolerant(
           : closeBrace(input, codeStart, lenientStart),
     };
     try {
-      return tokenizeMarkup(text, { ...options, hooks }).map((token) =>
-        shiftOffsets(token, base),
-      );
+      return (
+        run(text, 'Tokens', { ...options, hooks }, completion) as Token[]
+      ).map((token) => shiftOffsets(token, base));
     } catch (error) {
       if (!(error instanceof MarkupError)) throw error;
       return error;
@@ -332,6 +339,14 @@ export function scanMarkupTolerant(
     base += cut + 1;
   }
   return { tokens, errors, damage };
+}
+
+/** Runtime grammar with unfinished EOF tokens, for cursor contexts only. */
+export function completionTokens(
+  source: string,
+  options: ParseMarkupOptions = {},
+): Token[] {
+  return scanMarkupTolerant(source, options, true).tokens;
 }
 
 /** The offset fields of a token (and of an attribute): `start`, `nameEnd`… */

@@ -5,6 +5,7 @@
 import { parseMacroArgs, type ArgSpans } from '../components/macros/macro-args';
 import { STRING_HOLDS, type MacroArgs, type StringHolds } from '../registry';
 import { tokenizeMarkupTolerant } from '../markup/parse';
+import { isRawMacro } from '../markup/ast';
 import type { MacroToken } from '../markup/tokens';
 import type { ParametersOf } from '../code-check';
 import { NameMap } from '../utils/macro-names';
@@ -131,55 +132,83 @@ export function widgetDefinitions(
   passages: Iterable<WidgetPassage>,
   parametersOf: ParametersOf = registeredParameters,
 ): WidgetDefinition[] {
-  const found: WidgetDefinition[] = [];
-  for (const passage of passages) {
-    if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
-      continue;
-    }
-    // The open definitions: their tags, and whether a slot was seen
-    const open: { token: MacroToken; isBlock: boolean; closeStart?: number }[] =
-      [];
-    const done: typeof open = [];
-    for (const token of tokenizeMarkupTolerant(passage.content).tokens) {
-      if (token.type === 'macro' && token.name.toLowerCase() === 'widget') {
-        if (!token.isClose) {
-          open.push({ token, isBlock: false });
-        } else {
-          const def = open.pop();
-          if (def) done.push({ ...def, closeStart: token.start });
+  const list = [...passages];
+  const scan = (replacesDo: boolean): WidgetDefinition[] => {
+    const found: WidgetDefinition[] = [];
+    const hooks = {
+      isRaw: (name: string) =>
+        isRawMacro(
+          name,
+          replacesDo || parametersOf.widget?.(name) !== undefined,
+        ),
+    };
+    for (const passage of list) {
+      if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
+        continue;
+      }
+      // The open definitions: their tags, and whether a slot was seen
+      const open: {
+        token: MacroToken;
+        isBlock: boolean;
+        closeStart?: number;
+      }[] = [];
+      const done: typeof open = [];
+      for (const token of tokenizeMarkupTolerant(passage.content, { hooks })
+        .tokens) {
+        if (token.type === 'macro' && token.name.toLowerCase() === 'widget') {
+          if (!token.isClose) {
+            open.push({ token, isBlock: false });
+          } else {
+            const def = open.pop();
+            if (def) done.push({ ...def, closeStart: token.start });
+          }
+        } else if (
+          open.length > 0 &&
+          ((token.type === 'variable' &&
+            token.scope === 'local' &&
+            token.name === 'children') ||
+            tokenTextContainsChildren(
+              token,
+              parametersOf,
+              passage.content,
+              hooks,
+            ))
+        ) {
+          open[open.length - 1]!.isBlock = true;
         }
-      } else if (
-        open.length > 0 &&
-        ((token.type === 'variable' &&
-          token.scope === 'local' &&
-          token.name === 'children') ||
-          tokenTextContainsChildren(token, parametersOf, passage.content))
-      ) {
-        open[open.length - 1]!.isBlock = true;
       }
-    }
-    done.push(...open);
-    const defs: WidgetDefinition[] = [];
-    for (const { token, isBlock, closeStart } of done) {
-      try {
-        const [from, to] = nameSpan(token.rawArgs);
-        defs.push({
-          ...parseWidgetDef(token.rawArgs),
-          block: isBlock,
-          passage: passage.name,
-          start: token.start,
-          end: token.end,
-          nameStart: token.argsStart + from,
-          nameEnd: token.argsStart + to,
-          ...(closeStart === undefined ? {} : { closeStart }),
-        });
-      } catch {
-        // The {widget} macro reports a definition it cannot read
+      done.push(...open);
+      const defs: WidgetDefinition[] = [];
+      for (const { token, isBlock, closeStart } of done) {
+        try {
+          const [from, to] = nameSpan(token.rawArgs);
+          defs.push({
+            ...parseWidgetDef(token.rawArgs),
+            block: isBlock,
+            passage: passage.name,
+            start: token.start,
+            end: token.end,
+            nameStart: token.argsStart + from,
+            nameEnd: token.argsStart + to,
+            ...(closeStart === undefined ? {} : { closeStart }),
+          });
+        } catch {
+          // The {widget} macro reports a definition it cannot read
+        }
       }
+      found.push(...defs.sort((a, b) => a.start - b.start));
     }
-    found.push(...defs.sort((a, b) => a.start - b.start));
-  }
-  return found;
+    return found;
+  };
+  const initial = scan(false);
+  // Discover definitions with real raw bodies first, so JavaScript strings
+  // that merely mention a widget cannot replace the built-in do. Once a
+  // closed do widget is known, its body and its callers are markup.
+  return effectiveWidgetDefinitions(initial).some(
+    (def) => def.name.toLowerCase() === 'do',
+  )
+    ? scan(true)
+    : initial;
 }
 
 /**

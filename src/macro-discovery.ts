@@ -53,6 +53,7 @@ const CONFIG_KEYS: ReadonlySet<string> = new Set([
 class ConfigReader extends Reader {
   /** Whether the text could not be skipped through (it ends the reading). */
   failed = false;
+  private depth = 0;
 
   /** The static value of a member or element, whatever follows is skipped. */
   private member(): Datum | undefined {
@@ -124,22 +125,33 @@ class ConfigReader extends Reader {
    * after what it read. False if the text ends first, or cannot be read.
    */
   private elements(close: string, read: () => void): boolean {
-    this.i++;
-    for (;;) {
-      this.space();
-      const c = this.src.charAt(this.i);
-      if (c === close) {
-        this.i++;
-        return true;
+    // Deeper values are unknown, but skipping them must leave the reader
+    // at the next member so unrelated config fields and calls still work.
+    if (this.depth >= 64) {
+      if (!this.skipBalanced()) this.fail();
+      return false;
+    }
+    this.depth++;
+    try {
+      this.i++;
+      for (;;) {
+        this.space();
+        const c = this.src.charAt(this.i);
+        if (c === close) {
+          this.i++;
+          return true;
+        }
+        if (c === ',') {
+          this.i++;
+          continue;
+        }
+        if (this.failed || this.i >= this.src.length) return false;
+        const before = this.i;
+        read();
+        if (this.i === before) this.fail();
       }
-      if (c === ',') {
-        this.i++;
-        continue;
-      }
-      if (this.failed || this.i >= this.src.length) return false;
-      const before = this.i;
-      read();
-      if (this.i === before) this.fail();
+    } finally {
+      this.depth--;
     }
   }
 

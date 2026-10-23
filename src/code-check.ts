@@ -605,7 +605,7 @@ function escapeAt(
  * is where the escape begins. None when the text is where its length says, or
  * is not that string.
  */
-function escapeOffsets(
+export function escapeOffsets(
   raw: string,
   at: number,
   value: string,

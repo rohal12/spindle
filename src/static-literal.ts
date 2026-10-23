@@ -471,18 +471,33 @@ export class Reader {
 
   /** Skip an array literal (or any bracketed group) at the cursor. */
   protected skipBalanced(): boolean {
+    const close = { '[': ']', '{': '}', '(': ')' }[this.src.charAt(this.i)];
+    return close ? this.skipNested(close) : false;
+  }
+
+  /** Skip groups and template interpolations with an explicit stack. */
+  private skipNested(close: string): boolean {
     const { src } = this;
-    const close = { '[': ']', '{': '}', '(': ')' }[src.charAt(this.i)];
-    if (!close) return false;
+    const stack = [close];
     this.i++;
-    while (this.i < src.length) {
-      if (src.charAt(this.i) === close) {
+    while (this.i < src.length && stack.length) {
+      const c = src.charAt(this.i);
+      const top = stack[stack.length - 1];
+      if (c === top) {
+        stack.pop();
         this.i++;
-        return true;
-      }
-      if (!this.skipOne()) return false;
+      } else if (top === '`') {
+        if (c === '\\') this.i += 2;
+        else if (c === '$' && src.charAt(this.i + 1) === '{') {
+          stack.push('}');
+          this.i += 2;
+        } else this.i++;
+      } else if (c === '`' || c === '[' || c === '{' || c === '(') {
+        stack.push(c === '`' ? '`' : { '[': ']', '{': '}', '(': ')' }[c]!);
+        this.i++;
+      } else if (!this.skipOne()) return false;
     }
-    return false;
+    return stack.length === 0;
   }
 
   /** Skip one character, or one string, template, comment or group. */
@@ -512,19 +527,6 @@ export class Reader {
 
   /** Skip a template literal, with the expressions in it. */
   protected skipTemplate(): boolean {
-    const { src } = this;
-    this.i++;
-    while (this.i < src.length) {
-      const c = src.charAt(this.i);
-      if (c === '\\') this.i += 2;
-      else if (c === '`') {
-        this.i++;
-        return true;
-      } else if (c === '$' && src.charAt(this.i + 1) === '{') {
-        this.i++;
-        if (!this.skipBalanced()) return false;
-      } else this.i++;
-    }
-    return false;
+    return this.skipNested('`');
   }
 }

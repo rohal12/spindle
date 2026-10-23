@@ -1,3 +1,7 @@
+export {
+  completionContext,
+  type CompletionContext,
+} from './completion-context';
 import { branchParents } from './registry';
 /**
  * What the tooling entry point (`@rohal12/spindle/tooling`) bundles as

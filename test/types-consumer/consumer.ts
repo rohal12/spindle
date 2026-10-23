@@ -22,6 +22,8 @@ export const checks: [
   Resolved<StoryAPI['observe']>,
   Resolved<keyof typeof Tooling>,
   Resolved<Tooling.ToolingMacro['widget']>,
+  Resolved<ReturnType<typeof Tooling.completionContext>>,
+  Resolved<Tooling.CompletionContext>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {

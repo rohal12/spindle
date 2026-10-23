@@ -1,4 +1,4 @@
-import { collectStoryPassageReferences } from '../tooling';
+import { passagePiecesOfTokens } from '../tooling';
 import { tokenizeMarkupTolerant } from '../markup/parse';
 import { builtinMacros } from './builtin-macros';
 
@@ -13,19 +13,17 @@ export function parsePassageText(text: string): string[] {
   try {
     // Both `[[…]]` and `{link}` report `macro: 'link'`; only the link token
     // tells them apart.
-    const links = tokenizeMarkupTolerant(text).tokens.filter(
-      (token) => token.type === 'link',
+    const tokens = tokenizeMarkupTolerant(text).tokens;
+    const bracketTargets = new Set(
+      tokens
+        .filter((token) => token.type === 'link')
+        .map((link) => link.targetStart),
     );
     const names = new Set<string>();
-    for (const ref of collectStoryPassageReferences(text, builtinMacros)) {
-      if (ref.target.kind !== 'name') continue;
-      if (
-        links.some(
-          (link) => ref.start >= link.targetStart && ref.start < link.targetEnd,
-        )
-      )
+    for (const piece of passagePiecesOfTokens(text, builtinMacros, tokens)) {
+      if (piece.kind !== 'passage' || bracketTargets.has(piece.offset))
         continue;
-      names.add(ref.target.name);
+      names.add(piece.name);
     }
     return [...names];
   } catch {

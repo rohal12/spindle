@@ -14,6 +14,8 @@ export declare class SyntaxError extends globalThis.SyntaxError {
 
 export interface ParseOptions {
   startRule: 'Tokens' | 'SelectorsPrefix';
+  /** Internal cursor-context mode accepts unfinished EOF tokens. */
+  completion?: boolean;
   /** Text mode (attribute values, labels). */
   text: boolean;
   /** What the grammar leaves to code (see parse.ts MarkupHooks). */

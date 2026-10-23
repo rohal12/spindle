@@ -26,7 +26,10 @@ export type SigilPart =
  * sigil is not followed by a word character (`{$(…)}`) is code, kept
  * verbatim: not resolved, and not decoded like text.
  */
-export function splitSigilTemplate(template: string): SigilPart[] {
+export function splitSigilTemplate(
+  template: string,
+  incomplete = false,
+): SigilPart[] {
   const parts: SigilPart[] = [];
   let text = '';
   let i = 0;
@@ -39,9 +42,10 @@ export function splitSigilTemplate(template: string): SigilPart[] {
     }
     text += template.slice(i, brace);
     i = brace + 1;
-    const end = isSigil(template[i])
+    let end = isSigil(template[i])
       ? defaultCodeEnd.closeBrace(template, i, i)
       : -1;
+    if (end === -1 && incomplete && isSigil(template[i])) end = template.length;
     if (end === -1) {
       text += '{';
       continue;
@@ -50,7 +54,10 @@ export function splitSigilTemplate(template: string): SigilPart[] {
     text = '';
     const block = template.slice(i, end);
     parts.push(
-      /^.\w/.test(block) ? { expr: block } : { verbatim: `{${block}}` },
+      /^.\w/.test(block) ||
+        (incomplete && block.length === 1 && end === template.length)
+        ? { expr: block }
+        : { verbatim: `{${block}}` },
     );
     i = end + 1;
   }

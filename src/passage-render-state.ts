@@ -1,3 +1,10 @@
+import { createContext } from 'preact';
+
+/** Initial render of a deferred passage subtree, until its first commit. */
+export const EntryRenderContext = createContext<{ pending: boolean } | null>(
+  null,
+);
+
 /**
  * Navigation id (the store's `navigationId`) of the passage most recently
  * mounted by <Passage> (null until the first render, e.g. when the story

@@ -29,17 +29,19 @@ it('rejects new watcher code and altered actions before import or state replacem
     },
     { condition: '$n > 0', options: { goto: 'Start', name: 'legitimate' } },
   ]) {
-    const bad = { ...payload, watchers: [watcher] };
-    const file = structuredClone(exported);
-    file.save.payload.data = serialize(bad);
-    await expect(Story.importSave(file, 'untrusted')).rejects.toThrow();
-    expect(() => useStoryStore.getState().loadFromPayload(bad)).toThrow(
-      /watcher/,
-    );
-    expect(Story.observe().passage).toBe('Next');
-    expect(
-      (globalThis as Record<string, unknown>).__saveCodeRan,
-    ).toBeUndefined();
+    for (const field of ['watchers', 'replayWatchers'] as const) {
+      const bad = { ...payload, [field]: [watcher] };
+      const file = structuredClone(exported);
+      file.save.payload.data = serialize(bad);
+      await expect(Story.importSave(file, 'untrusted')).rejects.toThrow();
+      expect(() => useStoryStore.getState().loadFromPayload(bad)).toThrow(
+        /watcher/,
+      );
+      expect(Story.observe().passage).toBe('Next');
+      expect(
+        (globalThis as Record<string, unknown>).__saveCodeRan,
+      ).toBeUndefined();
+    }
   }
 
   // Rejecting an overwrite leaves the previous usable slot intact.
