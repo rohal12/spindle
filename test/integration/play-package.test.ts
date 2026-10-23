@@ -162,6 +162,86 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     }
   });
 
+  it('uses the story window in event callbacks without changing event identity (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables:
+          '$events = []\n$objectCalls = 0\n$abortCalls = 0\n$handlerSame = false',
+        Start: `{do}
+          window.api = { hello: () => 'hi' };
+          const results = [];
+          let activeEvent;
+          let activeTarget;
+          function callback(event) {
+            'use strict';
+            results.push([
+              this === window, this?.api?.hello() ?? 'missing',
+              event === activeEvent, event.target === activeTarget,
+              event.currentTarget === window,
+              event.composedPath().at(-1) === window,
+            ]);
+          }
+          activeTarget = window;
+          activeEvent = new CustomEvent('probe');
+          window.addEventListener('probe', callback);
+          window.addEventListener('probe', callback);
+          window.dispatchEvent(activeEvent);
+          window.removeEventListener('probe', callback);
+          window.dispatchEvent(activeEvent);
+
+          const button = document.createElement('button');
+          document.body.append(button);
+          activeTarget = button;
+          activeEvent = new Event('probe', { bubbles: true });
+          addEventListener('probe', callback, { once: true, capture: true });
+          button.dispatchEvent(activeEvent);
+          button.dispatchEvent(activeEvent);
+          button.remove();
+
+          activeTarget = window;
+          activeEvent = new Event('resize');
+          window.onresize = callback;
+          Story.set('handlerSame', window.onresize === callback);
+          window.dispatchEvent(activeEvent);
+          window.onresize = null;
+          window.dispatchEvent(activeEvent);
+          const object = { handleEvent(event) {
+            if (this === object && event.currentTarget === window) {
+              Story.set('objectCalls', Story.get('objectCalls') + 1);
+            }
+          } };
+          window.addEventListener('probe', object);
+          window.dispatchEvent(new Event('probe'));
+          window.removeEventListener('probe', object);
+          window.dispatchEvent(new Event('probe'));
+          const controller = new AbortController();
+          window.addEventListener('probe', () => {
+            Story.set('abortCalls', Story.get('abortCalls') + 1);
+          }, { signal: controller.signal });
+          window.dispatchEvent(new Event('probe'));
+          controller.abort();
+          window.dispatchEvent(new Event('probe'));
+          Story.set('events', results);
+        {/do}`,
+      }),
+    });
+    try {
+      expect(await s.get()).toMatchObject({
+        events: [
+          [true, 'hi', true, true, true, true],
+          [true, 'hi', true, true, true, true],
+          [true, 'hi', true, true, true, true],
+        ],
+        handlerSame: true,
+        objectCalls: 1,
+        abortCalls: 1,
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
   it('runs and cancels idle callbacks through window and bare globals (#635)', async () => {
     const s = await openPlaySession({
       trusted: true,

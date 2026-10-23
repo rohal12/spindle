@@ -8,6 +8,7 @@ import type * as HappyDom from 'happy-dom';
 import type * as Headless from '../headless';
 import { errorMessage } from '../utils/error-message';
 import { loadOptional } from './optional';
+import { installWindowEvents } from './window-events';
 import type { Op, Ready, Reply, Request, WorkerData } from './protocol';
 
 type HeadlessModule = typeof Headless;
@@ -30,6 +31,7 @@ async function installDom(): Promise<void> {
     'play sessions',
   );
   const window = new Window({ url: 'http://localhost/' });
+  installWindowEvents(window);
   const global = globalThis as Record<string, unknown>;
   const source = window as unknown as Record<string, unknown>;
   global.document = window.document;
