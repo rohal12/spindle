@@ -133,6 +133,35 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     }
   });
 
+  it('keeps DOM window accessors and the DOM view Story API live (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables: '$resizes = 0\n$size = []\n$domStory = false',
+        Start: `{do}
+          window.onresize = function () {
+            this.Story.set('resizes', this.Story.get('resizes') + 1);
+          };
+          window.dispatchEvent(new Event('resize'));
+          window.onresize = null;
+          window.dispatchEvent(new Event('resize'));
+          window.happyDOM.setViewport({ width: 900, height: 700 });
+          Story.set('size', [window.innerWidth, innerHeight]);
+          Story.set('domStory', document.defaultView.Story === Story);
+        {/do}`,
+      }),
+    });
+    try {
+      expect(await s.get()).toMatchObject({
+        resizes: 1,
+        size: [900, 700],
+        domStory: true,
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
   it('runs and cancels idle callbacks through window and bare globals (#635)', async () => {
     const s = await openPlaySession({
       trusted: true,

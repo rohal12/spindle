@@ -23,7 +23,7 @@ Object.defineProperty(process, 'stdout', {
 const port = parentPort!;
 const data = workerData as WorkerData;
 
-/** Make happy-dom's window the global environment Spindle runs in. */
+/** Install happy-dom's DOM in the global environment Spindle runs in. */
 async function installDom(): Promise<void> {
   const { Window } = await loadOptional<typeof HappyDom>(
     'happy-dom',
@@ -35,7 +35,15 @@ async function installDom(): Promise<void> {
   global.document = window.document;
   // Node's own globals (fetch, URL, ...) stay as they are,
   for (const name of Object.getOwnPropertyNames(window)) {
-    if (!(name in globalThis)) global[name] = source[name];
+    if (!(name in globalThis)) {
+      // happy-dom binds its accessors to the DOM window. Keep them live:
+      // copying values disconnects onresize setters and snapshots dimensions.
+      Object.defineProperty(
+        globalThis,
+        name,
+        Object.getOwnPropertyDescriptor(window, name)!,
+      );
+    }
   }
   // except those the story must get from happy-dom.
   for (const name of HAPPY_DOM_GLOBALS) {
@@ -49,8 +57,21 @@ async function installDom(): Promise<void> {
   // Use that realm's global object for browser aliases too, so assignments,
   // property descriptors and deletions on window have browser semantics.
   for (const name of ['window', 'self', 'parent', 'top', 'frames']) {
-    global[name] = globalThis;
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: globalThis,
+    });
   }
+  // DOM event callbacks and document.defaultView still use the backing
+  // window. Preserve their access to the API now installed on globalThis.
+  Object.defineProperty(window, 'Story', {
+    configurable: true,
+    get: () => global.Story,
+    set: (value: unknown) => {
+      global.Story = value;
+    },
+  });
   installIdleCallbacks();
   // Node's BroadcastChannel reaches every worker thread in the process, so
   // sessions would hear each other's save-slot notices. Spindle works without
