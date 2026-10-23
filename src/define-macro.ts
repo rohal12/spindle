@@ -1,3 +1,5 @@
+import { duringMacroRender, duringEntryRender } from './triggers';
+import { EntryRenderContext } from './passage-render-state';
 import { h } from 'preact';
 import type { VNode, ComponentChildren } from 'preact';
 import {
@@ -156,6 +158,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
   const acts = actingMacros.has(config.name);
 
   function Wrapper(props: MacroProps) {
+    const entryRender = useContext(EntryRenderContext);
     // In a display-only passage nothing may change the story (a mount's
     // context never changes, so the hooks below run alike on every render)
     const displayOnly = useContext(DisplayOnlyContext);
@@ -318,7 +321,9 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
     }
 
     try {
-      return config.render(props, ctx);
+      return entryRender?.pending
+        ? duringEntryRender(() => config.render(props, ctx))
+        : duringMacroRender(() => config.render(props, ctx));
     } catch (error) {
       // An argument read while rendering, e.g. a sub-macro's ({option})
       if (error instanceof MacroArgumentError) {

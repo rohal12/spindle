@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tooling: `completionContext(source, cursor, macros?)` exposes executable cursor contexts in unfinished markup, including nested labels, attributes and template interpolations, with source offsets (#632).
+
 - Tooling exports the runtime’s `parseCode` with executable read/write roles, tolerant `macroArgumentSpans`, and identity-preserving `effectiveWidgetDefinitions`. Published widget metadata includes `holds`, `badHolds` and `ToolingMacro.widget` (#574, #589, #610).
 
 - Tooling (`@rohal12/spindle/tooling`): `formatPassage(body, { kind?, prettier?, prettierOptions?, isBlock?, isDedentingSubMacro?, maxLineLength? })` formats the text of a passage: block macro bodies indented, trailing whitespace removed, `<script>` and HTML blocks formatted with an injected Prettier, and everything the runtime executes (macros, links, `{do}` bodies, multi-line template literals) kept as written, in the line endings of the text.
@@ -38,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** an argument that must be a quoted string and isn't (`{link Go north}`, `{option Red}`, `{watch $x > 0}`) is an error, reported when the story starts and in place when rendered, instead of being dropped or read loosely. An optional quoted string at the end (`{meter $hp 100}`) may still be left out.
 
 ### Fixed
+
+- Saves replay earlier watchers consumed during passage entry, preserving their effects and equal-priority order while retaining later player removals (#627).
+- Loading trims imported history before expanding variable snapshots and retains sharing between repeated namespaces (#628).
+- Twine reference callbacks filter bracket links with linear lookup work (#629).
+- Startup widget discovery finds forwarded children through widgets that replace `do` (#630).
+- Static macro discovery bounds config nesting and skips deep values without exhausting the call stack (#631).
 
 - Widgets named `if`, `switch`, `timed` or `do` preserve their invocation markup and selectors, including calls during `StoryInit` validation; tooling also reads a `do` widget's child links and variables (#620, #621).
 - Static macro discovery reuses binding facts and parsed configuration literals when many registrations share one object (#622).

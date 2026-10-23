@@ -300,6 +300,27 @@ The returned definitions are the same objects as in the input. For documents wit
 
 A direct assignment, deletion or destructuring target writes its binding. Compound assignments and updates read and write. A member assignment reads its root binding, and computed keys and default initializers are reads. For example, `parseCode('[_x = _x + 1] = []')` reports the first `_x` as write-only and the second as read-only. It throws for malformed code and invalid sigil declarations, just as the runtime does; use `lexJs` for tolerant lexical scanning when parsing fails.
 
+## Completion contexts
+
+`completionContext(source, cursor, macros?)` identifies whether a UTF-16 cursor is in executable markup, including unfinished tags, expressions, labels, attributes and code-holding strings (#632). Pass `builtinMacros` plus your project's macro and widget metadata. It inspects the prefix before the cursor with the runtime grammar and argument rules; it does not execute story code. Invalid cursor offsets throw `RangeError`.
+
+The result is `{ kind: 'literal' }` in prose, ordinary strings, comments, regex literals and template text. In executable positions, including template interpolations and a bare variable sigil, it returns `{ kind: 'code', code, goal, cursor, offset, sourceOffsets? }`. `cursor` is the position in `code`; `pieceOffset(context, index)` maps code positions back to the original passage, including escapes inside nested quoted labels. `lexJs(context.code, handlers, context.goal)` can then inspect variable and field references without reconstructing markup parsing.
+
+```js
+import {
+  builtinMacros,
+  completionContext,
+  pieceOffset,
+} from '@rohal12/spindle/tooling';
+
+const source = '<span title="{$inventory.';
+const context = completionContext(source, source.length, builtinMacros);
+if (context.kind === 'code') {
+  console.log(context.code); // $inventory.
+  console.log(pieceOffset(context, context.cursor)); // source.length
+}
+```
+
 ## Macro argument spans
 
 `macroArgumentSpans(rawArgs, parameters)` groups arguments using the runtime’s parameter rules without evaluating expressions. Each result contains the original `parameter` object, its top-level `parameterIndex`, its `parameterPath` through nested options, and UTF-16 `start`/`end` offsets into `rawArgs`. Quotes, flag words, separators and option keywords are included. Options have both an enclosing span and individual keyword spans; choose the most specific overlapping span for nested option help.

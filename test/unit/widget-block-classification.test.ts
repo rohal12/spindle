@@ -160,3 +160,49 @@ describe('tooling reads the same effective definitions', () => {
     ).toEqual([]);
   });
 });
+
+describe('startup discovers children forwarded through a do widget (#630)', () => {
+  const wrap = '{widget "Wrap"}{do}{@children}{/do}{/widget}';
+  const doWidget = '{widget "do"}{@children}{/widget}';
+
+  it.each([false, true])(
+    'reads either definition order in StoryInit (reverse: %s)',
+    (reverse) => {
+      const content = (reverse ? [wrap, doWidget] : [doWidget, wrap]).join(
+        '\n',
+      );
+      expect(blockWidgetNames([{ name: 'StoryInit', content }])).toEqual(
+        reverse ? ['Wrap', 'do'] : ['do', 'Wrap'],
+      );
+    },
+  );
+
+  it.each([false, true])(
+    'reads widget passages in either order (reverse: %s)',
+    (reverse) => {
+      const passages = [
+        { name: 'Wraps', tags: ['widget'], content: wrap },
+        { name: 'Do', tags: ['widget'], content: doWidget },
+        { name: 'StoryInit', content: '{Wrap}Ready{/Wrap}' },
+      ];
+      if (reverse) passages.reverse();
+      expect(blockWidgetNames(passages).sort()).toEqual(['Wrap', 'do']);
+      expect(validateStoryMarkup(passages, getMacroRegistry())).toEqual([]);
+    },
+  );
+
+  it('keeps widget syntax and children slots in real do strings as JavaScript', () => {
+    const content =
+      '{widget "Literal"}{do}const fake = \'{widget "do"}{@children}{/widget}\';{/do}Ready{/widget}' +
+      wrap;
+    expect(
+      widgetDefinitions([{ name: 'StoryInit', content }]).map((definition) => [
+        definition.name,
+        definition.block,
+      ]),
+    ).toEqual([
+      ['Literal', false],
+      ['Wrap', false],
+    ]);
+  });
+});

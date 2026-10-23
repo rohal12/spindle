@@ -130,6 +130,8 @@ function joinText(items) {
 
 {
 const textMode = options.text === true;
+// Only cursor-context parsing accepts EOF in place of an unfinished closer.
+const completionMode = options.completion === true;
 const hooks = options.hooks;
 /** End of the stretch a `.|n|` repetition consumes (see skipTo). */
 let skipEnd = -1;
@@ -229,6 +231,7 @@ RawTokens
       const loc = { start: { offset: start }, end: { offset: start + body.length } };
       return [body ? lexeme('text', loc, { value: body }) : null, end];
     }
+  / &{ return completionMode; } body:$.* { return lexeme('text', location(), { value: body }); }
 
 // ----------------------------------------------------------------- lexemes
 
@@ -243,7 +246,7 @@ TextRun
  * rendering drops it. (An unclosed `<!--` is ordinary text.)
  */
 Comment
-  = value:$("<!--" (">" / "->" / (!"-->" .)* "-->")) {
+  = value:$("<!--" (">" / "->" / (!"-->" .)* ("-->" / OpenEnd))) {
       const node = lexeme('text', location(), { value });
       node.comment = true;
       return node;
@@ -280,7 +283,7 @@ Literal
   / "[" { return lexeme('text', location(), { value: '[' }); }
 
 LinkLexeme
-  = &{ return !textMode; } "[[" ss:Here s:Selectors at:Here inner:$LinkText "]]" {
+  = &{ return !textMode; } "[[" ss:Here s:Selectors at:Here inner:$LinkText ("]]" / OpenEnd) {
       const link = lexeme('link', location(), parseLink(inner, at, (separator) => linkSeparatorIndex(inner, at, separator)));
       link.selectorSpan = selectorSpan(s, ss, at);
       return withSelectors(link, s);
@@ -313,12 +316,12 @@ SelectorChar
 
 /** A variable `{$a.b}` or expression `{$a + 1}`, `{(…)}`, `{!…}`. */
 Value
-  = "{" ss:Here s:Selectors sigil:[$_@%] nameStart:Here name:$[a-zA-Z0-9_.]* "}" {
+  = "{" ss:Here s:Selectors sigil:[$_@%] nameStart:Here name:$[a-zA-Z0-9_.]* BraceEnd {
       const variable = lexeme('variable', location(), { name, nameStart, nameEnd: nameStart + name.length, scope: SIGIL_SCOPES[sigil] });
       variable.selectorSpan = selectorSpan(s, ss, nameStart - 1);
       return withSelectors(variable, s);
     }
-  / "{" ss:Here s:Selectors after:Here &[$_@%(!] expression:CodeToBrace "}" {
+  / "{" ss:Here s:Selectors after:Here &[$_@%(!] expression:CodeToBrace BraceEnd {
       const node = lexeme('expression', location(), { expression, expressionStart: after, expressionEnd: after + expression.length });
       node.selectorSpan = selectorSpan(s, ss, after);
       return withSelectors(node, s);
@@ -327,12 +330,18 @@ Value
 
 /** JavaScript up to the } that ends it: where is up to options.hooks. */
 CodeToBrace
-  = start:Here &{ return skipTo(hooks.closeBrace(input, start, start)); } code:$(.|{ return skipEnd - offset(); }|) { return code; }
+  = start:Here &{ const end = hooks.closeBrace(input, start, start); return skipTo(end < 0 && completionMode ? input.length : end); } code:$(.|{ return skipEnd - offset(); }|) { return code; }
+
+OpenEnd
+  = &{ return completionMode; } !.
+
+BraceEnd
+  = "}" / OpenEnd
 
 /** A macro tag: `{name args}`, `{/name}`, with selectors on an opener. */
 MacroTag
   = "{" ss:Here s:Selectors start:Here close:"/"? name:MacroName nameEnd:Here
-    tail:( &{ return skipTo(hooks.closeBrace(input, nameEnd, start)); } args:$(.|{ return skipEnd - offset(); }|) "}" { return args; } )? {
+    tail:( &{ const end = hooks.closeBrace(input, nameEnd, start); return skipTo(end < 0 && completionMode ? input.length : end); } args:$(.|{ return skipEnd - offset(); }|) BraceEnd { return args; } )? {
       const loc = location();
       const lower = name.toLowerCase();
       const tag = lexeme('macro', loc, { name, lower, rawArgs: '', isClose: !!close });
@@ -340,7 +349,7 @@ MacroTag
       tag.nameEnd = nameEnd;
       tag.selectorSpan = selectorSpan(s, ss, start);
       if (tail === null) fail('Unclosed ' + LB + (close ? '/' : '') + name + '…: no ' + RB + ' ends the macro', loc, 'unclosed-macro');
-      tag.rawArgs = tail.trim();
+      tag.rawArgs = completionMode ? tail.trimStart() : tail.trim();
       tag.argsStart = tag.rawArgs ? nameEnd + tail.length - tail.trimStart().length : nameEnd;
       tag.argsEnd = tag.argsStart + tag.rawArgs.length;
       if (close) {
@@ -376,7 +385,7 @@ UriAutolink
     { return lexeme('text', location(), { value }); }
 
 HtmlOpen
-  = "<" tagStart:Here tag:TagName list:Attribute* _ slash:"/"? ">" {
+  = "<" tagStart:Here tag:TagName list:Attribute* _ slash:"/"? (">" / OpenEnd) {
       const lower = tag.toLowerCase();
       return lexeme('html', location(), { tag, lower, tagNameStart: tagStart, tagNameEnd: tagStart + tag.length, attributes: attrs(list), attributeSpans: list, isClose: false, isSelfClose: !!slash || VOID_TAGS.has(lower) });
     }
@@ -414,8 +423,8 @@ Attribute
 
 /** An attribute value: its text, where that is written and its quote, if any. */
 AttrValue
-  = '"' start:Here value:$(ValuePart / [^"])* end:Here '"' { return { value, start, end, quote: '"' }; }
-  / "'" start:Here value:$(ValuePart / [^'])* end:Here "'" { return { value, start, end, quote: "'" }; }
+  = '"' start:Here value:$(ValuePart / [^"])* end:Here ('"' / OpenEnd) { return { value, start, end, quote: '"' }; }
+  / "'" start:Here value:$(ValuePart / [^'])* end:Here ("'" / OpenEnd) { return { value, start, end, quote: "'" }; }
   / q:["'] { fail('Unclosed attribute value: the ' + q + ' here has no closing ' + q, location(), 'unclosed-attribute'); }
   / start:Here value:$[^ \t\n\r\x0B\x0C\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF>]* end:Here { return { value, start, end }; }
 
@@ -423,9 +432,9 @@ AttrValue
 ValuePart
   = &{ return !attrCode; } bs:$"\\"+ (&{ return bs.length % 2 === 1; } [{}])?
   / &{ return !attrCode; } "{" Selectors start:Here "/"? MacroName nameEnd:Here
-    &{ return skipTo(hooks.closeBrace(input, nameEnd, start)); } $(.|{ return skipEnd - offset(); }|) "}"
-  / &{ return !attrCode; } "{" Selectors !("/"? [a-zA-Z]) CodeToBrace "}"
-  / &{ return attrCode; } "{" &[$_@%] CodeToBrace "}"
+    &{ const end = hooks.closeBrace(input, nameEnd, start); return skipTo(end < 0 && completionMode ? input.length : end); } $(.|{ return skipEnd - offset(); }|) BraceEnd
+  / &{ return !attrCode; } "{" Selectors !("/"? [a-zA-Z]) CodeToBrace BraceEnd
+  / &{ return attrCode; } "{" &[$_@%] CodeToBrace BraceEnd
 
 _
   = _c*

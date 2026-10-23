@@ -97,6 +97,54 @@ describe('history navigation', () => {
     });
   });
 
+  it('does not expand snapshots that loading will discard (#628)', () => {
+    store().init(makeStoryData(), { n: 0 });
+    store().setMaxHistory(2);
+    const payload = store().getSavePayload();
+    const discarded = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('discarded variables were expanded');
+        },
+      },
+    );
+    payload.history = [
+      { passage: 'A', timestamp: 0, variables: discarded },
+      { passage: 'B', timestamp: 1, variables: { n: 1 } },
+      { passage: 'C', timestamp: 2, variables: { n: 2 } },
+    ];
+    payload.historyIndex = 2;
+    payload.passage = 'C';
+    store().loadFromPayload(payload);
+    expect(store().history.map((m) => m.passage)).toEqual(['B', 'C']);
+    expect(historySnapshots()).toEqual([{ n: 1 }, { n: 2 }]);
+    expect(store().historyIndex).toBe(1);
+    store().goBack();
+    expect(store().variables.n).toBe(1);
+  });
+
+  it('keeps repeated loaded namespaces shared in the session (#628)', () => {
+    store().init(makeStoryData(), { n: 0 });
+    const payload = store().getSavePayload();
+    const shared = { n: 7, item: { name: 'shared' } };
+    payload.history = Array.from({ length: 2000 }, (_, timestamp) => ({
+      passage: 'A',
+      timestamp,
+      variables: shared,
+    }));
+    payload.historyIndex = 1999;
+    store().loadFromPayload(payload);
+    expect(store().history).toHaveLength(40);
+    const session = loadSession(IFID)!;
+    expect(session.history[0]!.variables).toBe(session.history[39]!.variables);
+    expect(store().variables.n).toBe(7);
+    store().setVariable('n', 8);
+    store().goBack();
+    expect(store().variables.n).toBe(7);
+    expect(shared.n).toBe(7);
+  });
+
   describe('back/forward restore recorded snapshots (#159)', () => {
     it('discards changes to variables untouched by the transition', () => {
       store().init(makeStoryData(), { y: 0 });

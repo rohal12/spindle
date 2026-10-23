@@ -193,6 +193,7 @@ function isPayload(value: unknown): value is Record<string, unknown> {
     isCountsMap(value.renderCounts) &&
     isOptionalPRNGSnapshot(value.prng) &&
     isWatchers(value.watchers) &&
+    isWatchers(value.replayWatchers) &&
     (value.interfaceWatchers === undefined ||
       typeof value.interfaceWatchers === 'boolean')
   );
@@ -219,6 +220,9 @@ export function decodePayload(encoded: unknown): SavePayload {
   assertArrayLengths(body, MAX_SAVE_ARRAY_LENGTH);
   assertTrustedWatchers(
     (body.watchers ?? []) as NonNullable<SavePayload['watchers']>,
+  );
+  assertTrustedWatchers(
+    (body.replayWatchers ?? []) as NonNullable<SavePayload['replayWatchers']>,
   );
   const payload = {
     ...body,

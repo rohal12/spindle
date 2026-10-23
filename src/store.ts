@@ -26,6 +26,8 @@ import {
   assertTrustedWatchers,
   interfaceMounted,
   savedMacroWatchers,
+  savedReplayWatchers,
+  clearReplayWatchers,
   reinitTriggerState,
 } from './triggers';
 import {
@@ -206,6 +208,7 @@ function applyVarPatches(
   vars: Record<string, unknown>,
   changes: readonly VarChange[],
 ): Record<string, unknown> {
+  if (changes.length === 0) return vars;
   const next = Object.create(
     Object.getPrototypeOf(vars) as object | null,
   ) as Record<string, unknown>;
@@ -324,6 +327,7 @@ function persistSession(get: () => StoryState): { error: unknown } | undefined {
     renderCounts,
     prng: snapshotPRNG(),
     watchers: savedMacroWatchers(),
+    replayWatchers: savedReplayWatchers(),
     interfaceWatchers: interfaceMounted(),
   });
 }
@@ -558,6 +562,7 @@ export function recordStoryInitState(): void {
   if (history.length !== 1 || historyIndex !== 0) return;
 
   resetModuleState(variables);
+  clearReplayWatchers();
 
   const prng = snapshotPRNG();
   useStoryStore.setState((state) => {
@@ -1817,6 +1822,7 @@ export const useStoryStore = create<StoryState>()(
         renderCounts: { ...renderCounts },
         prng: snapshotPRNG(),
         watchers: savedMacroWatchers(),
+        replayWatchers: savedReplayWatchers(),
         interfaceWatchers: interfaceMounted(),
       };
     },
@@ -1860,6 +1866,7 @@ export const useStoryStore = create<StoryState>()(
       // running game as it is
       assertPassagesExist(get().storyData, payload);
       assertTrustedWatchers(payload.watchers ?? []);
+      assertTrustedWatchers(payload.replayWatchers ?? []);
       applyReplacement(replacement);
 
       leavingPlaythrough = leaving;
@@ -1893,18 +1900,36 @@ export const useStoryStore = create<StoryState>()(
       // Convert full snapshots to patch entries. They are copied in one
       // piece, so values the moments share stay shared, and a transition's
       // patches hold only the variables that changed.
-      const snapshots = deepClone(payload.history.map((m) => m.variables)).map(
-        (vars) => createNamespace(vars),
+      const index = Math.max(
+        0,
+        Math.min(payload.historyIndex, payload.history.length - 1),
+      );
+      const start = Math.min(
+        index,
+        Math.max(0, payload.history.length - get().maxHistory),
+      );
+      const retained = payload.history.slice(start, start + get().maxHistory);
+      const namespaces = new Map<Record<string, unknown>, Namespace>();
+      const snapshots = deepClone(retained.map((m) => m.variables)).map(
+        (vars) => {
+          let normalized = namespaces.get(vars);
+          if (!normalized) {
+            normalized = createNamespace(vars);
+            namespaces.set(vars, normalized);
+          }
+          return normalized;
+        },
       );
       variableBase = deepClone(snapshots[0]!);
       patchEntries = snapshots
         .slice(1)
-        .map((curr, i) => computeVarPatches(snapshots[i]!, curr));
-      // Seed the session cache from the payload's own snapshots, so
-      // persistSession does not rebuild them from the live variables.
-      sessionMoments = payload.history.map((m, i) =>
-        savedMoment(m, snapshots[i]!),
-      );
+        .map((curr, i) =>
+          curr === snapshots[i]
+            ? { forward: [] }
+            : computeVarPatches(snapshots[i]!, curr),
+        );
+      // Seed only retained moments; repeated namespaces stay shared.
+      sessionMoments = retained.map((m, i) => savedMoment(m, snapshots[i]!));
 
       set((state) => {
         state.currentPassage = payload.passage;
@@ -1912,17 +1937,12 @@ export const useStoryStore = create<StoryState>()(
         state.variables = createNamespace(
           deepClone(entry?.variables ?? payload.variables),
         );
-        state.history = payload.history.map((m) => ({
+        state.history = retained.map((m) => ({
           passage: m.passage,
           timestamp: m.timestamp,
           prng: m.prng,
         }));
-        state.historyIndex = Math.max(
-          0,
-          Math.min(payload.historyIndex, state.history.length - 1),
-        );
-        // A save made under a higher limit keeps no more than the limit
-        trimHistory(state);
+        state.historyIndex = index - start;
         state.visitCounts = createCounts(payload.visitCounts);
         state.renderCounts = createCounts(payload.renderCounts);
         state.temporary = createNamespace();
@@ -1933,7 +1953,10 @@ export const useStoryStore = create<StoryState>()(
       // older version, leaves the registered ones), then: loaded state is
       // not a change watchers react to
       if (payload.watchers) {
-        restoreMacroWatchers(payload.watchers, payload.interfaceWatchers);
+        restoreMacroWatchers(
+          payload.replayWatchers ?? payload.watchers,
+          payload.interfaceWatchers,
+        );
       }
       reinitTriggerState();
 

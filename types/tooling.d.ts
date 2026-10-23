@@ -1241,3 +1241,20 @@ export declare function macroArgumentSpans(
   rawArgs: string,
   parameters: readonly ParameterDef[],
 ): MacroArgumentSpan[];
+
+/** Executable code at a cursor, or prose/literal text that suppresses completion. */
+export type CompletionContext =
+  | { kind: 'literal' }
+  | (PieceBase & { kind: 'code'; code: string; goal: JsGoal; cursor: number });
+
+/** Inspect only the prefix before cursor (UTF-16), accepting unfinished markup.
+ * Strings, comments, regexes and template text are literal; template
+ * interpolations are code. Code offsets map to source with pieceOffset.
+ * Uses macro parameter metadata for nested labels, attributes and held code.
+ * Throws RangeError for an invalid cursor; never executes story code.
+ */
+export declare function completionContext(
+  source: string,
+  cursor: number,
+  macros?: Iterable<ToolingMacro>,
+): CompletionContext;
