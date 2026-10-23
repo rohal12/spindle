@@ -135,6 +135,13 @@ export function widgetDefinitions(
   const list = [...passages];
   const scan = (replacesDo: boolean): WidgetDefinition[] => {
     const found: WidgetDefinition[] = [];
+    const hooks = {
+      isRaw: (name: string) =>
+        isRawMacro(
+          name,
+          replacesDo || parametersOf.widget?.(name) !== undefined,
+        ),
+    };
     for (const passage of list) {
       if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
         continue;
@@ -146,15 +153,8 @@ export function widgetDefinitions(
         closeStart?: number;
       }[] = [];
       const done: typeof open = [];
-      for (const token of tokenizeMarkupTolerant(passage.content, {
-        hooks: {
-          isRaw: (name) =>
-            isRawMacro(
-              name,
-              replacesDo || parametersOf.widget?.(name) !== undefined,
-            ),
-        },
-      }).tokens) {
+      for (const token of tokenizeMarkupTolerant(passage.content, { hooks })
+        .tokens) {
         if (token.type === 'macro' && token.name.toLowerCase() === 'widget') {
           if (!token.isClose) {
             open.push({ token, isBlock: false });
@@ -167,7 +167,12 @@ export function widgetDefinitions(
           ((token.type === 'variable' &&
             token.scope === 'local' &&
             token.name === 'children') ||
-            tokenTextContainsChildren(token, parametersOf, passage.content))
+            tokenTextContainsChildren(
+              token,
+              parametersOf,
+              passage.content,
+              hooks,
+            ))
         ) {
           open[open.length - 1]!.isBlock = true;
         }

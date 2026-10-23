@@ -185,6 +185,9 @@ function rememberRemoval(trigger: Trigger): void {
   const removed = replayRemovals();
   if (!trigger.macroKey || !trigger.options) return;
   if (isEntryRender()) {
+    // A once watcher may be re-declared and consumed again in this entry.
+    // Replay begins with its first registration, before surviving peers.
+    if (removed.has(trigger.macroKey)) return;
     removed.set(trigger.macroKey, {
       watcher: {
         condition: trigger.condition,
@@ -203,7 +206,8 @@ export function savedReplayWatchers(): SavedWatcher[] | undefined {
   if (!removed.size) return undefined;
   const all = new Map(removed);
   for (const trigger of triggers) {
-    if (!trigger.macroKey || !trigger.options) continue;
+    if (!trigger.macroKey || !trigger.options || all.has(trigger.macroKey))
+      continue;
     all.set(trigger.macroKey, {
       watcher: {
         condition: trigger.condition,

@@ -426,6 +426,9 @@ function finishEnteredMoment(get: StoreGet, set: StoreSet): void {
   const moment = enteredMoment;
   enteredMoment = null;
   if (!moment || get().navigationId !== moment.navigationId) return;
+  // Navigation can run inside a macro's render. Its watcher effects are
+  // recorded below, so they must not also be replayed as passage effects.
+  clearReplayWatchers();
   if (get().variables !== moment.variables) {
     rerecordNewestMoment(get().variables);
   }

@@ -68,13 +68,11 @@ export interface PlaythroughRecord {
 }
 
 /** Public-facing save metadata for the Story API. */
-export interface SaveInfo {
+export interface SaveInfo extends Pick<
+  SaveMeta,
+  'title' | 'passage' | 'createdAt' | 'updatedAt' | 'custom'
+> {
   slot: string;
-  title: string;
-  passage: string;
-  createdAt: string;
-  updatedAt: string;
-  custom: Record<string, unknown>;
 }
 
 export interface SaveExport {

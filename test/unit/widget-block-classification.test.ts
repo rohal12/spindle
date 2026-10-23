@@ -165,6 +165,20 @@ describe('startup discovers children forwarded through a do widget (#630)', () =
   const wrap = '{widget "Wrap"}{do}{@children}{/do}{/widget}';
   const doWidget = '{widget "do"}{@children}{/widget}';
 
+  it.each([
+    '{button "{do}{@children}{/do}"}Ready{/button}',
+    '<span title="{do}{@children}{/do}">Ready</span>',
+  ])('finds forwarded children inside nested markup: %s', (body) => {
+    const passages = [
+      {
+        name: 'StoryInit',
+        content: `${doWidget}{widget "Wrap"}${body}{/widget}{Wrap}Ready{/Wrap}`,
+      },
+    ];
+    expect(blockWidgetNames(passages)).toEqual(['do', 'Wrap']);
+    expect(validateStoryMarkup(passages, getMacroRegistry())).toEqual([]);
+  });
+
   it.each([false, true])(
     'reads either definition order in StoryInit (reverse: %s)',
     (reverse) => {

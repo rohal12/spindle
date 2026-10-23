@@ -41,10 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Saves replay earlier watchers consumed during passage entry, preserving their effects and equal-priority order while retaining later player removals (#627).
+- Saves replay earlier watchers consumed during passage entry, preserving their effects and equal-priority order while retaining later player removals. Watcher effects already recorded by navigation are not replayed twice (#627).
 - Loading trims imported history before expanding variable snapshots and retains sharing between repeated namespaces (#628).
 - Twine reference callbacks filter bracket links with linear lookup work (#629).
-- Startup widget discovery finds forwarded children through widgets that replace `do` (#630).
+- Startup widget discovery finds forwarded children through widgets that replace `do`, including inside labels and attributes (#630).
 - Static macro discovery bounds config nesting and skips deep values without exhausting the call stack (#631).
 
 - Widgets named `if`, `switch`, `timed` or `do` preserve their invocation markup and selectors, including calls during `StoryInit` validation; tooling also reads a `do` widget's child links and variables (#620, #621).
