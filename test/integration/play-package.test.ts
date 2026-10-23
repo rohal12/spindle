@@ -104,6 +104,75 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await Promise.all([a.close(), b.close()]);
   });
 
+  it('shares window properties with bare globals in scripts and passages (#635)', async () => {
+    const compiled = storyHtml({
+      StoryVariables: '$greeting = ""\n$same = false\n$keys = []',
+      Start: `{do}
+        Story.set('greeting', api.hello());
+        api = { hello: () => 'updated' };
+        Story.set('same', window === globalThis && self === window && window.api === api);
+        Object.defineProperty(window, 'defined', { configurable: true, get: () => api.hello() });
+        Story.set('keys', [defined, delete window.api, typeof api]);
+      {/do}Greeting: {$greeting}`,
+    }).replace(
+      '</tw-storydata>',
+      `<script type="text/twine-javascript">
+      window.api = { hello: () => 'hi' };
+    </script></tw-storydata>`,
+    );
+    const s = await openPlaySession({ trusted: true, html: compiled });
+    try {
+      expect(await s.get()).toMatchObject({
+        greeting: 'hi',
+        same: true,
+        keys: ['updated', true, 'undefined'],
+      });
+      expect((await s.observe()).text).toContain('Greeting: hi');
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('runs and cancels idle callbacks through window and bare globals (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables:
+          '$idle = false\n$cancelled = false\n$deadline = []\n$expired = []\n$handle = 0',
+        StoryInit: `{do}
+          Story.set('handle', window.requestIdleCallback((deadline) => {
+            Story.set('idle', true);
+            Story.set('deadline', [deadline.didTimeout, deadline.timeRemaining() >= 0, deadline.timeRemaining() <= 50]);
+          }, { timeout: 1000 }));
+          const cancelled = requestIdleCallback(() => Story.set('cancelled', true));
+          window.cancelIdleCallback(cancelled);
+          const alsoCancelled = window.requestIdleCallback(() => Story.set('cancelled', true));
+          cancelIdleCallback(alsoCancelled);
+          requestIdleCallback((deadline) => {
+            Story.set('expired', [deadline.didTimeout, deadline.timeRemaining()]);
+          }, { timeout: 0 });
+          cancelIdleCallback(-1);
+        {/do}`,
+        Start: 'Idle callback test',
+      }),
+    });
+    try {
+      await vi.waitFor(async () => {
+        expect(await s.get(['idle', 'expired'])).toEqual({
+          idle: true,
+          expired: [true, 0],
+        });
+      });
+      expect(await s.get(['cancelled', 'deadline', 'handle'])).toEqual({
+        cancelled: false,
+        deadline: [false, true, true],
+        handle: expect.any(Number),
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
   it('keeps the session usable after an unknown action', async () => {
     const s = await openPlaySession({ trusted: true, html });
     await expect(s.step('nope')).rejects.toThrow(/nope/);

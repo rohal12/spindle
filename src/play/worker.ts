@@ -32,7 +32,6 @@ async function installDom(): Promise<void> {
   const window = new Window({ url: 'http://localhost/' });
   const global = globalThis as Record<string, unknown>;
   const source = window as unknown as Record<string, unknown>;
-  global.window = window;
   global.document = window.document;
   // Node's own globals (fetch, URL, ...) stay as they are,
   for (const name of Object.getOwnPropertyNames(window)) {
@@ -46,6 +45,13 @@ async function installDom(): Promise<void> {
       value: source[name],
     });
   }
+  // Story JavaScript and expressions run through Function in this realm.
+  // Use that realm's global object for browser aliases too, so assignments,
+  // property descriptors and deletions on window have browser semantics.
+  for (const name of ['window', 'self', 'parent', 'top', 'frames']) {
+    global[name] = globalThis;
+  }
+  installIdleCallbacks();
   // Node's BroadcastChannel reaches every worker thread in the process, so
   // sessions would hear each other's save-slot notices. Spindle works without
   // one (it falls back when the constructor is missing).
@@ -54,12 +60,36 @@ async function installDom(): Promise<void> {
     writable: true,
     value: undefined,
   });
-  // Spindle installs `window.Story`; story code ({do}, Story JavaScript)
-  // names it as a global, as it can in a browser.
-  Object.defineProperty(globalThis, 'Story', {
-    configurable: true,
-    get: () => source.Story,
-  });
+}
+
+/** happy-dom has no idle scheduler; yield to a timer with a 50 ms budget. */
+function installIdleCallbacks(): void {
+  const timers = new Map<number, ReturnType<typeof setTimeout>>();
+  let nextHandle = 0;
+  globalThis.requestIdleCallback = (callback, options) => {
+    const handle = ++nextHandle;
+    const requested = performance.now();
+    timers.set(
+      handle,
+      setTimeout(() => {
+        timers.delete(handle);
+        const started = performance.now();
+        const didTimeout =
+          options?.timeout !== undefined &&
+          started - requested >= options.timeout;
+        callback({
+          didTimeout,
+          timeRemaining: () =>
+            didTimeout ? 0 : Math.max(0, 50 - (performance.now() - started)),
+        });
+      }, 1),
+    );
+    return handle;
+  };
+  globalThis.cancelIdleCallback = (handle) => {
+    clearTimeout(timers.get(handle));
+    timers.delete(handle);
+  };
 }
 
 /**

@@ -82,6 +82,13 @@ describe('block widgets', () => {
     defineWidget(markup);
   }
 
+  it('keeps whitespace in widget bodies and forwarded children (#634)', () => {
+    defineAndTrack('{widget "Prose"} B. {/widget}');
+    defineAndTrack('{widget "Wrap"}{@children}{/widget}');
+    const el = renderPassage('A.{Wrap}{Prose}{/Wrap}C. D.');
+    expect(el.textContent).toBe('A. B. C. D.');
+  });
+
   it('renders invocation children at @children slot', () => {
     defineAndTrack(
       '{widget "Wrapper"}<div class="wrap">{@children}</div>{/widget}',

@@ -1075,6 +1075,8 @@ export function renderNodes(
     raw?: boolean;
     /** Content of a structural element (see StructuralContext). */
     structural?: boolean;
+    /** A content fragment: keep whitespace separating it from its neighbours. */
+    preserveEdges?: boolean;
   },
 ): preact.ComponentChildren {
   if (nodes.length === 0) return null;
@@ -1131,9 +1133,9 @@ export function renderNodes(
   // Inline content (inside <span> etc.) never gets <p> wrappers (#220).
   const unwrapParagraphs = !!(options?.nobr || options?.inline);
 
-  // Markdown strips whitespace at paragraph edges. Without <p> wrappers that
-  // whitespace separates this content from its neighbours (as in
-  // `<span>*HP*: </span>{$hp}`), so it is kept around the output there.
+  // Markdown strips whitespace at paragraph edges. In content fragments and
+  // without <p> wrappers it separates content from its neighbours (as in
+  // `A.{if true} B.{/if}` or `<span>*HP*: </span>{$hp}`).
   const lead = combined.slice(0, skipChars(combined, 0, 1, EDGE_WS));
   const trail =
     lead.length === combined.length
@@ -1141,7 +1143,7 @@ export function renderNodes(
       : combined.slice(skipChars(combined, combined.length, -1, EDGE_WS));
   const core = combined.slice(lead.length, combined.length - trail.length);
   const edges = (content: preact.ComponentChildren) =>
-    unwrapParagraphs && (lead || trail) ? (
+    (unwrapParagraphs || options?.preserveEdges) && (lead || trail) ? (
       <>
         {lead}
         {content}

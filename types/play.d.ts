@@ -73,11 +73,12 @@ export interface PlaySession {
  * Node APIs, files and environment. Worker threads and happy-dom are not a
  * security sandbox. Only run code you trust.
  *
- * In the worker, `window` is happy-dom's window, not `globalThis`. Story code
- * sees `Story` and the DOM globals as in a browser, but a property set on
- * `window` (`window.foo = 1`) does not become a bare global `foo`. Sessions do
- * not share a `BroadcastChannel`, `localStorage` or `navigator`, so they never
- * hear each other. The story's `console.log` goes to stderr, not stdout.
+ * In the worker, `window` is `globalThis`, with happy-dom's DOM globals.
+ * Properties set on `window` are also bare globals, as in a browser.
+ * `requestIdleCallback` and `cancelIdleCallback` use a timer-backed scheduler.
+ * Sessions do not share a `BroadcastChannel`, `localStorage` or `navigator`,
+ * so they never hear each other. The story's `console.log` goes to stderr,
+ * not stdout.
  *
  * A session left open does not keep Node running (a call in progress does).
  */
