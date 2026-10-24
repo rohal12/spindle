@@ -276,6 +276,9 @@ export function getMacroParameters(
   return metadataRegistry.get(name)?.parameters;
 }
 
+getMacroParameters.source = (name: string) =>
+  metadataRegistry.get(name)?.source;
+
 export function getMacroRegistry(): MacroMetadata[] {
   return Array.from(metadataRegistry.values());
 }

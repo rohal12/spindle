@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tooling distinguishes genuine builtin `do` execution from replacement macros by registration provenance, so ignored raw bodies do not create phantom macro definitions, variable references or code completion contexts (#644).
+
 - Save hooks retain explicit writes across nested backup saves and release captures when a hook fails (#638).
 - Tooling bounds unmatched markup closer searches, bracket recovery during macro discovery, and code-attribute scans without possible interpolation closers (#639, #640, #641).
 - Widgets named after built-in companions, such as `option`, render in passages, attribute values and link labels (#642).

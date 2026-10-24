@@ -653,6 +653,8 @@ export declare function collectPassageReferences(
 /** What tooling knows about a macro (a `MacroMetadata` has all of it). */
 export interface ToolingMacro {
   name: string;
+  /** Preserve builtin provenance; an explicit macro without it is a replacement. */
+  source?: 'builtin' | 'user';
   block: boolean;
   subMacros: string[];
   /** A widget's parameters and their argument contracts. */

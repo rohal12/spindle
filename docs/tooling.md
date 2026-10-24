@@ -82,6 +82,8 @@ const { nodes, errors } = pairMarkup(tokens, { source });
 
 `macros` are those the markup may use (`builtinMacros` and your own, as for `validateStoryMarkup`): their declared parameters tell which arguments are code. In a quoted string with escapes (`"say \"hi\" {$x + }"`; in the argument of a widget, any JavaScript escape: `A`, `\x41`, `\n`), the text is the unescaped value, so a character is not at `offset + index`: such a piece has `sourceOffsets`, and `pieceOffset(piece, index)` gives where character `index` of its `code` or `text` is in `source` (it is `offset + index` when there is no `sourceOffsets`). A nested piece's `length` and `sourceOffsets` count the source's characters.
 
+Keep the `source: 'builtin'` provenance when passing entries from `builtinMacros` or `getMacroRegistry()`. An explicit macro entry with `source: 'user'`, or without `source`, replaces that builtin. In particular, a replacement named `do` still receives its raw body as text, but that body is not classified as executable JavaScript: `passagePieces`, variable-reference checks and completion contexts do not invent code execution for a replacement that ignores its children. The genuine builtin `do` retains its statements body, and a widget named `do` retains its markup and forwarding semantics. When no `do` entry is supplied, the implicit builtin default remains available.
+
 ## Stateless checks and the built-in macros
 
 `validateMarkup(passages, options)` and `collectPassageReferences(source)` read the process-global registry, which only `defineMacro` can add to. A host that analyses several projects in one process (a language server with workspace folders) would leak macros between them. For that, use the functions that take the macros and keep no state:

@@ -177,6 +177,8 @@ export interface ValidateMarkupOptions {
 
 export interface ToolingMacro {
   name: string;
+  /** Preserve builtin provenance; an explicit macro without it is a replacement. */
+  source?: 'builtin' | 'user';
   block: boolean;
   subMacros: string[];
   /**

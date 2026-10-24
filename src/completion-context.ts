@@ -6,6 +6,7 @@ import {
   attributeValues,
   escapeOffsets,
   parameterLookup,
+  executesRawBody,
   type PieceBase,
 } from './code-check';
 import { macroArgumentSpans } from './components/macros/macro-args';
@@ -141,10 +142,7 @@ export function completionContext(
       if (
         opener?.type === 'macro' &&
         !opener.isClose &&
-        isRawMacro(
-          opener.name,
-          parametersOf.widget?.(opener.name) !== undefined,
-        )
+        executesRawBody(opener.name, parametersOf)
       ) {
         return codeAt(token.value, token.start, 'statements');
       }

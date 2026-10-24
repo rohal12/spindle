@@ -2,6 +2,8 @@
 
 **Goal:** Fix open issues #638–#643 and the linked remaining SVG case in #569 in one pull request.
 
+**Scope update:** #644 was filed while this work was running. Include it in the same PR: preserve builtin registration provenance in effective tooling metadata, suppress executable-body pieces/references/completion for replaced `do` macros, and preserve builtin and widget behavior. Verify through source tooling, runtime boot and the built package.
+
 **Architecture:** Preserve existing save, pairing and recovery semantics. Track nested save captures and replacement navigation explicitly; index outstanding opener positions instead of repeated stack searches. Reuse the formatter's existing literal-element preservation for SVG.
 
 **Constraints:** Follow CLAUDE.md; add regressions; run typecheck, formatting, full Vitest, browser tests, build and all three duplication checks. No blocked issues or existing open PR were found on GitHub.
@@ -38,3 +40,5 @@ Execution is authorized by the user's request to fix, verify, commit, push and o
 - GitHub re-check: six open issues, no blocked issues and no existing open pull request. Updated this branch to the current main merge commit without source changes.
 
 Final browser verification: all 325 tests across 23 files pass with four workers. No issues require the blocked label.
+
+#644 verification: source/tooling and runtime boot regressions failed before the fix; focused tests and independent review pass. All 4,964 runtime/integration/property tests, TypeScript, Prettier, documentation build and duplication checks pass with provenance-aware executable-body classification.

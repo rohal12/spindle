@@ -67,6 +67,20 @@ describe('@rohal12/spindle/tooling', async () => {
       .href
   );
 
+  it('distinguishes builtin do bodies from replacement macros (#644)', () => {
+    const source = '{do}Story.defineMacro({name:"textbox",render(){}});{/do}';
+    const macros = [
+      ...tooling.builtinMacros.filter(
+        (macro: { name: string }) => macro.name !== 'do',
+      ),
+      { name: 'do', block: true, subMacros: [] },
+    ];
+    expect(tooling.passagePieces(source, macros)).toEqual([]);
+    expect(tooling.passagePieces(source, tooling.builtinMacros)).toMatchObject([
+      { kind: 'code', goal: 'statements' },
+    ]);
+  });
+
   it('exports defineMacro and getMacroRegistry', () => {
     expect(typeof tooling.defineMacro).toBe('function');
     expect(typeof tooling.getMacroRegistry).toBe('function');
