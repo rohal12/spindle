@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Macro and widget bodies preserve leading and trailing whitespace separating surrounding prose, including conditional branches in passages without `nobr` (#634).
+- Play sessions expose properties authored on `window` as bare globals and provide timer-backed idle callbacks with cancellation (#635).
+
 - Saves replay earlier watchers consumed during passage entry, preserving their effects and equal-priority order while retaining later player removals. Watcher effects already recorded by navigation are not replayed twice (#627).
 - Loading trims imported history before expanding variable snapshots and retains sharing between repeated namespaces (#628).
 - Twine reference callbacks filter bracket links with linear lookup work (#629).

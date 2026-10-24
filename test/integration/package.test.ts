@@ -119,6 +119,7 @@ describe('@rohal12/spindle/tooling', async () => {
       'parseCode',
       'macroArgumentSpans',
       'effectiveWidgetDefinitions',
+      'completionContext',
       'findCodeEnd',
       'scanStringLiteral',
       'parseSelectors',
@@ -184,6 +185,22 @@ describe('@rohal12/spindle/tooling', async () => {
     expect(codes([...tooling.builtinMacros, shout])).toEqual([]);
     // The global registry is for the convenience functions only
     expect(tooling.validateMarkup(passages).length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['{print $obj.', 'code'],
+    ['{print "$obj.', 'literal'],
+  ])('ships completionContext for %s (#636)', (source, kind) => {
+    const context = tooling.completionContext(
+      source,
+      source.length,
+      tooling.builtinMacros,
+    );
+    expect(context.kind).toBe(kind);
+    if (context.kind === 'code') {
+      expect(context.code).toBe('$obj.');
+      expect(tooling.pieceOffset(context, context.cursor)).toBe(source.length);
+    }
   });
 
   it('exports the built-in macros as data', () => {

@@ -72,9 +72,9 @@ export function workerExecArgv(execArgv: readonly string[]): string[] {
 }
 
 /**
- * Opens a session that runs the story in a worker. There `window` is
- * happy-dom's window, not `globalThis`: story code sees `Story` and the DOM
- * globals, but `window.foo = 1` does not make a bare global `foo`.
+ * Opens a session that runs the story in a worker with happy-dom's DOM.
+ * `window` is `globalThis`: properties authored on it are bare globals too.
+ * Idle callbacks use a timer-backed scheduler.
  * Requires `trusted: true`: story code has unrestricted host Node access.
  */
 export function openPlaySession(

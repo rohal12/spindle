@@ -17,6 +17,7 @@ export function useRenderOptions(): {
   inline: boolean;
   raw: boolean;
   structural: boolean;
+  preserveEdges: boolean;
   locals: Record<string, unknown>;
 } {
   return {
@@ -24,6 +25,9 @@ export function useRenderOptions(): {
     inline: useContext(InlineContext),
     raw: useContext(RawTextContext),
     structural: useContext(StructuralContext),
+    // These are content fragments (macro/widget bodies and forwarded
+    // children), whose edge whitespace separates surrounding prose.
+    preserveEdges: true,
     locals: useContext(LocalsValuesContext),
   };
 }

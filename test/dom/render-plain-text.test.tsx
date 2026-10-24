@@ -294,4 +294,22 @@ describe('whitespace at paragraph edges', () => {
     expect(renderMarkup('a {nobr}*b* {/nobr}c').textContent).toBe('a b c');
     expect(renderMarkup('a {nobr}b {/nobr}c').textContent).toBe('a b c');
   });
+
+  it.each([
+    ['if', 'A.{if true} B.{/if} C.{if false}x{else} D.{/if}'],
+    ['elseif', 'A.{if false}x{elseif true} B.{/if} C. D.'],
+    [
+      'switch',
+      'A.{switch 1}{case 1} B.{/switch} C.{switch 2}{case 1}x{default} D.{/switch}',
+    ],
+    ['for', 'A.{for @n of [1]} B. {/for}C. D.'],
+    ['nested', 'A.{if true}{if true} B. {/if}{/if}C. D.'],
+    ['markdown', 'A.{if true} *B.* {/if}C. D.'],
+  ])('keeps the edges of a %s body in prose (#634)', (_name, markup) => {
+    for (const nobr of [false, true]) {
+      const el = renderMarkup(markup, { nobr });
+      expect(el.textContent).toBe('A. B. C. D.');
+      expect(el.querySelector('.error')).toBeNull();
+    }
+  });
 });

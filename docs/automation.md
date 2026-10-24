@@ -287,7 +287,8 @@ A session you forget to close does not keep Node running: the worker does not ho
 
 #### What differs from a browser
 
-- In the worker, `window` is happy-dom's window, not `globalThis`. Story code sees `Story` and the DOM globals as it does in a browser, but `window.foo = 1` does not make a bare global `foo`.
+- In the worker, `window` is `globalThis`, with happy-dom providing the DOM. A property set on `window` (`window.foo = 1`) is also a bare global `foo`, as in a browser.
+- `requestIdleCallback` and `cancelIdleCallback` use a timer-backed scheduler with a 50 ms budget. This yields to the event loop without measuring browser rendering work; expired timeouts report `didTimeout: true` and zero remaining time.
 - `BroadcastChannel` is unavailable. Sessions do not hear each other, and Spindle works without it.
 - `localStorage`, `sessionStorage` and `navigator` are happy-dom's, never Node's, and each session has its own: what one session stores, another does not see.
 - The story's `console.log` output goes to the host's stderr, not its stdout, so a host that speaks a protocol on stdout (an MCP server over stdio) is not disturbed. `console.error` goes to stderr as usual.

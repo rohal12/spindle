@@ -104,6 +104,184 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await Promise.all([a.close(), b.close()]);
   });
 
+  it('shares window properties with bare globals in scripts and passages (#635)', async () => {
+    const compiled = storyHtml({
+      StoryVariables: '$greeting = ""\n$same = false\n$keys = []',
+      Start: `{do}
+        Story.set('greeting', api.hello());
+        api = { hello: () => 'updated' };
+        Story.set('same', window === globalThis && self === window && window.api === api);
+        Object.defineProperty(window, 'defined', { configurable: true, get: () => api.hello() });
+        Story.set('keys', [defined, delete window.api, typeof api]);
+      {/do}Greeting: {$greeting}`,
+    }).replace(
+      '</tw-storydata>',
+      `<script type="text/twine-javascript">
+      window.api = { hello: () => 'hi' };
+    </script></tw-storydata>`,
+    );
+    const s = await openPlaySession({ trusted: true, html: compiled });
+    try {
+      expect(await s.get()).toMatchObject({
+        greeting: 'hi',
+        same: true,
+        keys: ['updated', true, 'undefined'],
+      });
+      expect((await s.observe()).text).toContain('Greeting: hi');
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('keeps DOM window accessors and the DOM view Story API live (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables: '$resizes = 0\n$size = []\n$domStory = false',
+        Start: `{do}
+          window.onresize = function () {
+            this.Story.set('resizes', this.Story.get('resizes') + 1);
+          };
+          window.dispatchEvent(new Event('resize'));
+          window.onresize = null;
+          window.dispatchEvent(new Event('resize'));
+          window.happyDOM.setViewport({ width: 900, height: 700 });
+          Story.set('size', [window.innerWidth, innerHeight]);
+          Story.set('domStory', document.defaultView.Story === Story);
+        {/do}`,
+      }),
+    });
+    try {
+      expect(await s.get()).toMatchObject({
+        resizes: 1,
+        size: [900, 700],
+        domStory: true,
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('uses the story window in event callbacks without changing event identity (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables:
+          '$events = []\n$objectCalls = 0\n$abortCalls = 0\n$handlerSame = false',
+        Start: `{do}
+          window.api = { hello: () => 'hi' };
+          const results = [];
+          let activeEvent;
+          let activeTarget;
+          function callback(event) {
+            'use strict';
+            results.push([
+              this === window, this?.api?.hello() ?? 'missing',
+              event === activeEvent, event.target === activeTarget,
+              event.currentTarget === window,
+              event.composedPath().at(-1) === window,
+            ]);
+          }
+          activeTarget = window;
+          activeEvent = new CustomEvent('probe');
+          window.addEventListener('probe', callback);
+          window.addEventListener('probe', callback);
+          window.dispatchEvent(activeEvent);
+          window.removeEventListener('probe', callback);
+          window.dispatchEvent(activeEvent);
+
+          const button = document.createElement('button');
+          document.body.append(button);
+          activeTarget = button;
+          activeEvent = new Event('probe', { bubbles: true });
+          addEventListener('probe', callback, { once: true, capture: true });
+          button.dispatchEvent(activeEvent);
+          button.dispatchEvent(activeEvent);
+          button.remove();
+
+          activeTarget = window;
+          activeEvent = new Event('resize');
+          window.onresize = callback;
+          Story.set('handlerSame', window.onresize === callback);
+          window.dispatchEvent(activeEvent);
+          window.onresize = null;
+          window.dispatchEvent(activeEvent);
+          const object = { handleEvent(event) {
+            if (this === object && event.currentTarget === window) {
+              Story.set('objectCalls', Story.get('objectCalls') + 1);
+            }
+          } };
+          window.addEventListener('probe', object);
+          window.dispatchEvent(new Event('probe'));
+          window.removeEventListener('probe', object);
+          window.dispatchEvent(new Event('probe'));
+          const controller = new AbortController();
+          window.addEventListener('probe', () => {
+            Story.set('abortCalls', Story.get('abortCalls') + 1);
+          }, { signal: controller.signal });
+          window.dispatchEvent(new Event('probe'));
+          controller.abort();
+          window.dispatchEvent(new Event('probe'));
+          Story.set('events', results);
+        {/do}`,
+      }),
+    });
+    try {
+      expect(await s.get()).toMatchObject({
+        events: [
+          [true, 'hi', true, true, true, true],
+          [true, 'hi', true, true, true, true],
+          [true, 'hi', true, true, true, true],
+        ],
+        handlerSame: true,
+        objectCalls: 1,
+        abortCalls: 1,
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('runs and cancels idle callbacks through window and bare globals (#635)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        StoryVariables:
+          '$idle = false\n$cancelled = false\n$deadline = []\n$expired = []\n$handle = 0',
+        StoryInit: `{do}
+          Story.set('handle', window.requestIdleCallback((deadline) => {
+            Story.set('idle', true);
+            Story.set('deadline', [deadline.didTimeout, deadline.timeRemaining() >= 0, deadline.timeRemaining() <= 50]);
+          }, { timeout: 1000 }));
+          const cancelled = requestIdleCallback(() => Story.set('cancelled', true));
+          window.cancelIdleCallback(cancelled);
+          const alsoCancelled = window.requestIdleCallback(() => Story.set('cancelled', true));
+          cancelIdleCallback(alsoCancelled);
+          requestIdleCallback((deadline) => {
+            Story.set('expired', [deadline.didTimeout, deadline.timeRemaining()]);
+          }, { timeout: 0 });
+          cancelIdleCallback(-1);
+        {/do}`,
+        Start: 'Idle callback test',
+      }),
+    });
+    try {
+      await vi.waitFor(async () => {
+        expect(await s.get(['idle', 'expired'])).toEqual({
+          idle: true,
+          expired: [true, 0],
+        });
+      });
+      expect(await s.get(['cancelled', 'deadline', 'handle'])).toEqual({
+        cancelled: false,
+        deadline: [false, true, true],
+        handle: expect.any(Number),
+      });
+    } finally {
+      await s.close();
+    }
+  });
+
   it('keeps the session usable after an unknown action', async () => {
     const s = await openPlaySession({ trusted: true, html });
     await expect(s.step('nope')).rejects.toThrow(/nope/);
