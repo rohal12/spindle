@@ -1,5 +1,5 @@
 import { isSigil } from './tokens';
-import { defaultCodeEnd } from './code-end';
+import { indexCodeEnds } from './code-end';
 
 /**
  * Attributes whose value is code with braces of its own, not text: event
@@ -33,6 +33,7 @@ export function splitSigilTemplate(
   const parts: SigilPart[] = [];
   let text = '';
   let i = 0;
+  const closeBrace = indexCodeEnds(template);
 
   while (i < template.length) {
     const brace = template.indexOf('{', i);
@@ -42,9 +43,7 @@ export function splitSigilTemplate(
     }
     text += template.slice(i, brace);
     i = brace + 1;
-    let end = isSigil(template[i])
-      ? defaultCodeEnd.closeBrace(template, i, i)
-      : -1;
+    let end = isSigil(template[i]) ? closeBrace(i) : -1;
     if (end === -1 && incomplete && isSigil(template[i])) end = template.length;
     if (end === -1) {
       text += '{';

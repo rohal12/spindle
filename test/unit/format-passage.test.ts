@@ -7,6 +7,23 @@ const fmt = (body: string, options: Parameters<typeof formatPassage>[1] = {}) =>
   formatPassage(body, { prettier, ...options });
 
 describe('formatPassage', () => {
+  it.each([false, true])(
+    'preserves SVG text whitespace (Prettier: %s) (#569)',
+    async (usePrettier) => {
+      const svg = '<svg>\n<text xml:space="preserve">A   \n B</text>\n</svg>';
+      for (const input of [svg + '\n', '<div>\n' + svg + '\n</div>\n']) {
+        const output = await formatPassage(
+          input,
+          usePrettier ? { prettier } : {},
+        );
+        expect(output).toContain(svg);
+        expect(
+          await formatPassage(output, usePrettier ? { prettier } : {}),
+        ).toBe(output);
+      }
+    },
+  );
+
   it.each(['<p><!--SVG:0--></p>', '<span title="<!--SVG:0-->">text</span>'])(
     'keeps SVG placement when a literal marker appears in %j (#597)',
     async (literal) => {

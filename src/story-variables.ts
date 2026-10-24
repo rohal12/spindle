@@ -22,6 +22,7 @@ import {
   pieceOffset,
   widgetPieces,
   withParseCache,
+  executesRawBody,
   type ParametersOf,
   type Piece,
 } from './code-check';
@@ -832,10 +833,7 @@ function collectTokenRefs(
         }
       }
 
-      if (
-        token.name.toLowerCase() === 'do' &&
-        !parametersOf.widget?.(token.name)
-      ) {
+      if (executesRawBody(token.name, parametersOf)) {
         // A {do} body is JavaScript: scan its source text as code, however
         // the markup tokens split it up.
         let close = t + 1;

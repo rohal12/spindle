@@ -905,7 +905,11 @@ export function findCodeEnd(
  * class field named `class` inside a template literal) mislead it; the
  * parser knows. Only asked when the scan finds no end.
  */
-function parsedCodeEnd(src: string, start: number, goal: JsGoal): number {
+export function parsedCodeEnd(
+  src: string,
+  start: number,
+  goal: JsGoal,
+): number {
   const p = tokenizerAt(src, start, goal) as ParserState & {
     parse(): unknown;
   };

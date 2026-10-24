@@ -789,9 +789,6 @@ defineMacro({
     // Track the resolved transition type for the data-transition prop
     const resolvedTypeRef = useRef<string>('fade');
 
-    // Track previous history length to detect restart/load
-    const prevHistoryLenRef = useRef(0);
-
     const displayedId = displayed.id;
     const isOutgoing = useCallback(
       (state: StoryState) => state.navigationId !== displayedId,
@@ -834,20 +831,10 @@ defineMacro({
     // State machine effect — triggers on every navigation
     useEffect(() => {
       const store = useStoryStore.getState();
-      const { history, historyIndex, transitionConfig } = store;
-
-      // Determine if this is a first load, restart, or save-load
-      const prevLen = prevHistoryLenRef.current;
-      prevHistoryLenRef.current = history.length;
+      const { replacementNavigationId, transitionConfig } = store;
 
       const isFirstLoad = !displayedPassage;
-      const isRestart =
-        history.length === 1 && historyIndex === 0 && prevLen > 1;
-      const isLoad =
-        history.length > 1 &&
-        historyIndex === history.length - 1 &&
-        prevLen > 1 &&
-        Math.abs(history.length - prevLen) > 1;
+      const isReplacement = navigationId === replacementNavigationId;
 
       // Already showing this navigation (initial render)
       if (navigationId === displayed.id) {
@@ -871,7 +858,7 @@ defineMacro({
       }
 
       // First load, restart, or load → use simple fade (no outgoing phase)
-      if (isFirstLoad || isRestart || isLoad) {
+      if (isFirstLoad || isReplacement) {
         resolvedTypeRef.current = 'fade';
         setDisplayedPassage(currentPassage);
         return;

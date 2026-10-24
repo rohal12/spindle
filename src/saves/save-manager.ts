@@ -318,6 +318,12 @@ export function establishPlaythrough(
 
 // --- Save Hooks ---
 
+/** A synchronous hook capture; dispose also runs when a hook throws. */
+export interface SaveCapture {
+  (): SavePayload;
+  dispose(): void;
+}
+
 /**
  * Run a save through the `beforesave` / `aftersave` hooks. `beforesave` fires
  * before the payload is captured, so data a hook sets is part of the save;
@@ -339,13 +345,18 @@ export function establishPlaythrough(
 export function saveWithHooks<T>(
   slot: string | undefined,
   custom: Record<string, unknown> | undefined,
-  beginCapture: () => () => SavePayload,
+  beginCapture: () => SaveCapture,
   write: (payload: SavePayload) => Promise<T>,
 ): Promise<T> {
   try {
     const capture = beginCapture();
-    withoutDraws(() => emit('beforesave', slot, custom));
-    const payload = capture();
+    let payload: SavePayload;
+    try {
+      withoutDraws(() => emit('beforesave', slot, custom));
+      payload = capture();
+    } finally {
+      capture.dispose();
+    }
     return write(payload).then((result) => {
       withoutDraws(() => emit('aftersave', slot));
       return result;

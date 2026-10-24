@@ -99,7 +99,7 @@ it.each(['fade-through', 'crossfade'])(
   },
 );
 
-it('keeps departed story values and controls when loading another moment (#593)', async () => {
+it('restores story values and controls without an outgoing phase on load (#593, #643)', async () => {
   await page.evaluate(async () => {
     const Story = (window as any).Story;
     await Story.save('old');
@@ -113,11 +113,39 @@ it('keeps departed story values and controls when loading another moment (#593)'
     Story.setTransition({ type: 'fade-through', duration: 5000 });
     await Story.load('old');
   });
+  await page.waitForFunction(
+    () => document.querySelector('.story-value')?.textContent === '1 vs 1 vs 1',
+  );
+  expect(await page.locator('.passage-snapshot').count()).toBe(0);
+  expect(await page.locator('.passage input').inputValue()).toBe('1');
+  expect(await page.locator('.passage').getAttribute('data-transition')).toBe(
+    'fade',
+  );
+  expect(await page.evaluate(() => (window as any).Story.get('n'))).toBe(1);
+});
+
+it('keeps departed story values and controls when going back (#593)', async () => {
+  await page.evaluate(async () => {
+    const Story = (window as any).Story;
+    Story.setTransition({ type: 'none' });
+    Story.set('n', 2);
+    Story.goto('Start');
+    await Story.waitForActions();
+    Story.set('n', 3);
+  });
+  await page.waitForFunction(
+    () => document.querySelector('.story-value')?.textContent === '3 vs 3 vs 3',
+  );
+  await page.evaluate(() => {
+    const Story = (window as any).Story;
+    Story.setTransition({ type: 'fade-through', duration: 5000 });
+    Story.back();
+  });
   await page.locator('.passage-snapshot').waitFor();
   expect(
     await page.locator('.passage-snapshot .story-value').textContent(),
-  ).toBe('2 vs 2 vs 2');
-  expect(await page.locator('.passage-snapshot input').inputValue()).toBe('2');
+  ).toBe('3 vs 3 vs 3');
+  expect(await page.locator('.passage-snapshot input').inputValue()).toBe('3');
   expect(await page.evaluate(() => (window as any).Story.get('n'))).toBe(1);
 });
 

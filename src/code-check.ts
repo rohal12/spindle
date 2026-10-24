@@ -229,11 +229,25 @@ export interface ParametersOf {
    * commas or spaces (see splitArgs), not by parseMacroArgs.
    */
   widget?(name: string): readonly WidgetParameter[] | undefined;
+  /** Effective registration origin; absent metadata retains builtin defaults. */
+  source?(name: string): 'builtin' | 'user' | undefined;
+}
+
+/** A raw body is executable only while the builtin implementation owns it. */
+export function executesRawBody(
+  name: string,
+  parametersOf: ParametersOf,
+): boolean {
+  return (
+    isRawMacro(name, parametersOf.widget?.(name) !== undefined) &&
+    parametersOf.source?.(name) !== 'user'
+  );
 }
 
 /** What the argument check needs to know of a macro (see MacroMetadata). */
 export interface MacroParameters {
   name: string;
+  source?: 'builtin' | 'user';
   parameters?: readonly ParameterDef[];
   interpolate?: boolean;
   /** For a widget: its `@` parameters and what some declare to hold. */
@@ -273,7 +287,15 @@ export function parameterLookup(
 ): ParametersOf {
   const parameters = new NameMap<readonly ParameterDef[]>();
   const widgets = new NameMap<readonly WidgetParameter[]>();
-  for (const { name, parameters: params, interpolate, widget } of macros) {
+  const sources = new NameMap<'builtin' | 'user'>();
+  for (const {
+    name,
+    parameters: params,
+    interpolate,
+    widget,
+    source,
+  } of macros) {
+    sources.set(name, source ?? 'user');
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
     if (widget)
@@ -289,6 +311,7 @@ export function parameterLookup(
     return params;
   };
   if (widgets.size > 0) lookup.widget = (name) => widgets.get(name);
+  lookup.source = (name) => sources.get(name);
   return lookup;
 }
 
@@ -396,7 +419,7 @@ export function* codeAndText(
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
       const widget = parametersOf.widget?.(name);
-      if (name === 'do' && !widget) {
+      if (executesRawBody(name, parametersOf)) {
         const close = closeOfTextBody(t, name);
         if (close < 0) continue;
         const body = src.slice(token.end, tokens[close]!.start);

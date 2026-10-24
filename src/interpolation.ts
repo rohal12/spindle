@@ -255,9 +255,6 @@ class TextEvaluator {
   }
 
   private macro(node: MacroNode, scope: TextScope, depth: number): string {
-    // Rendering ignores a stray sub-macro too (see renderMacro).
-    if (isSubMacro(node.name)) return '';
-
     const widget = getWidget(node.name);
     if (widget) {
       let locals = scope.locals;
@@ -284,6 +281,9 @@ class TextEvaluator {
         widgetChildren: widgetChildrenOf(node.children, scope.widgetChildren),
       });
     }
+
+    // Registered widgets take precedence over stray companion markers.
+    if (isSubMacro(node.name)) return '';
 
     const text = getMacroText(node.name);
     if (!text) {

@@ -2,11 +2,12 @@ import type { ASTNode } from '../markup/ast';
 import type { Token } from '../markup/tokens';
 import { codeAndText, parameterLookup, type ParametersOf } from '../code-check';
 import { parseMarkup, type MarkupHooks } from '../markup/parse';
-import { getMacroRegistry } from '../registry';
+import { getMacroRegistry, getMacroParameters } from '../registry';
 
 /** The declared parameters of the macros registered so far. */
 export const registeredParameters: ParametersOf = (name) =>
   parameterLookup(getMacroRegistry())(name);
+registeredParameters.source = getMacroParameters.source;
 
 /**
  * Whether the text of an attribute value or macro label renders a
