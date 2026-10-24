@@ -879,8 +879,6 @@ function nodeKey(node: ASTNode): string {
 }
 
 function renderMacro(node: MacroNode, key: string) {
-  if (isSubMacro(node.name)) return null;
-
   // What an invocation passes on to a widget and to a built-in macro alike
   const invocation = {
     rawArgs: node.rawArgs,
@@ -900,6 +898,8 @@ function renderMacro(node: MacroNode, key: string) {
       />
     );
   }
+
+  if (isSubMacro(node.name)) return null;
 
   const Component = getMacro(node.name);
   if (Component) {

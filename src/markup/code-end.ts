@@ -1,4 +1,4 @@
-import { findCodeEnd } from '../js-lexer';
+import { findCodeEnd, parsedCodeEnd } from '../js-lexer';
 
 /**
  * Where the JavaScript inside markup ends. The grammar (spindle.peggy) leaves
@@ -175,3 +175,50 @@ export function jsCodeEnd(onOpenEnd?: OnOpenCodeEnd): CodeEnd {
 
 /** The JavaScript reader Spindle uses today: js-lexer, then a lenient scan. */
 export const defaultCodeEnd: CodeEnd = jsCodeEnd();
+
+/**
+ * Index possible brace ends for repeated recovery attempts in one template.
+ * Within plain code, nested braces must close first. At a quote, slash or
+ * escape we stop making lexical assumptions, but the remaining raw `}`s
+ * still bound how many pending braces could close. Indexing visits each
+ * opener once, so unmatched plain-code openers can skip suffix scans.
+ */
+export function indexCodeEnds(input: string): (start: number) => number {
+  const possible = new Set<number>();
+  const pending: number[] = [];
+  let remaining = 0;
+  let lastBrace = -1;
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === '}') {
+      remaining++;
+      lastBrace = i;
+    }
+  }
+  const uncertain = () => {
+    for (
+      let i = Math.max(0, pending.length - remaining);
+      i < pending.length;
+      i++
+    ) {
+      possible.add(pending[i]!);
+    }
+    pending.length = 0;
+  };
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i]!;
+    if (c === '{') pending.push(i);
+    else if (c === '}') {
+      remaining--;
+      const open = pending.pop();
+      if (open !== undefined) possible.add(open);
+    } else if (/['"`/\\]/.test(c)) uncertain();
+  }
+  return (start) => {
+    if (start > lastBrace) return -1;
+    // A syntax error may end the parser's recovery at an inner `}`, even
+    // when neither the token reader nor the lenient reader can close here.
+    return possible.has(start - 1)
+      ? defaultCodeEnd.closeBrace(input, start, start)
+      : parsedCodeEnd(input, start, 'expression');
+  };
+}

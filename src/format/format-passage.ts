@@ -375,8 +375,8 @@ async function formatLf(
   );
 }
 
-/** HTML whose whitespace renders as written: a `<pre>` or `<textarea>`, or a `white-space` style. */
-const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea)[\s>]|white-space\s*:/i;
+/** Literal HTML and opaque SVG, whose text can inherit significant whitespace. */
+const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea|svg)[\s>]|white-space\s*:/i;
 
 /** Preserve whole literal elements, including openers beside nested tags. */
 function whitespaceSensitiveLines(
@@ -392,7 +392,7 @@ function whitespaceSensitiveLines(
       const { token, body } = node;
       if (
         token.type === 'html' &&
-        (['pre', 'textarea'].includes(token.tag.toLowerCase()) ||
+        (['pre', 'textarea', 'svg'].includes(token.tag.toLowerCase()) ||
           Object.entries(token.attributes).some(
             ([name, value]) =>
               name.toLowerCase() === 'style' && /white-space\s*:/i.test(value),

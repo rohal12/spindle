@@ -160,6 +160,7 @@ export class Bindings {
   private readGroups(): void {
     const { code, groups } = this;
     const stack: Group[] = [];
+    const active: Record<Kind, number[]> = { '{': [], '(': [], '[': [] };
     for (let i = 0; i < code.length; i++) {
       const c = code.charAt(i);
       if (c === '{' || c === '(' || c === '[') {
@@ -170,16 +171,18 @@ export class Bindings {
           parent: stack[stack.length - 1],
         };
         groups.push(group);
+        active[c].push(stack.length);
         stack.push(group);
         this.byOpen.set(i, group);
       } else if (CLOSERS[c]) {
         // Tolerate a closer with no opener: the innermost of its kind closes
-        let k = stack.length - 1;
-        while (k >= 0 && stack[k]!.kind !== CLOSERS[c]) k--;
-        if (k >= 0) {
+        const positions = active[CLOSERS[c]!];
+        const k = positions[positions.length - 1];
+        if (k !== undefined) {
           stack[k]!.close = i;
           this.byClose.set(i, stack[k]!);
-          stack.length = k;
+          // Discard each recovered group from its kind's index once.
+          while (stack.length > k) active[stack.pop()!.kind].pop();
         }
       }
     }

@@ -117,6 +117,41 @@ describe('load pipeline', () => {
   });
 
   describe('built-in value types (#158)', () => {
+    it.each([false, true])(
+      'keeps outer hook writes around a nested save (inner fails: %s) (#638)',
+      async (fails) => {
+        Story.set({ before: 0, inner: 0, after: 0 });
+        Story.goto('B');
+        Story.set({ before: 1, inner: 1, after: 1 });
+        let backup: Promise<unknown> | undefined;
+        const off = Story.on('beforesave', (slot) => {
+          if (slot === 'main') {
+            Story.set('before', 1);
+            backup = Story.save('backup').catch((error: Error) => error);
+            Story.set('after', 1);
+          } else {
+            Story.set('inner', 1);
+            if (fails) throw new Error('inner hook failed');
+          }
+        });
+        await Story.save('main');
+        const result = await backup;
+        if (fails) expect(result).toBeInstanceOf(Error);
+        off();
+        Story.set({ before: 2, inner: 2, after: 2 });
+        await Story.load('main');
+        expect(Story.get('before')).toBe(1);
+        expect(Story.get('inner')).toBe(1);
+        expect(Story.get('after')).toBe(1);
+        if (!fails) {
+          await Story.load('backup');
+          expect(Story.get('before')).toBe(0);
+          expect(Story.get('inner')).toBe(1);
+          expect(Story.get('after')).toBe(0);
+        }
+      },
+    );
+
     it('survive Story.save → Story.load, including history snapshots', async () => {
       Story.set('data', typedData(1));
       Story.goto('B');

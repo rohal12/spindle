@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Save hooks retain explicit writes across nested backup saves and release captures when a hook fails (#638).
+- Tooling bounds unmatched markup closer searches, bracket recovery during macro discovery, and code-attribute scans without possible interpolation closers (#639, #640, #641).
+- Widgets named after built-in companions, such as `option`, render in passages, attribute values and link labels (#642).
+- Restart and save load use incoming-only transitions regardless of history length or position (#643).
+- Formatting preserves significant whitespace in standalone and embedded SVG text (#569).
+
 ### Added
 
 - Tooling: `completionContext(source, cursor, macros?)` exposes executable cursor contexts in unfinished markup, including nested labels, attributes and template interpolations, with source offsets (#632).

@@ -35,6 +35,7 @@ import {
   startNewPlaythrough,
   quickSave,
   saveWithHooks,
+  type SaveCapture,
   loadSlotSave,
   adoptPlaythrough,
   populateKnownSaves,
@@ -493,6 +494,7 @@ function enterStart(
 ): void {
   state.currentPassage = passage;
   state.navigationId++;
+  state.replacementNavigationId = state.navigationId;
   state.variables = variables;
   state.transient = freshTransients(transientDefaults);
   state.temporary = createNamespace();
@@ -841,11 +843,11 @@ function loadedEntryMoment(
 }
 
 /** The variable paths `Story.set` writes while a save's hooks run. */
-let hookWrites: Map<string, string[]> | null = null;
+const hookWrites = new Set<Map<string, string[]>>();
 
 /** Note that `path` of the variables was written (see keepHookWrites). */
 export function recordHookWrite(path: string[]): void {
-  hookWrites?.set(pathKey(path), path);
+  for (const writes of hookWrites) writes.set(pathKey(path), path);
 }
 
 /**
@@ -997,6 +999,8 @@ export interface StoryState {
    * so the passage display can remount even when the passage name is unchanged.
    */
   navigationId: number;
+  /** Navigation that most recently initialized, restarted or loaded the game. */
+  replacementNavigationId: number;
   variables: Record<string, unknown>;
   variableDefaults: Record<string, unknown>;
   transient: Record<string, unknown>;
@@ -1080,7 +1084,7 @@ export interface StoryState {
    * function builds the payload after them, and keeps the variables the
    * hooks changed in the saved moment's snapshot, so a load restores them.
    */
-  beginSave: () => () => SavePayload;
+  beginSave: () => SaveCapture;
   /**
    * Replace the game state with a live (deserialized) payload. `slot` is
    * passed to the `beforeload`/`afterload` events. Pass the save's
@@ -1303,6 +1307,7 @@ export const useStoryStore = create<StoryState>()(
     storyData: null,
     currentPassage: '',
     navigationId: 0,
+    replacementNavigationId: 0,
     variables: createNamespace(),
     variableDefaults: {},
     transient: createNamespace(),
@@ -1834,20 +1839,28 @@ export const useStoryStore = create<StoryState>()(
       const before = get().variables;
       const replaced = latestStateApplied;
       const writes = new Map<string, string[]>();
-      hookWrites = writes;
-      return () => {
-        if (hookWrites === writes) hookWrites = null;
-        // A restart or load in a hook left the game the save was issued
-        // for (its playthrough) for another: no save describes both
-        if (latestStateApplied !== replaced) {
-          throw new Error(
-            'spindle: a beforesave handler restarted or loaded the game, so the save was not made',
-          );
-        }
-        const payload = get().getSavePayload();
-        keepHookWrites(payload, before, get().variables, [...writes.values()]);
-        return payload;
+      hookWrites.add(writes);
+      const dispose = () => {
+        hookWrites.delete(writes);
       };
+      return Object.assign(
+        () => {
+          dispose();
+          // A restart or load in a hook left the game the save was issued
+          // for (its playthrough) for another: no save describes both
+          if (latestStateApplied !== replaced) {
+            throw new Error(
+              'spindle: a beforesave handler restarted or loaded the game, so the save was not made',
+            );
+          }
+          const payload = get().getSavePayload();
+          keepHookWrites(payload, before, get().variables, [
+            ...writes.values(),
+          ]);
+          return payload;
+        },
+        { dispose },
+      );
     },
 
     loadFromPayload: (
@@ -1937,6 +1950,7 @@ export const useStoryStore = create<StoryState>()(
       set((state) => {
         state.currentPassage = payload.passage;
         state.navigationId++;
+        state.replacementNavigationId = state.navigationId;
         state.variables = createNamespace(
           deepClone(entry?.variables ?? payload.variables),
         );

@@ -3,6 +3,71 @@ import { discoverMacros, validateStoryMarkup } from '../../src/tooling';
 import { getMacroRegistry } from '../../src/registry';
 import { validateMarkup } from '../../src/markup/validate';
 import { sourcePositions } from '../../src/markup/line-column';
+import { splitSigilTemplate } from '../../src/markup/code-attributes';
+import { defaultCodeEnd } from '../../src/markup/code-end';
+import { vi } from 'vitest';
+
+it('discovers a macro after many unmatched bracket kinds in bounded time (#640)', () => {
+  const source =
+    'const cfg={name:"Valid"};\n' +
+    '('.repeat(24000) +
+    ']'.repeat(24000) +
+    '\nStory.defineMacro(cfg);';
+  const start = performance.now();
+  expect(discoverMacros(source).map(({ name }) => name)).toEqual(['Valid']);
+  expect(performance.now() - start).toBeLessThan(1500);
+});
+
+it.each(['', '}', '{$ok}'])(
+  'does not rescan unclosed code-attribute sigils before %j (#641)',
+  (suffix) => {
+    const literal = '{$x '.repeat(2000);
+    const value = "console.log('" + literal + suffix + "')";
+    const scan = vi.spyOn(defaultCodeEnd, 'closeBrace');
+    try {
+      expect(splitSigilTemplate(value)).toEqual(
+        suffix
+          ? [
+              {
+                text:
+                  "console.log('" +
+                  (suffix === '}' ? literal.slice(0, -4) : literal),
+              },
+              { expr: suffix === '}' ? '$x ' : '$ok' },
+              { text: "')" },
+            ]
+          : [{ text: value }],
+      );
+      expect(scan.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      scan.mockRestore();
+    }
+    if (!suffix)
+      expect(
+        validateStoryMarkup(
+          [{ name: 'Start', content: `<div onclick="${value}"></div>` }],
+          [],
+          { tolerant: true },
+        ),
+      ).toEqual([]);
+  },
+);
+
+it('keeps later closed and incomplete attribute expressions (#641)', () => {
+  // Syntax-error recovery can end at an inner brace even though the outer
+  // interpolation is not balanced; indexing must retain that diagnostic span.
+  expect(splitSigilTemplate('{$x + {a: }')).toEqual([{ expr: '$x + {a: ' }]);
+  expect(splitSigilTemplate('{$x + "}"}')).toEqual([{ expr: '$x + "}"' }]);
+  expect(splitSigilTemplate('{$x { {$ok} tail')).toEqual([
+    { text: '{$x { ' },
+    { expr: '$ok' },
+    { text: ' tail' },
+  ]);
+  expect(splitSigilTemplate('literal {$x {', true)).toEqual([
+    { text: 'literal ' },
+    { expr: '$x {' },
+  ]);
+});
 
 it('indexes UTF-16 columns, CRLF, newline offsets and EOF', () => {
   const position = sourcePositions('a\r\n😀b\n');

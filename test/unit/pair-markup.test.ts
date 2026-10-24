@@ -15,6 +15,27 @@ const nameOf = (node: PairedNode) =>
       : node.token.type;
 
 describe('pairMarkup (#448)', () => {
+  it('bounds opener searches for absent closers (#639)', () => {
+    const n = 1000;
+    let reads = 0;
+    const { tokens } = tokenizeMarkupTolerant(
+      '{if true}'.repeat(n) + '{/bad}'.repeat(n),
+    );
+    for (const token of tokens) {
+      if (token.type === 'macro' && !token.isClose)
+        Object.defineProperty(token, 'name', {
+          get() {
+            reads++;
+            return 'if';
+          },
+        });
+    }
+    const { errors } = pairMarkup(tokens);
+    expect(errors).toHaveLength(n);
+    expect(errors.every((e) => e.code === 'mismatched-closer')).toBe(true);
+    expect(reads).toBeLessThan(n * 30);
+  });
+
   it('nests blocks and keeps the spans of the tags', () => {
     const src = 'a {if $a}x{for $i of $l}y{/for}{else}z{/if} b';
     const { nodes, errors } = pair(src);

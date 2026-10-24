@@ -199,6 +199,11 @@ export function pairMarkup(
 
   const root: PairedNode[] = [];
   const stack: Frame[] = [];
+  // Positions of active openers, separated by tag kind as well as name.
+  // Every frame is indexed once and removed once, including recovery cuts.
+  const openPositions = new Map<string, number[]>();
+  const tagKey = (tag: MacroToken | HtmlToken) =>
+    `${tag.type}:${lowerName(tag)}`;
   const add = (node: PairedNode) => (last(stack)?.into ?? root).push(node);
 
   /**
@@ -212,6 +217,10 @@ export function pairMarkup(
   ) => {
     const { node, body } = stack.pop()!;
     const open = node.token as MacroToken | HtmlToken;
+    const key = tagKey(open);
+    const positions = openPositions.get(key)!;
+    positions.pop();
+    if (positions.length === 0) openPositions.delete(key);
     const noticedAt = close ? close.end : noticedAtEnd;
     for (const { tag } of body.branches) {
       if (
@@ -261,8 +270,7 @@ export function pairMarkup(
         // The closer ends the innermost element, as the runtime reads it;
         // when it names one further out, it ends that one, and the elements
         // inside it are left unclosed
-        let outer = stack.length - 1;
-        while (outer >= 0 && !closes(stack[outer]!.node.token, token)) outer--;
+        const outer = last(openPositions.get(tagKey(token)) ?? []) ?? -1;
         end('mismatch', token, outer === -1);
         if (outer !== -1) {
           while (stack.length > outer + 1) end('cut', token);
@@ -316,6 +324,10 @@ export function pairMarkup(
     }
     const body: PairedBody = { children: [], branches: [] };
     node.body = body;
+    const key = tagKey(token as MacroToken | HtmlToken);
+    const positions = openPositions.get(key) ?? [];
+    positions.push(stack.length);
+    openPositions.set(key, positions);
     stack.push({ node, body, into: body.children });
   }
   while (stack.length > 0) end('unclosed');

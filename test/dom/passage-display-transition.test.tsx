@@ -57,6 +57,7 @@ describe('PassageDisplay transition state machine', () => {
       render(null, container);
     });
     document.body.removeChild(container);
+    useStoryStore.getState().setTransition(null);
     vi.useRealTimers();
   });
 
@@ -158,12 +159,103 @@ describe('PassageDisplay transition state machine', () => {
     expect(passageDiv!.getAttribute('data-transition')).toBe('fade');
   });
 
+  it.each(['restart', 'same-length load', 'non-tail load'])(
+    'uses incoming-only fade for %s (#643)',
+    (operation) => {
+      const store = () => useStoryStore.getState();
+      store().init(
+        makeStoryData([
+          makePassage(1, 'Start', 'Start text'),
+          makePassage(2, 'Room', 'Room text'),
+        ]),
+      );
+      store().setTransition({
+        type: 'fade-through',
+        duration: 1000,
+        pause: 100,
+      });
+      renderPassageMacro(container);
+      if (operation !== 'restart') {
+        act(() => {
+          store().navigate('Room');
+        });
+        act(() => {
+          vi.advanceTimersByTime(2200);
+        });
+        if (operation === 'non-tail load') {
+          act(() => {
+            store().goBack();
+          });
+          act(() => {
+            vi.advanceTimersByTime(2200);
+          });
+        }
+      }
+      const payload = store().getSavePayload();
+      act(() => {
+        if (operation === 'restart') store().restart();
+        else store().loadFromPayload(payload);
+      });
+      expect(container.querySelector('.passage')?.textContent).toContain(
+        payload.passage === 'Room' ? 'Room text' : 'Start text',
+      );
+      expect(
+        container.querySelector('.passage')?.getAttribute('data-transition'),
+      ).toBe('fade');
+      expect(container.querySelector('.passage-snapshot')).toBeNull();
+    },
+  );
+
   it('renders passage content correctly', () => {
     const storyData = makeStoryData([makePassage(1, 'Start', 'Hello world')]);
     useStoryStore.getState().init(storyData);
     renderPassageMacro(container);
 
     expect(container.textContent).toContain('Hello world');
+  });
+
+  it('retains outgoing transitions on history navigation and cancels them on restart (#643)', () => {
+    const store = () => useStoryStore.getState();
+    store().init(
+      makeStoryData([
+        makePassage(1, 'Start', 'Start text'),
+        makePassage(2, 'Room', 'Room text'),
+      ]),
+    );
+    store().setTransition({ type: 'fade-through', duration: 1000, pause: 100 });
+    renderPassageMacro(container);
+    act(() => {
+      store().navigate('Room');
+    });
+    act(() => {
+      vi.advanceTimersByTime(2200);
+    });
+    for (const move of ['goBack', 'goForward'] as const) {
+      act(() => {
+        store()[move]();
+      });
+      expect(container.querySelector('.passage-snapshot')).not.toBeNull();
+      expect(container.querySelector('.passage')).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(2200);
+      });
+    }
+    act(() => {
+      store().goBack();
+    });
+    act(() => {
+      store().restart();
+    });
+    expect(container.querySelector('.passage-snapshot')).toBeNull();
+    expect(container.querySelector('.passage')?.textContent).toContain(
+      'Start text',
+    );
+    act(() => {
+      vi.advanceTimersByTime(2200);
+    });
+    expect(container.querySelector('.passage')?.textContent).toContain(
+      'Start text',
+    );
   });
 
   it('handles navigation between passages', () => {
