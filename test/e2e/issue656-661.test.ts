@@ -148,6 +148,28 @@ it('observes rendered shadow nodes, assigned text, slots and fallback (#659)', a
   expect(observed.actions.map((a) => a.label)).not.toContain('Invisible');
 });
 
+it.each(['aria-hidden="true"', 'class="dialog-overlay"'])(
+  'preserves observation filters on nested fallback slots: %s (#659)',
+  async (filter) => {
+    await page.locator('#host').evaluate((host, attribute) => {
+      host.attachShadow({ mode: 'open' }).innerHTML =
+        `<slot name="outer"><slot name="inner" ${attribute}><span class="error">Filtered fallback</span></slot></slot>`;
+    }, filter);
+    let observed = await page.evaluate(() => Story.observe());
+    expect(observed.text).not.toContain('Filtered fallback');
+    expect(observed.errors).not.toContain('Filtered fallback');
+
+    await page.locator('#host').evaluate((host) => {
+      const inner = host.shadowRoot!.querySelector('slot[name="inner"]')!;
+      inner.removeAttribute('aria-hidden');
+      inner.removeAttribute('class');
+    });
+    observed = await page.evaluate(() => Story.observe());
+    expect(observed.text).toContain('Filtered fallback');
+    expect(observed.errors).toContain('Filtered fallback');
+  },
+);
+
 it('resolves escaped variable roots before executing authored handlers (#661)', async () => {
   for (const name of ['title', 'pattern', 'srcdoc']) {
     expect(await page.locator('#escaped').getAttribute(name)).toBe('resolved');

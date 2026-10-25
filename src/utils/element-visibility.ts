@@ -11,7 +11,8 @@ export function composedParent(el: Element): Element | null {
 /** Rendered child nodes: shadow content, slot assignments, or fallback. */
 export function composedChildNodes(root: ParentNode): Node[] {
   if ((root as Element).localName === 'slot') {
-    const assigned = (root as HTMLSlotElement).assignedNodes({ flatten: true });
+    // Visit nested slots themselves so their visibility and filters apply.
+    const assigned = (root as HTMLSlotElement).assignedNodes();
     if (assigned.length) return assigned;
   }
   return Array.from(((root as Element).shadowRoot ?? root).childNodes);
