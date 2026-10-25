@@ -19,7 +19,12 @@ import type { Span as SourceSpan } from '../../markup/tokens';
 import type { MacroArgs, ParameterDef } from '../../registry';
 import type { StoryState } from '../../store';
 import { noPassageError } from '../../runtime-errors';
-import { stringLiteralValue } from '../../js-lexer';
+import {
+  parseMemberIdentifier,
+  parseReferencePath,
+  stringLiteralValue,
+} from '../../js-lexer';
+import { RESERVED_NAME } from '../../utils/namespace';
 import {
   endsWithOperator,
   isWhitespace,
@@ -449,6 +454,84 @@ export function readBoundVariable(rawArgs: string): string {
   const src = rawArgs.trim();
   const first = terms(src)[0];
   return first ? slice(src, first) : '';
+}
+
+/** A runtime input binding, with UTF-16 spans into the raw arguments. */
+export interface BoundVariable extends SourceSpan {
+  /** Decoded story-variable root and dot members. */
+  name: string;
+  path: string[];
+  /** Whether the author wrote the optional literal `$` sigil. */
+  explicitSigil: boolean;
+  /** Editable root spelling, excluding quotes, sigil and dot members. */
+  nameStart: number;
+  nameEnd: number;
+}
+
+/**
+ * Read the first term as the runtime's story-variable binding. Quotes are
+ * stripped, but this is an identifier path, not a JavaScript string literal:
+ * only identifier escapes are decoded. Returns null for a missing binding;
+ * throws for rejected namespaces, invalid escapes and reserved path names.
+ * The full span excludes quotes and includes the sigil when written.
+ */
+export function parseBoundVariable(rawArgs: string): BoundVariable | null {
+  const term = readBoundVariable(rawArgs);
+  if (!term) return null;
+  const lead = rawArgs.length - rawArgs.trimStart().length;
+  const offsets: number[] = [];
+  for (let i = 0; i < term.length; i++) {
+    if (term[i] !== '"' && term[i] !== "'") offsets.push(lead + i);
+  }
+  const firstToken = term.replace(/["']/g, '');
+  const unbindable: Record<string, string> = {
+    '%': 'transient variables',
+    _: 'temporary variables',
+    '@': 'locals',
+  };
+  const kind = unbindable[firstToken.charAt(0)];
+  if (kind) {
+    throw new Error(`${kind} (${firstToken}) cannot be bound to input macros`);
+  }
+  const explicitSigil = firstToken.startsWith('$');
+  if (!explicitSigil && firstToken.split('.')[0]!.includes('\\')) {
+    throw new Error(
+      'Escaped binding identifiers require a literal $ story-variable sigil',
+    );
+  }
+  const segments = firstToken
+    .replace(/^\$/, '')
+    .split('.')
+    .map((segment, index) => {
+      if (!segment.includes('\\')) return segment;
+      if (index > 0) {
+        const name = parseMemberIdentifier(segment);
+        if (name === null) throw new Error('Invalid bound identifier');
+        return name;
+      }
+      const reference = parseReferencePath(`$${segment}`);
+      if (!reference || reference.nested)
+        throw new Error('Invalid bound identifier');
+      return reference.name;
+    });
+  if (segments.includes(RESERVED_NAME)) {
+    throw new Error(
+      `"$${segments.join('.')}" cannot be bound: ${RESERVED_NAME} is reserved`,
+    );
+  }
+  const rootStart = explicitSigil ? 1 : 0;
+  const rootEnd = firstToken.indexOf('.', rootStart);
+  const nameEnd = rootEnd < 0 ? firstToken.length : rootEnd;
+  return {
+    name: segments[0]!,
+    path: segments.slice(1),
+    explicitSigil,
+    start: offsets[0] ?? lead,
+    end: offsets.length ? offsets[offsets.length - 1]! + 1 : lead,
+    nameStart: offsets[rootStart] ?? lead + rootStart,
+    nameEnd:
+      offsets[nameEnd - 1] === undefined ? lead : offsets[nameEnd - 1]! + 1,
+  };
 }
 
 /** A consumed argument and its declared parameter, with UTF-16 source offsets. */

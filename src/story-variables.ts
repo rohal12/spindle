@@ -29,8 +29,10 @@ import {
 import { getMacroParameters, type ParameterDef } from './registry';
 import {
   MacroArgumentError,
+  parseBoundVariable,
   parseMacroArgs,
   type ArgSpans,
+  type BoundVariable,
 } from './components/macros/macro-args';
 import { NOT_MARKUP } from './markup/validate';
 import {
@@ -88,8 +90,6 @@ function declarationRegex(sigil: string): RegExp {
 }
 /** A `$name` or `%name` reference with its dot path, at a sigil the lexer found. */
 const VAR_PATH_RE = /([$%])(\w+(?:\.\w+)*)/y;
-/** Quoted first argument of an input macro naming a story variable. */
-const QUOTED_VAR_ARG_RE = /^["']\$(\w+(?:\.\w+)*)["']?$/;
 
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
@@ -376,6 +376,12 @@ export interface VariableReference {
   /** Where `$a.b.c` is written in the markup, as `[start, end)` UTF-16 offsets. */
   start: number;
   end: number;
+  /**
+   * For an input binding, its decoded identity and editable root span.
+   * Offsets are into the markup, including inside escaped labels. The sigil
+   * is semantically `$` even when `binding.explicitSigil` is false.
+   */
+  binding?: BoundVariable;
 }
 
 /** What a check of a variable reference found wrong with it. */
@@ -753,6 +759,38 @@ function scanSelectors(
   );
 }
 
+/** Read a runtime binding and map its editable spans into the passage. */
+function boundReference(
+  token: Extract<Token, { type: 'macro' }>,
+  at: At,
+  all: boolean | undefined,
+): VariableReference | undefined {
+  try {
+    const binding = parseBoundVariable(token.rawArgs);
+    // Sigilless bindings are part of the complete editor list, but do not
+    // change which references story startup checks.
+    if (!binding || (!all && !binding.explicitSigil)) return undefined;
+    const mapped = {
+      ...binding,
+      start: at(token.argsStart + binding.start),
+      end: at(token.argsStart + binding.end),
+      nameStart: at(token.argsStart + binding.nameStart),
+      nameEnd: at(token.argsStart + binding.nameEnd),
+    };
+    return {
+      sigil: '$',
+      name: binding.name,
+      path: binding.path,
+      start: mapped.start,
+      end: mapped.end,
+      binding: mapped,
+    };
+  } catch {
+    // Tolerant tooling skips bindings the runtime rejects.
+    return undefined;
+  }
+}
+
 /** Report the `$var` references in the tokens of `content`. */
 function collectTokenRefs(
   content: string,
@@ -805,33 +843,27 @@ function collectTokenRefs(
         else scanInterpolations(value, valueIn, emit, options);
       }
     } else if (token.type === 'macro' && !token.isClose) {
-      scanArgs(token, parametersOf, at, emit, options);
+      const binding =
+        storeVarMacros.has(token.name.toLowerCase()) &&
+        !parametersOf.widget?.(token.name)
+          ? boundReference(token, at, options.all)
+          : undefined;
+      scanArgs(
+        token,
+        parametersOf,
+        at,
+        (ref) => {
+          // A parameterless custom storeVar macro also scans its arguments
+          // as code. Keep the binding's decoded path and span just once.
+          if (!binding || ref.start < binding.start || ref.start >= binding.end)
+            emit(ref);
+        },
+        options,
+      );
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
-      if (
-        storeVarMacros.has(token.name.toLowerCase()) &&
-        !parametersOf.widget?.(token.name)
-      ) {
-        const lead = token.rawArgs.length - token.rawArgs.trimStart().length;
-        const first = token.rawArgs.trim().split(/\s+/)[0] ?? '';
-        const quoted = QUOTED_VAR_ARG_RE.exec(first);
-        if (quoted) {
-          const [name, ...path] = quoted[1]!.split('.');
-          const start = token.argsStart + lead + 1;
-          emit({
-            sigil: '$',
-            name: name!,
-            path,
-            start: at(start),
-            end: at(start + 1 + quoted[1]!.length),
-          });
-        }
-        // Unquoted, the variable is an argument of no declared role
-        else if (!/^["'`]/.test(first)) {
-          scanCode(first, (i) => at(token.argsStart + lead + i), emit);
-        }
-      }
+      if (binding) emit(binding);
 
       if (executesRawBody(token.name, parametersOf)) {
         // A {do} body is JavaScript: scan its source text as code, however

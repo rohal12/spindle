@@ -134,11 +134,13 @@ export {
 export { splitIncludeFlag } from './components/macros/include-args';
 export {
   macroArgumentSpans,
+  parseBoundVariable,
   evaluatePassageName,
   passageTarget,
 } from './components/macros/macro-args';
 export type {
   MacroArgumentSpan,
+  BoundVariable,
   PassageTarget,
 } from './components/macros/macro-args';
 export { transform } from './transform';
@@ -407,13 +409,15 @@ function referenceOptions(
  * in source order, with the dotted path of fields accessed and where each is
  * written (offsets into `source`, UTF-16): `{$var}` displays, code in
  * expressions, conditions, `{do}` bodies and macro arguments, quoted names
- * bound by input macros, and the markup in labels and HTML attributes. Prose
+ * bound by input macros, and the markup in labels and HTML attributes. Input
+ * bindings include decoded root/path names and editable `binding` spans. Prose
  * is literal text. Malformed tags are skipped, so it reads half-typed markup.
  * The macros are those the markup may use, built-in and user-defined.
  *
  * These are the references the story start checks. With `all: true`, the
  * list is complete (the checked ones are among it, in source order): it also
- * has the variable a macro names in a `variable` parameter, such as the
+ * has sigilless input bindings (`{textbox "name"}`), the variable a macro
+ * names in a `variable` parameter, such as the
  * target of `{unset}` and `{computed}`, and the `{$name}` in the selectors of
  * a link, display or expression (`[[.c{$name} Go->T]]`). A rename or a find
  * of references needs these too.

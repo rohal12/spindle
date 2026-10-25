@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tooling includes sigilless and escaped input bindings in complete variable-reference lists, with decoded paths and editable root spans from the runtime's shared `parseBoundVariable` reader (#654).
+
 - Forwarded click bodies and replacements of synchronous builtin macros retain asynchronous work until their owner leaves (#646).
 - Tooling drops superseded parameter and variable-binding metadata and applies builtin conditional and dialog rules only to builtin implementations (#647, #648).
 - Plain numeric passages render without quadratic ordered-list probing (#649).

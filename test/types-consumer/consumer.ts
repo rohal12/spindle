@@ -25,6 +25,9 @@ export const checks: [
   Resolved<ReturnType<typeof Tooling.completionContext>>,
   Resolved<Tooling.CompletionContext>,
   Resolved<Tooling.CompletionContainer>,
+  Resolved<Tooling.BoundVariable>,
+  Resolved<ReturnType<typeof Tooling.parseBoundVariable>>,
+  Resolved<Tooling.VariableReference['binding']>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {
