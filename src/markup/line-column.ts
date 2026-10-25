@@ -1,3 +1,5 @@
+import { upperBound } from '../utils/sorted';
+
 /** 1-based line and column of `offset` in `text`. */
 export function lineColumn(
   text: string,
@@ -20,14 +22,7 @@ export function sourcePositions(text: string) {
     if (text[i] === '\n') starts.push(i + 1);
   }
   return (offset: number) => {
-    let low = 0;
-    let high = starts.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if (starts[mid]! <= offset) low = mid + 1;
-      else high = mid;
-    }
-    const line = Math.max(1, low);
+    const line = Math.max(1, upperBound(starts, offset));
     return { line, column: offset - starts[line - 1]! + 1 };
   };
 }

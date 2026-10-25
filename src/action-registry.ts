@@ -1,4 +1,5 @@
 import { isReaderVisible } from './utils/element-visibility';
+import { readOnlyValue } from './execute-mutation';
 import { emit } from './event-emitter';
 import {
   checkFields,
@@ -250,7 +251,7 @@ export async function settleRunningActions(): Promise<void> {
 }
 
 export function getActions(): StoryAction[] {
-  return Array.from(actions.values(), listed);
+  return readOnlyValue(Array.from(actions.values(), listed));
 }
 
 /**
@@ -258,15 +259,17 @@ export function getActions(): StoryAction[] {
  * function, see registerAction), its nested dialogs' left out.
  */
 export function getDialogActions(dialog: () => void): StoryAction[] {
-  return Array.from(actions.values())
-    .map((entries) => entries[entries.length - 1]!)
-    .filter((entry) => entry.dialog === dialog)
-    .map((entry) => effectiveAction(entry.action));
+  return readOnlyValue(
+    Array.from(actions.values())
+      .map((entries) => entries[entries.length - 1]!)
+      .filter((entry) => entry.dialog === dialog)
+      .map((entry) => effectiveAction(entry.action)),
+  );
 }
 
 export function getAction(id: string): StoryAction | undefined {
   const entries = actions.get(id);
-  return entries && listed(entries);
+  return entries && readOnlyValue(listed(entries));
 }
 
 function listed(entries: Entry[]): StoryAction {

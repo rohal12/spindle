@@ -651,7 +651,7 @@ function decodeText(text: string): string {
 }
 
 /** A `{` and a sigil starting a reference, in a code attribute. */
-const SIGIL_REFERENCE = /\{[$_@%]\w/;
+const SIGIL_REFERENCE = /\{[$_@%][\w\\]/;
 
 const attributeNodes = new Map<string, ParsedText>();
 const ATTRIBUTE_CACHE_LIMIT = 2000;

@@ -5,6 +5,7 @@
 import { withSelectors, type Selectors, type VariableScope } from './tokens';
 import type { PairedBranch, PairedNode } from './pair';
 import { NameSet } from '../utils/macro-names';
+import { getMacroParameters } from '../registry';
 
 export interface TextNode {
   type: 'text';
@@ -184,7 +185,10 @@ function astNode({ token, body }: PairedNode): ASTNode {
       };
       if (!body) return withSelectors(node, token);
       const children = buildAst(body.children);
-      const branching = BRANCHING.has(name) && !WIDGETS.has(name);
+      const branching =
+        BRANCHING.has(name) &&
+        !WIDGETS.has(name) &&
+        getMacroParameters.source(name) !== 'user';
       if (!branching && body.branches.length === 0) {
         node.children = children;
         return withSelectors(node, token);

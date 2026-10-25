@@ -1,4 +1,11 @@
 import { expect, it, vi } from 'vitest';
+import {
+  analyzeMarkup,
+  scanMarkupTolerant,
+  MarkupError,
+} from '../../src/markup/parse';
+import { pairMarkup } from '../../src/markup/pair';
+import { isBlockMacro, isRawMacro } from '../../src/markup/ast';
 import * as jsLexer from '../../src/js-lexer';
 import { defaultCodeEnd } from '../../src/markup/code-end';
 import {
@@ -92,6 +99,68 @@ it.each(['{foo{bar a b}', '{foo{bar @}', '{foo{bar $x + 1}'])(
   (source) => {
     expect(tokenizeMarkup(source)).toEqual(
       tokenizeMarkup(source, { hooks: defaultCodeEnd }),
+    );
+  },
+);
+
+it('bounds recovery damage filtering with many independent pairing errors (#657)', () => {
+  const count = 2000;
+  const source = '[[\n'.repeat(count) + '{/span}'.repeat(count);
+  const some = Array.prototype.some;
+  let damageVisits = 0;
+  const scan = vi.spyOn(Array.prototype, 'some').mockImplementation(function (
+    this: unknown[],
+    predicate,
+    thisArg,
+  ) {
+    if (!(this[0] instanceof MarkupError))
+      return some.call(this, predicate, thisArg);
+    return some.call(this, (value, index, array) => {
+      damageVisits++;
+      return predicate.call(thisArg, value, index, array);
+    });
+  });
+  try {
+    const result = analyzeMarkup(source);
+    expect(result.errors).toHaveLength(count * 2);
+    expect(result.errors.filter((e) => e.code === 'stray-closer')).toHaveLength(
+      count,
+    );
+    expect(damageVisits).toBeLessThan(count * 20);
+  } finally {
+    scan.mockRestore();
+  }
+});
+
+it.each([
+  '<div title="{if}">{/span}',
+  '<div title="{if}"><b title="{switch}">{/span}',
+  '[[\n{/span}[[\n{/if}',
+])(
+  'preserves suppression inside overlapping recovered damage: %s',
+  (source) => {
+    const { tokens, errors, damage } = scanMarkupTolerant(source);
+    const paired = pairMarkup(tokens, {
+      source,
+      isBlock: isBlockMacro,
+      isRaw: isRawMacro,
+    });
+    const expected = paired.errors.filter(
+      (e) =>
+        !errors.some(
+          (error, i) => e.start >= damage[i]! && e.start <= error.offset,
+        ),
+    );
+    const actual = analyzeMarkup(source).errors.filter(
+      (e) =>
+        !errors.some(
+          (error) => error.code === e.code && error.offset === e.offset,
+        ),
+    );
+    expect(actual.map((e) => [e.code, e.offset])).toEqual(
+      expected
+        .sort((a, b) => a.noticedAt - b.noticedAt)
+        .map((e) => [e.code, e.start]),
     );
   },
 );

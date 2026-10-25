@@ -357,3 +357,15 @@ describe('observation visibility and value boundaries (#554, #556, #558)', () =>
     clearActions();
   });
 });
+
+it('reads shadow text and errors while excluding unassigned light DOM (#659)', () => {
+  const root = fixture(
+    '<div id="host"><span class="error">Unslotted error</span></div>',
+  );
+  root.querySelector('#host')!.attachShadow({ mode: 'open' }).innerHTML =
+    'Direct shadow text<p>Shadow paragraph</p><span class="error">Shadow error</span>';
+  expect(observableText(root)).toBe(
+    'Direct shadow text\nShadow paragraph\nShadow error',
+  );
+  expect(observableErrors(root)).toEqual(['Shadow error']);
+});

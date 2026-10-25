@@ -1,4 +1,10 @@
-import { isHidden, isRendered } from '../utils/element-visibility';
+import {
+  composedChildNodes,
+  composedElements,
+  composedParent,
+  isHidden,
+  isRendered,
+} from '../utils/element-visibility';
 import { getAction } from '../action-registry';
 
 /** Elements that start and end a line. */
@@ -81,8 +87,11 @@ export function observableText(
 
   const walk = (node: Node, inPre: boolean) => {
     if (node.nodeType === 3) {
-      if (node.parentElement && !isRendered(node.parentElement, visibilityRoot))
-        return;
+      const parent =
+        (node as Text).assignedSlot ??
+        node.parentElement ??
+        (node.getRootNode() as ShadowRoot).host;
+      if (parent && !isRendered(parent, visibilityRoot)) return;
       const data = node.textContent ?? '';
       if (inPre) out += data;
       else {
@@ -114,9 +123,10 @@ export function observableText(
     if (block) endLine();
     const closedDetails =
       child.tagName === 'DETAILS' && !child.hasAttribute('open');
+    const rendered = composedChildNodes(child);
     const children = closedDetails
-      ? Array.from(child.children).filter((c) => !isHidden(c))
-      : Array.from(child.childNodes);
+      ? rendered.filter((c) => c.nodeType === 1 && !isHidden(c as Element))
+      : rendered;
     for (const c of children) {
       walk(c, inPre || child.tagName === 'PRE');
     }
@@ -148,14 +158,16 @@ export function observableErrors(
   visibilityRoot?: Element,
 ): string[] {
   const left = (e: Element) => {
-    for (let at: Element | null = e; at; at = at.parentElement) {
+    for (let at: Element | null = e; at; at = composedParent(at)) {
       if (isHidden(at)) return true;
       if (at === el) return false;
       if (skip && at.matches(skip)) return true;
     }
     return false;
   };
-  return Array.from(el.querySelectorAll('.error'))
-    .filter((e) => !left(e) && isRendered(e, visibilityRoot))
+  return [...composedElements(el)]
+    .filter(
+      (e) => e.matches('.error') && !left(e) && isRendered(e, visibilityRoot),
+    )
     .map((e) => observableText(e, skip, visibilityRoot).trim());
 }

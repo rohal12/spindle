@@ -8,6 +8,7 @@
  * same boot sequence directly.
  */
 import { boot } from './index';
+import { readOnlyValue } from './execute-mutation';
 import { isSpecialPassage, useStoryStore } from './store';
 import { noPassageError, specialPassageError } from './runtime-errors';
 import type { StoryAPI } from './story-api';
@@ -87,11 +88,11 @@ export function bootStory(options: BootStoryOptions): Promise<StoryAPI> {
 }
 
 /**
- * The story's `$` variables: a shallow copy of the current values, keyed by
- * name without the `$`. Values are the store's own (frozen) objects.
+ * The story's `$` variables, keyed by name without the `$`. Mutable values
+ * are copied together, preserving aliases without exposing live state.
  */
 export function storyVariables(): Record<string, unknown> {
-  return { ...useStoryStore.getState().variables };
+  return { ...readOnlyValue(useStoryStore.getState().variables) };
 }
 
 /**

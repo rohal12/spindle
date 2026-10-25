@@ -1,4 +1,4 @@
-import { NameMap } from './utils/macro-names';
+import { effectiveNamedDefinitions, NameMap } from './utils/macro-names';
 export {
   completionContext,
   type CompletionContext,
@@ -208,11 +208,22 @@ export interface ParseMarkupOptions extends RuntimeParseMarkupOptions {
   macros?: Iterable<ToolingMacro>;
 }
 
+/** Widgets take precedence over macros regardless of metadata input order. */
+function effectiveToolingMacros(
+  macros: Iterable<ToolingMacro>,
+): ToolingMacro[] {
+  const list = [...macros];
+  return effectiveNamedDefinitions([
+    ...list.filter((m) => !m.widget),
+    ...list.filter((m) => m.widget),
+  ]);
+}
+
 function tokenizationOptions(
   options: ParseMarkupOptions,
 ): RuntimeParseMarkupOptions {
   if (!options.macros) return options;
-  const macros = [...options.macros];
+  const macros = effectiveToolingMacros(options.macros);
   const parametersOf = parameterLookup(macros);
   return {
     ...options,
@@ -254,7 +265,7 @@ export function validateStoryMarkup(
   options: ValidateMarkupOptions = {},
 ): MarkupDiagnostic[] {
   const list = [...passages];
-  const all = [...macros];
+  const all = effectiveToolingMacros(macros);
   const known = new Set<string>();
   // The calls of widgets that declare what their arguments hold are checked
   const widgets = effectiveWidgetDefinitions(
@@ -313,7 +324,7 @@ export function passagePieces(
   source: string,
   macros: Iterable<ToolingMacro> = [],
 ): Piece[] {
-  const all = [...macros];
+  const all = effectiveToolingMacros(macros);
   const parametersOf = parameterLookup(all);
   return passagePiecesOfTokens(
     source,
@@ -337,7 +348,7 @@ export function passagePiecesOfTokens(
   macros: Iterable<ToolingMacro>,
   tokens: readonly Token[],
 ): Piece[] {
-  const all = [...macros];
+  const all = effectiveToolingMacros(macros);
   return [
     ...passagePiecesOf(source, tokens, parameterLookup(all), {
       isBlock: blockLookup(all),
