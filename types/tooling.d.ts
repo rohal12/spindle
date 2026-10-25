@@ -712,6 +712,12 @@ export interface VariableReference {
   /** Where `$a.b.c` is written: `[start, end)` UTF-16 offsets into the markup. */
   start: number;
   end: number;
+  /**
+   * For an input binding, its decoded identity and editable root span.
+   * Offsets are into the markup, including inside escaped labels. The sigil
+   * is semantically `$` even when `binding.explicitSigil` is false.
+   */
+  binding?: BoundVariable;
 }
 
 /**
@@ -749,10 +755,12 @@ export interface VariableDiagnostic {
  * The variable references the markup of a passage evaluates, in source order,
  * with their positions. Malformed tags are skipped. The macros are those the
  * markup may use (`builtinMacros` and the user-defined ones).
+ * Input bindings include decoded root/path names and editable `binding` spans.
  *
  * These are the references the story start checks. With `all: true` the list
  * is complete (the checked ones are among it, in source order): it also has
- * the variable a macro names in a `variable` parameter, such as the target of
+ * sigilless input bindings (`{textbox "name"}`), the variable a macro names
+ * in a `variable` parameter, such as the target of
  * `{unset}` and `{computed}`, and the `{$name}` in the selectors of a link,
  * display or expression (`[[.c{$name} Go->T]]`).
  */
@@ -1226,6 +1234,32 @@ export interface ParsedCode {
  * Member assignments read their root binding; only direct targets write it.
  */
 export declare function parseCode(src: string, goal?: JsGoal): ParsedCode;
+
+/** A runtime input binding, with UTF-16 spans into the raw arguments. */
+export interface BoundVariable {
+  /** Decoded story-variable root and dot members. */
+  name: string;
+  path: string[];
+  /** Whether the author wrote the optional literal `$` sigil. */
+  explicitSigil: boolean;
+  /** The binding spelling, excluding quotes and including any sigil. */
+  start: number;
+  end: number;
+  /** Editable root spelling, excluding quotes, sigil and dot members. */
+  nameStart: number;
+  nameEnd: number;
+}
+
+/**
+ * Read the first term as the runtime's story-variable binding. Quotes are
+ * stripped, but this is an identifier path, not a JavaScript string literal:
+ * only identifier escapes are decoded. Returns null for a missing binding;
+ * throws for rejected namespaces, invalid escapes and reserved path names.
+ * All offsets are UTF-16 offsets into rawArgs.
+ */
+export declare function parseBoundVariable(
+  rawArgs: string,
+): BoundVariable | null;
 
 /** A consumed argument and its original parameter (including option keywords). */
 export interface MacroArgumentSpan {

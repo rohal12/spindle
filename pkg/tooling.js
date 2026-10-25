@@ -20,6 +20,7 @@ export {
   formatDiagnostic,
   parseCode,
   macroArgumentSpans,
+  parseBoundVariable,
   effectiveWidgetDefinitions,
   findCodeEnd,
   lexJs,

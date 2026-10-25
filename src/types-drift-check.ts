@@ -96,6 +96,15 @@ type SameShape<A, B> = Same<A, B> extends true ? Same<keyof A, keyof B> : false;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type AssertTrue<T extends readonly true[]> = T;
 type ToolingChecks = [
+  Same<
+    typeof SourceTooling.parseBoundVariable,
+    typeof PublishedTooling.parseBoundVariable
+  >,
+  SameShape<SourceTooling.BoundVariable, PublishedTooling.BoundVariable>,
+  SameShape<
+    SourceTooling.VariableReference,
+    PublishedTooling.VariableReference
+  >,
   Same<typeof SourceTooling.parseCode, typeof PublishedTooling.parseCode>,
   Same<
     typeof SourceTooling.macroArgumentSpans,

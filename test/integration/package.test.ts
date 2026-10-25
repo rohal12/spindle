@@ -161,6 +161,7 @@ describe('@rohal12/spindle/tooling', async () => {
       'parseWidgetDef',
       'widgetDefinitions',
       'variableReferences',
+      'parseBoundVariable',
       'discoverMacros',
       'validateVariableReferences',
       'formatPassage',
@@ -181,6 +182,31 @@ describe('@rohal12/spindle/tooling', async () => {
         .collectPassageReferences('[[Go->Hall]] {goto "Roof"}')
         .map((r: { macro: string }) => r.macro),
     ).toEqual(['link', 'goto']);
+  });
+
+  it('exports the runtime binding reader and editable input references (#654)', () => {
+    const rawArgs = String.raw` "$\u0078.na\u006de"`;
+    const binding = tooling.parseBoundVariable(rawArgs);
+    expect(binding).toMatchObject({
+      name: 'x',
+      path: ['name'],
+      explicitSigil: true,
+    });
+    expect(rawArgs.slice(binding.nameStart, binding.nameEnd)).toBe(
+      String.raw`\u0078`,
+    );
+    for (const term of ['"x"', 'x', String.raw`"$\u0078"`]) {
+      const source = `{textbox ${term}}`;
+      const refs = tooling.variableReferences(source, tooling.builtinMacros, {
+        all: true,
+      });
+      expect(refs).toHaveLength(1);
+      expect(refs[0]).toMatchObject({ sigil: '$', name: 'x', path: [] });
+      const { nameStart, nameEnd } = refs[0].binding;
+      expect(source.slice(0, nameStart) + 'y' + source.slice(nameEnd)).toBe(
+        `{textbox ${term.replace(/x|\\u0078/, 'y')}}`,
+      );
+    }
   });
 
   it('validates against the macros it is given, with no state', () => {

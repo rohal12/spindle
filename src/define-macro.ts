@@ -29,8 +29,6 @@ import { executeMutation, mutateState, readState } from './execute-mutation';
 import { evaluateDisplay } from './expression';
 import { useStoryFields } from './hooks/use-story-fields';
 import { getByPath, setByPath } from './utils/object-path';
-import { RESERVED_NAME } from './utils/namespace';
-import { parseMemberIdentifier, parseReferencePath } from './js-lexer';
 import { useAction } from './hooks/use-action';
 import type { UseActionOptions } from './hooks/use-action';
 import { collectText } from './utils/extract-text';
@@ -40,7 +38,7 @@ import { wrapContent } from './components/macros/display';
 import {
   MacroArgumentError,
   parseMacroArgs,
-  readBoundVariable,
+  parseBoundVariable,
 } from './components/macros/macro-args';
 import { MacroError } from './components/macros/MacroError';
 import {
@@ -241,66 +239,14 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
     }
 
     if (config.storeVar) {
-      const firstToken = readBoundVariable(props.rawArgs).replace(/["']/g, '');
-
-      // Only story variables ($name) can be bound: another sigil would be
-      // read as a story key spelled with it (#414)
-      const unbindable: Record<string, string> = {
-        '%': 'transient variables',
-        _: 'temporary variables',
-        '@': 'locals',
-      };
-      const kind = unbindable[firstToken.charAt(0)];
-      if (kind) {
-        return h(
-          'span',
-          { class: 'error' },
-          `{${config.name}}: ${kind} (${firstToken}) cannot be bound to input macros`,
-        );
-      }
-
-      if (
-        !firstToken.startsWith('$') &&
-        firstToken.split('.')[0]!.includes('\\')
-      ) {
-        return h(MacroError, {
-          macro: config.name,
-          error: new Error(
-            'Escaped binding identifiers require a literal $ story-variable sigil',
-          ),
-        });
-      }
-
       let segments: string[];
       try {
-        segments = firstToken
-          .replace(/^\$/, '')
-          .split('.')
-          .map((segment, index) => {
-            if (!segment.includes('\\')) return segment;
-            // Members follow JavaScript's identifier grammar, which accepts
-            // more names than story-variable roots (for example $foo and é).
-            if (index > 0) {
-              const name = parseMemberIdentifier(segment);
-              if (name === null) throw new Error('Invalid bound identifier');
-              return name;
-            }
-            const reference = parseReferencePath(`$${segment}`);
-            if (!reference || reference.nested)
-              throw new Error('Invalid bound identifier');
-            return reference.name;
-          });
+        const binding = parseBoundVariable(props.rawArgs);
+        segments = binding ? [binding.name, ...binding.path] : [''];
       } catch (error) {
         return h(MacroError, { macro: config.name, error });
       }
       const varExpr = segments.join('.');
-      if (segments.includes(RESERVED_NAME)) {
-        return h(
-          'span',
-          { class: 'error' },
-          `{${config.name}}: "$${varExpr}" cannot be bound: ${RESERVED_NAME} is reserved`,
-        );
-      }
       ctx.varName = varExpr;
       ctx.value = getByPath(useStoryFields('variables').variables, segments);
       // In program order, also when mutation code performs the input

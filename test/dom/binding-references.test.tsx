@@ -5,6 +5,8 @@ import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
 import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
+import { getMacroRegistry } from '../../src/registry';
+import { variableReferences } from '../../src/tooling';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 
 const start: PassageData = {
@@ -38,6 +40,9 @@ describe('input bindings below a shared object (#305)', () => {
   });
 
   it.each([
+    ['foo', { foo: 'Ada' }, 'foo'],
+    ['"foo"', { foo: 'Ada' }, 'foo'],
+    [String.raw`"a.na\u006de"`, { a: { name: 'Ada' } }, 'a'],
     ['$fo\\u006f', { foo: 'Ada' }, 'foo'],
     ['$fo\\u{6f}', { foo: 'Ada' }, 'foo'],
     ['$\\u005ffoo', { _foo: 'Ada' }, '_foo'],
@@ -63,6 +68,31 @@ describe('input bindings below a shared object (#305)', () => {
       });
       expect(vars()[root]).toEqual(root === 'a' ? { name: 'Bob' } : 'Bob');
       expect(Object.keys(vars())).toEqual([root]);
+      act(() => render(null, container));
+    },
+  );
+
+  it.each(['x', '"x"', '"$x"', String.raw`"$\u0078"`])(
+    'renames %s through its public binding span and keeps the control bound',
+    (term) => {
+      const source = `{textbox ${term}}`;
+      const ref = variableReferences(source, getMacroRegistry(), {
+        all: true,
+      })[0]!;
+      const { nameStart, nameEnd } = ref.binding!;
+      const renamed = source.slice(0, nameStart) + 'y' + source.slice(nameEnd);
+      useStoryStore.getState().init(storyData, { y: 'old' }, {});
+      const container = document.createElement('div');
+      act(() =>
+        render(<Passage passage={{ ...start, content: renamed }} />, container),
+      );
+      const input = container.querySelector('input')!;
+      expect(input.value).toBe('old');
+      act(() => {
+        input.value = 'new';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(vars()).toEqual({ y: 'new' });
       act(() => render(null, container));
     },
   );
