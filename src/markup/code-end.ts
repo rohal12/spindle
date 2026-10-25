@@ -223,10 +223,22 @@ export function indexCodeEnds(
     // Selectors can put lenientStart after something other than the opener.
     // Macro names can themselves contain braces, which the strict reader
     // skips before reading arguments; the index must not count those.
-    return input[start - 1] !== '{' ||
+    if (
+      input[start - 1] !== '{' ||
       possible.has(start - 1) ||
       input.slice(start, codeStart).includes('{')
-      ? defaultCodeEnd.closeBrace(source, codeStart, start)
-      : parsedCodeEnd(source, codeStart, 'expression');
+    ) {
+      return defaultCodeEnd.closeBrace(source, codeStart, start);
+    }
+    // Acorn locates its starting line and syntax errors by scanning the
+    // prefix. Recovery must not hand it the whole passage for every opener.
+    // Keep one preceding character so a leading #! cannot become a hashbang.
+    const base = Math.max(0, codeStart - 1);
+    const end = parsedCodeEnd(
+      source.slice(base),
+      codeStart - base,
+      'expression',
+    );
+    return end < 0 ? -1 : base + end;
   };
 }

@@ -32,6 +32,7 @@ it('bounds code-reader work during recovery with a trailing brace (#265)', () =>
   const count = 500;
   const source = 'text {if $x '.repeat(count) + '}';
   const scan = vi.spyOn(jsLexer, 'findCodeEnd');
+  const parse = vi.spyOn(jsLexer, 'parsedCodeEnd');
   try {
     const { tokens, errors } = tokenizeMarkupTolerant(source);
     expect(errors).toHaveLength(count - 1);
@@ -50,8 +51,16 @@ it('bounds code-reader work during recovery with a trailing brace (#265)', () =>
       0,
     );
     expect(scanned).toBeLessThan(source.length * 4);
+    // Acorn also scans the prefix before codeStart to locate its tokens
+    // and errors. Passing the whole passage here repeats that work.
+    const prefixes = parse.mock.calls.reduce(
+      (total, [, codeStart]) => total + codeStart,
+      0,
+    );
+    expect(prefixes).toBeLessThan(source.length * 4);
   } finally {
     scan.mockRestore();
+    parse.mockRestore();
   }
 });
 
@@ -65,6 +74,17 @@ it('preserves custom code-end hooks and their relative offsets', () => {
     { rawArgs: '1' },
   ]);
   expect(calls).toEqual([' 1}']);
+});
+
+it.each([
+  '{print {a: }',
+  '{$x + {a: }',
+  '{print #! ignored\n{$x }',
+  '\r\ntext {if $x {if $y }',
+])('preserves fallback code ends and source offsets: %j', (source) => {
+  expect(tokenizeMarkupTolerant(source)).toEqual(
+    tokenizeMarkupTolerant(source, { hooks: defaultCodeEnd }),
+  );
 });
 
 it.each(['{foo{bar a b}', '{foo{bar @}', '{foo{bar $x + 1}'])(

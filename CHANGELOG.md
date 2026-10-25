@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tooling drops superseded parameter and variable-binding metadata and applies builtin conditional and dialog rules only to builtin implementations (#647, #648).
 - Plain numeric passages render without quadratic ordered-list probing (#649).
 - Action visibility follows shadow hosts and assigned slots, including hidden/inert ancestors and closed details (#650).
-- Strict code-attribute parsing and tolerant malformed-tag recovery share indexed brace feasibility checks, including sources with a trailing brace (#265, #641).
+- Strict code-attribute parsing and tolerant malformed-tag recovery share indexed brace feasibility checks, including sources with a trailing brace, without repeatedly scanning passage prefixes for fallback diagnostics (#265, #641).
 
 - Tooling distinguishes genuine builtin `do` execution from replacement macros by registration provenance, so ignored raw bodies do not create phantom macro definitions, variable references or code completion contexts (#644).
 
