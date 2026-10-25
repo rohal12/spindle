@@ -233,15 +233,23 @@ export interface ParametersOf {
   source?(name: string): 'builtin' | 'user' | undefined;
 }
 
+/** Whether builtin-only interpretation still belongs to this implementation. */
+export function usesBuiltinSemantics(
+  name: string,
+  parametersOf: ParametersOf,
+): boolean {
+  return (
+    parametersOf.widget?.(name) === undefined &&
+    parametersOf.source?.(name) !== 'user'
+  );
+}
+
 /** A raw body is executable only while the builtin implementation owns it. */
 export function executesRawBody(
   name: string,
   parametersOf: ParametersOf,
 ): boolean {
-  return (
-    isRawMacro(name, parametersOf.widget?.(name) !== undefined) &&
-    parametersOf.source?.(name) !== 'user'
-  );
+  return isRawMacro(name, false) && usesBuiltinSemantics(name, parametersOf);
 }
 
 /** What the argument check needs to know of a macro (see MacroMetadata). */
@@ -298,13 +306,14 @@ export function parameterLookup(
     sources.set(name, source ?? 'user');
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
+    else parameters.delete(name);
     if (widget)
       widgets.set(name, widgetParameters(widget.params, widget.holds) ?? []);
   }
   const lookup: ParametersOf = (name) => {
     if (widgets.has(name)) return undefined;
     let params = parameters.get(name);
-    if (!params) {
+    if (!params && sources.get(name) !== 'user') {
       const sub = subMacroParameters(name);
       if (sub) parameters.set(name, (params = withHolds(sub, 'text')));
     }
@@ -434,7 +443,10 @@ export function* codeAndText(
         continue;
       }
       const args = token.rawArgs;
-      if (PASSAGE_BODIES.has(name) && !widget) {
+      if (
+        PASSAGE_BODIES.has(name) &&
+        usesBuiltinSemantics(name, parametersOf)
+      ) {
         // The body names the passage when it is only text
         const close = closeOfTextBody(t, name);
         if (close > t + 1) {
@@ -453,7 +465,10 @@ export function* codeAndText(
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
       const argsAt = token.argsStart;
-      if (CONDITION_MACROS.has(name) && !widget) {
+      if (
+        CONDITION_MACROS.has(name) &&
+        usesBuiltinSemantics(name, parametersOf)
+      ) {
         yield {
           kind: 'code',
           code: args,

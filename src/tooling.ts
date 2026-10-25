@@ -1,6 +1,8 @@
+import { NameMap } from './utils/macro-names';
 export {
   completionContext,
   type CompletionContext,
+  type CompletionContainer,
 } from './completion-context';
 import { branchParents } from './registry';
 /**
@@ -15,7 +17,12 @@ import {
   type MarkupPassage,
 } from './markup/validate';
 import { isBlockMacro, isRawMacro } from './markup/ast';
-import { tokenizeMarkupTolerant } from './markup/parse';
+import {
+  tokenizeMarkup as tokenizeRawMarkup,
+  tokenizeMarkupTolerant as tokenizeRawMarkupTolerant,
+  type ParseMarkupOptions as RuntimeParseMarkupOptions,
+  type TolerantTokens,
+} from './markup/parse';
 import {
   parameterLookup,
   passagePiecesOf,
@@ -82,13 +89,8 @@ export type {
   JsLexHandlers,
   Sigil,
 } from './js-lexer';
-export {
-  MarkupError,
-  parseSelectors,
-  tokenizeMarkup,
-  tokenizeMarkupTolerant,
-} from './markup/parse';
-export type { ParseMarkupOptions, TolerantTokens } from './markup/parse';
+export { MarkupError, parseSelectors } from './markup/parse';
+export type { TolerantTokens } from './markup/parse';
 export { SIGIL_SCOPES, isSigil } from './markup/tokens';
 export type {
   AttributeSpan,
@@ -196,6 +198,46 @@ export interface ToolingMacro {
   interpolate?: boolean;
   /** Whether its first argument names the story variable it binds. */
   storeVar?: boolean;
+}
+
+/** Public tokenization can use the same effective metadata as validation. */
+export interface ParseMarkupOptions extends RuntimeParseMarkupOptions {
+  /** Macro and widget metadata; widgets override builtin raw-body behavior. */
+  macros?: Iterable<ToolingMacro>;
+}
+
+function tokenizationOptions(
+  options: ParseMarkupOptions,
+): RuntimeParseMarkupOptions {
+  if (!options.macros) return options;
+  const macros = [...options.macros];
+  const parametersOf = parameterLookup(macros);
+  return {
+    ...options,
+    hooks: {
+      isRaw: (name) =>
+        isRawMacro(name, parametersOf.widget?.(name) !== undefined),
+      isBlock: blockLookup(macros),
+      branchParents: (name) => branchParents(name, macros),
+      ...options.hooks,
+    },
+  };
+}
+
+/** Flat tokens with optional effective macro/widget metadata. */
+export function tokenizeMarkup(
+  source: string,
+  options: ParseMarkupOptions = {},
+): Token[] {
+  return tokenizeRawMarkup(source, tokenizationOptions(options));
+}
+
+/** Metadata-aware flat tokens and recovery errors, in original source offsets. */
+export function tokenizeMarkupTolerant(
+  source: string,
+  options: ParseMarkupOptions = {},
+): TolerantTokens {
+  return tokenizeRawMarkupTolerant(source, tokenizationOptions(options));
 }
 
 /**
@@ -343,13 +385,17 @@ function referenceOptions(
   passages: readonly MarkupPassage[] = [],
 ) {
   const list = [...macros];
+  const effective = new NameMap<ToolingMacro>();
+  for (const macro of list) effective.set(macro.name, macro);
   const widgets = effectiveWidgetDefinitions(
     readWidgetDefinitions(passages, parameterLookup(list)),
   );
   return {
     all,
     storeVarMacros: new Set(
-      list.filter((m) => m.storeVar).map((m) => m.name.toLowerCase()),
+      [...effective.values()]
+        .filter((m) => m.storeVar)
+        .map((m) => m.name.toLowerCase()),
     ),
     parametersOf: parameterLookup([...list, ...definedWidgetMacros(widgets)]),
     tolerant: true,

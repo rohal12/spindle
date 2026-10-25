@@ -323,8 +323,33 @@ if (context.kind === 'code') {
 }
 ```
 
+When code is nested in text, `containers` gives its ownership chain from outermost to innermost, including unfinished containers (#651):
+
+- `{ kind: 'string', quote, escapes }` describes a quoted macro argument (`escapes: 'quotes'`) or widget argument (`escapes: 'javascript'`). The quote is `"` or `'`.
+- `{ kind: 'attribute', name, quote, code }` describes an HTML attribute. `quote` is `null` for an unquoted value; `code` identifies event/code attributes, where only sigil interpolations are markup.
+- `{ kind: 'link-label' }` describes the display text of a bracket link.
+
+To insert code, encode replacement text from the innermost container outwards. For a `quotes` string, prefix each backslash and either quote character with a backslash; for a `javascript` string, use JavaScript string escaping for its delimiter (including line endings). Attribute and link containers preserve code inside markup braces as written. Do not HTML-encode quotes inside an expression. `containers` is absent at the passage level, and literal contexts remain `{ kind: 'literal' }`.
+
+For example, `completionContext(source, source.length, builtinMacros)` for `source = '{button "{print $obj.'` reports a `string` container with `quote: '"'` and `escapes: 'quotes'`. Replacing the dot with `["first-name"]` requires escaping the quotes in the inserted text to produce `\"` in the passage. Use `pieceOffset` for the replacement range; it retains mappings through decoded strings and CRLF independently of the container chain.
+
 ## Macro argument spans
 
 `macroArgumentSpans(rawArgs, parameters)` groups arguments using the runtime’s parameter rules without evaluating expressions. Each result contains the original `parameter` object, its top-level `parameterIndex`, its `parameterPath` through nested options, and UTF-16 `start`/`end` offsets into `rawArgs`. Quotes, flag words, separators and option keywords are included. Options have both an enclosing span and individual keyword spans; choose the most specific overlapping span for nested option help.
 
 For parameters `label: string` and `value: expression`, `"label" 1 + 2` maps `1 + 2` to `value`, even though it has several whitespace-separated terms. Names and rest text similarly map to their single declared parameter. Results survive missing or unclosed strings so an editor can offer help while typing. Missing arguments have no span; on whitespace after the last argument, an editor may keep that argument active or select the next parameter according to its UI policy.
+
+## Metadata-aware tokenization
+
+`tokenizeMarkup(source, { macros, text? })` and `tokenizeMarkupTolerant(source, { macros, text? })` accept effective `ToolingMacro` metadata, including widget definitions (#652). Supply `builtinMacros` followed by discovered macros and widgets. A widget named `do` then has an ordinary markup body, so nested invocations appear as macro tokens for navigation and rename. Without metadata, or with the builtin `do`, its raw JavaScript body stays a text token.
+
+```js
+const macros = [
+  ...builtinMacros,
+  { name: 'do', block: true, subMacros: [], widget: { params: [] } },
+];
+const result = tokenizeMarkupTolerant('{do}{caption "x"}{/do}', { macros });
+// result.tokens: do opener, caption invocation, do closer
+```
+
+Both functions keep UTF-16 offsets in the original source. The tolerant function also retains its recovery errors. Use `text: true` when tokenizing a label or attribute value; HTML and bracket links then remain text. Metadata is local to the call and does not change later tokenization.

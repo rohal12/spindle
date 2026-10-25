@@ -24,6 +24,7 @@ export const checks: [
   Resolved<Tooling.ToolingMacro['widget']>,
   Resolved<ReturnType<typeof Tooling.completionContext>>,
   Resolved<Tooling.CompletionContext>,
+  Resolved<Tooling.CompletionContainer>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {
@@ -38,4 +39,9 @@ export const parameter: Tooling.ParameterDef = {
   type: 'string',
   // @ts-expect-error Widget metadata belongs to ToolingMacro, not ParameterDef.
   widget: widgetMacro.widget,
+};
+
+export const tokenOptions: Tooling.ParseMarkupOptions = {
+  macros: [widgetMacro],
+  text: true,
 };

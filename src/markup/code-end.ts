@@ -183,7 +183,9 @@ export const defaultCodeEnd: CodeEnd = jsCodeEnd();
  * still bound how many pending braces could close. Indexing visits each
  * opener once, so unmatched plain-code openers can skip suffix scans.
  */
-export function indexCodeEnds(input: string): (start: number) => number {
+export function indexCodeEnds(
+  input: string,
+): (start: number, codeStart?: number, limit?: number) => number {
   const possible = new Set<number>();
   const pending: number[] = [];
   let remaining = 0;
@@ -213,12 +215,30 @@ export function indexCodeEnds(input: string): (start: number) => number {
       if (open !== undefined) possible.add(open);
     } else if (/['"`/\\]/.test(c)) uncertain();
   }
-  return (start) => {
-    if (start > lastBrace) return -1;
+  return (start, codeStart = start, limit = input.length) => {
+    if (start > lastBrace || codeStart >= limit) return -1;
+    const source = limit === input.length ? input : input.slice(0, limit);
     // A syntax error may end the parser's recovery at an inner `}`, even
     // when neither the token reader nor the lenient reader can close here.
-    return possible.has(start - 1)
-      ? defaultCodeEnd.closeBrace(input, start, start)
-      : parsedCodeEnd(input, start, 'expression');
+    // Selectors can put lenientStart after something other than the opener.
+    // Macro names can themselves contain braces, which the strict reader
+    // skips before reading arguments; the index must not count those.
+    if (
+      input[start - 1] !== '{' ||
+      possible.has(start - 1) ||
+      input.slice(start, codeStart).includes('{')
+    ) {
+      return defaultCodeEnd.closeBrace(source, codeStart, start);
+    }
+    // Acorn locates its starting line and syntax errors by scanning the
+    // prefix. Recovery must not hand it the whole passage for every opener.
+    // Keep one preceding character so a leading #! cannot become a hashbang.
+    const base = Math.max(0, codeStart - 1);
+    const end = parsedCodeEnd(
+      source.slice(base),
+      codeStart - base,
+      'expression',
+    );
+    return end < 0 ? -1 : base + end;
   };
 }

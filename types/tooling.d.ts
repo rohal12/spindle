@@ -496,6 +496,8 @@ export declare class MarkupError extends Error {
 }
 
 export interface ParseMarkupOptions {
+  /** Effective macro/widget metadata; a do widget has a markup body. */
+  macros?: Iterable<ToolingMacro>;
   /**
    * Text mode, for markup that becomes a string (HTML attribute values,
    * macro labels): only `{…}` markup and brace escapes are recognized.
@@ -1245,9 +1247,22 @@ export declare function macroArgumentSpans(
 ): MacroArgumentSpan[];
 
 /** Executable code at a cursor, or prose/literal text that suppresses completion. */
+/** Enclosing text containers, in order from the passage to the cursor. */
+export type CompletionContainer =
+  | { kind: 'string'; quote: '"' | "'"; escapes: 'quotes' | 'javascript' }
+  | { kind: 'attribute'; name: string; quote: '"' | "'" | null; code: boolean }
+  | { kind: 'link-label' };
+
 export type CompletionContext =
   | { kind: 'literal' }
-  | (PieceBase & { kind: 'code'; code: string; goal: JsGoal; cursor: number });
+  | (PieceBase & {
+      kind: 'code';
+      code: string;
+      goal: JsGoal;
+      cursor: number;
+      /** Encode replacement text through these containers, innermost first. */
+      containers?: readonly CompletionContainer[];
+    });
 
 /** Inspect only the prefix before cursor (UTF-16), accepting unfinished markup.
  * Strings, comments, regexes and template text are literal; template
