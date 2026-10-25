@@ -1,4 +1,4 @@
-import { isRendered } from '../utils/element-visibility';
+import { composedParent, isRendered } from '../utils/element-visibility';
 import { useLayoutEffect } from 'preact/hooks';
 import type { RefObject } from 'preact';
 
@@ -16,16 +16,6 @@ const FOCUSABLE = [
   '[contenteditable]',
   '[tabindex]',
 ].join(',');
-
-/** The parent in the rendered tree, including slots and shadow hosts. */
-function composedParent(el: Element): Element | null {
-  return (
-    el.assignedSlot ??
-    el.parentElement ??
-    (el.getRootNode() as ShadowRoot).host ??
-    null
-  );
-}
 
 function composedChildren(root: ParentNode): Element[] {
   if ((root as Element).localName === 'slot') {

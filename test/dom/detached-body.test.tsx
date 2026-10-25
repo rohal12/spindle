@@ -195,6 +195,37 @@ describe('detached {button}/{link} bodies', () => {
     expect(useStoryStore.getState().variables.late).toBe(1);
   });
 
+  it.each(['button', 'link'])(
+    'keeps asynchronous forwarded children in a %s body (#646)',
+    async (control) => {
+      defineWidget(
+        `{widget "Later"}{${control} "Go"}{@children}{/${control}}{/widget}`,
+      );
+      const el = renderPassage(
+        '{Later}{timed 100ms}{set $late = 1}{/timed}{/Later}',
+      );
+      act(() => (el.querySelector('button, a') as HTMLElement).click());
+      await act(async () => {
+        await new Promise((done) => setTimeout(done, 250));
+      });
+      expect(useStoryStore.getState().variables.late).toBe(1);
+      act(() => render(null, el));
+    },
+  );
+
+  it('keeps a timer in a widget replacing a settling macro (#646)', async () => {
+    defineWidget(
+      '{widget "span"}{timed 100ms}{set $late = 1}{/timed}{/widget}',
+    );
+    const el = renderPassage('{button "Go"}{span}{/span}{/button}');
+    act(() => (el.querySelector('button') as HTMLElement).click());
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 250));
+    });
+    expect(useStoryStore.getState().variables.late).toBe(1);
+    act(() => render(null, el));
+  });
+
   it('does not re-run a skipped branch when the state changes later (#351)', () => {
     const el = renderPassage(
       '{button "Check"}{if $n > 10}{set $hits += 1}{/if}{/button}{button "Up"}{set $n = 20}{/button}',

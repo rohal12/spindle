@@ -183,7 +183,9 @@ export const defaultCodeEnd: CodeEnd = jsCodeEnd();
  * still bound how many pending braces could close. Indexing visits each
  * opener once, so unmatched plain-code openers can skip suffix scans.
  */
-export function indexCodeEnds(input: string): (start: number) => number {
+export function indexCodeEnds(
+  input: string,
+): (start: number, codeStart?: number, limit?: number) => number {
   const possible = new Set<number>();
   const pending: number[] = [];
   let remaining = 0;
@@ -213,12 +215,18 @@ export function indexCodeEnds(input: string): (start: number) => number {
       if (open !== undefined) possible.add(open);
     } else if (/['"`/\\]/.test(c)) uncertain();
   }
-  return (start) => {
-    if (start > lastBrace) return -1;
+  return (start, codeStart = start, limit = input.length) => {
+    if (start > lastBrace || codeStart >= limit) return -1;
+    const source = limit === input.length ? input : input.slice(0, limit);
     // A syntax error may end the parser's recovery at an inner `}`, even
     // when neither the token reader nor the lenient reader can close here.
-    return possible.has(start - 1)
-      ? defaultCodeEnd.closeBrace(input, start, start)
-      : parsedCodeEnd(input, start, 'expression');
+    // Selectors can put lenientStart after something other than the opener.
+    // Macro names can themselves contain braces, which the strict reader
+    // skips before reading arguments; the index must not count those.
+    return input[start - 1] !== '{' ||
+      possible.has(start - 1) ||
+      input.slice(start, codeStart).includes('{')
+      ? defaultCodeEnd.closeBrace(source, codeStart, start)
+      : parsedCodeEnd(source, codeStart, 'expression');
   };
 }

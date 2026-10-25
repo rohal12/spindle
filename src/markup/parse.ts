@@ -13,7 +13,7 @@ import {
 } from './pair';
 import type { Selectors, Token } from './tokens';
 import { isCodeAttribute } from './code-attributes';
-import { defaultCodeEnd, type CodeEnd } from './code-end';
+import { defaultCodeEnd, indexCodeEnds, type CodeEnd } from './code-end';
 import { lineColumn, sourcePositions } from './line-column';
 
 export { lineColumn };
@@ -93,9 +93,12 @@ function run(
   options: ParseMarkupOptions,
   completion = false,
 ): unknown {
-  const hooks = options.hooks
-    ? { ...defaultHooks, ...options.hooks }
-    : defaultHooks;
+  const hooks = { ...defaultHooks, ...options.hooks };
+  if (!options.hooks?.closeBrace) {
+    const codeEnd = indexCodeEnds(source);
+    hooks.closeBrace = (_input, codeStart, lenientStart) =>
+      codeEnd(lenientStart, codeStart);
+  }
   try {
     return pegParse(source, {
       startRule,
@@ -272,19 +275,26 @@ export function scanMarkupTolerant(
   const errors: MarkupError[] = [];
   const damage: number[] = [];
   let position: ReturnType<typeof sourcePositions> | undefined;
-  // The code of a tag ends at a }: with none after it, the tag is unclosed
-  // without reading its code to the end of the source, which every
-  // unclosed tag would do again (#265).
+  // Share the index across recovery attempts, whose inputs are suffixes or
+  // truncated prefixes. Re-indexing each attempt would itself be quadratic.
+  const codeEnd = indexCodeEnds(source);
+  const customCloseBrace = options.hooks?.closeBrace;
   const lastBrace = source.lastIndexOf('}');
-  const { closeBrace } = { ...defaultHooks, ...options.hooks };
   /** `text` shifted by `base`, tokenized: the tokens or the error. */
   const attempt = (text: string, base: number): Token[] | MarkupError => {
     const hooks: Partial<MarkupHooks> = {
       ...options.hooks,
-      closeBrace: (input, codeStart, lenientStart) =>
-        base + Math.min(codeStart, lenientStart) > lastBrace
-          ? -1
-          : closeBrace(input, codeStart, lenientStart),
+      closeBrace: (input, codeStart, lenientStart) => {
+        if (base + Math.min(codeStart, lenientStart) > lastBrace) return -1;
+        if (customCloseBrace)
+          return customCloseBrace(input, codeStart, lenientStart);
+        const end = codeEnd(
+          base + lenientStart,
+          base + codeStart,
+          base + text.length,
+        );
+        return end < 0 ? -1 : end - base;
+      },
     };
     try {
       return (

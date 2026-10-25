@@ -7,6 +7,7 @@ import {
   escapeOffsets,
   parameterLookup,
   executesRawBody,
+  usesBuiltinSemantics,
   type PieceBase,
 } from './code-check';
 import { macroArgumentSpans } from './components/macros/macro-args';
@@ -19,9 +20,22 @@ import {
 } from './js-lexer';
 import type { ToolingMacro } from './tooling';
 
+/** Enclosing text containers, in order from the passage to the cursor. */
+export type CompletionContainer =
+  | { kind: 'string'; quote: '"' | "'"; escapes: 'quotes' | 'javascript' }
+  | { kind: 'attribute'; name: string; quote: '"' | "'" | null; code: boolean }
+  | { kind: 'link-label' };
+
 export type CompletionContext =
   | { kind: 'literal' }
-  | (PieceBase & { kind: 'code'; code: string; goal: JsGoal; cursor: number });
+  | (PieceBase & {
+      kind: 'code';
+      code: string;
+      goal: JsGoal;
+      cursor: number;
+      /** Encode replacement text through these containers, innermost first. */
+      containers?: readonly CompletionContainer[];
+    });
 
 const LITERAL = { kind: 'literal' } as const;
 
@@ -45,6 +59,7 @@ export function completionContext(
     code: string,
     goal: JsGoal,
     map: Mapping,
+    containers: readonly CompletionContainer[],
   ): CompletionContext => {
     // A following identifier probes the lexer's state at EOF. It cannot
     // close a string, regex, comment or template, and needs no guessed
@@ -72,6 +87,7 @@ export function completionContext(
       goal,
       offset,
       cursor: code.length,
+      ...(containers.length ? { containers } : {}),
       ...(offsets.some((at, i) => at !== offset + i)
         ? { sourceOffsets: offsets }
         : {}),
@@ -84,6 +100,7 @@ export function completionContext(
     text = false,
     depth = 0,
     sigilsOnly = false,
+    containers: readonly CompletionContainer[] = [],
   ): CompletionContext => {
     if (depth >= 64) return LITERAL;
     if (sigilsOnly) {
@@ -91,7 +108,12 @@ export function completionContext(
       for (const part of splitSigilTemplate(src, true)) {
         if ('expr' in part) {
           if (at + 1 + part.expr.length === src.length) {
-            return codeContext(part.expr, 'expression', (i) => map(at + 1 + i));
+            return codeContext(
+              part.expr,
+              'expression',
+              (i) => map(at + 1 + i),
+              containers,
+            );
           }
           at += part.expr.length + 2;
         } else at += ('text' in part ? part.text : part.verbatim).length;
@@ -108,12 +130,13 @@ export function completionContext(
     const token = tokens[tokens.length - 1];
     if (!token || token.end !== src.length) return LITERAL;
     const codeAt = (code: string, at: number, goal: JsGoal = 'expression') =>
-      codeContext(code, goal, (i) => map(at + i));
+      codeContext(code, goal, (i) => map(at + i), containers);
     const nested = (
       value: string,
       at: number,
       offsets?: readonly number[],
       onlySigils = false,
+      container?: CompletionContainer,
     ) =>
       read(
         value,
@@ -121,6 +144,7 @@ export function completionContext(
         true,
         depth + 1,
         onlySigils,
+        container ? [...containers, container] : containers,
       );
 
     if (token.type === 'variable' && token.nameEnd === src.length) {
@@ -132,11 +156,21 @@ export function completionContext(
     if (token.type === 'html') {
       for (const { name, value, at } of attributeValues(src, token)) {
         if (at + value.length === src.length) {
-          return nested(value, at, undefined, isCodeAttribute(name));
+          const span = token.attributeSpans.find(
+            (span) => span.valueStart === at,
+          );
+          return nested(value, at, undefined, isCodeAttribute(name), {
+            kind: 'attribute',
+            name,
+            quote: span?.quote ?? null,
+            code: isCodeAttribute(name),
+          });
         }
       }
     } else if (token.type === 'link' && token.displayEnd === src.length) {
-      return nested(token.display, token.displayStart);
+      return nested(token.display, token.displayStart, undefined, false, {
+        kind: 'link-label',
+      });
     } else if (token.type === 'text' && !token.comment) {
       const opener = tokens[tokens.length - 2];
       if (
@@ -154,7 +188,10 @@ export function completionContext(
       const name = token.name.toLowerCase();
       const args = token.rawArgs;
       const widget = parametersOf.widget?.(name);
-      if (!widget && ['if', 'elseif', 'case'].includes(name)) {
+      if (
+        usesBuiltinSemantics(name, parametersOf) &&
+        ['if', 'elseif', 'case'].includes(name)
+      ) {
         return codeAt(args, token.argsStart);
       }
       const stringContext = (
@@ -176,13 +213,23 @@ export function completionContext(
             ? stringLiteralValue(raw + raw[0])
             : quoted.value;
         if (value == null) return LITERAL;
+        const container: CompletionContainer = {
+          kind: 'string',
+          quote: raw[0] as '"' | "'",
+          escapes,
+        };
         const offsets = escapeOffsets(raw.slice(1), at + 1, value, escapes);
         if (holds === 'expression' || holds === 'statements') {
-          return codeContext(value, holds, (i) =>
-            map(offsets?.[i] ?? at + 1 + i),
+          return codeContext(
+            value,
+            holds,
+            (i) => map(offsets?.[i] ?? at + 1 + i),
+            [...containers, container],
           );
         }
-        return holds === 'markup' ? nested(value, at + 1, offsets) : LITERAL;
+        return holds === 'markup'
+          ? nested(value, at + 1, offsets, false, container)
+          : LITERAL;
       };
       if (widget) {
         const spans = splitArgSpans(args);

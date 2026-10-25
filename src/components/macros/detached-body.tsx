@@ -1,3 +1,5 @@
+import { getMacroParameters } from '../../registry';
+import { getWidget } from '../../widgets/widget-registry';
 import { render } from 'preact';
 import { useContext, useEffect, useRef } from 'preact/hooks';
 import {
@@ -52,11 +54,16 @@ function settlesAfterRender(nodes: ASTNode[]): boolean {
       case 'macro':
         return (
           SETTLING_MACROS.has(n.name) &&
+          !getWidget(n.name) &&
+          getMacroParameters.source(n.name) === 'builtin' &&
           settlesAfterRender(n.children) &&
           (n.branches ?? []).every((b) => settlesAfterRender(b.children))
         );
       case 'html':
         return settlesAfterRender(n.children);
+      case 'variable':
+        // A forwarded slot may render timers or author-defined macros.
+        return n.scope !== 'local' || n.name !== 'children';
       default:
         return true;
     }

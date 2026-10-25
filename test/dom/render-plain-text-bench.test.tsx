@@ -36,6 +36,31 @@ describe('renderNodes plain-text fast path benchmark', () => {
     store.init(makeStoryData([makePassage(1, 'Start', 'Start')]));
   });
 
+  it('renders a long numeric passage in bounded time (#649)', () => {
+    const content = '1'.repeat(80000);
+    const container = document.createElement('div');
+    const start = performance.now();
+    render(<Passage passage={makePassage(2, 'Numeric', content)} />, container);
+    expect(performance.now() - start).toBeLessThan(1500);
+    expect(container.textContent).toBe(content);
+    render(null, container);
+  });
+
+  it.each(['1.', '123456789)', '1234567890.'])(
+    'keeps CommonMark ordered-list semantics for %s (#649)',
+    (marker) => {
+      const container = document.createElement('div');
+      render(
+        <Passage passage={makePassage(2, 'List', `${marker} item`)} />,
+        container,
+      );
+      expect(container.querySelectorAll('ol').length).toBe(
+        marker.length <= 10 ? 1 : 0,
+      );
+      render(null, container);
+    },
+  );
+
   it('ALMA-like UI passage with nested HTML + plain text labels', () => {
     const content = [
       '<div class="alma-dialog">',

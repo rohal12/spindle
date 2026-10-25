@@ -990,7 +990,7 @@ export function renderInlineNodes(nodes: ASTNode[]): preact.ComponentChildren {
  * it as micromark does.
  */
 const MARKDOWN_SYNTAX_RE =
-  /[*_`#|~\[>\\\-+=\r]|!\[|\d+[.)]|&#?[a-zA-Z0-9]+;| {2}\n|<[!?]/;
+  /[*_`#|~\[>\\\-+=\r]|!\[|\d{1,9}[.)]|&#?[a-zA-Z0-9]+;| {2}\n|<[!?]/;
 /** Two line endings (LF, CRLF or CR) with only whitespace between them. */
 const BLANK_LINE_RE = /(?:\r\n|\r(?!\n)|\n)\s*[\r\n]/;
 const PLACEHOLDER_STRIP_RE = /<span data-tw=[0-9a-z]+:\d+><\/span>/g;
