@@ -15,6 +15,7 @@ import type { Selectors, Token } from './tokens';
 import { isCodeAttribute } from './code-attributes';
 import { defaultCodeEnd, indexCodeEnds, type CodeEnd } from './code-end';
 import { lineColumn, sourcePositions } from './line-column';
+import { upperBound } from '../utils/sorted';
 
 export { lineColumn };
 
@@ -163,8 +164,18 @@ export function analyzeMarkup(
   // A malformed tag is noticed where it starts, an unpaired tag where its
   // problem shows (see PairingError.noticedAt). Within a malformed tag the
   // markup is no markup: what the recovery pairs there is dropped.
-  const inDamage = (start: number) =>
-    errors.some((e, i) => start >= damage[i]! && start <= e.offset);
+  // Damage starts increase during recovery, but intervals can overlap. A
+  // prefix maximum keeps even nested damage searchable in logarithmic time.
+  const damageEnds: number[] = [];
+  for (const e of errors) {
+    damageEnds.push(
+      Math.max(damageEnds[damageEnds.length - 1] ?? -1, e.offset),
+    );
+  }
+  const inDamage = (start: number) => {
+    const index = upperBound(damage, start) - 1;
+    return index >= 0 && start <= damageEnds[index]!;
+  };
   const noticed: [number, MarkupError][] = errors.map((e, i) => [
     damage[i]! + 0.5,
     e,

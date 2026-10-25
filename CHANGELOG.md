@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Custom replacements of branching macros retain their bodies, selectors and declared companions (#656).
+- Tolerant markup recovery indexes damage intervals when filtering pairing diagnostics, avoiding quadratic scans (#657).
+- Automation variable and action getters protect mutable story values and recorded history while preserving snapshot aliases (#658).
+- Observations follow open shadow roots and slot distribution, omit unslotted controls and unused fallback, and include rendered shadow errors (#659).
+- Stateless tooling drops superseded block and companion metadata with case-insensitive replacement precedence (#660).
+- Code attributes resolve escaped variable roots consistently with text attributes and tooling (#661).
+
 - Tooling includes sigilless and escaped input bindings in complete variable-reference lists, with decoded paths and editable root spans from the runtime's shared `parseBoundVariable` reader (#654).
 
 - Forwarded click bodies and replacements of synchronous builtin macros retain asynchronous work until their owner leaves (#646).

@@ -18,6 +18,15 @@ export class NameMap<V> extends Map<string, V> {
   }
 }
 
+/** The latest definition of each name, using runtime replacement precedence. */
+export function effectiveNamedDefinitions<T extends { name: string }>(
+  definitions: Iterable<T>,
+): T[] {
+  const latest = new NameMap<T>();
+  for (const definition of definitions) latest.set(definition.name, definition);
+  return [...latest.values()];
+}
+
 /** A set of macro or widget names (see NameMap). */
 export class NameSet {
   private readonly names = new NameMap<true>();

@@ -1,5 +1,6 @@
 import { isSigil } from './tokens';
 import { indexCodeEnds } from './code-end';
+import { lexJs } from '../js-lexer';
 
 /**
  * Attributes whose value is code with braces of its own, not text: event
@@ -23,7 +24,7 @@ export type SigilPart =
  * Split a code attribute value into literal text and its `{…}` blocks that
  * start with a sigil. Braces inside strings don't close a block; an
  * unclosed block, any other brace and backslashes are text. A block whose
- * sigil is not followed by a word character (`{$(…)}`) is code, kept
+ * sigil is not followed by an identifier (`{$(…)}`) is code, kept
  * verbatim: not resolved, and not decoded like text.
  */
 export function splitSigilTemplate(
@@ -52,9 +53,16 @@ export function splitSigilTemplate(
     if (text) parts.push({ text });
     text = '';
     const block = template.slice(i, end);
+    let reference = /^.\w/.test(block);
+    if (!reference && block[1] === '\\') {
+      lexJs(block, {
+        variable(_sigil, _name, start) {
+          if (start === 0) reference = true;
+        },
+      });
+    }
     parts.push(
-      /^.\w/.test(block) ||
-        (incomplete && block.length === 1 && end === template.length)
+      reference || (incomplete && block.length === 1 && end === template.length)
         ? { expr: block }
         : { verbatim: `{${block}}` },
     );

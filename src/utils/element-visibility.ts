@@ -8,6 +8,31 @@ export function composedParent(el: Element): Element | null {
   );
 }
 
+/** Rendered child nodes: shadow content, slot assignments, or fallback. */
+export function composedChildNodes(root: ParentNode): Node[] {
+  if ((root as Element).localName === 'slot') {
+    // Visit nested slots themselves so their visibility and filters apply.
+    const assigned = (root as HTMLSlotElement).assignedNodes();
+    if (assigned.length) return assigned;
+  }
+  return Array.from(((root as Element).shadowRoot ?? root).childNodes);
+}
+
+/** The elements among a container's rendered child nodes. */
+export function composedChildren(root: ParentNode): Element[] {
+  return composedChildNodes(root).filter(
+    (node): node is Element => node.nodeType === 1,
+  );
+}
+
+/** Authored elements in rendered order; unassigned light DOM is omitted. */
+export function* composedElements(root: ParentNode): Generator<HTMLElement> {
+  for (const el of composedChildren(root)) {
+    yield el as HTMLElement;
+    yield* composedElements(el);
+  }
+}
+
 /** Elements whose content is never text the reader reads. */
 const NOT_TEXT = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
 
@@ -65,6 +90,16 @@ export function isRendered(el: Element, root?: Element): boolean {
   for (let e: Element | null = el; e; e = composedParent(e)) {
     if (style(e)?.display === 'none') return false;
     if (e === root) break;
+    const parent = e.parentElement;
+    // Connected light DOM may have no place in its host's rendered tree.
+    if (parent?.shadowRoot && !e.assignedSlot) return false;
+    // Slot fallback disappears whenever any light-DOM nodes are assigned.
+    if (
+      parent?.localName === 'slot' &&
+      (parent as HTMLSlotElement).assignedNodes().length > 0 &&
+      e.assignedSlot !== parent
+    )
+      return false;
   }
   return !inClosedDetails(el, root);
 }

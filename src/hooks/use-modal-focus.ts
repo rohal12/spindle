@@ -1,4 +1,9 @@
-import { composedParent, isRendered } from '../utils/element-visibility';
+import {
+  composedChildren,
+  composedElements,
+  composedParent,
+  isRendered,
+} from '../utils/element-visibility';
 import { useLayoutEffect } from 'preact/hooks';
 import type { RefObject } from 'preact';
 
@@ -16,24 +21,6 @@ const FOCUSABLE = [
   '[contenteditable]',
   '[tabindex]',
 ].join(',');
-
-function composedChildren(root: ParentNode): Element[] {
-  if ((root as Element).localName === 'slot') {
-    const assigned = (root as HTMLSlotElement).assignedNodes({
-      flatten: true,
-    });
-    return assigned.filter((node): node is Element => node.nodeType === 1);
-  }
-  return Array.from(root.children);
-}
-
-/** Authored elements in rendered order; unassigned light DOM is not rendered. */
-function* composedElements(root: ParentNode): Generator<HTMLElement> {
-  for (const el of composedChildren(root)) {
-    yield el as HTMLElement;
-    yield* composedElements(el.shadowRoot ?? el);
-  }
-}
 
 /**
  * Whether `el` can be focused at all: shown, rendered, enabled (also by its

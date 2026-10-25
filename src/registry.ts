@@ -1,6 +1,10 @@
 import type { ComponentType } from 'preact';
 import type { ASTNode, Branch } from './markup/ast';
-import { NameMap, NameSet } from './utils/macro-names';
+import {
+  effectiveNamedDefinitions,
+  NameMap,
+  NameSet,
+} from './utils/macro-names';
 
 export interface MacroProps {
   rawArgs: string;
@@ -260,7 +264,7 @@ export function branchParents(
       (parent) => parent !== 'listbox',
     );
   }
-  return macros
+  return effectiveNamedDefinitions(macros)
     .filter(
       (macro) =>
         macro.name.toLowerCase() !== 'listbox' &&

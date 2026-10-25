@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest';
-import { getMacroRegistry } from '../../src/registry';
+import { branchParents, getMacroRegistry } from '../../src/registry';
 import {
+  tokenizeMarkup,
+  tokenizeMarkupTolerant,
   completionContext,
   discoverMacros,
   passagePieces,
@@ -91,4 +93,32 @@ it('retains builtin conditional and dialog defaults without metadata (#648)', ()
   expect(passagePieces('{dialog "Open"}Target{/dialog}', [])).toMatchObject([
     { kind: 'passage', name: 'Target' },
   ]);
+});
+
+it('discards superseded blocks and companion requirements in any case (#660)', () => {
+  const macros = discoverMacros(`
+    Story.defineMacro({name:'panel', block:true, subMacros:['part'], render(){}});
+    Story.defineMacro({name:'PANEL', block:false, subMacros:[], render(){}});
+    Story.defineMacro({name:'part', render(){}});
+  `);
+  expect(
+    validateStoryMarkup([{ name: 'Start', content: '{panel}{part}' }], macros),
+  ).toEqual([]);
+  expect(
+    validateStoryMarkup(
+      [{ name: 'Start', content: '{part}' }],
+      macros.slice(0, -1),
+    ),
+  ).toMatchObject([{ code: 'unknown-macro' }]);
+  expect(branchParents('part', macros)).toEqual([]);
+  expect(tokenizeMarkup('{panel}', { macros })).toMatchObject([
+    { name: 'panel' },
+  ]);
+  expect(tokenizeMarkupTolerant('{panel}', { macros }).errors).toEqual([]);
+  // Reversing precedence restores the original parent and companion.
+  const restored = [...macros, macros[0]!];
+  expect(
+    validateStoryMarkup([{ name: 'Start', content: '{panel}' }], restored),
+  ).toMatchObject([{ code: 'unclosed-block' }]);
+  expect(branchParents('part', restored)).toEqual(['panel']);
 });
