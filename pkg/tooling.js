@@ -14,6 +14,7 @@ export {
   completionContext,
   pieceOffset,
   pairMarkup,
+  macroCalls,
   isBlockMacro,
   isSpecialPassage,
   parseStoryVariables,

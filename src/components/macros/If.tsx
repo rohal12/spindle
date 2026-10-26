@@ -21,6 +21,7 @@ function selectIfBranch(
 defineMacro({
   name: 'if',
   block: true,
+  subMacros: ['elseif', 'else'],
   interpolate: true,
   merged: true,
   render({ branches = [] }, ctx) {

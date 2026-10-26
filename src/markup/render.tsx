@@ -226,7 +226,7 @@ function PlaceholderAttributes({
   const ref = useDirectAttributes(direct);
   return withAttributeErrors(
     errors,
-    h(tag, ref ? { ...props, ref } : props, ...children),
+    h(tag, ref ? { ...props, ref } : props, children),
   );
 }
 
@@ -243,7 +243,7 @@ function DirectAttributes({
   children: preact.ComponentChildren[];
 }) {
   const ref = useDirectAttributes(direct);
-  return h(tag, { ...props, ref }, ...children);
+  return h(tag, { ...props, ref }, children);
 }
 
 /** An error met while evaluating the named attribute. */
@@ -306,16 +306,20 @@ function htmlToPreact(
   unwrapParagraphs = false,
 ): preact.ComponentChildren {
   const content = parseHtmlInert(html.trim());
-  if (unwrapParagraphs) {
-    for (const child of Array.from(content.childNodes)) {
-      if (child.nodeType === Node.ELEMENT_NODE && child.nodeName === 'P') {
-        (child as Element).replaceWith(...Array.from(child.childNodes));
+  const children: preact.ComponentChildren[] = [];
+  for (const child of Array.from(content.childNodes)) {
+    if (
+      unwrapParagraphs &&
+      child.nodeType === Node.ELEMENT_NODE &&
+      child.nodeName === 'P'
+    ) {
+      for (const node of Array.from(child.childNodes)) {
+        children.push(convertDomNode(node, children.length, ph));
       }
+    } else {
+      children.push(convertDomNode(child, children.length, ph));
     }
   }
-  const children = Array.from(content.childNodes).map((child, i) =>
-    convertDomNode(child, i, ph),
-  );
   return <>{children}</>;
 }
 
@@ -392,7 +396,7 @@ function convertDomNode(
         />
       );
     }
-    return h(tag, { ...props, key }, ...children);
+    return h(tag, { ...props, key }, children);
   }
   return null;
 }
@@ -1047,7 +1051,7 @@ function buildPlainTextVnodes(
   const children = expandPlaceholderText(trimLineEdges(core), ph).filter(
     (part) => part !== '',
   );
-  return unwrapParagraphs ? <>{children}</> : h('p', null, ...children);
+  return unwrapParagraphs ? <>{children}</> : h('p', null, children);
 }
 
 /**
@@ -1111,20 +1115,24 @@ export function renderNodes(
     components,
     nodes: [],
   };
-  let combined = '';
+  const chunks: string[] = [];
+  let trailingBackslash = false;
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i]!;
     if (node.type === 'text') {
-      combined += node.value;
+      chunks.push(node.value);
+      if (node.value) trailingBackslash = node.value.endsWith('\\');
       continue;
     }
     const phIdx = components.length;
     components.push(renderSingleNode(node));
     ph.nodes.push(node);
-    if (combined.endsWith('\\')) combined += ESCAPE_GUARD;
-    combined += placeholderHtml(ph.nonce, phIdx);
+    if (trailingBackslash) chunks.push(ESCAPE_GUARD);
+    chunks.push(placeholderHtml(ph.nonce, phIdx));
+    trailingBackslash = false;
   }
+  const combined = chunks.join('');
 
   // Fast path: skip micromark + innerHTML when text has no markdown syntax.
   // This eliminates ~655 innerHTML calls on plain UI text like "ALMA",

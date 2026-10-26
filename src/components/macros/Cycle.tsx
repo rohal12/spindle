@@ -1,11 +1,12 @@
 import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
+import { OPTION_CLAUSE } from './option-clauses';
 
 defineMacro({
   name: 'cycle',
   block: true,
-  subMacros: ['option'],
+  subMacros: [OPTION_CLAUSE],
   interpolate: true,
   storeVar: true,
   parameters: [VARIABLE_PARAMETER],

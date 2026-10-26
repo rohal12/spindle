@@ -29,6 +29,8 @@ export const checks: [
   Resolved<ReturnType<typeof Tooling.parseBoundVariable>>,
   Resolved<Tooling.VariableReference['binding']>,
   Resolved<typeof Tooling.isSpecialPassage>,
+  Resolved<ReturnType<typeof Tooling.macroCalls>>,
+  Resolved<Tooling.MacroCall>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {

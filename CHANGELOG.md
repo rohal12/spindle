@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Wide Markdown and placeholder paragraphs render without exceeding JavaScript's argument-count limit, including paragraph unwrapping (#681).
+- Custom macros can share built-in branch names through their declared companion metadata (#682).
+- Placeholder assembly joins source chunks once, avoiding repeated string flattening as element counts grow (#683).
+- Stateless tooling indexes companion parents per metadata snapshot while respecting replacements, widget precedence and built-in value clauses (#684).
+
 - Static tooling exposes `isSpecialPassage()` and diagnoses literal navigation to runtime-special passages while preserving include, dialog and replacement macro contracts (#672).
 - Nested label and attribute validation and variable-reference collection share depth and work limits and flatten source-offset mappings (#673).
 - Large shallow token batches, including recovery prefixes, avoid JavaScript's argument-count limit (#674).
@@ -49,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Formatting preserves significant whitespace in standalone and embedded SVG text (#569).
 
 ### Added
+
+- Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).
 
 - Public tokenizers accept effective macro and widget metadata through `options.macros`, exposing live calls inside widgets named `do` with original offsets and tolerant recovery (#652).
 

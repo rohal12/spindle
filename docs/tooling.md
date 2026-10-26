@@ -73,6 +73,29 @@ const { tokens } = tokenizeMarkupTolerant(source);
 const { nodes, errors } = pairMarkup(tokens, { source });
 ```
 
+## Macro ownership
+
+`macroCalls(source, macros?)` classifies opening macro heads as
+`{ token, kind, owner? }`, in source order. Pass the complete effective metadata
+(for example, `builtinMacros` plus discovered macros and widgets). Widgets take
+precedence over macros, and later definitions replace earlier ones within each
+group. The function keeps no registry state and tolerates unfinished markup.
+
+- `invocation`: an ordinary macro or widget call.
+- `value`: a direct clause consumed by a built-in parent, such as `{option}`
+  inside `{listbox}` or `{cycle}`, even when an `option` widget exists.
+- `branch`: a declared companion such as `{else}` or a custom submacro.
+
+`token` is the opening `MacroToken`, with original UTF-16 spans including
+`nameStart` and `nameEnd`. `owner` is the consuming parent's opening token;
+it is absent for invocations and stray branches. Closing tags are omitted.
+Labels and attributes that hold markup are classified independently, preserving
+their original source spans. A replacement macro or widget does not inherit a
+built-in control's value ownership. This identifies dispatch roles, not whether
+a conditional body executes; custom JavaScript can choose how to use its body.
+Editors can use `kind === 'invocation'` when finding or renaming widget calls,
+preserving parent-owned clauses that happen to share the widget's name.
+
 ## Pieces of a passage
 
 `passagePieces(source, macros?)` says which parts of a passage are code, which are passage names, and which are text with markup of its own, and where each is: the answer the story-start check and `collectPassageReferences` read, so an editor needn't reconstruct it for variable references (rename, find references, undeclared-variable diagnostics, semantic tokens, hover), syntax checking and passage-name references. It reads half-typed markup, and returns, in source order, with `offset` in UTF-16 units into `source`:

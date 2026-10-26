@@ -982,6 +982,26 @@ export interface PairingError {
   data: Record<string, string>;
 }
 
+/** A macro head’s contextual dispatch role. */
+export interface MacroCall {
+  /** Opening macro head, with UTF-16 spans in the original source. */
+  token: MacroToken;
+  kind: 'invocation' | 'branch' | 'value';
+  /** Opening head consuming this clause; absent for invocations or stray branches. */
+  owner?: MacroToken;
+}
+
+/**
+ * Classify macro heads using explicit effective macro/widget metadata.
+ * Includes independently evaluated labels and attributes, with original
+ * source spans. Tolerates malformed markup. Describes dispatch, not whether
+ * a conditional body executes. Pass builtinMacros to enable builtin rules.
+ */
+export function macroCalls(
+  source: string,
+  macros?: Iterable<ToolingMacro>,
+): MacroCall[];
+
 /** A branch (`{else}`, `{case}`, …) of a macro, with what follows it. */
 export interface PairedBranch {
   tag: MacroToken;

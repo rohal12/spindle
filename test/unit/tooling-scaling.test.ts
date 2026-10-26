@@ -1,11 +1,38 @@
 import { expect, it } from 'vitest';
-import { discoverMacros, validateStoryMarkup } from '../../src/tooling';
+import {
+  discoverMacros,
+  tokenizeMarkupTolerant,
+  validateStoryMarkup,
+  type ToolingMacro,
+} from '../../src/tooling';
 import { getMacroRegistry } from '../../src/registry';
 import { validateMarkup } from '../../src/markup/validate';
 import { sourcePositions } from '../../src/markup/line-column';
 import { splitSigilTemplate } from '../../src/markup/code-attributes';
 import { defaultCodeEnd } from '../../src/markup/code-end';
 import { vi } from 'vitest';
+
+it('indexes companion metadata once for many definitions and tokens (#684)', () => {
+  const n = 2000;
+  let reads = 0;
+  const macros: ToolingMacro[] = Array.from({ length: n }, (_, i) => ({
+    get name() {
+      reads++;
+      return `m${i}`;
+    },
+    block: false,
+    get subMacros() {
+      reads++;
+      return [];
+    },
+  }));
+  const source = '{m0}'.repeat(n);
+  expect(
+    validateStoryMarkup([{ name: 'Start', content: source }], macros),
+  ).toEqual([]);
+  expect(tokenizeMarkupTolerant(source, { macros }).errors).toEqual([]);
+  expect(reads).toBeLessThan(n * 100);
+});
 
 it('discovers a macro after many unmatched bracket kinds in bounded time (#640)', () => {
   const source =

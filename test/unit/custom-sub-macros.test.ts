@@ -7,6 +7,36 @@ import { pairMarkup } from '../../src/markup/pair';
 import { validateStoryMarkup } from '../../src/tooling';
 
 describe('custom companion macros (#564, #571)', () => {
+  it.each(['else', 'elseif', 'case', 'default', 'next'])(
+    'shares builtin-named %s branches with custom parents (#682)',
+    (companion) => {
+      const name = `panel682${companion}`;
+      defineMacro({ name, subMacros: [companion], render: () => null });
+      const source = `{${name}}Intro{${companion}}Other{/${name}}`;
+      const [node] = parseMarkup(source) as MacroNode[];
+      expect(node!.children).toEqual([{ type: 'text', value: 'Intro' }]);
+      expect(node!.branches).toMatchObject([
+        { children: [{ value: 'Other' }] },
+      ]);
+      expect(
+        validateStoryMarkup(
+          [{ name: 'Start', content: source }],
+          getMacroRegistry(),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it('treats an explicit branchParents callback as authoritative (#682)', () => {
+    const source = '{panel}Intro{else}Other{/panel}';
+    const paired = pairMarkup(tokenizeMarkup(source), {
+      isBlock: (name) => name === 'panel',
+      branchParents: (name) => (name === 'else' ? ['panel'] : []),
+    });
+    expect(paired.errors).toEqual([]);
+    expect(paired.nodes[0]!.body!.branches[0]!.tag.name).toBe('else');
+  });
+
   it('builds declared tab branches, keeping parent content separate', () => {
     defineMacro({ name: 'tabs564', subMacros: ['tab564'], render: () => null });
     const [node] = parseMarkup(
