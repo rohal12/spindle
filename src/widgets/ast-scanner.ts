@@ -3,6 +3,7 @@ import type { Token } from '../markup/tokens';
 import { codeAndText, parameterLookup, type ParametersOf } from '../code-check';
 import { parseMarkup, type MarkupHooks } from '../markup/parse';
 import { getMacroRegistry, getMacroParameters } from '../registry';
+import { MarkupExpansionBudget } from '../markup/expansion-budget';
 
 /** The declared parameters of the macros registered so far. */
 export const registeredParameters: ParametersOf = (name) =>
@@ -17,16 +18,19 @@ function textContainsChildren(
   text: string,
   parametersOf: ParametersOf,
   hooks?: Partial<MarkupHooks>,
+  budget = new MarkupExpansionBudget(text.length),
 ): boolean {
   if (!text.includes('{')) return false;
-  let nodes: ASTNode[];
+  if (!budget.enter(text.length)) return false;
   try {
-    nodes = parseMarkup(text, { text: true, hooks });
+    const nodes = parseMarkup(text, { text: true, hooks });
+    return astContainsChildren(nodes, parametersOf, hooks, budget);
   } catch {
     // The renderer reports the markup that does not parse
     return false;
+  } finally {
+    budget.leave();
   }
-  return astContainsChildren(nodes, parametersOf, hooks);
 }
 
 /**
@@ -42,11 +46,12 @@ export function tokenTextContainsChildren(
   parametersOf: ParametersOf = registeredParameters,
   src = '',
   hooks?: Partial<MarkupHooks>,
+  budget?: MarkupExpansionBudget,
 ): boolean {
   for (const piece of codeAndText(src, [token], parametersOf)) {
     if (
       piece.kind === 'text' &&
-      textContainsChildren(piece.text, parametersOf, hooks)
+      textContainsChildren(piece.text, parametersOf, hooks, budget)
     ) {
       return true;
     }
@@ -55,7 +60,7 @@ export function tokenTextContainsChildren(
 }
 
 /**
- * Recursively scan an AST node array for a VariableNode
+ * Scan an AST node array for a VariableNode
  * with scope 'local' and name 'children' (@children), in the content and in
  * the attributes and labels that render markup. A nested `{widget}` is not
  * entered: its slot belongs to the innermost widget (as widgetDefinitions
@@ -65,8 +70,11 @@ export function astContainsChildren(
   nodes: ASTNode[],
   parametersOf: ParametersOf = registeredParameters,
   hooks?: Partial<MarkupHooks>,
+  budget?: MarkupExpansionBudget,
 ): boolean {
-  for (const node of nodes) {
+  const pending = [...nodes];
+  while (pending.length) {
+    const node = pending.pop()!;
     if (
       node.type === 'variable' &&
       node.scope === 'local' &&
@@ -96,17 +104,13 @@ export function astContainsChildren(
             argsStart: 0,
             argsEnd: 0,
           };
-    if (
-      tokenTextContainsChildren(tag, parametersOf, '', hooks) ||
-      astContainsChildren(node.children, parametersOf, hooks)
-    ) {
+    if (tokenTextContainsChildren(tag, parametersOf, '', hooks, budget)) {
       return true;
     }
+    for (const child of node.children) pending.push(child);
     if (node.type === 'macro' && node.branches) {
       for (const branch of node.branches) {
-        if (astContainsChildren(branch.children, parametersOf, hooks)) {
-          return true;
-        }
+        for (const child of branch.children) pending.push(child);
       }
     }
   }

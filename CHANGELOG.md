@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Static tooling exposes `isSpecialPassage()` and diagnoses literal navigation to runtime-special passages while preserving include, dialog and replacement macro contracts (#672).
+- Nested label and attribute validation and variable-reference collection share depth and work limits and flatten source-offset mappings (#673).
+- Large shallow token batches, including recovery prefixes, avoid JavaScript's argument-count limit (#674).
+- JavaScript syntax-tree analysis walks long expression and member chains without recursive stack overflow (#675).
+- Inline macro and widget replacements of built-in blocks no longer require obsolete closing tags (#676).
+- Observations include visible persistent interface errors once, retaining hidden, dialog, snapshot and StoryContext filters (#677).
+- Computed targets and direct story, temporary and transient setters preserve changes between positive and negative zero (#678).
+
 - HTML formatting preserves Markdown paragraphs, hard breaks and block structure inside containers without parsing placeholder-only bodies as Markdown (#663).
 - Inline scripts render as script text and execute with either paragraph setting, while outgoing snapshots remain inert (#664).
 - Listbox and cycle independently retain their shared option markers when the other macro is replaced (#665).

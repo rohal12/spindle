@@ -16,7 +16,7 @@ import {
   type MarkupDiagnostic,
   type MarkupPassage,
 } from './markup/validate';
-import { isBlockMacro, isRawMacro } from './markup/ast';
+import { isBlockMacro, isRawMacro, isRegisteredBlockMacro } from './markup/ast';
 import {
   tokenizeMarkup as tokenizeRawMarkup,
   tokenizeMarkupTolerant as tokenizeRawMarkupTolerant,
@@ -122,6 +122,7 @@ export type {
   PairMarkupOptions,
 } from './markup/pair';
 export { isBlockMacro } from './markup/ast';
+export { isSpecialPassage } from './passage-roles';
 export type { MarkupErrorCode } from './markup/parse';
 export {
   endsWithOperator,
@@ -271,9 +272,6 @@ export function validateStoryMarkup(
   const widgets = effectiveWidgetDefinitions(
     readWidgetDefinitions(list, parameterLookup(all)),
   );
-  const blocks = new Set(
-    widgets.filter((def) => def.block).map((def) => def.name.toLowerCase()),
-  );
   const parametersOf = parameterLookup([
     ...all,
     ...definedWidgetMacros(widgets),
@@ -282,15 +280,21 @@ export function validateStoryMarkup(
     const name = macro.name.toLowerCase();
     known.add(name);
     for (const sub of macro.subMacros) known.add(sub.toLowerCase());
-    if (macro.block) blocks.add(name);
   }
   return validateMarkup(list, {
     branchParents: (name) => branchParents(name, all),
     isKnownMacro: (name) => known.has(name),
     macroNames: known,
     parametersOf,
-    isBlockMacro: (name) =>
-      blocks.has(name.toLowerCase()) || isBlockMacro(name),
+    isBlockMacro: blockLookup([
+      ...all,
+      ...widgets.map((w) => ({
+        name: w.name,
+        block: w.block,
+        subMacros: [],
+        widget: w,
+      })),
+    ]),
     checkPassageNames: options.checkPassageNames,
     tolerant: options.tolerant,
   });
@@ -303,10 +307,13 @@ function definedWidgetMacros(widgets: readonly WidgetDefinition[]) {
 
 /** Whether a macro takes a body, among `macros` and the built-in ones. */
 function blockLookup(macros: readonly ToolingMacro[]) {
-  const blocks = new Set(
-    macros.filter((m) => m.block).map((m) => m.name.toLowerCase()),
-  );
-  return (name: string) => blocks.has(name.toLowerCase()) || isBlockMacro(name);
+  const definitions = new NameMap<boolean>();
+  for (const macro of effectiveToolingMacros(macros)) {
+    definitions.set(macro.name, macro.block);
+  }
+  return (name: string) =>
+    isRegisteredBlockMacro(name) ||
+    (definitions.get(name) ?? isBlockMacro(name));
 }
 
 /**

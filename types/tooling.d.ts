@@ -171,6 +171,7 @@ export interface MarkupDiagnostic {
  * | --- | --- |
  * | `unknown-macro` | `name`, `suggestions` (the closest known macro, if close) |
  * | `unknown-passage` | `name`, `macro` (`link` for `[[…]]`), `suggestions` |
+ * | `special-passage` | `name`, `macro` |
  * | `unquoted-passage-name` | `name`, `macro` |
  * | `argument-error` | `macro` |
  * | `code-syntax` | `macro`, for a macro argument |
@@ -181,6 +182,7 @@ export type MarkupDiagnosticCode =
   | 'argument-error'
   | 'code-syntax'
   | 'unknown-passage'
+  | 'special-passage'
   | 'unquoted-passage-name';
 
 /** What a diagnostic names, by code (see {@link MarkupDiagnosticCode}). */
@@ -887,6 +889,8 @@ export interface CodePiece extends PieceBase {
 export interface PassagePiece extends PieceBase {
   kind: 'passage';
   name: string;
+  /** A known navigation target, rather than included/dialog content. */
+  navigation?: true;
   /** The markup it is in, for an error: `[[Go->Hall]]`. */
   label: string;
   /** How much of the markup is the name, as written (quotes included). */
@@ -1049,6 +1053,9 @@ export declare function pairMarkup(
  * defines others (see `ToolingMacro.block`, and `{widget}`).
  */
 export declare function isBlockMacro(name: string): boolean;
+
+/** Whether a case-sensitive passage name is reserved and cannot be navigated to. */
+export declare function isSpecialPassage(name: string): boolean;
 
 // ---------------------------------------------------------------------------
 // Declarations

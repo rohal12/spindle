@@ -68,8 +68,7 @@ const BLOCK_MACROS = new NameSet([
 
 /**
  * The block widgets (those whose body renders `{@children}`), kept apart from
- * BLOCK_MACROS: a widget is redefined, so it is a block only while its latest
- * definition is, whereas the macros in BLOCK_MACROS stay blocks.
+ * built-in defaults: a widget is a block only while its latest definition is.
  */
 const BLOCK_WIDGETS = new NameSet();
 /** All widgets, including inline ones, override built-in parsing semantics. */
@@ -77,8 +76,12 @@ const WIDGETS = new NameSet();
 
 /** Classification owned by defineMacro, independent of explicit registrations. */
 const DEFINED_BLOCK_MACROS = new NameSet();
+const DEFINED_MACROS = new NameSet();
+/** Explicit registrations remain independent of macro/widget replacements. */
+const REGISTERED_BLOCK_MACROS = new NameSet();
 
 export function setDefinedBlockMacro(name: string, isBlock: boolean): void {
+  DEFINED_MACROS.add(name);
   setClassification(DEFINED_BLOCK_MACROS, name, isBlock);
 }
 
@@ -98,16 +101,20 @@ export function isRawMacro(name: string, widget = WIDGETS.has(name)): boolean {
 
 /** Whether a macro takes a body closed by `{/name}`. */
 export function isBlockMacro(name: string): boolean {
-  return (
-    BLOCK_MACROS.has(name) ||
-    DEFINED_BLOCK_MACROS.has(name) ||
-    BLOCK_WIDGETS.has(name)
-  );
+  if (REGISTERED_BLOCK_MACROS.has(name)) return true;
+  if (WIDGETS.has(name)) return BLOCK_WIDGETS.has(name);
+  if (DEFINED_MACROS.has(name)) return DEFINED_BLOCK_MACROS.has(name);
+  return BLOCK_MACROS.has(name);
+}
+
+/** Explicit parser registrations, unaffected by effective tooling metadata. */
+export function isRegisteredBlockMacro(name: string): boolean {
+  return REGISTERED_BLOCK_MACROS.has(name);
 }
 
 /** Register a custom macro as a block macro so the parser nests children. */
 export function registerBlockMacro(name: string): void {
-  BLOCK_MACROS.add(name);
+  REGISTERED_BLOCK_MACROS.add(name);
 }
 
 /**
@@ -127,8 +134,9 @@ export function clearBlockWidgets(): void {
 
 /** Unregister a custom block macro (for test cleanup). */
 export function unregisterBlockMacro(name: string): void {
-  BLOCK_MACROS.delete(name);
+  REGISTERED_BLOCK_MACROS.delete(name);
   DEFINED_BLOCK_MACROS.delete(name);
+  DEFINED_MACROS.delete(name);
 }
 
 /** Macros whose branches render as one: the node holds one per branch. */

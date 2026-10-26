@@ -64,7 +64,7 @@ import {
   underChange,
   type PathChange,
 } from './structural';
-import { getByPath } from './utils/object-path';
+import { getByPath, setByPath } from './utils/object-path';
 import { isIndexKey } from './utils/value-kinds';
 import {
   noPassageError,
@@ -95,30 +95,13 @@ import {
   type Counts,
   type Namespace,
 } from './utils/namespace';
+import { isSpecialPassage } from './passage-roles';
+export { isSpecialPassage } from './passage-roles';
 
 enablePatches();
 // Story state holds Map and Set values: Immer must be able to draft them
 // when a write (a dot path, a macro binding) reaches one
 enableMapSet();
-
-const SPECIAL_PASSAGES = new Set([
-  'StoryInit',
-  'StoryInterface',
-  'StoryVariables',
-  'StoryTransients',
-  'StoryLoading',
-  'SaveTitle',
-  'PassageReady',
-  'PassageHeader',
-  'PassageFooter',
-  'PassageDone',
-  'StoryContext',
-]);
-
-/** Whether `name` is a special passage, which navigation never goes to. */
-export function isSpecialPassage(name: string): boolean {
-  return SPECIAL_PASSAGES.has(name);
-}
 
 // ---------------------------------------------------------------------------
 // Patch-based variable history (module-level, outside Zustand)
@@ -1515,14 +1498,14 @@ export const useStoryStore = create<StoryState>()(
     setVariable: (name: string, value: unknown) => {
       set((state) => {
         checkVariableName(name, `$${name}`);
-        state.variables[name] = value;
+        setByPath(state.variables, [name], value);
       });
     },
 
     setTemporary: (name: string, value: unknown) => {
       set((state) => {
         checkVariableName(name, `_${name}`);
-        state.temporary[name] = value;
+        setByPath(state.temporary, [name], value);
       });
     },
 
@@ -1543,7 +1526,7 @@ export const useStoryStore = create<StoryState>()(
     setTransient: (name: string, value: unknown) => {
       set((state) => {
         checkVariableName(name, `%${name}`);
-        state.transient[name] = value;
+        setByPath(state.transient, [name], value);
       });
     },
 

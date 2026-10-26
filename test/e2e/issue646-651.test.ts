@@ -67,7 +67,7 @@ Story.defineMacro({name:'shadow', render(props, ctx) {
 {print hello world}
 {textbox "$missing"}
 {Later}{timed 150ms}{set $n += 1}{/timed}{/Later}
-{button "Replacement"}{span}{/span}{/button}
+{button "Replacement"}{span}{/button}
 {shadow hidden}{shadow inert}{shadow display}{shadow slotted}{shadow visible}
 <div onclick="console.log('${'{$x '.repeat(2000)}')">Literal event attribute</div>
 

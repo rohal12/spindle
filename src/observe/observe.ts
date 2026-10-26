@@ -168,9 +168,14 @@ export function observe(): Observation {
     passage,
     text: body ? observableText(body, DIALOG) : '',
   }));
-  const errors = [passageEl, ...bodies.map((d) => d.body), contextEl].flatMap(
-    (el) =>
-      el ? observableErrors(el, DIALOG, el === contextEl ? el : undefined) : [],
+  // The persistent interface can show errors outside the passage. Scan its
+  // shared root once, then read dialogs and the hidden StoryContext separately.
+  const errors = [
+    document.getElementById('root') ?? passageEl,
+    ...bodies.map((d) => d.body),
+    contextEl,
+  ].flatMap((el) =>
+    el ? observableErrors(el, DIALOG, el === contextEl ? el : undefined) : [],
   );
   // The runtime errors shown (as banners) until dismissed, with what failed
   for (const { context, message } of getRuntimeErrors()) {

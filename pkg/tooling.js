@@ -15,6 +15,7 @@ export {
   pieceOffset,
   pairMarkup,
   isBlockMacro,
+  isSpecialPassage,
   parseStoryVariables,
   parseDeclarations,
   formatDiagnostic,
