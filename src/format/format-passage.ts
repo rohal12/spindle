@@ -399,8 +399,17 @@ function hasMarkdownBoundaries(
   isBlock: (name: string) => boolean,
 ): boolean {
   const { tokens } = analyzeMarkup(source, { hooks: { isBlock } });
+  let possibleBoundary = false;
+  for (const token of tokens) {
+    if (token.type !== 'text') continue;
+    if (/\n[ \t]*\n/.test(token.value)) return true;
+    // Non-text nodes become inline spans in Markdown. Without punctuation
+    // for a block construct or a hard break, their surrounding text cannot
+    // create a boundary. Avoid parsing thousands of placeholder-only bodies.
+    if (/[\\#*+\d=>[`~|-]|[ \t]\n/.test(token.value)) possibleBoundary = true;
+  }
   return (
-    tokens.some((t) => t.type === 'text' && /\n[ \t]*\n/.test(t.value)) ||
+    possibleBoundary &&
     markdownLines(source, isBlock, HTML_MARKDOWN_BOUNDARIES).size > 0
   );
 }

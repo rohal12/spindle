@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- HTML formatting preserves Markdown paragraphs, hard breaks and block structure inside containers (#663).
+- HTML formatting preserves Markdown paragraphs, hard breaks and block structure inside containers without parsing placeholder-only bodies as Markdown (#663).
 - Inline scripts render as script text and execute with either paragraph setting, while outgoing snapshots remain inert (#664).
 - Listbox and cycle independently retain their shared option markers when the other macro is replaced (#665).
 - Variable references include reads in computed unset receivers and decode escaped receiver roots and member identifiers (#666, #668).
