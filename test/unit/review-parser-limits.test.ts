@@ -76,6 +76,9 @@ it.each([400, 1200])(
       expect(diagnostics[0]!.end).toBeLessThan(content.length);
     }
   },
+  // This stress case scans each input four times; V8 coverage of the
+  // generated parser needs more time than the default five-second timeout.
+  60_000,
 );
 
 it('bounds unquoted markup-holding arguments without recursive offset overflow (#673)', () => {
