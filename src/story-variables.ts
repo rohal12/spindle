@@ -11,8 +11,10 @@ import { errorMessage } from './utils/error-message';
 import {
   CodeSyntaxError,
   lexJs,
+  readMemberPath,
   scanStringLiteral,
   type JsGoal,
+  type VariableRef,
 } from './js-lexer';
 import {
   argPieces,
@@ -88,9 +90,6 @@ function declarationRegex(sigil: string): RegExp {
   const escaped = sigil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
 }
-/** A `$name` or `%name` reference with its dot path, at a sigil the lexer found. */
-const VAR_PATH_RE = /([$%])(\w+(?:\.\w+)*)/y;
-
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
 /** Boxed sample values whose members a primitive of each type can access. */
@@ -524,9 +523,6 @@ type Emit = (ref: VariableReference) => void;
 
 const NO_STORE_VAR_MACROS: ReadonlySet<string> = new Set();
 
-/** A `.field` path written right after a reference, which may be empty. */
-const FIELD_PATH_RE = /(?:\.\w+)*/y;
-
 /**
  * The reference to variable `name`, which JavaScript reads at `[start, end)`
  * of `code` (the sigil and the name as written, which may be spelled with
@@ -534,39 +530,21 @@ const FIELD_PATH_RE = /(?:\.\w+)*/y;
  */
 function referenceAt(
   code: string,
-  sigil: string,
-  name: string,
-  start: number,
-  end: number,
+  {
+    sigil,
+    name,
+    start,
+    end,
+  }: Pick<VariableRef, 'sigil' | 'name' | 'start' | 'end'>,
   at: At,
 ): VariableReference {
-  FIELD_PATH_RE.lastIndex = end;
-  const fields = FIELD_PATH_RE.exec(code)![0];
+  const fields = readMemberPath(code, end);
   return {
     sigil: sigil as '$' | '%',
     name,
-    path: fields ? fields.slice(1).split('.') : [],
+    path: fields.path,
     start: at(start),
-    end: at(end + fields.length),
-  };
-}
-
-/** A reference written at `index` of `term`, a `variable` parameter as written. */
-function termReferenceAt(
-  term: string,
-  index: number,
-  at: At,
-): VariableReference | undefined {
-  VAR_PATH_RE.lastIndex = index;
-  const match = VAR_PATH_RE.exec(term);
-  if (!match) return undefined;
-  const [name, ...path] = match[2]!.split('.');
-  return {
-    sigil: match[1] as '$' | '%',
-    name: name!,
-    path,
-    start: at(index),
-    end: at(index + match[0].length),
+    end: at(fields.end),
   };
 }
 
@@ -618,7 +596,7 @@ function scanCode(
   }
   for (const ref of parsed.refs) {
     if (ref.sigil !== '$' && ref.sigil !== '%') continue;
-    emit(referenceAt(code, ref.sigil, ref.name, ref.start, ref.end, at));
+    emit(referenceAt(code, ref, at));
   }
 }
 
@@ -634,7 +612,7 @@ function scanCodeLeniently(
     {
       variable(sigil, name, index, _nesting, end) {
         if (sigil !== '$' && sigil !== '%') return;
-        emit(referenceAt(code, sigil, name, index, end, at));
+        emit(referenceAt(code, { sigil, name, start: index, end }, at));
       },
       // Strings, regex literals and comments hold no references
       literal() {},
@@ -682,8 +660,8 @@ function scanArgs(
   const params = parametersOf(token.name);
   let byParameters = false;
   if (params) {
-    if (options.all && !options.storeVarMacros.has(token.name.toLowerCase())) {
-      scanVariableParameters(token, params, at, emit);
+    if (!options.storeVarMacros.has(token.name.toLowerCase())) {
+      scanVariableParameters(token, params, at, emit, options.all);
     }
     const pieces = [
       ...argPieces(token.rawArgs, token.argsStart, params, token.name, ''),
@@ -709,14 +687,15 @@ function scanArgs(
 
 /**
  * Report the variables the `variable` parameters of a macro name
- * (`{unset $x}`, `{computed $x = …}`), when they are `$` or `%` variables.
- * Arguments that do not parse hold none.
+ * (`{unset $x}`, `{computed $x = …}`). Computed members read variables even
+ * when the receiver itself is only included in the complete editor list.
  */
 function scanVariableParameters(
   token: Extract<Token, { type: 'macro' }>,
   params: readonly ParameterDef[],
   at: At,
   emit: Emit,
+  all: boolean | undefined,
 ): void {
   const spans: ArgSpans = new Map();
   try {
@@ -728,10 +707,14 @@ function scanVariableParameters(
   for (const param of params) {
     const span = spans.get(param);
     if (param.type !== 'variable' || !span) continue;
-    const ref = termReferenceAt(token.rawArgs.slice(span[0], span[1]), 0, (i) =>
-      at(token.argsStart + span[0] + i),
+    const start = token.argsStart + span[0];
+    scanCode(
+      token.rawArgs.slice(span[0], span[1]),
+      (i) => at(start + i),
+      (ref) => {
+        if (all || ref.start !== at(start)) emit(ref);
+      },
     );
-    if (ref) emit(ref);
   }
 }
 

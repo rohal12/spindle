@@ -26,6 +26,59 @@ const declare = (variables: string) => ({
   ),
 });
 
+describe('computed unset receivers (#666)', () => {
+  it.each([
+    ['{unset $items[$idx]}', ['items', 'idx'], ['idx']],
+    [
+      '{unset $items[$indexes[$idx]]}',
+      ['items', 'indexes', 'idx'],
+      ['indexes', 'idx'],
+    ],
+    [String.raw`{unset $\u0078}`, ['x'], []],
+    ['{unset _items[%idx]}', ['idx'], ['idx']],
+  ])('collects receiver and index references in %s', (source, all, reads) => {
+    expect(
+      variableReferences(source, macros, { all: true }).map((r) => r.name),
+    ).toEqual(all);
+    expect(variableReferences(source, macros).map((r) => r.name)).toEqual(
+      reads,
+    );
+    for (const ref of variableReferences(source, macros, { all: true })) {
+      expect(source.slice(ref.start, ref.end)).toMatch(/^[$%]/);
+    }
+  });
+
+  it('reports undeclared reads in an unset index', () => {
+    expect(
+      validateVariableReferences(
+        [{ name: 'Start', content: '{unset $items[$missing]}' }],
+        declare('$items = [1, 2]'),
+        macros,
+      ),
+    ).toMatchObject([{ code: 'undeclared-variable', name: 'missing' }]);
+  });
+});
+
+describe('escaped member identifiers (#668)', () => {
+  it.each([
+    [String.raw`$s.len\u0067th`, ['length']],
+    [String.raw`$s.to\u0055pperCase()`, ['toUpperCase']],
+    [String.raw`$obj.f\u{69}eld.v\u0061lue`, ['field', 'value']],
+  ])('decodes %s and retains its written span', (expr, path) => {
+    const source = `{print ${expr}}`;
+    const [ref] = variableReferences(source, macros);
+    expect(ref!.path).toEqual(path);
+    expect(source.slice(ref!.start, ref!.end)).toBe(expr.replace(/\(\)$/, ''));
+    expect(
+      validateVariableReferences(
+        [{ name: 'Start', content: source }],
+        declare('$s = "abc"\n$obj = {field: {value: 42}}'),
+        macros,
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe('code attribute interpolation offsets (#495)', () => {
   it('points sigilExpressions at the live interpolation', () => {
     expect(sigilExpressions('console.log("$name"); {$name}')).toEqual([

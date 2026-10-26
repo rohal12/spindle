@@ -17,7 +17,14 @@ import type { HtmlToken, MacroToken, Span, Token } from './tokens';
 
 /** What is wrong with the pairing, by kind. */
 export type PairingErrorCode =
-  'unclosed-block' | 'mismatched-closer' | 'stray-closer' | 'misplaced-branch';
+  | 'unclosed-block'
+  | 'mismatched-closer'
+  | 'stray-closer'
+  | 'misplaced-branch'
+  | 'nesting-limit';
+
+/** Keep AST construction and recursive rendering within a safe call depth. */
+const MAX_MARKUP_DEPTH = 256;
 
 /**
  * A problem in the pairing of the tokens, at the token from `start` up to
@@ -321,6 +328,18 @@ export function pairMarkup(
     if (!opens) {
       add(node);
       continue;
+    }
+    if (stack.length === MAX_MARKUP_DEPTH) {
+      report(
+        'nesting-limit',
+        token,
+        `Markup nesting exceeds the limit of ${MAX_MARKUP_DEPTH} elements`,
+        token.start,
+        {
+          name: nameOf(token as MacroToken | HtmlToken),
+          limit: String(MAX_MARKUP_DEPTH),
+        },
+      );
     }
     const body: PairedBody = { children: [], branches: [] };
     node.body = body;

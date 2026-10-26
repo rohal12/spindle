@@ -5,6 +5,7 @@ import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 defineMacro({
   name: 'cycle',
   block: true,
+  subMacros: ['option'],
   interpolate: true,
   storeVar: true,
   parameters: [VARIABLE_PARAMETER],

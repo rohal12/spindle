@@ -66,6 +66,19 @@ describe('StoryAPI', () => {
   // Since installStoryAPI uses window which may not exist in node,
   // we test createStoryAPI via a workaround: re-export or test the store methods it wraps
   describe('get/set', () => {
+    it.each(['a', '$a', '%a'])(
+      'preserves both zero signs through single and batched root writes to %s (#670)',
+      (name) => {
+        for (const batch of [false, true]) {
+          for (const value of [0, -0, 0, -0]) {
+            if (batch) Story.set({ [name]: value, other: 42 });
+            else Story.set(name, value);
+            expect(Object.is(Story.get(name), value)).toBe(true);
+          }
+        }
+      },
+    );
+
     it('gets and sets variables via the store', () => {
       useStoryStore.getState().setVariable('gold', 100);
       expect(useStoryStore.getState().variables.gold).toBe(100);

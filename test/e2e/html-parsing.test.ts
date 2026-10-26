@@ -10,6 +10,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import type { StoryAPI } from '../../types/index';
+declare const Story: StoryAPI;
 
 const projectRoot = resolve(import.meta.dirname!, '../..');
 const STORY_URL = 'http://spindle.test/story.html';
@@ -126,6 +128,86 @@ describe('HTML in markdown output is parsed inertly', () => {
 });
 
 describe('passage data', () => {
+  it.each([false, true])(
+    'executes inline script text with nobr=%s and keeps snapshots inert (#664)',
+    async (nobr) => {
+      const code =
+        '\nwindow.inlineRuns = (window.inlineRuns || 0) + 1;\nwindow.literal = "&amp;lt;";\n';
+      await boot({
+        passages: {
+          Start: encode(
+            `<div><script id="inline">${code}</script>Hi</div>[[Next]]`,
+          ),
+          Next: 'Next',
+        },
+        script: `Story.setNobr(${nobr});`,
+      });
+      expect(
+        await page
+          .locator('#inline')
+          .evaluate((el) => (el as HTMLScriptElement).text),
+      ).toBe(code);
+      expect(
+        await page.evaluate(() => {
+          const w = window as unknown as {
+            inlineRuns: number;
+            literal: string;
+          };
+          return [w.inlineRuns, w.literal];
+        }),
+      ).toEqual([1, '&amp;lt;']);
+      await page.evaluate(() => {
+        Story.setTransition({ type: 'crossfade', duration: 5000 });
+        Story.goto('Next');
+      });
+      await page.locator('.passage-snapshot').waitFor();
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { inlineRuns: number }).inlineRuns,
+        ),
+      ).toBe(1);
+      expect(
+        await page.locator('.passage-snapshot script').getAttribute('type'),
+      ).not.toBeNull();
+    },
+  );
+
+  it.each(['listbox', 'cycle'])(
+    'boots and edits the surviving option consumer after replacing %s (#665)',
+    async (replaced) => {
+      const surviving = replaced === 'cycle' ? 'listbox' : 'cycle';
+      await boot({
+        passages: {
+          Start: encode(
+            `{${surviving} $weapon}{option "Sword"}{option "Bow"}{/${surviving}}`,
+          ),
+          StoryVariables: '$weapon = "Sword"',
+        },
+        script: `Story.defineMacro({ name:'${replaced}', block:true, render(){ return null; } });`,
+      });
+      if (surviving === 'cycle')
+        await page.getByRole('button', { name: 'Sword' }).click();
+      else await page.locator('select').selectOption('Bow');
+      expect(await page.evaluate(() => Story.get('weapon'))).toBe('Bow');
+      expect(await page.locator('.error').count()).toBe(0);
+    },
+  );
+
+  it('boots escaped members and computed targets and deletes a computed unset receiver (#666, #668, #669)', async () => {
+    await boot({
+      passages: {
+        Start: encode(
+          String.raw`{computed $\u0078 = 42}<span id="computed">{$x}</span><span id="length">{print $s.len\u0067th}</span>{unset $items[$idx]}<span id="items">{print $items.join(",")}</span>`,
+        ),
+        StoryVariables: '$x = 0\n$s = "abc"\n$items = ["one", "two"]\n$idx = 0',
+      },
+    });
+    expect(await page.locator('#computed').textContent()).toBe('42');
+    expect(await page.locator('#length').textContent()).toBe('3');
+    expect(await page.locator('#items').textContent()).toBe(',two');
+    expect(await page.locator('.error').count()).toBe(0);
+  });
+
   /**
    * The value of `attribute` on the element with `id` in the passage shown.
    * Not encoded, the passage data holds such an element too.

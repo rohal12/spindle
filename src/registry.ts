@@ -254,20 +254,21 @@ export function registerMacroMetadata(
   }
 }
 
-/** The parents declaring a branching companion (listbox options are values). */
+/** The parents declaring a branching companion (input options are values). */
 export function branchParents(
   name: string,
   macros?: readonly Pick<MacroMetadata, 'name' | 'subMacros'>[],
 ): string[] {
   if (!macros) {
     return [...(companionParents.get(name) ?? [])].filter(
-      (parent) => parent !== 'listbox',
+      (parent) => parent !== 'listbox' && parent !== 'cycle',
     );
   }
   return effectiveNamedDefinitions(macros)
     .filter(
       (macro) =>
         macro.name.toLowerCase() !== 'listbox' &&
+        macro.name.toLowerCase() !== 'cycle' &&
         macro.subMacros.some((sub) => sub.toLowerCase() === name.toLowerCase()),
     )
     .map((macro) => macro.name.toLowerCase());

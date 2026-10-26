@@ -4,6 +4,8 @@ Spindle parses passage content into links, variables, macros and HTML tags, and 
 
 Every passage is checked when the story starts, including passages the player never sees. Malformed markup and unknown macros stop the story there, with a list of what is wrong and where. See [Markup errors](#markup-errors).
 
+HTML elements and block macros can nest up to 256 levels in one markup document. Deeper markup reports a positioned `nesting-limit` error during validation, including tolerant tooling validation.
+
 ## Links
 
 Navigate to another passage using double-bracket syntax:

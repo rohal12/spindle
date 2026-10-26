@@ -126,6 +126,26 @@ describe('variables named like Object.prototype members', () => {
     expect(Object.keys(state().variables)).not.toContain('toString');
     expect(Object.keys(state().temporary)).not.toContain('valueOf');
   });
+
+  it('decodes escaped computed root targets (#669)', () => {
+    const el = renderMarkup(
+      String.raw`{computed $\u0078 = 42}{computed _\u0079 = 7}{$x}-{_y}`,
+    );
+    expect(el.querySelector('.error')).toBeNull();
+    expect(el.textContent).toBe('42-7');
+    expect(state().variables.x).toBe(42);
+    expect(state().temporary.y).toBe(7);
+    expect(Object.keys(state().variables)).not.toContain(String.raw`\u0078`);
+  });
+
+  it.each(['$x.field', '$x[0]', '%x', '$x + 1'])(
+    'continues rejecting unsupported computed target %s (#669)',
+    (target) => {
+      expect(
+        renderMarkup(`{computed ${target} = 42}`).querySelector('.error'),
+      ).not.toBeNull();
+    },
+  );
 });
 
 describe('a variable named __proto__', () => {

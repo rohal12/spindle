@@ -31,8 +31,10 @@ describe('pairMarkup (#448)', () => {
         });
     }
     const { errors } = pairMarkup(tokens);
-    expect(errors).toHaveLength(n);
-    expect(errors.every((e) => e.code === 'mismatched-closer')).toBe(true);
+    expect(errors.filter((e) => e.code === 'mismatched-closer')).toHaveLength(
+      n,
+    );
+    expect(errors.filter((e) => e.code === 'nesting-limit')).toHaveLength(1);
     expect(reads).toBeLessThan(n * 30);
   });
 
