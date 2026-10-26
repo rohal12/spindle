@@ -62,7 +62,7 @@ export const StructuralContext = createContext(false);
 /**
  * True while rendering inside an element whose content is not markdown: SVG
  * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
- * `<textarea>` and `<style>`, whose text (indentation, `#`, `*`, ...) is literal.
+ * `<textarea>`, `<style>` and `<script>`, whose text is literal.
  * Macro and widget bodies read it so their content stays literal too.
  */
 export const RawTextContext = createContext(false);
@@ -113,7 +113,7 @@ const STRUCTURAL_ELEMENTS = new Set([
 ]);
 
 /** Elements whose content is literal text, not markdown. */
-const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style']);
+const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style', 'script']);
 export const WidgetChildrenContext = createContext<WidgetChildren | null>(null);
 
 /**
@@ -774,8 +774,8 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   let children: preact.ComponentChildren = undefined;
   let structural = false;
   if (node.children.length > 0) {
-    if (tag === 'style') {
-      // A raw-text element: its CSS keeps character-reference lookalikes
+    if (tag === 'style' || tag === 'script') {
+      // Raw-text elements keep script text and character-reference lookalikes
       // (`?a=1&notch=2`) as written (#453)
       children = node.children.map((n) =>
         n.type === 'text' ? n.value : renderSingleNode(n),

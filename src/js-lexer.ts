@@ -607,6 +607,32 @@ export function parseMemberIdentifier(src: string): string | null {
   return property.name as string;
 }
 
+/** Read the contiguous dot members after a variable, keeping decoded names. */
+export function readMemberPath(
+  src: string,
+  end: number,
+): { path: string[]; end: number } {
+  const path: string[] = [];
+  const p = tokenizerAt(src, end, 'expression', { afterOperand: true });
+  try {
+    for (;;) {
+      p.nextToken();
+      if (p.type !== tt.dot || p.start !== end) break;
+      const dotEnd = p.end;
+      p.nextToken();
+      if (p.start !== dotEnd || (p.type !== tt.name && !p.type.keyword)) break;
+      // Field schemas cover the runtime's word-character path names.
+      if (!/^\w+$/.test(String(p.value))) break;
+      path.push(String(p.value));
+      end = p.end;
+    }
+  } catch (error) {
+    // Reference collection also reads incomplete authoring input.
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  return { path, end };
+}
+
 /**
  * Parse `src` as `goal`, reading `%` as `percentAt` says where it says, and
  * noting where it read a transient in `transientsRead`.

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- HTML formatting preserves Markdown paragraphs, hard breaks and block structure inside containers without parsing placeholder-only bodies as Markdown (#663).
+- Inline scripts render as script text and execute with either paragraph setting, while outgoing snapshots remain inert (#664).
+- Listbox and cycle independently retain their shared option markers when the other macro is replaced (#665).
+- Variable references include reads in computed unset receivers and decode escaped receiver roots and member identifiers (#666, #668).
+- Markup deeper than 256 HTML elements and block macros reports a positioned validation error before recursive AST construction (#667).
+- Computed targets use the shared reference parser to decode supported escaped root names (#669).
+- Root story and transient assignments preserve signed zero through both Story.set overloads (#670).
+
 - Custom replacements of branching macros retain their bodies, selectors and declared companions (#656).
 - Tolerant markup recovery indexes damage intervals when filtering pairing diagnostics, avoiding quadratic scans (#657).
 - Automation variable and action getters protect mutable story values and recorded history while preserving snapshot aliases (#658).

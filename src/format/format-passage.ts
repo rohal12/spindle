@@ -288,7 +288,8 @@ async function formatLf(
       // Prettier cannot see a `white-space` style. Leave such HTML as written.
       if (
         WHITESPACE_AS_WRITTEN.test(htmlText) ||
-        region.lines.some((line) => literalLines.has(line.trim()))
+        region.lines.some((line) => literalLines.has(line.trim())) ||
+        hasMarkdownBoundaries(htmlText, isBlock)
       ) {
         for (let i = 0; i < region.lines.length; i++)
           preservedLines.add(lines.length + i);
@@ -377,6 +378,41 @@ async function formatLf(
 
 /** Literal HTML and opaque SVG, whose text can inherit significant whitespace. */
 const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea|svg)[\s>]|white-space\s*:/i;
+
+/** HTML whitespace formatting must not collapse the Markdown in its bodies. */
+const HTML_MARKDOWN_BOUNDARIES = new Set([
+  'hardBreakTrailing',
+  'hardBreakEscape',
+  'atxHeading',
+  'setextHeading',
+  'listOrdered',
+  'listUnordered',
+  'blockQuote',
+  'thematicBreak',
+  'definition',
+  'table',
+  'codeFenced',
+]);
+
+function hasMarkdownBoundaries(
+  source: string,
+  isBlock: (name: string) => boolean,
+): boolean {
+  const { tokens } = analyzeMarkup(source, { hooks: { isBlock } });
+  let possibleBoundary = false;
+  for (const token of tokens) {
+    if (token.type !== 'text') continue;
+    if (/\n[ \t]*\n/.test(token.value)) return true;
+    // Non-text nodes become inline spans in Markdown. Without punctuation
+    // for a block construct or a hard break, their surrounding text cannot
+    // create a boundary. Avoid parsing thousands of placeholder-only bodies.
+    if (/[\\#*+\d=>[`~|-]|[ \t]\n/.test(token.value)) possibleBoundary = true;
+  }
+  return (
+    possibleBoundary &&
+    markdownLines(source, isBlock, HTML_MARKDOWN_BOUNDARIES).size > 0
+  );
+}
 
 /** Preserve whole literal elements, including openers beside nested tags. */
 function whitespaceSensitiveLines(

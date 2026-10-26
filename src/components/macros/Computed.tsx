@@ -1,5 +1,6 @@
 import { useStoryStore } from '../../store';
 import { evaluate } from '../../expression';
+import { parseReferencePath } from '../../js-lexer';
 import { readState } from '../../execute-mutation';
 import { deepEqualStrict } from '../../structural';
 import { defineMacro } from '../../define-macro';
@@ -27,14 +28,15 @@ function assignmentArgs(
   }
 
   const { target = '', expression: expr = '' } = args;
-  if (!target.match(/^[$_@]\w+$/)) {
+  const path = parseReferencePath(target);
+  if (!path || path.nested || path.sigil === '%') {
     throw new Error(
       `{computed}: target must be $name, _name, or @name, got "${target}"`,
     );
   }
 
-  checkVariableName(target.slice(1), target);
-  return { target, expr };
+  checkVariableName(path.name, target);
+  return { target: path.sigil + path.name, expr };
 }
 
 /**

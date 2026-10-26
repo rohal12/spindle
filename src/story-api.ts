@@ -275,11 +275,7 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   const { isTransient, key } = parseName(name);
   const namespace = isTransient ? draft.transient : draft.variables;
 
-  if (key.includes('.')) {
-    setByPath(namespace, key.split('.'), value);
-  } else {
-    namespace[key] = value;
-  }
+  setByPath(namespace, key.split('.'), value);
 }
 
 /** A method calling the store action `name`, as the store holds it then. */

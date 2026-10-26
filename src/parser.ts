@@ -136,12 +136,12 @@ const escapeTextReferences = (text: string) =>
 
 /**
  * Elements whose text the renderer shows as written, with no character
- * references decoded: the one it treats as raw text (`style`, see
+ * references decoded: those it treats as raw text (`style`, `script`, see
  * HtmlNodeRenderer), for which the browser did not decode any either.
  */
 function isLiteralTextElement(parent: ParentNode): boolean {
   return (
-    (parent as Element).localName === 'style' &&
+    ['style', 'script'].includes((parent as Element).localName) &&
     (parent as Element).namespaceURI === HTML_NAMESPACE
   );
 }

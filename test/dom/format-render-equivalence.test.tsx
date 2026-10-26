@@ -63,6 +63,23 @@ function canonical(markup: string): string {
 }
 
 const cases = [
+  '<div>\nLine one\n\nLine two\n</div>\n',
+  '<div>\n  a  \n  b\n</div>\n',
+  '<div>\na\\\nb\n</div>\n',
+  '<div>\n{print "a"}  \n{print "b"}\n</div>\n',
+  '<div>\n{print "a"}  \t\n{print "b"}\n</div>\n',
+  '<div>\n{print "a"}\\\n{print "b"}\n</div>\n',
+  '<div>\n# Heading\n</div>\n',
+  '<div>\nHeading\n===\n</div>\n',
+  '<div>\n- first\n- second\n</div>\n',
+  '<div>\n1. first\n2. second\n</div>\n',
+  '<div>\n> quoted\n</div>\n',
+  '<div>\n---\n</div>\n',
+  '<div>\n[ref]: /url\n[a][ref]\n</div>\n',
+  '<div>\n| a | b |\n| - | - |\n| c | d |\n</div>\n',
+  '<section>\n<div>\na <em>word</em>\n\nb\n</div>\n</section>\n',
+  '<div>\n# Heading\n\n- first\n- second\n</div>\n',
+  '<div>\na\n\n{if true}b\n\nc{/if}\n</div>\n',
   '<div>\n<b>bold</b>, and more!\n</div>\n',
   '<div>\nHello <em>you</em>.\n</div>\n',
   '<p>\nHello <em>you</em>.\n</p>\n',

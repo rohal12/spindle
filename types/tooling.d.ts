@@ -955,7 +955,11 @@ export declare function passagePieces(
 
 /** What is wrong with the pairing of tags (a subset of {@link MarkupErrorCode}). */
 export type PairingErrorCode =
-  'unclosed-block' | 'mismatched-closer' | 'stray-closer' | 'misplaced-branch';
+  | 'unclosed-block'
+  | 'mismatched-closer'
+  | 'stray-closer'
+  | 'misplaced-branch'
+  | 'nesting-limit';
 
 /** A problem in the pairing of the tokens. */
 export interface PairingError {

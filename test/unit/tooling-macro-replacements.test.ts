@@ -13,6 +13,31 @@ import {
 
 const builtins = getMacroRegistry();
 
+it.each(['listbox', 'cycle'])(
+  'retains option value markers when %s is replaced (#665)',
+  (name) => {
+    const other = name === 'listbox' ? 'cycle' : 'listbox';
+    const macros = [
+      ...builtins,
+      ...discoverMacros(
+        `Story.defineMacro({name:'${name}', block:true, render(){}});`,
+      ),
+    ];
+    expect(
+      validateStoryMarkup(
+        [
+          {
+            name: 'Start',
+            content: `{${other} $x}{option "a"}{option "b"}{/${other}}`,
+          },
+        ],
+        macros,
+      ),
+    ).toEqual([]);
+    expect(branchParents('option', macros)).toEqual([]);
+  },
+);
+
 it('discards omitted parameters on a macro replacement (#647)', () => {
   const macros = [
     ...builtins,
