@@ -28,6 +28,7 @@ export const checks: [
   Resolved<Tooling.BoundVariable>,
   Resolved<ReturnType<typeof Tooling.parseBoundVariable>>,
   Resolved<Tooling.VariableReference['binding']>,
+  Resolved<typeof Tooling.isSpecialPassage>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {

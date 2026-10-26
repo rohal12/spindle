@@ -25,6 +25,7 @@ import {
 import { CodeSyntaxError } from '../js-lexer';
 import { sourcePositions } from './line-column';
 import { isRawMacro } from './ast';
+import { isSpecialPassage } from '../passage-roles';
 
 /** A passage to validate. */
 export interface MarkupPassage {
@@ -48,6 +49,7 @@ export type MarkupDiagnosticCode =
   | 'argument-error'
   | 'code-syntax'
   | 'unknown-passage'
+  | 'special-passage'
   | 'unquoted-passage-name';
 
 /** What a diagnostic names, by code (see docs/tooling.md). */
@@ -371,6 +373,17 @@ export function validateMarkup(
           );
           break;
         case 'passage':
+          if (piece.navigation && isSpecialPassage(piece.name)) {
+            report(
+              passage,
+              at,
+              at + piece.length,
+              'special-passage',
+              `${where}Cannot navigate to special passage ${JSON.stringify(piece.name)} in ${piece.label}.`,
+              { name: piece.name, macro: piece.macro },
+            );
+            break;
+          }
           if (
             options.checkPassageNames !== false &&
             !passageNames.has(piece.name)

@@ -13,6 +13,32 @@ import {
 
 const builtins = getMacroRegistry();
 
+it.each(['if', 'for', 'button', 'timed', 'span'])(
+  'honors an inline replacement of builtin block %s (#676)',
+  (name) => {
+    const replacement: ToolingMacro = {
+      name: name.toUpperCase(),
+      block: false,
+      subMacros: [],
+    };
+    expect(
+      validateStoryMarkup(
+        [{ name: 'Start', content: `{${name}}` }],
+        [...builtins, replacement],
+      ),
+    ).toEqual([]);
+    expect(
+      validateStoryMarkup(
+        [
+          { name: 'StoryInit', content: `{widget "${name}"}Hello{/widget}` },
+          { name: 'Start', content: `{${name}}` },
+        ],
+        builtins,
+      ),
+    ).toEqual([]);
+  },
+);
+
 it.each(['listbox', 'cycle'])(
   'retains option value markers when %s is replaced (#665)',
   (name) => {

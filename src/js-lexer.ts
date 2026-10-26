@@ -716,152 +716,172 @@ function propertyName(node: unknown, src: string): void {
  * variable can't be. `shorthand`: the node is a shorthand property's value.
  */
 function walk(
-  node: unknown,
+  root: unknown,
   src: string,
   out: ParsedCode,
   binding: boolean,
   shorthand: boolean,
   access: 'read' | 'write' | 'readwrite' = 'read',
 ): void {
-  if (Array.isArray(node)) {
-    for (const n of node) walk(n, src, out, binding, false, access);
-    return;
+  type Visit = [unknown, boolean, boolean, typeof access];
+  const pending: Visit[] = [[root, binding, shorthand, access]];
+  while (pending.length) {
+    const [node, bind, short, role] = pending.pop()!;
+    const children: Visit[] = [];
+    visit(node, bind, short, role, children);
+    // Reverse only the work stack, retaining reference/string and error order.
+    for (let i = children.length - 1; i >= 0; i--) pending.push(children[i]!);
   }
-  if (!isNode(node)) return;
-  const sub = (
-    child: unknown,
-    bind = false,
-    short = false,
-    role: typeof access = 'read',
-  ) => walk(child, src, out, bind, short, role);
-  switch (node.type) {
-    case 'Identifier': {
-      const sigil = sigilOf(node, src);
-      if (!sigil) return;
-      if (binding) {
-        throw new CodeSyntaxError(
-          `"${node.name as string}" is a ${NAMESPACE_NAME[sigil[0]]} variable and can't be declared`,
-          src,
-          node.start,
-        );
-      }
-      out.refs.push({
-        sigil: sigil[0],
-        name: sigil[1],
-        start: node.start,
-        end: node.end,
-        shorthand,
-        read: access !== 'write',
-        write: access !== 'read',
-      });
+
+  function visit(
+    node: unknown,
+    binding: boolean,
+    shorthand: boolean,
+    access: Visit[3],
+    children: Visit[],
+  ): void {
+    if (Array.isArray(node)) {
+      for (const n of node) children.push([n, binding, false, access]);
       return;
     }
-    case 'Literal':
-      if (typeof node.value === 'string') {
-        out.strings.push(src.slice(node.start + 1, node.end - 1));
-      }
-      return;
-    case 'TemplateElement':
-      out.strings.push((node.value as { raw: string }).raw);
-      return;
-    case 'MemberExpression':
-      sub(node.object);
-      if (node.computed) sub(node.property);
-      else propertyName(node.property, src);
-      return;
-    case 'Property':
-      if (node.computed) sub(node.key);
-      else if (!node.shorthand) propertyName(node.key, src);
-      if (node.shorthand) {
-        const value = node.value as AnyNode;
-        if (value.type === 'AssignmentPattern') {
-          sub(value.left, binding, true, access);
-          sub(value.right);
-        } else {
-          sub(value, binding, true, access);
+    if (!isNode(node)) return;
+    const sub = (
+      child: unknown,
+      bind = false,
+      short = false,
+      role: typeof access = 'read',
+    ) => {
+      children.push([child, bind, short, role]);
+    };
+    switch (node.type) {
+      case 'Identifier': {
+        const sigil = sigilOf(node, src);
+        if (!sigil) return;
+        if (binding) {
+          throw new CodeSyntaxError(
+            `"${node.name as string}" is a ${NAMESPACE_NAME[sigil[0]]} variable and can't be declared`,
+            src,
+            node.start,
+          );
         }
-      } else {
-        sub(node.value, binding, false, access);
+        out.refs.push({
+          sigil: sigil[0],
+          name: sigil[1],
+          start: node.start,
+          end: node.end,
+          shorthand,
+          read: access !== 'write',
+          write: access !== 'read',
+        });
+        return;
       }
-      return;
-    case 'MethodDefinition':
-    case 'PropertyDefinition':
-      if (node.computed) sub(node.key);
-      else propertyName(node.key, src);
-      sub(node.value);
-      return;
-    case 'LabeledStatement':
-      sub(node.body);
-      return;
-    case 'BreakStatement':
-    case 'ContinueStatement':
-    case 'MetaProperty':
-    case 'PrivateIdentifier':
-      return;
-    case 'VariableDeclarator':
-      sub(node.id, true);
-      sub(node.init);
-      return;
-    case 'FunctionDeclaration':
-    case 'FunctionExpression':
-    case 'ArrowFunctionExpression':
-      sub(node.id, true);
-      for (const p of node.params as unknown[]) sub(p, true);
-      sub(node.body);
-      return;
-    case 'ClassDeclaration':
-    case 'ClassExpression':
-      sub(node.id, true);
-      sub(node.superClass);
-      sub(node.body);
-      return;
-    case 'CatchClause':
-      sub(node.param, true);
-      sub(node.body);
-      return;
-    case 'AssignmentExpression':
-      sub(
-        node.left,
-        false,
-        false,
-        node.operator === '=' ? 'write' : 'readwrite',
-      );
-      sub(node.right);
-      return;
-    case 'UnaryExpression':
-      sub(
-        node.argument,
-        false,
-        false,
-        node.operator === 'delete' ? 'write' : 'read',
-      );
-      return;
-    case 'UpdateExpression':
-      sub(node.argument, false, false, 'readwrite');
-      return;
-    case 'ForInStatement':
-    case 'ForOfStatement':
-      sub(node.left, false, false, 'write');
-      sub(node.right);
-      sub(node.body);
-      return;
-    case 'AssignmentPattern':
-      sub(node.left, binding, false, access);
-      sub(node.right);
-      return;
-    case 'ObjectPattern':
-    case 'ArrayPattern':
-    case 'RestElement':
-      for (const key of ['properties', 'elements', 'argument']) {
-        sub(node[key], binding, false, access);
-      }
-      return;
-    default:
-      for (const key in node) {
-        if (key === 'type' || key === 'start' || key === 'end') continue;
-        const v = node[key];
-        if (typeof v === 'object' && v !== null) sub(v);
-      }
+      case 'Literal':
+        if (typeof node.value === 'string') {
+          out.strings.push(src.slice(node.start + 1, node.end - 1));
+        }
+        return;
+      case 'TemplateElement':
+        out.strings.push((node.value as { raw: string }).raw);
+        return;
+      case 'MemberExpression':
+        sub(node.object);
+        if (node.computed) sub(node.property);
+        else propertyName(node.property, src);
+        return;
+      case 'Property':
+        if (node.computed) sub(node.key);
+        else if (!node.shorthand) propertyName(node.key, src);
+        if (node.shorthand) {
+          const value = node.value as AnyNode;
+          if (value.type === 'AssignmentPattern') {
+            sub(value.left, binding, true, access);
+            sub(value.right);
+          } else {
+            sub(value, binding, true, access);
+          }
+        } else {
+          sub(node.value, binding, false, access);
+        }
+        return;
+      case 'MethodDefinition':
+      case 'PropertyDefinition':
+        if (node.computed) sub(node.key);
+        else propertyName(node.key, src);
+        sub(node.value);
+        return;
+      case 'LabeledStatement':
+        sub(node.body);
+        return;
+      case 'BreakStatement':
+      case 'ContinueStatement':
+      case 'MetaProperty':
+      case 'PrivateIdentifier':
+        return;
+      case 'VariableDeclarator':
+        sub(node.id, true);
+        sub(node.init);
+        return;
+      case 'FunctionDeclaration':
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        sub(node.id, true);
+        for (const p of node.params as unknown[]) sub(p, true);
+        sub(node.body);
+        return;
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        sub(node.id, true);
+        sub(node.superClass);
+        sub(node.body);
+        return;
+      case 'CatchClause':
+        sub(node.param, true);
+        sub(node.body);
+        return;
+      case 'AssignmentExpression':
+        sub(
+          node.left,
+          false,
+          false,
+          node.operator === '=' ? 'write' : 'readwrite',
+        );
+        sub(node.right);
+        return;
+      case 'UnaryExpression':
+        sub(
+          node.argument,
+          false,
+          false,
+          node.operator === 'delete' ? 'write' : 'read',
+        );
+        return;
+      case 'UpdateExpression':
+        sub(node.argument, false, false, 'readwrite');
+        return;
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        sub(node.left, false, false, 'write');
+        sub(node.right);
+        sub(node.body);
+        return;
+      case 'AssignmentPattern':
+        sub(node.left, binding, false, access);
+        sub(node.right);
+        return;
+      case 'ObjectPattern':
+      case 'ArrayPattern':
+      case 'RestElement':
+        for (const key of ['properties', 'elements', 'argument']) {
+          sub(node[key], binding, false, access);
+        }
+        return;
+      default:
+        for (const key in node) {
+          if (key === 'type' || key === 'start' || key === 'end') continue;
+          const v = node[key];
+          if (typeof v === 'object' && v !== null) sub(v);
+        }
+    }
   }
 }
 

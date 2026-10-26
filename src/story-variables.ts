@@ -44,6 +44,7 @@ import {
 } from './utils/namespace';
 import { staticLiteral, type LiteralShape } from './static-literal';
 import { parse } from 'acorn';
+import { MarkupExpansionBudget } from './markup/expansion-budget';
 
 /**
  * The tokens of markup, or none if it is malformed (validateMarkup reports
@@ -502,6 +503,7 @@ const BUILTIN_STORE_VAR_MACROS: readonly string[] = [
 
 /** What reading the variable references of markup depends on. */
 interface ReferenceOptions {
+  expansionBudget?: MarkupExpansionBudget;
   /** The (lowercase) names of the input macros that bind a variable. */
   storeVarMacros: ReadonlySet<string>;
   parametersOf: ParametersOf;
@@ -572,7 +574,24 @@ function scanInterpolations(
   options: ReferenceOptions,
 ): void {
   if (!text.includes('{')) return;
-  collectTokenRefs(text, tokensOf(text, true, options), at, emit, options);
+  const budget = options.expansionBudget!;
+  if (!budget.enter(text.length)) return;
+  try {
+    const offset = at(0);
+    const sourceOffsets =
+      at(text.length) - offset === text.length
+        ? undefined
+        : Array.from({ length: text.length + 1 }, (_, i) => at(i));
+    collectTokenRefs(
+      text,
+      tokensOf(text, true, options),
+      (i) => sourceOffsets?.[i] ?? offset + i,
+      emit,
+      options,
+    );
+  } finally {
+    budget.leave();
+  }
 }
 
 /**
@@ -891,7 +910,10 @@ export function collectVariableReferences(
       tokensOf(content, false, options),
       (i) => i,
       (ref) => found.push(ref),
-      options,
+      {
+        ...options,
+        expansionBudget: new MarkupExpansionBudget(content.length),
+      },
     ),
   );
   // The scan visits a macro's arguments before its selectors, and bindings

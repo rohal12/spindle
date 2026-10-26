@@ -50,6 +50,7 @@ import { NameMap } from './utils/macro-names';
 import { hasOwn } from './utils/namespace';
 import { isRawMacro } from './markup/ast';
 import { sourcePositions } from './markup/line-column';
+import { MarkupExpansionBudget } from './markup/expansion-budget';
 
 /** While a pass runs: the code it parsed so far, by goal and source. */
 let parses: Map<string, ParsedCode | CodeSyntaxError> | null = null;
@@ -156,6 +157,8 @@ interface MacroPiece extends LabeledPiece {
 export interface PassagePiece extends MacroPiece {
   kind: 'passage';
   name: string;
+  /** A known navigation target, rather than included/dialog content. */
+  navigation?: true;
 }
 
 /**
@@ -387,6 +390,9 @@ export function* codeAndText(
         offset: token.targetStart,
         length: token.targetEnd - token.targetStart,
         macro: 'link',
+        ...(usesBuiltinSemantics('link', parametersOf) && {
+          navigation: true as const,
+        }),
         label: src.slice(token.start, token.end),
       };
       // The label is markup too (the link renders as `{link}`)
@@ -479,7 +485,16 @@ export function* codeAndText(
         continue;
       }
       const params = parametersOf(name);
-      if (params) yield* argPieces(args, argsAt, params, token.name, label);
+      if (params) {
+        const navigation = usesBuiltinSemantics(name, parametersOf)
+          ? name === 'goto' || name === 'link'
+            ? ['passage']
+            : name === 'watch'
+              ? ['goto']
+              : []
+          : [];
+        yield* argPieces(args, argsAt, params, token.name, label, navigation);
+      }
       if (widget) yield* widgetPieces(args, argsAt, widget, token.name, label);
     }
   }
@@ -518,6 +533,7 @@ export function* passagePiecesOf(
     (i) => i,
     undefined,
     locate,
+    new MarkupExpansionBudget(src.length),
   );
 }
 
@@ -535,6 +551,7 @@ function* expand(
   toRoot: (offset: number) => number,
   where: string | undefined,
   locate: ReturnType<typeof sourcePositions>,
+  budget: MarkupExpansionBudget,
 ): Generator<Piece> {
   for (const flat of codeAndText(src, tokens, parametersOf)) {
     const piece = where ? nestedPiece(flat, toRoot, where) : flat;
@@ -543,41 +560,67 @@ function* expand(
       continue;
     }
     // The text may not be where its length says: a string with escapes
-    const toText = (i: number) => toRoot(pieceOffset(flat, i));
-    const inner = analyzeMarkup(flat.text, {
-      text: true,
-      hooks: {
-        ...(options.isBlock && { isBlock: options.isBlock }),
-        isRaw: (name) =>
-          isRawMacro(name, parametersOf.widget?.(name) !== undefined),
-      },
-    });
-    yield {
-      ...(piece as TextPiece),
-      tokens: inner.tokens.map((t) => mapOffsets(t, toText)),
-      errors: inner.errors.map((e) => {
-        const { line, column } = locate(toText(e.offset));
-        return new MarkupError(
-          e.reason,
-          toText(e.offset),
-          line,
-          column,
-          e.code,
-          toText(e.end),
-          e.data,
-        );
-      }),
-    };
-    yield* expand(
-      root,
-      flat.text,
-      inner.tokens,
-      parametersOf,
-      options,
-      toText,
-      flat.where,
-      locate,
-    );
+    // nestedPiece flattened the offsets into the root source. Avoid composing
+    // a recursive mapping closure for every enclosing label.
+    const toText = (i: number) => pieceOffset(piece, i);
+    if (!budget.enter(flat.text.length)) {
+      const at = toText(0);
+      const { line, column } = locate(at);
+      yield {
+        ...(piece as TextPiece),
+        errors: [
+          new MarkupError(
+            'Markup in labels and attributes exceeds the nesting or work limit',
+            at,
+            line,
+            column,
+            'nesting-limit',
+            toText(flat.text.length),
+            { limit: String(MarkupExpansionBudget.maxDepth) },
+          ),
+        ],
+      };
+      continue;
+    }
+    try {
+      const inner = analyzeMarkup(flat.text, {
+        text: true,
+        hooks: {
+          ...(options.isBlock && { isBlock: options.isBlock }),
+          isRaw: (name) =>
+            isRawMacro(name, parametersOf.widget?.(name) !== undefined),
+        },
+      });
+      yield {
+        ...(piece as TextPiece),
+        tokens: inner.tokens.map((t) => mapOffsets(t, toText)),
+        errors: inner.errors.map((e) => {
+          const { line, column } = locate(toText(e.offset));
+          return new MarkupError(
+            e.reason,
+            toText(e.offset),
+            line,
+            column,
+            e.code,
+            toText(e.end),
+            e.data,
+          );
+        }),
+      };
+      yield* expand(
+        root,
+        flat.text,
+        inner.tokens,
+        parametersOf,
+        options,
+        toText,
+        flat.where,
+        locate,
+        budget,
+      );
+    } finally {
+      budget.leave();
+    }
   }
 }
 
@@ -676,6 +719,7 @@ export function* argPieces(
   params: readonly ParameterDef[],
   macro: string,
   label: string,
+  navigation: readonly string[] = [],
 ): Generator<Piece> {
   let values: Record<string, unknown>;
   const spans: ArgSpans = new Map();
@@ -702,6 +746,7 @@ export function* argPieces(
     macro,
     label,
     'quotes',
+    navigation,
   );
 }
 
@@ -757,6 +802,7 @@ function* valuePieces(
   macro: string,
   label: string,
   escapes: Escapes,
+  navigation: readonly string[] = [],
 ): Generator<Piece> {
   const name = macro.toLowerCase();
   /** The pieces of the parameters `list`, with their values in `from`. */
@@ -785,6 +831,7 @@ function* valuePieces(
         length: end - start,
         macro: name,
         label,
+        ...(navigation.includes(param.name) && { navigation: true as const }),
       });
       const goal = codeGoal(param);
       if (param.type === 'passage') {

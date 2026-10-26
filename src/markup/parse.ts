@@ -321,7 +321,7 @@ export function scanMarkupTolerant(
     const rest = source.slice(base);
     const result = attempt(rest, base);
     if (Array.isArray(result)) {
-      tokens.push(...result);
+      for (const token of result) tokens.push(token);
       break;
     }
     const at = base + result.offset;
@@ -345,7 +345,7 @@ export function scanMarkupTolerant(
       cut = prefix.offset;
       prefix = attempt(rest.slice(0, cut), base);
     }
-    tokens.push(...prefix);
+    for (const token of prefix) tokens.push(token);
     damage.push(base + cut);
     // The character that started the damage is text
     if (cut < rest.length) {

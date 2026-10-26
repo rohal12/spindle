@@ -66,6 +66,8 @@ The leaf rules take complete input and don't recover from half-typed text on the
 
 Which macros take a body is `isBlock(name)`: by default the built-in ones (`isBlockMacro`, also exported). A story that defines other block macros passes them (the `block` of `defineMacro`'s macros, and the widgets it defines, which are blocks when their body uses `{@children}`). `source` lets a message say at which line and column an element was opened. `tokenizeMarkupTolerant` then `pairMarkup` reads half-typed markup:
 
+Effective macro and widget metadata can replace a built-in block with an inline definition. Such calls need no closing tag; independent explicit block registrations still take a body.
+
 ```js
 const { tokens } = tokenizeMarkupTolerant(source);
 const { nodes, errors } = pairMarkup(tokens, { source });
@@ -240,6 +242,10 @@ await formatPassage(text, { prettier, prettierOptions: { tabWidth: 4 } });
 
 ## Diagnostics
 
+`isSpecialPassage(name)` exposes the runtime's case-sensitive navigation restriction without booting a story. Filter navigation completions with `!isSpecialPassage(name)`; keep these passages available for include and dialog content. Literal links, built-in `goto` and `link` passage arguments, and `watch`'s `goto` option receive a `special-passage` diagnostic for forbidden targets. Custom macro and widget passage parameters keep their own contracts. Dynamic destination expressions are checked when they run.
+
+Markup inside labels and attributes has a shared limit of 64 nested texts and a total rescanning budget of eight times the passage length (at least 65,536 UTF-16 units). Exhausting either produces a positioned `nesting-limit` diagnostic; variable-reference collection stops expanding that text. Ordinary HTML and block nesting retains its separate limit of 256 elements.
+
 A `MarkupDiagnostic` from `validateMarkup` and `validateStoryMarkup` has, besides `passage`, `line`, `column`, `message` and the `file` and `fileLine` of its passage:
 
 - `code`, the kind of error. It stays the same where the wording of `message` changes, and is covered by semver with the `data` it carries, so editors map codes to severities and quick-fixes without parsing messages.
@@ -260,6 +266,8 @@ Name suggestions are optional and use a bounded comparison budget. Diagnostics s
 | `argument-error`                                                                                     | arguments that don't have their parameters' forms                                                             | `macro`                                                                                         |
 | `code-syntax`                                                                                        | a syntax error in code                                                                                        | `macro` for a macro argument                                                                    |
 | `unknown-passage`                                                                                    | a passage name that names no passage                                                                          | `name`, `macro` (`link` for `[[…]]`), `suggestions` (the closest passage name, if one is close) |
+| `special-passage`                                                                                    | a literal navigation target reserved for runtime use                                                          | `name`, `macro`                                                                                 |
+| `nesting-limit`                                                                                      | markup nesting or recursive label/attribute expansion exceeds its depth or work budget                        | `limit`, and `name` for element nesting                                                         |
 | `unquoted-passage-name`                                                                              | `{goto Kitchen}`                                                                                              | `name`, `macro`                                                                                 |
 
 `message` and `formatDiagnostic` are unchanged. The codes of malformed markup are also on the `MarkupError`s of the tolerant functions, with the same `data`.

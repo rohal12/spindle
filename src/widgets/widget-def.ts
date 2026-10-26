@@ -10,6 +10,7 @@ import type { MacroToken } from '../markup/tokens';
 import type { ParametersOf } from '../code-check';
 import { NameMap } from '../utils/macro-names';
 import { registeredParameters, tokenTextContainsChildren } from './ast-scanner';
+import { MarkupExpansionBudget } from '../markup/expansion-budget';
 
 /** A {widget} definition's name, then its `@` parameters. */
 export const WIDGET_PARAMETERS = [
@@ -146,6 +147,7 @@ export function widgetDefinitions(
       if (passage.name !== 'StoryInit' && !passage.tags?.includes('widget')) {
         continue;
       }
+      const budget = new MarkupExpansionBudget(passage.content.length);
       // The open definitions: their tags, and whether a slot was seen
       const open: {
         token: MacroToken;
@@ -172,6 +174,7 @@ export function widgetDefinitions(
               parametersOf,
               passage.content,
               hooks,
+              budget,
             ))
         ) {
           open[open.length - 1]!.isBlock = true;

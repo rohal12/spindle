@@ -217,7 +217,7 @@ describe('detached {button}/{link} bodies', () => {
     defineWidget(
       '{widget "span"}{timed 100ms}{set $late = 1}{/timed}{/widget}',
     );
-    const el = renderPassage('{button "Go"}{span}{/span}{/button}');
+    const el = renderPassage('{button "Go"}{span}{/button}');
     act(() => (el.querySelector('button') as HTMLElement).click());
     await act(async () => {
       await new Promise((done) => setTimeout(done, 250));
