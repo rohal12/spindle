@@ -19,6 +19,12 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
+    ignore:
+      # The editor extensions (src/twine-editor) run on the CodeMirror 5 that
+      # Twine 2.4+ provides; codemirror is a dev dependency for its types and
+      # tests, so it stays on 5 until Twine moves to CodeMirror 6.
+      - dependency-name: codemirror
+        update-types: ["version-update:semver-major"]
     groups:
       bun-security:
         applies-to: security-updates
