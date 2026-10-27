@@ -400,14 +400,15 @@ export function macroCalls(
     if (piece.kind !== 'text' || !piece.tokens.length) continue;
     classify(piece.tokens);
   }
-  // Value strings are consumed literally even if a same-named widget would
+  // Consumed arguments are literal even if a same-named widget would
   // normally evaluate them as markup. Drop heads inside those arguments.
   let literalEnd = -1;
   return calls
     .sort((a, b) => a.token.start - b.token.start)
     .filter((call) => {
       if (call.token.start < literalEnd) return false;
-      if (call.kind === 'value') literalEnd = call.token.argsEnd;
+      if (call.kind === 'value' || call.kind === 'branch')
+        literalEnd = call.token.argsEnd;
       return true;
     });
 }

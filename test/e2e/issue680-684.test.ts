@@ -89,9 +89,9 @@ it('boots shared custom branches and contextual option widgets (#680, #682)', as
       StoryVariables: '$x = "A"',
       StoryInit: '{widget "option" @value}Widget:{@value}{/widget}',
       Start:
-        '{panel}Intro{else}Other{/panel} {if false}Hidden{else}Builtin{/if} {option "standalone"} {listbox $x}{OPTION "A"}{option "B"}{/listbox} {cycle $x}{option "A"}{OPTION "B"}{/cycle}',
+        '{panel}Intro{else}Other{case Hello world}Case body{elseif More labels}Elseif body{/panel} {if false}Hidden{else}Builtin{/if} {option "standalone"} {listbox $x}{OPTION "A"}{option "B"}{/listbox} {cycle $x}{option "A"}{OPTION "B"}{/cycle}',
     },
-    "Story.defineMacro({name:'panel', subMacros:['else'], render(props, ctx) { return ctx.h('div', null, ctx.renderNodes(props.children), props.branches.map(branch => ctx.renderNodes(branch.children))); }});",
+    "Story.defineMacro({name:'panel', subMacros:['else', 'case', 'elseif'], render(props, ctx) { return ctx.h('div', null, ctx.renderNodes(props.children), props.branches.map(branch => ctx.h('span', null, branch.rawArgs, ctx.renderNodes(branch.children)))); }});",
   );
   await page.waitForSelector('.passage select');
   const result = await page.evaluate(async () => {
@@ -102,6 +102,8 @@ it('boots shared custom branches and contextual option widgets (#680, #682)', as
   expect(result.text).toContain('Intro');
   expect(result.text).toContain('Other');
   expect(result.text).toContain('Builtin');
+  expect(result.text).toContain('Hello world');
+  expect(result.text).toContain('More labels');
   expect(result.text).toContain('Widget:standalone');
   expect(
     result.actions

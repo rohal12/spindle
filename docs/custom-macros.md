@@ -340,6 +340,10 @@ Each `{tab}` becomes a branch in `props.branches`; content before the first tab 
 - `branch.rawArgs` — the text after the sub-macro name (e.g. `"Inventory"`)
 - `branch.children` — the content nodes inside that branch
 
+Custom parents can also declare built-in companion names such as `case` or
+`elseif`. Their arguments remain the custom branch's `rawArgs`; built-in
+condition checking applies when the built-in `switch` or `if` consumes them.
+
 ## Text Form (Macros in Attribute Values)
 
 HTML attribute values, image alt text, link titles and labels resolved with `ctx.resolve()` are strings, so a macro used there can't render elements. Give your macro a `text` function to make it usable there: it returns the string the macro stands for. Without one, using the macro in an attribute value shows an error instead.

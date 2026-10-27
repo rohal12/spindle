@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Wide Markdown and placeholder paragraphs render without exceeding JavaScript's argument-count limit, including paragraph unwrapping (#681).
-- Custom macros can share built-in branch names through their declared companion metadata (#682).
+- Custom macros can share built-in branch names through their declared companion metadata, keeping custom branch arguments separate from built-in conditions (#682).
 - Placeholder assembly joins source chunks once, avoiding repeated string flattening as element counts grow (#683).
 - Stateless tooling indexes companion parents per metadata snapshot while respecting replacements, widget precedence and built-in value clauses (#684).
 

@@ -4,9 +4,112 @@ import { getMacroRegistry, isSubMacro } from '../../src/registry';
 import { parseMarkup, tokenizeMarkup } from '../../src/markup/parse';
 import type { MacroNode } from '../../src/markup/ast';
 import { pairMarkup } from '../../src/markup/pair';
-import { validateStoryMarkup } from '../../src/tooling';
+import {
+  completionContext,
+  macroCalls,
+  passagePieces,
+  validateStoryMarkup,
+  variableReferences,
+} from '../../src/tooling';
 
 describe('custom companion macros (#564, #571)', () => {
+  it.each(['case', 'elseif', 'option'])(
+    'ignores standalone %s parameters when a custom parent consumes the branch',
+    (name) => {
+      const parent = {
+        name: 'rawBranchPanel682',
+        block: true,
+        subMacros: [name],
+      };
+      const macros = [
+        ...getMacroRegistry(),
+        parent,
+        {
+          name,
+          block: false,
+          subMacros: [],
+          parameters: [
+            { name: 'value', type: 'expression' as const, required: true },
+          ],
+        },
+      ];
+      const source = `{rawBranchPanel682}{${name} Hello world}{/rawBranchPanel682}`;
+      expect(
+        validateStoryMarkup([{ name: 'Start', content: source }], macros),
+      ).toEqual([]);
+      expect(passagePieces(source, macros)).toEqual([]);
+      const prefix = `{rawBranchPanel682}{${name} $value`;
+      expect(
+        variableReferences(`${prefix}}{/rawBranchPanel682}`, macros),
+      ).toEqual([]);
+      expect(completionContext(prefix, prefix.length, macros)).toEqual({
+        kind: 'literal',
+      });
+      const widgetMacros = [
+        ...getMacroRegistry(),
+        parent,
+        {
+          name,
+          block: false,
+          subMacros: [],
+          widget: {
+            params: ['@label'],
+            holds: { '@label': 'markup' as const },
+          },
+        },
+      ];
+      const widgetSource = `{rawBranchPanel682}{${name} '{ghost682}'}{/rawBranchPanel682}`;
+      expect(
+        macroCalls(widgetSource, widgetMacros).map(({ token }) => token.name),
+      ).toEqual(['rawBranchPanel682', name]);
+      expect(passagePieces(widgetSource, widgetMacros)).toEqual([]);
+      const builtinParent =
+        name === 'case' ? 'switch' : name === 'elseif' ? 'if' : undefined;
+      if (builtinParent) {
+        const builtin = `{${builtinParent} true}{${name} Hello world}{/${builtinParent}}`;
+        expect(
+          validateStoryMarkup([{ name: 'Start', content: builtin }], macros),
+        ).toMatchObject([{ code: 'code-syntax' }]);
+      }
+    },
+  );
+
+  it.each(['case', 'elseif'])(
+    'keeps custom %s arguments opaque while checking builtin conditions (#682)',
+    (companion) => {
+      const macros = [
+        ...getMacroRegistry(),
+        { name: 'labelPanel682', block: true, subMacros: [companion] },
+      ];
+      const source = `{labelPanel682}Intro{${companion} Hello world}Other{/labelPanel682}`;
+      expect(
+        validateStoryMarkup([{ name: 'Start', content: source }], macros),
+      ).toEqual([]);
+      expect(
+        passagePieces(source, macros).filter((piece) => piece.kind === 'code'),
+      ).toEqual([]);
+      const prefix = `{labelPanel682}{${companion} Hello world`;
+      expect(completionContext(prefix, prefix.length, macros)).toEqual({
+        kind: 'literal',
+      });
+      const parent = companion === 'case' ? 'switch' : 'if';
+      const builtin = `{${parent} true}{${companion} Hello world}{/${parent}}`;
+      expect(
+        validateStoryMarkup([{ name: 'Start', content: builtin }], macros),
+      ).toMatchObject([{ code: 'code-syntax' }]);
+      const nested = `{labelPanel682}{${companion} Hello world}{${parent} true}{${companion} true}{/${parent}}{/labelPanel682}`;
+      expect(
+        passagePieces(nested, macros)
+          .filter((piece) => piece.kind === 'code')
+          .map((piece) => piece.code),
+      ).toEqual(['true', 'true']);
+      const attribute = `<span title='${source}'></span>`;
+      expect(
+        validateStoryMarkup([{ name: 'Start', content: attribute }], macros),
+      ).toEqual([]);
+    },
+  );
+
   it.each(['else', 'elseif', 'case', 'default', 'next'])(
     'shares builtin-named %s branches with custom parents (#682)',
     (companion) => {

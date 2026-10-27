@@ -6,6 +6,7 @@ import {
   attributeValues,
   escapeOffsets,
   parameterLookup,
+  macroArgumentLookup,
   executesRawBody,
   usesBuiltinSemantics,
   type PieceBase,
@@ -188,10 +189,9 @@ export function completionContext(
       const name = token.name.toLowerCase();
       const args = token.rawArgs;
       const widget = parametersOf.widget?.(name);
-      if (
-        usesBuiltinSemantics(name, parametersOf) &&
-        ['if', 'elseif', 'case'].includes(name)
-      ) {
+      const role = macroArgumentLookup(tokens, parametersOf)(token);
+      if (role === 'branch') return LITERAL;
+      if (role === 'condition') {
         return codeAt(args, token.argsStart);
       }
       const stringContext = (

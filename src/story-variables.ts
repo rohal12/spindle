@@ -25,6 +25,7 @@ import {
   widgetPieces,
   withParseCache,
   executesRawBody,
+  macroArgumentLookup,
   type ParametersOf,
   type Piece,
 } from './code-check';
@@ -802,6 +803,7 @@ function collectTokenRefs(
   options: ReferenceOptions,
 ): void {
   const { storeVarMacros, parametersOf } = options;
+  const argumentRole = macroArgumentLookup(tokens, parametersOf);
   for (let t = 0; t < tokens.length; t++) {
     const token = tokens[t]!;
     if (
@@ -845,29 +847,38 @@ function collectTokenRefs(
         else scanInterpolations(value, valueIn, emit, options);
       }
     } else if (token.type === 'macro' && !token.isClose) {
+      const role = argumentRole(token);
       const binding =
+        role === 'invocation' &&
         storeVarMacros.has(token.name.toLowerCase()) &&
         !parametersOf.widget?.(token.name)
           ? boundReference(token, at, options.all)
           : undefined;
-      scanArgs(
-        token,
-        parametersOf,
-        at,
-        (ref) => {
-          // A parameterless custom storeVar macro also scans its arguments
-          // as code. Keep the binding's decoded path and span just once.
-          if (!binding || ref.start < binding.start || ref.start >= binding.end)
-            emit(ref);
-        },
-        options,
-      );
+      if (role === 'condition') {
+        scanCode(token.rawArgs, (i) => at(token.argsStart + i), emit);
+      } else if (role === 'invocation')
+        scanArgs(
+          token,
+          parametersOf,
+          at,
+          (ref) => {
+            // A parameterless custom storeVar macro also scans its arguments
+            // as code. Keep the binding's decoded path and span just once.
+            if (
+              !binding ||
+              ref.start < binding.start ||
+              ref.start >= binding.end
+            )
+              emit(ref);
+          },
+          options,
+        );
       // Selectors (`{.{$cls} button}`) are interpolated when rendered
       scanSelectors(content, token, at, emit, options);
 
       if (binding) emit(binding);
 
-      if (executesRawBody(token.name, parametersOf)) {
+      if (role === 'invocation' && executesRawBody(token.name, parametersOf)) {
         // A {do} body is JavaScript: scan its source text as code, however
         // the markup tokens split it up.
         let close = t + 1;
