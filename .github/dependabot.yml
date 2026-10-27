@@ -4,8 +4,9 @@
 #
 # Minor and patch updates come as one grouped pull request per ecosystem,
 # major updates one by one, and security updates grouped apart from both.
-# A release must be a week old (two for a major) before Dependabot proposes
-# it; security updates are not delayed.
+# A release must be a week old (two for a major Bun package; the actions
+# ecosystem has no per-semver cooldown) before Dependabot proposes it;
+# security updates are not delayed.
 # https://docs.github.com/code-security/dependabot/working-with-dependabot/dependabot-options-reference
 
 version: 2
@@ -36,7 +37,6 @@ updates:
       day: monday
     cooldown:
       default-days: 7
-      semver-major-days: 14
     groups:
       actions-security:
         applies-to: security-updates
