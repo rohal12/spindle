@@ -1,15 +1,15 @@
 name: zizmor
 
 # Audits the workflows (permissions, pinning, injection, credential use) and
-# reports the findings to code scanning.
+# reports the findings to code scanning. It runs on every pull request, not
+# only ones that change .github/, because the ruleset on main requires its
+# check and its code scanning results.
 
 on:
   push:
     branches: [main]
-    paths: [".github/**"]
   pull_request:
     branches: [main]
-    paths: [".github/**"]
 
 permissions:
   contents: read
