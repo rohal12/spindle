@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { Passage } from '../../src/components/Passage';
-import { useStoryStore, recordStoryInitState } from '../../src/store';
+import { useStoryStore } from '../../src/store';
 import { installStoryAPI } from '../../src/story-api';
 import { registerClass, clearRegistry } from '../../src/class-registry';
 import { parseMarkup } from '../../src/markup/parse';

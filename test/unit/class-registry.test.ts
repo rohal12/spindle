@@ -299,14 +299,10 @@ describe('class-registry', () => {
       ['a BigInt that is not an integer', [['BigInt', '1.5']]],
       ['class data that is not an object', [['c:Player', 1], 'hp']],
       ['class data that is an array', [['c:Player', 1], [2], 3]],
-      ['a "__proto__" key', [{ __proto__: 1 }, { admin: 2 }, true]],
+      ['a "__proto__" key', JSON.parse('[{"__proto__":1},{"admin":2},true]')],
     ])('rejects %s', (_, value) => {
       registerClass('Player', Player);
-      const text =
-        _ === 'a "__proto__" key'
-          ? '[{"__proto__":1},{"admin":2},true]'
-          : JSON.stringify(value);
-      expect(isDeserializable(text)).toBe(false);
+      expect(isDeserializable(JSON.stringify(value))).toBe(false);
     });
   });
 

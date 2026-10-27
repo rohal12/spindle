@@ -12,9 +12,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'http';
-import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { resolve } from 'path';
+import { sendFile } from './serve';
 import { compileToFile } from '@rohal12/twee-ts';
 
 const projectRoot = resolve(import.meta.dirname!, '../..');
@@ -103,8 +104,7 @@ beforeAll(async () => {
   }
   server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(readFileSync(resolve(dir, `${url.searchParams.get('s')}.html`)));
+    sendFile(res, dir, `${url.searchParams.get('s')}.html`);
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

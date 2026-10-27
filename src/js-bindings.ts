@@ -9,6 +9,7 @@
  * cannot place, it counts as a declaration of unknown value: a parameter, a
  * pattern, an assignment. Better no answer than another declaration's.
  */
+import { escapeRegExp } from './components/macros/arg-utils';
 
 type Kind = '{' | '(' | '[';
 
@@ -119,7 +120,7 @@ export class Bindings {
     properties: ReadonlySet<string>,
   ): Binding[] {
     const { code } = this;
-    const escaped = name.replace(/\$/g, '\\$');
+    const escaped = escapeRegExp(name);
     const bindings: Binding[] = [];
     for (const m of code.matchAll(
       new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'g'),

@@ -212,10 +212,10 @@ describe('counters in saves', () => {
         true,
       );
     }
-    expect(JSON.parse(JSON.stringify(renderCounts))).toMatchObject({
-      __proto__: 2,
-      constructor: 2,
-    });
+    // JSON.parse makes "__proto__" an own key; an object literal would not
+    expect(JSON.parse(JSON.stringify(renderCounts))).toMatchObject(
+      JSON.parse('{"__proto__": 2, "constructor": 2}'),
+    );
   });
 
   it('survive a JSON round trip of the payload', () => {

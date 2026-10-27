@@ -6,24 +6,18 @@
  * Requires dist/story.html to exist (run `npm run preview` first).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
-import { resolve, extname } from 'path';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+import { sendFile } from './serve';
 
 const projectRoot = resolve(import.meta.dirname!, '../..');
 const distDir = resolve(projectRoot, 'dist');
 const storyPath = resolve(distDir, 'story.html');
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-};
-
 let server: ReturnType<typeof createServer>;
 let browser: Browser;
-let page: Page;
 let baseUrl: string;
 
 beforeAll(async () => {
@@ -31,22 +25,9 @@ beforeAll(async () => {
     throw new Error('dist/story.html not found. Run `npm run preview` first.');
   }
 
-  server = createServer((req, res) => {
-    const filePath = resolve(
-      distDir,
-      (req.url || '/').replace(/^\//, '') || 'story.html',
-    );
-    if (!existsSync(filePath)) {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-    const ext = extname(filePath);
-    res.writeHead(200, {
-      'Content-Type': MIME[ext] || 'application/octet-stream',
-    });
-    res.end(readFileSync(filePath));
-  });
+  server = createServer((req, res) =>
+    sendFile(res, distDir, (req.url || '/').replace(/^\//, '') || 'story.html'),
+  );
 
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', () => {
@@ -57,20 +38,12 @@ beforeAll(async () => {
   });
 
   browser = await chromium.launch();
-  page = await browser.newPage();
 }, 30_000);
 
 afterAll(async () => {
   await browser?.close();
   server?.close();
 });
-
-async function navigateToTestPage() {
-  await page.goto(`${baseUrl}/story.html`);
-  await page.waitForSelector('[data-passage="Start"]');
-  await page.click('a.macro-link:has-text("Nested HTML include")');
-  await page.waitForSelector('[data-passage="Nested HTML Include Test"]');
-}
 
 async function openDialogAndCheck(
   buttonText: string,
