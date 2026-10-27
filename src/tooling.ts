@@ -4,7 +4,12 @@ export {
   type CompletionContext,
   type CompletionContainer,
 } from './completion-context';
-import { branchParents } from './registry';
+import { branchParentLookup } from './registry';
+import {
+  consumesOptionClauses,
+  isOptionClause,
+} from './components/macros/option-clauses';
+import { pairMarkup, type PairedNode } from './markup/pair';
 /**
  * What the tooling entry point (`@rohal12/spindle/tooling`) bundles as
  * dist/pkg/story-variables.js: the StoryVariables parser and the markup
@@ -16,7 +21,12 @@ import {
   type MarkupDiagnostic,
   type MarkupPassage,
 } from './markup/validate';
-import { isBlockMacro, isRawMacro, isRegisteredBlockMacro } from './markup/ast';
+import {
+  isBlockMacro,
+  isBuiltinBlockMacro,
+  isRawMacro,
+  isRegisteredBlockMacro,
+} from './markup/ast';
 import {
   tokenizeMarkup as tokenizeRawMarkup,
   tokenizeMarkupTolerant as tokenizeRawMarkupTolerant,
@@ -44,7 +54,7 @@ import {
   type VariableReference,
 } from './story-variables';
 import type { ParameterDef } from './registry';
-import type { Token } from './markup/tokens';
+import type { MacroToken, Token } from './markup/tokens';
 import type { WidgetDef } from './widgets/widget-def';
 
 export { parseDeclarations, parseStoryVariables } from './story-variables';
@@ -232,7 +242,7 @@ function tokenizationOptions(
       isRaw: (name) =>
         isRawMacro(name, parametersOf.widget?.(name) !== undefined),
       isBlock: blockLookup(macros),
-      branchParents: (name) => branchParents(name, macros),
+      branchParents: branchParentLookup(macros),
       ...options.hooks,
     },
   };
@@ -272,6 +282,15 @@ export function validateStoryMarkup(
   const widgets = effectiveWidgetDefinitions(
     readWidgetDefinitions(list, parameterLookup(all)),
   );
+  const effective = effectiveToolingMacros([
+    ...all,
+    ...widgets.map((widget) => ({
+      name: widget.name,
+      block: widget.block,
+      subMacros: [],
+      widget,
+    })),
+  ]);
   const parametersOf = parameterLookup([
     ...all,
     ...definedWidgetMacros(widgets),
@@ -282,19 +301,11 @@ export function validateStoryMarkup(
     for (const sub of macro.subMacros) known.add(sub.toLowerCase());
   }
   return validateMarkup(list, {
-    branchParents: (name) => branchParents(name, all),
+    branchParents: branchParentLookup(effective),
     isKnownMacro: (name) => known.has(name),
     macroNames: known,
     parametersOf,
-    isBlockMacro: blockLookup([
-      ...all,
-      ...widgets.map((w) => ({
-        name: w.name,
-        block: w.block,
-        subMacros: [],
-        widget: w,
-      })),
-    ]),
+    isBlockMacro: blockLookup(effective),
     checkPassageNames: options.checkPassageNames,
     tolerant: options.tolerant,
   });
@@ -306,14 +317,100 @@ function definedWidgetMacros(widgets: readonly WidgetDefinition[]) {
 }
 
 /** Whether a macro takes a body, among `macros` and the built-in ones. */
-function blockLookup(macros: readonly ToolingMacro[]) {
+function blockLookup(macros: readonly ToolingMacro[], includeRuntime = true) {
   const definitions = new NameMap<boolean>();
   for (const macro of effectiveToolingMacros(macros)) {
     definitions.set(macro.name, macro.block);
   }
   return (name: string) =>
-    isRegisteredBlockMacro(name) ||
-    (definitions.get(name) ?? isBlockMacro(name));
+    (includeRuntime && isRegisteredBlockMacro(name)) ||
+    (definitions.get(name) ??
+      (includeRuntime ? isBlockMacro(name) : isBuiltinBlockMacro(name)));
+}
+
+/** A macro head's contextual role, with original UTF-16 token spans. */
+export interface MacroCall {
+  token: MacroToken;
+  kind: 'invocation' | 'branch' | 'value';
+  /** The opening head consuming this clause; absent for invocations. */
+  owner?: MacroToken;
+}
+
+/**
+ * Classify heads against explicit effective metadata, without running code.
+ * Labels and attributes are separate markup scopes and never inherit a
+ * surrounding control's clause ownership. This describes dispatch, not
+ * whether a conditional body will execute.
+ */
+export function macroCalls(
+  source: string,
+  macros: Iterable<ToolingMacro> = [],
+): MacroCall[] {
+  const all = effectiveToolingMacros(macros);
+  const definitions = new NameMap(all.map((macro) => [macro.name, macro]));
+  const parametersOf = parameterLookup(all);
+  const options = tokenizationOptions({
+    macros: all,
+    hooks: { isBlock: blockLookup(all, false) },
+  });
+  const hooks = options.hooks!;
+  const tokens = tokenizeRawMarkupTolerant(source, options).tokens;
+  const calls: MacroCall[] = [];
+  const classify = (tokens: readonly Token[]) => {
+    const found = new Map<MacroToken, MacroCall>();
+    const pending: { node: PairedNode; parent?: MacroToken }[] = pairMarkup(
+      tokens,
+      hooks,
+    ).nodes.map((node) => ({ node }));
+    while (pending.length) {
+      const { node, parent } = pending.pop()!;
+      const token = node.token;
+      if (token.type === 'macro') {
+        const definition = parent && definitions.get(parent.name);
+        const value =
+          definition &&
+          consumesOptionClauses(definition) &&
+          isOptionClause(token.name);
+        found.set(token, {
+          token,
+          kind: value ? 'value' : 'invocation',
+          ...(value && { owner: parent }),
+        });
+      }
+      if (!node.body) continue;
+      const owner = token.type === 'macro' ? token : undefined;
+      for (const child of node.body.children)
+        pending.push({ node: child, parent: owner });
+      for (const branch of node.body.branches) {
+        found.set(branch.tag, { token: branch.tag, kind: 'branch', owner });
+        for (const child of branch.children)
+          pending.push({ node: child, parent: owner });
+      }
+    }
+    for (const token of tokens) {
+      if (token.type !== 'macro' || token.isClose) continue;
+      const call = found.get(token) ?? { token, kind: 'branch' as const };
+      calls.push(call);
+    }
+  };
+  classify(tokens);
+  for (const piece of passagePiecesOf(source, tokens, parametersOf, {
+    isBlock: hooks.isBlock,
+  })) {
+    if (piece.kind !== 'text' || !piece.tokens.length) continue;
+    classify(piece.tokens);
+  }
+  // Consumed arguments are literal even if a same-named widget would
+  // normally evaluate them as markup. Drop heads inside those arguments.
+  let literalEnd = -1;
+  return calls
+    .sort((a, b) => a.token.start - b.token.start)
+    .filter((call) => {
+      if (call.token.start < literalEnd) return false;
+      if (call.kind === 'value' || call.kind === 'branch')
+        literalEnd = call.token.argsEnd;
+      return true;
+    });
 }
 
 /**

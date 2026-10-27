@@ -1,5 +1,6 @@
 import type { ComponentType } from 'preact';
 import type { ASTNode, Branch } from './markup/ast';
+import { consumesOptionClauses } from './components/macros/option-clauses';
 import {
   effectiveNamedDefinitions,
   NameMap,
@@ -247,10 +248,19 @@ export function registerMacroMetadata(
     }
   }
   metadataRegistry.set(name, metadata);
-  for (const sub of metadata.subMacros) {
-    const parents = companionParents.get(sub) ?? new Set<string>();
-    parents.add(metadata.name.toLowerCase());
-    companionParents.set(sub, parents);
+  indexCompanionParents(companionParents, metadata);
+}
+
+/** Share index construction between live registrations and stateless tooling. */
+function indexCompanionParents(
+  index: NameMap<Set<string>>,
+  macro: Pick<MacroMetadata, 'name' | 'subMacros'>,
+): void {
+  const name = macro.name.toLowerCase();
+  for (const sub of macro.subMacros) {
+    const parents = index.get(sub) ?? new Set<string>();
+    parents.add(name);
+    index.set(sub, parents);
   }
 }
 
@@ -261,17 +271,27 @@ export function branchParents(
 ): string[] {
   if (!macros) {
     return [...(companionParents.get(name) ?? [])].filter(
-      (parent) => parent !== 'listbox' && parent !== 'cycle',
+      (parent) => !consumesOptionClauses(metadataRegistry.get(parent)!),
     );
   }
-  return effectiveNamedDefinitions(macros)
-    .filter(
-      (macro) =>
-        macro.name.toLowerCase() !== 'listbox' &&
-        macro.name.toLowerCase() !== 'cycle' &&
-        macro.subMacros.some((sub) => sub.toLowerCase() === name.toLowerCase()),
-    )
-    .map((macro) => macro.name.toLowerCase());
+  return [...branchParentLookup(macros)(name)];
+}
+
+/** Build once per effective metadata snapshot, then look up each token. */
+export function branchParentLookup(
+  macros: readonly (Pick<MacroMetadata, 'name' | 'subMacros'> & {
+    source?: 'builtin' | 'user';
+    widget?: unknown;
+  })[],
+): (name: string) => readonly string[] {
+  const parents = new NameMap<Set<string>>();
+  for (const macro of effectiveNamedDefinitions(macros)) {
+    if (consumesOptionClauses(macro)) continue;
+    indexCompanionParents(parents, macro);
+  }
+  const index = new NameMap<readonly string[]>();
+  for (const [sub, names] of parents) index.set(sub, [...names]);
+  return (name) => index.get(name) ?? [];
 }
 
 /** The declared parameters of the macro `name`, if it declares any. */

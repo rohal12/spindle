@@ -10,7 +10,7 @@
  * runtime reads it, or, when it matches one further out, closes that one and
  * what was open inside it stays unclosed.
  */
-import { branchParents } from '../registry';
+import { branchParents, getMacroParameters } from '../registry';
 import { sourcePositions } from './line-column';
 import { isBlockMacro, isRawMacro } from './ast';
 import type { HtmlToken, MacroToken, Span, Token } from './tokens';
@@ -153,13 +153,15 @@ export function pairMarkup(
   const isBlock = options.isBlock ?? isBlockMacro;
   const isRaw = options.isRaw ?? isRawMacro;
   const parentsOf = (name: string): readonly string[] => {
+    if (options.branchParents) return options.branchParents(name);
+    const registered = branchParents(name);
     const lower = name.toLowerCase();
     const builtin = Object.prototype.hasOwnProperty.call(BRANCH_PARENT, lower)
       ? BRANCH_PARENT[lower]
       : undefined;
-    return builtin
-      ? [builtin]
-      : (options.branchParents?.(name) ?? branchParents(name));
+    return builtin && getMacroParameters.source(builtin) === undefined
+      ? [...registered, builtin]
+      : registered;
   };
   const errors: PairingError[] = [];
   const noticedAtEnd = (tokens[tokens.length - 1]?.end ?? 0) + 1;

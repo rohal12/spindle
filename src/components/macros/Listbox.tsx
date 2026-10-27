@@ -2,11 +2,12 @@ import { actionAttributes } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 import { display } from './display';
+import { OPTION_CLAUSE } from './option-clauses';
 
 defineMacro({
   name: 'listbox',
   interpolate: true,
-  subMacros: ['option'],
+  subMacros: [OPTION_CLAUSE],
   storeVar: true,
   parameters: [VARIABLE_PARAMETER],
   render({ children = [] }, ctx) {

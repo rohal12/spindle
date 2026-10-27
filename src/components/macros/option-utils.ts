@@ -1,6 +1,7 @@
 import type { ASTNode } from '../../markup/ast';
 import { parseMacroArgs } from './macro-args';
 import type { ParameterDef } from '../../registry';
+import { isOptionClause, OPTION_CLAUSE } from './option-clauses';
 
 /** `$var "placeholder"`, the arguments of the input macros. */
 export function parseVarArgs(rawArgs: string): {
@@ -21,7 +22,7 @@ const OPTION_PARAMETERS = [
 
 /** The parameters of the built-in sub-macros that take arguments. */
 const SUB_MACRO_PARAMETERS: ReadonlyMap<string, readonly ParameterDef[]> =
-  new Map([['option', OPTION_PARAMETERS]]);
+  new Map([[OPTION_CLAUSE, OPTION_PARAMETERS]]);
 
 /** The parameters of the built-in sub-macro `name`, if it takes any. */
 export function subMacroParameters(
@@ -36,7 +37,7 @@ export function subMacroParameters(
 export function extractOptions(children: ASTNode[]): string[] {
   const options: string[] = [];
   for (const node of children) {
-    if (node.type === 'macro' && node.name === 'option') {
+    if (node.type === 'macro' && isOptionClause(node.name)) {
       // {option "Long Sword"} gives `Long Sword`
       const { value } = parseMacroArgs(node.rawArgs, OPTION_PARAMETERS);
       options.push(value ?? '');

@@ -26,7 +26,12 @@
  * The arguments of macros that declare no parameters may be anything:
  * they are not checked.
  */
-import type { HtmlToken, Token } from './markup/tokens';
+import type { HtmlToken, MacroToken, Token } from './markup/tokens';
+import {
+  pairMarkup,
+  BRANCH_PARENT,
+  type PairMarkupOptions,
+} from './markup/pair';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 import { analyzeMarkup, MarkupError, mapOffsets } from './markup/parse';
 import {
@@ -36,7 +41,12 @@ import {
   type JsGoal,
 } from './js-lexer';
 import type { ParsedCode } from './js-lexer';
-import type { ParameterDef, StringHolds } from './registry';
+import {
+  branchParentLookup,
+  branchParents,
+  type ParameterDef,
+  type StringHolds,
+} from './registry';
 import {
   MacroArgumentError,
   parseMacroArgs,
@@ -46,9 +56,9 @@ import {
 } from './components/macros/macro-args';
 import { subMacroParameters } from './components/macros/option-utils';
 import { splitArgSpans } from './components/macros/arg-utils';
-import { NameMap } from './utils/macro-names';
+import { effectiveNamedDefinitions, NameMap } from './utils/macro-names';
 import { hasOwn } from './utils/namespace';
-import { isRawMacro } from './markup/ast';
+import { isBuiltinBlockMacro, isRawMacro } from './markup/ast';
 import { sourcePositions } from './markup/line-column';
 import { MarkupExpansionBudget } from './markup/expansion-budget';
 
@@ -234,6 +244,45 @@ export interface ParametersOf {
   widget?(name: string): readonly WidgetParameter[] | undefined;
   /** Effective registration origin; absent metadata retains builtin defaults. */
   source?(name: string): 'builtin' | 'user' | undefined;
+  /** Pair branch arguments against the same effective definitions. */
+  pairing?: PairMarkupOptions;
+}
+
+/** A consumed branch uses its parent's argument contract, not standalone metadata. */
+export function macroArgumentLookup(
+  tokens: readonly Token[],
+  parametersOf: ParametersOf,
+): (token: MacroToken) => 'condition' | 'branch' | 'invocation' {
+  let owners: Map<MacroToken, string> | undefined;
+  const parentsOf = parametersOf.pairing?.branchParents ?? branchParents;
+  return (token) => {
+    const name = token.name.toLowerCase();
+    if (parentsOf(name).length > 0 && !owners) {
+      owners = new Map();
+      const pending = [...pairMarkup(tokens, parametersOf.pairing).nodes];
+      while (pending.length) {
+        const node = pending.pop()!;
+        if (!node.body) continue;
+        for (const branch of node.body.branches) {
+          if (node.token.type === 'macro')
+            owners.set(branch.tag, node.token.name.toLowerCase());
+          for (const child of branch.children) pending.push(child);
+        }
+        for (const child of node.body.children) pending.push(child);
+      }
+    }
+    const owner = owners?.get(token);
+    if (owner !== undefined)
+      return CONDITION_MACROS.has(name) &&
+        owner === BRANCH_PARENT[name] &&
+        usesBuiltinSemantics(owner, parametersOf)
+        ? 'condition'
+        : 'branch';
+    return CONDITION_MACROS.has(name) &&
+      usesBuiltinSemantics(name, parametersOf)
+      ? 'condition'
+      : 'invocation';
+  };
 }
 
 /** Whether builtin-only interpretation still belongs to this implementation. */
@@ -258,6 +307,8 @@ export function executesRawBody(
 /** What the argument check needs to know of a macro (see MacroMetadata). */
 export interface MacroParameters {
   name: string;
+  block?: boolean;
+  subMacros?: readonly string[];
   source?: 'builtin' | 'user';
   parameters?: readonly ParameterDef[];
   interpolate?: boolean;
@@ -296,6 +347,7 @@ function withHolds(
 export function parameterLookup(
   macros: Iterable<MacroParameters>,
 ): ParametersOf {
+  const list = [...macros];
   const parameters = new NameMap<readonly ParameterDef[]>();
   const widgets = new NameMap<readonly WidgetParameter[]>();
   const sources = new NameMap<'builtin' | 'user'>();
@@ -305,7 +357,7 @@ export function parameterLookup(
     interpolate,
     widget,
     source,
-  } of macros) {
+  } of list) {
     sources.set(name, source ?? 'user');
     if (params)
       parameters.set(name, withHolds(params, holdsByDefault(interpolate)));
@@ -324,6 +376,23 @@ export function parameterLookup(
   };
   if (widgets.size > 0) lookup.widget = (name) => widgets.get(name);
   lookup.source = (name) => sources.get(name);
+  const definitions = new NameMap(
+    effectiveNamedDefinitions([
+      ...list.filter((macro) => !macro.widget),
+      ...list.filter((macro) => macro.widget),
+    ]).map((macro) => [macro.name, macro]),
+  );
+  lookup.pairing = {
+    isBlock: (name) =>
+      definitions.get(name)?.block ?? isBuiltinBlockMacro(name),
+    isRaw: (name) => isRawMacro(name, widgets.has(name)),
+    branchParents: branchParentLookup(
+      [...definitions.values()].map((macro) => ({
+        ...macro,
+        subMacros: [...(macro.subMacros ?? [])],
+      })),
+    ),
+  };
   return lookup;
 }
 
@@ -368,6 +437,7 @@ export function* codeAndText(
   tokens: readonly Token[],
   parametersOf: ParametersOf,
 ): Generator<Piece> {
+  const argumentRole = macroArgumentLookup(tokens, parametersOf);
   // Only a plain-text body is read here: raw JavaScript in {do}, or a
   // passage name in {dialog}. Start at the opener and stop at any markup,
   // including a nested opener, rather than rescanning the token prefix.
@@ -433,6 +503,8 @@ export function* codeAndText(
       }
     } else if (token.type === 'macro' && !token.isClose) {
       const name = token.name.toLowerCase();
+      const role = argumentRole(token);
+      if (role === 'branch') continue;
       const widget = parametersOf.widget?.(name);
       if (executesRawBody(name, parametersOf)) {
         const close = closeOfTextBody(t, name);
@@ -471,10 +543,7 @@ export function* codeAndText(
       if (!args) continue;
       const label = `{${token.name} ${args}}`;
       const argsAt = token.argsStart;
-      if (
-        CONDITION_MACROS.has(name) &&
-        usesBuiltinSemantics(name, parametersOf)
-      ) {
+      if (role === 'condition') {
         yield {
           kind: 'code',
           code: args,
@@ -586,6 +655,7 @@ function* expand(
       const inner = analyzeMarkup(flat.text, {
         text: true,
         hooks: {
+          ...parametersOf.pairing,
           ...(options.isBlock && { isBlock: options.isBlock }),
           isRaw: (name) =>
             isRawMacro(name, parametersOf.widget?.(name) !== undefined),

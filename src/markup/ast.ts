@@ -104,6 +104,11 @@ export function isBlockMacro(name: string): boolean {
   if (REGISTERED_BLOCK_MACROS.has(name)) return true;
   if (WIDGETS.has(name)) return BLOCK_WIDGETS.has(name);
   if (DEFINED_MACROS.has(name)) return DEFINED_BLOCK_MACROS.has(name);
+  return isBuiltinBlockMacro(name);
+}
+
+/** Built-in defaults without any process-global registrations or widgets. */
+export function isBuiltinBlockMacro(name: string): boolean {
   return BLOCK_MACROS.has(name);
 }
 
