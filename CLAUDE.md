@@ -10,6 +10,9 @@
   `PMD_BIN`). CI fails on any added duplication compared with `main`; if a
   clone is really needed, raise `duplication-budget.json` in the same pull
   request and say why.
+- Change `bun.lock` only with the Bun in `.bun-version`, which CI pins: a
+  lockfile written by a newer Bun fails `bun install --frozen-lockfile`
+  under it.
 - A pull request that fixes issues lists each one in its description as
   `Closes #N` (one per line), so merging closes them. When a pull request
   appears for a branch you worked on (the UI can create one), read its
