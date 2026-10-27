@@ -6,22 +6,28 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  # npm trusted publishing (OIDC): no npm token.
-  id-token: write
+  contents: read
 
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      # Pushes the release tag and creates the GitHub release
+      contents: write
+      # npm trusted publishing (OIDC): no npm token.
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # The Release step pushes the tag with this token. No artifact is
+          # uploaded from this job.
+          persist-credentials: true # zizmor: ignore[artipacked]
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           # OIDC publishing needs npm 11.5.1+; Node 22 ships npm 10.
           node-version: 24
