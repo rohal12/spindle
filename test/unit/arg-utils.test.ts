@@ -7,6 +7,7 @@ import {
   splitTopLevel,
   isWhitespace,
   endsWithOperator,
+  escapeRegExp,
 } from '../../src/components/macros/arg-utils';
 
 const isComma = (ch: string) => ch === ',';
@@ -329,5 +330,13 @@ describe('endsWithOperator', () => {
     ]) {
       expect(endsWithOperator(src)).toBe(false);
     }
+  });
+});
+
+describe('escapeRegExp', () => {
+  it('makes a pattern that matches the text literally', () => {
+    const text = 'a.b*c+d?e^f$g{h}i(j)k|l[m]n\\o/p';
+    expect(new RegExp(`^${escapeRegExp(text)}$`).test(text)).toBe(true);
+    expect(new RegExp(escapeRegExp('a.b')).test('axb')).toBe(false);
   });
 });

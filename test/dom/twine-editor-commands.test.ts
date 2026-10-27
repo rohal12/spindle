@@ -8,9 +8,8 @@ import { toolbar } from '../../src/twine-editor/toolbar';
 /** The snippet's text around `selection`, and where its slot is in it. */
 function expected(id: string, selection: string) {
   const snippet = snippets.find((s) => s.id === id)!;
-  const slot = snippet.before.indexOf('|');
-  const before = snippet.before.replace('|', '');
-  return { text: before + selection + snippet.after, slot };
+  const [head = '', tail = ''] = snippet.before.split('|');
+  return { text: head + tail + selection + snippet.after, slot: head.length };
 }
 
 let editors: CodeMirror.Editor[] = [];

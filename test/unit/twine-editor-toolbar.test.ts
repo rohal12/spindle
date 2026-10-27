@@ -185,10 +185,10 @@ describe('snippets', () => {
   it.each(snippets.map((s) => [s.id, s] as const))(
     '%s passes the validator, with and without a body',
     (id, snippet) => {
-      const fill = slotFill[id] ?? '';
-      const empty = snippet.before.replace('|', fill) + snippet.after;
-      const wrapped =
-        snippet.before.replace('|', fill) + bodyFor(id) + snippet.after;
+      const [head = '', tail = ''] = snippet.before.split('|');
+      const opening = head + (slotFill[id] ?? '') + tail;
+      const empty = opening + snippet.after;
+      const wrapped = opening + bodyFor(id) + snippet.after;
       for (const content of [empty, wrapped]) {
         expect(
           validateStoryMarkup([{ name: 'P', content }], builtinMacros, {

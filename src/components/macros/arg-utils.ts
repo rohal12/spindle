@@ -259,3 +259,8 @@ export function splitArgSpans(raw: string): Span[] {
 export function splitArgs(raw: string): string[] {
   return splitArgSpans(raw).map(([a, b]) => raw.slice(a, b));
 }
+
+/** `text` as a regular expression source that matches it literally. */
+export function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

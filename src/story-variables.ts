@@ -8,6 +8,7 @@ import {
 import { isCodeAttribute } from './markup/code-attributes';
 import { isRawMacro } from './markup/ast';
 import { errorMessage } from './utils/error-message';
+import { escapeRegExp } from './components/macros/arg-utils';
 import {
   CodeSyntaxError,
   lexJs,
@@ -89,8 +90,7 @@ export interface VariableSchema extends FieldSchema {
 }
 
 function declarationRegex(sigil: string): RegExp {
-  const escaped = sigil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^${escaped}(\\w+)\\s*=\\s*(.+)$`);
+  return new RegExp(`^${escapeRegExp(sigil)}(\\w+)\\s*=\\s*(.+)$`);
 }
 const VALID_VAR_TYPES = new Set<string>(['number', 'string', 'boolean']);
 
