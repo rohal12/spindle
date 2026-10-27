@@ -20,7 +20,6 @@ import { getBackend, getBackendType } from '../../src/saves/storage';
 import { on as emitterOn } from '../../src/event-emitter';
 import type { StoryData, Passage as PassageData } from '../../src/parser';
 import type { SavePayload, SaveExport } from '../../src/saves/types';
-import { isSaveExport } from '../../src/saves/types';
 import { on } from '../../src/event-emitter';
 
 function makePassage(pid: number, name: string, content: string): PassageData {
@@ -378,7 +377,7 @@ describe('SaveManagerContent', () => {
 
     it('clicking Export triggers download with correct filename', async () => {
       const ptId = useStoryStore.getState().playthroughId;
-      const record = await createSave(IFID, ptId, makePayload());
+      await createSave(IFID, ptId, makePayload());
 
       // Spy on createElement to capture the anchor element
       const clickSpy = vi.fn();

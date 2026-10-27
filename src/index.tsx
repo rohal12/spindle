@@ -25,11 +25,7 @@ import {
   validateMarkup,
   type MarkupPassage,
 } from './markup/validate';
-import {
-  effectiveWidgets,
-  parseWidgetDef,
-  type WidgetDefinition,
-} from './widgets/widget-def';
+import { effectiveWidgets, type WidgetDefinition } from './widgets/widget-def';
 import { parseMarkup } from './markup/parse';
 import { setBlockWidget } from './markup/ast';
 import { registerWidgetDefinitions } from './widgets/register-widget-def';

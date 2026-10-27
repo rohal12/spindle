@@ -1,5 +1,5 @@
 import { useContext, useMemo } from 'preact/hooks';
-import { WidgetChildrenContext, renderNodes } from '../../markup/render';
+import { WidgetChildrenContext } from '../../markup/render';
 import { useMergedLocals } from '../../hooks/use-merged-locals';
 import { evaluateDisplay } from '../../expression';
 import { DisplayOnlyContext } from '../../display-only';

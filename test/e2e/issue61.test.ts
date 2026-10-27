@@ -6,7 +6,7 @@
  * Requires dist/story.html to exist (run `npm run preview` first).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { createServer } from 'http';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
@@ -18,7 +18,6 @@ const storyPath = resolve(distDir, 'story.html');
 
 let server: ReturnType<typeof createServer>;
 let browser: Browser;
-let page: Page;
 let baseUrl: string;
 
 beforeAll(async () => {
@@ -39,20 +38,12 @@ beforeAll(async () => {
   });
 
   browser = await chromium.launch();
-  page = await browser.newPage();
 }, 30_000);
 
 afterAll(async () => {
   await browser?.close();
   server?.close();
 });
-
-async function navigateToTestPage() {
-  await page.goto(`${baseUrl}/story.html`);
-  await page.waitForSelector('[data-passage="Start"]');
-  await page.click('a.macro-link:has-text("Nested HTML include")');
-  await page.waitForSelector('[data-passage="Nested HTML Include Test"]');
-}
 
 async function openDialogAndCheck(
   buttonText: string,

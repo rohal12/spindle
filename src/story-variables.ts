@@ -13,7 +13,6 @@ import {
   CodeSyntaxError,
   lexJs,
   readMemberPath,
-  scanStringLiteral,
   type JsGoal,
   type VariableRef,
 } from './js-lexer';

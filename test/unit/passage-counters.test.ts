@@ -213,7 +213,7 @@ describe('counters in saves', () => {
       );
     }
     expect(JSON.parse(JSON.stringify(renderCounts))).toMatchObject({
-      __proto__: 2,
+      ['__proto__']: 2,
       constructor: 2,
     });
   });

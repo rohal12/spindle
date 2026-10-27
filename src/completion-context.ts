@@ -8,7 +8,6 @@ import {
   parameterLookup,
   macroArgumentLookup,
   executesRawBody,
-  usesBuiltinSemantics,
   type PieceBase,
 } from './code-check';
 import { macroArgumentSpans } from './components/macros/macro-args';

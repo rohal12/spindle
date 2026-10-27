@@ -331,7 +331,7 @@ function installSnapshotSvgStyles(
     let start = 0;
     let depth = 0;
     for (let i = 0; i <= rewritten.length; i++) {
-      const ch = rewritten[i];
+      const ch = rewritten.charAt(i);
       if (ch === '\\') i++;
       else if (ch === '"' || ch === "'") i = skipString(rewritten, i) - 1;
       else if (ch === '(' || ch === '[') depth++;
