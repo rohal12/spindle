@@ -353,6 +353,42 @@ describe('dialog accessibility', () => {
     },
   );
 
+  it.each([
+    ['external', '', '', 'external'],
+    ['mixed', '<input id="inside" type="radio" name="color">', '', 'inside'],
+    [
+      'checked external',
+      '<input id="inside" type="radio" name="color">',
+      'checked',
+      'external',
+    ],
+  ])(
+    'tabs through %s form-associated radios (#688)',
+    (_name, inside, checked, stop) => {
+      useStoryStore.getState().init(
+        makeStoryData([
+          makePassage(1, 'Start', 'Hello'),
+          makePassage(
+            2,
+            'External',
+            `<form id="prefs">${inside}</form>
+<input id="external" type="radio" name="color" form="prefs" ${checked}>
+<input id="other" type="radio" name="color" form="prefs">
+<button id="after">After</button>`,
+          ),
+        ]),
+      );
+      act(() => window.Story.openDialog('External', noClose));
+      expect(document.activeElement).toBe(byId(stop));
+      press('Tab');
+      expect(document.activeElement).toBe(byId('after'));
+      press('Tab');
+      expect(document.activeElement).toBe(byId(stop));
+      press('Tab', true);
+      expect(document.activeElement).toBe(byId('after'));
+    },
+  );
+
   it('pulls focus back into the dialog when it escaped', () => {
     act(() => window.Story.openDialog('Form'));
     opener.focus();

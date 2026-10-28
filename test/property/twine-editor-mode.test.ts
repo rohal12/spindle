@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { test, fc } from '@fast-check/vitest';
 import { highlightSpans } from '../../src/twine-editor/highlight';
 import { runLines } from '../support/twine-editor-mode';
@@ -38,6 +38,15 @@ const passage = fc
   .map((text) => text.replace(/\r\n?/g, '\n'));
 
 describe('Spindle CodeMirror mode', () => {
+  it('retains branch ownership across multiline macro arguments (#699)', () => {
+    const text =
+      '{.a-{$A} if "q\\"}"}.- switch}<li>aa</li >{.A-A.a-{$A}.aaa-{$A} case\n<_, don\'t}\\{\\{aa{.Aa.__.--000- default}{/switch }{.a_A- elseif "aaaa"}\\{{/if\n}';
+    const styled = runLines(text).filter(
+      (token): token is [number, string, string] => token[2] !== null,
+    );
+    expect(styled).toEqual(spansByLine(text));
+  });
+
   test.prop([passage], fcOptions)(
     'styles each line as highlightSpans styles the whole passage',
     (text) => {

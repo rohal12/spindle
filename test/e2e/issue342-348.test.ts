@@ -101,6 +101,35 @@ New passage
 };
 
 let dir: string;
+const formRadios = [
+  ['external', '', '', 'external', 'other'],
+  [
+    'mixed',
+    '<input id="inside" type="radio" name="color">',
+    '',
+    'inside',
+    'external',
+  ],
+  [
+    'checkedExternal',
+    '<input id="inside" type="radio" name="color">',
+    'checked',
+    'external',
+    'other',
+  ],
+] as const;
+for (const [name, inside, checked] of formRadios) {
+  stories[name] = `${header}:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+<form id="prefs">${inside}</form>
+<input id="external" type="radio" name="color" form="prefs" ${checked}>
+<input id="other" type="radio" name="color" form="prefs">
+<button id="after">After</button>
+`;
+}
+
 let served = 'type';
 let server: ReturnType<typeof createServer>;
 let browser: Browser;
@@ -267,6 +296,23 @@ describe('a dialog trap follows the real tab stops (#373)', () => {
   });
 
   const activeId = () => page.evaluate(() => document.activeElement?.id);
+
+  it.each(formRadios)(
+    'reaches %s form-associated radios and preserves native arrow navigation (#688)',
+    async (name, _inside, _checked, first, next) => {
+      await open(name);
+      expect(await activeId()).toBe(first);
+      await page.keyboard.press('ArrowRight');
+      expect(await activeId()).toBe(next);
+      expect(
+        await page.$eval(`#${next}`, (el) => (el as HTMLInputElement).checked),
+      ).toBe(true);
+      await page.keyboard.press('Tab');
+      expect(await activeId()).toBe('after');
+      await page.keyboard.press('Shift+Tab');
+      expect(await activeId()).toBe(next);
+    },
+  );
 
   it('wraps from the summary of a closed details element (#389)', async () => {
     await open('hint');

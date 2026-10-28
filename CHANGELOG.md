@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Twine's line mode retains enclosing macro and element context across lines so continued branch arguments match whole-passage highlighting (#699).
+- Modal keyboard navigation includes radio buttons associated with a form through the `form` attribute (#688).
+- Registered companion-named macros render in passages, attributes and labels while built-in choice controls retain their option clauses (#689).
+- Formatter structural scans share the runtime's bounded Markdown tokenization, and markup parsing rejects unclosed comment openers without rescanning each remaining suffix (#690).
+- Transcripts snapshot object-valued choices before actions run, preserving earlier choices when requests are reused or mutated (#691).
+
 - Wide Markdown and placeholder paragraphs render without exceeding JavaScript's argument-count limit, including paragraph unwrapping (#681).
 - Custom macros can share built-in branch names through their declared companion metadata, keeping custom branch arguments separate from built-in conditions (#682).
 - Placeholder assembly joins source chunks once, avoiding repeated string flattening as element counts grow (#683).

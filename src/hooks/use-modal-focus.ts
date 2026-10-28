@@ -90,9 +90,11 @@ function isTabStop(el: HTMLElement): boolean {
   const input = el as HTMLInputElement;
   if (el.localName === 'input' && input.type === 'radio' && input.name) {
     const group = Array.from(
-      (
-        input.form ?? (el.getRootNode() as ParentNode)
-      ).querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+      // Form ownership does not imply DOM ancestry: `form="id"` controls
+      // elsewhere in the same tree belong to the group too (#688).
+      (el.getRootNode() as ParentNode).querySelectorAll<HTMLInputElement>(
+        'input[type="radio"]',
+      ),
     ).filter(
       (r) =>
         r.name === input.name &&

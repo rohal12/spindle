@@ -1,6 +1,6 @@
 import { parse, postprocess, preprocess } from 'micromark';
 import { analyzeMarkup } from '../markup/parse';
-import { markdownOptions } from '../markup/markdown';
+import { boundedMarkdownOptions } from '../markup/markdown';
 import type { PairedNode } from '../markup/pair';
 import { sourceLines } from './source-lines';
 
@@ -38,7 +38,7 @@ export function markdownLines(
       }
     }
     const events = postprocess(
-      parse(markdownOptions())
+      parse(boundedMarkdownOptions(markdown))
         .document()
         .write(preprocess()(markdown, undefined, true)),
     );

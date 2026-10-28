@@ -387,12 +387,17 @@ describe('openConstructStart', () => {
 });
 
 describe('highlightWithOpenStart', () => {
-  it.each(['{if $x', '{if $x}', '<span></span', 'a <!-- b', ''])(
-    'is highlightSpans and openConstructStart of %j',
-    (text) =>
-      expect(highlightWithOpenStart(text)).toEqual({
-        spans: highlightSpans(text),
-        openStart: openConstructStart(text),
-      }),
+  it.each([
+    ['{if $x', ''],
+    ['{if $x}', '{if $x}\n'],
+    ['<span></span', '<span>\n'],
+    ['a <!-- b', ''],
+    ['', ''],
+  ])('is highlightSpans and openConstructStart of %j', (text, context) =>
+    expect(highlightWithOpenStart(text)).toEqual({
+      spans: highlightSpans(text),
+      openStart: openConstructStart(text),
+      context,
+    }),
   );
 });

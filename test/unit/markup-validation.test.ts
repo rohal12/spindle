@@ -311,6 +311,17 @@ describe('HTML comments (#360)', () => {
       { type: 'text', value: 'b' },
     ]);
   });
+
+  it.each(['<!-->', '<!--->', '<!---->'])(
+    'keeps short closed comments opaque: %s (#690)',
+    (comment) => {
+      expect(parseMarkup(`a${comment}b`)).toEqual([
+        { type: 'text', value: 'a' },
+        { type: 'text', value: comment, comment: true },
+        { type: 'text', value: 'b' },
+      ]);
+    },
+  );
 });
 
 describe('validateMarkup — email autolinks (#395)', () => {
