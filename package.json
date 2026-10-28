@@ -84,7 +84,7 @@
     "zustand": "^5.0.15"
   },
   "peerDependencies": {
-    "@rohal12/twee-ts": "^2.0.0",
+    "@rohal12/twee-ts": "^2.1.0",
     "happy-dom": ">=21.0.4"
   },
   "peerDependenciesMeta": {
@@ -101,7 +101,7 @@
   "devDependencies": {
     "@fast-check/vitest": "^0.5.0",
     "@preact/preset-vite": "^2.10.6",
-    "@rohal12/twee-ts": "^2.0.0",
+    "@rohal12/twee-ts": "^2.1.0",
     "@types/codemirror": "^5.60.18",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
