@@ -11,6 +11,7 @@ import {
   type Token,
   type VariableScope,
 } from '../tooling';
+import { HTML_TEXT_ELEMENTS } from '../markup/html-elements';
 import { scanMarkupTolerant, tokenizeMarkupTolerant } from '../markup/parse';
 
 type ScannedMarkup = ReturnType<typeof scanMarkupTolerant>;
@@ -234,12 +235,9 @@ function openDo(tokens: readonly Token[]): MacroToken | undefined {
   return open;
 }
 
-/** Elements whose content is code, where `<!--` is not an HTML comment. */
-const CODE_ELEMENTS = new Set(['script', 'style']);
-
 /**
- * The text tokens that are markup, each with the code element (`<script>`
- * or `<style>`) it is in, if any. The text of a `{do}` body is code, and is
+ * The text tokens that are markup, each with the HTML text-only element
+ * it is in, if any. The text of a `{do}` body is code, and is
  * left out. (Strings and expressions in macros are not text tokens.)
  */
 function* markupText(
@@ -254,7 +252,7 @@ function* markupText(
       const tag = token.tag.toLowerCase();
       if (token.isClose) {
         if (tag === element) element = undefined;
-      } else if (!token.isSelfClose && CODE_ELEMENTS.has(tag)) {
+      } else if (!token.isSelfClose && HTML_TEXT_ELEMENTS.has(tag)) {
         element ??= tag;
       }
     } else if (token.type === 'text' && !token.comment && !inDo) {
@@ -264,8 +262,8 @@ function* markupText(
 }
 
 /**
- * Where the `<!--` that no `-->` closes starts, or -1. In a `<script>` or
- * `<style>`, `<!--` is code, no comment.
+ * Where the `<!--` that no `-->` closes starts, or -1. In an HTML
+ * text-only element, `<!--` is literal text, no HTML comment.
  */
 function openComment(tokens: readonly Token[]): number {
   for (const { token, element } of markupText(tokens)) {
@@ -291,7 +289,7 @@ function closesWithGt(text: string, at: number): boolean {
 /**
  * Where a tag starts that is text only for want of its `>`, or -1: `</b`,
  * or `<b_r x=` (no error: `<b` is no tag before `_`), which a `>` on a later
- * line makes a tag. In a code element only its end tag counts.
+ * line makes a tag. In a text-only element only its end tag counts.
  */
 function openTag(text: string, tokens: readonly Token[]): number {
   for (const { token, element } of markupText(tokens)) {

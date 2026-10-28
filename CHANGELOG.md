@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Async custom actions can flush rendered controls with `Story.waitForActions({ includeRunningActions: false })` without waiting for themselves; default waits still include running actions (#701).
+- Session persistence refreshes cached PRNG history metadata after initialization or reseeding so reload and back navigation restore the correct seed (#702).
+- HTML text-only elements preserve tag-shaped text and comment markers, including script and style strings and native textarea defaults (#703).
+- Loop keys distinguish shared Date/RegExp objects from independent equal ones so changed aliases refresh initialized locals (#704).
+
 - Twine's line mode retains enclosing macro and element context across lines so continued branch arguments match whole-passage highlighting (#699).
 - Modal keyboard navigation includes radio buttons associated with a form through the `form` attribute (#688).
 - Registered companion-named macros render in passages, attributes and labels while built-in choice controls retain their option clauses (#689).

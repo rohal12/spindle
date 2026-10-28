@@ -65,6 +65,22 @@ describe('{for} iteration keys for non-JSON values (#221)', () => {
     expect(el.textContent).toBe('2');
   });
 
+  it.each([
+    ['Date', () => new Date(0)],
+    ['RegExp', () => /x/g],
+  ] as const)('remounts when %s aliases change (#704)', (_, make) => {
+    const shared = make();
+    storySet('items', [{ a: shared, b: shared }]);
+    const el = renderPassage(
+      '{for @item of $items}{set @same = @item.a === @item.b}{print @same}{/for}',
+    );
+    expect(el.textContent).toBe('true');
+    storySet('items', [{ a: make(), b: make() }]);
+    expect(el.textContent).toBe('false');
+    storySet('items', [{ a: shared, b: shared }]);
+    expect(el.textContent).toBe('true');
+  });
+
   it('remounts the iteration when a Set item changes contents', () => {
     storySet('items', [new Set(['a'])]);
     const el = renderPassage(

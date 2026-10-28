@@ -1,3 +1,4 @@
+import { RAW_TEXT_ELEMENTS } from './markup/html-elements';
 import { MarkupError, tokenizeMarkup } from './markup/parse';
 import { isCodeAttribute, splitSigilTemplate } from './markup/code-attributes';
 
@@ -141,7 +142,7 @@ const escapeTextReferences = (text: string) =>
  */
 function isLiteralTextElement(parent: ParentNode): boolean {
   return (
-    ['style', 'script'].includes((parent as Element).localName) &&
+    RAW_TEXT_ELEMENTS.has((parent as Element).localName) &&
     (parent as Element).namespaceURI === HTML_NAMESPACE
   );
 }

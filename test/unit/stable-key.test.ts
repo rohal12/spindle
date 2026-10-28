@@ -87,6 +87,23 @@ describe('stableKey', () => {
     );
   });
 
+  it.each([
+    ['Date', () => new Date(0)],
+    ['RegExp', () => /x/g],
+  ] as const)(
+    'distinguishes shared and separate %s values (#704)',
+    (_, make) => {
+      const shared = make();
+      const copy = make();
+      expect(stableKey({ a: shared, b: shared })).not.toBe(
+        stableKey({ a: make(), b: make() }),
+      );
+      expect(stableKey({ a: shared, b: shared })).toBe(
+        stableKey({ a: copy, b: copy }),
+      );
+    },
+  );
+
   it('does not throw on an invalid Date', () => {
     expect(() => stableKey(new Date(NaN))).not.toThrow();
   });

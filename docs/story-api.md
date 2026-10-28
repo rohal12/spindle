@@ -623,7 +623,7 @@ await Story.waitForActions();
 console.log(Story.passage); // the loaded passage
 ```
 
-A custom action registered with `ctx.useAction()` takes part the same way when its `perform` returns a promise. Its own code should not await `Story.waitForActions()`, which would wait for the action itself.
+A custom action registered with `ctx.useAction()` takes part the same way when its `perform` returns a promise. Inside its callback, use `await Story.waitForActions({ includeRunningActions: false })` to wait for rendered controls without waiting for the callback itself. The default wait includes running actions and would wait for itself.
 
 ### `Story.on(event, callback)`
 
@@ -704,6 +704,19 @@ Story.waitForActions().then(function (actions) {
   console.log('Forest has ' + actions.length + ' actions');
 });
 ```
+
+The optional `includeRunningActions` flag defaults to `true`. Set it to `false` inside an asynchronous action callback when you need the destination's rendered controls before finishing:
+
+```js
+const perform = async () => {
+  await fetchGameData();
+  Story.goto('Forest');
+  const actions = await Story.waitForActions({ includeRunningActions: false });
+  // Inspect the rendered Forest controls here.
+};
+```
+
+This option waits for rendering and transitions, while skipping the running-action completion barrier. External callers can continue to use the default wait, or `await Story.step(id)`, to await the callback and its effects.
 
 ### `Story.observe()`
 

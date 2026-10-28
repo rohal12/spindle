@@ -22,6 +22,7 @@ import {
   type TextScope,
 } from '../interpolation';
 import { MacroError } from '../components/macros/MacroError';
+import { HTML_TEXT_ELEMENTS, RAW_TEXT_ELEMENTS } from './html-elements';
 import { isCodeAttribute } from './code-attributes';
 import { errorMessage } from '../utils/error-message';
 import { EMPTY_NAMESPACE } from '../utils/namespace';
@@ -113,7 +114,7 @@ const STRUCTURAL_ELEMENTS = new Set([
 ]);
 
 /** Elements whose content is literal text, not markdown. */
-const PREFORMATTED_ELEMENTS = new Set(['pre', 'textarea', 'style', 'script']);
+const PREFORMATTED_ELEMENTS = new Set(['pre', ...HTML_TEXT_ELEMENTS]);
 export const WidgetChildrenContext = createContext<WidgetChildren | null>(null);
 
 /**
@@ -778,7 +779,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   let children: preact.ComponentChildren = undefined;
   let structural = false;
   if (node.children.length > 0) {
-    if (tag === 'style' || tag === 'script') {
+    if (RAW_TEXT_ELEMENTS.has(tag)) {
       // Raw-text elements keep script text and character-reference lookalikes
       // (`?a=1&notch=2`) as written (#453)
       children = node.children.map((n) =>
