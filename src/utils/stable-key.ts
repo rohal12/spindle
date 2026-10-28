@@ -86,12 +86,12 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     return named(keys.length ? `${key}${fieldsOf(obj, keys, seen)}` : key);
   };
 
-  // Read with the built-in methods: a subclass may override them. A Date or
-  // RegExp holds no other value, so it needs no number unless it has fields.
+  // Every object participates in the graph, including Date/RegExp leaves
+  // whose aliases can affect mount-initialized locals (#704).
+  seen.set(obj, seen.size);
+
+  // Read with the built-in methods: a subclass may override them.
   if (val instanceof Date || val instanceof RegExp) {
-    if (className !== undefined && extraKeys(obj).length) {
-      seen.set(obj, seen.size);
-    }
     return withFields(
       val instanceof Date
         ? `Date(${Date.prototype.getTime.call(val)})`
@@ -99,7 +99,6 @@ function keyOf(val: unknown, seen: Map<object, number>): string {
     );
   }
 
-  seen.set(obj, seen.size);
   if (Array.isArray(val)) {
     // A hole is no element, not an undefined one (#497), as for deepEqual
     // and a save; a plain `map` would skip it, giving `[,]` the key of `[]`

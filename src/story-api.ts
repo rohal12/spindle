@@ -175,7 +175,9 @@ export interface StoryAPI {
     event: E,
     callback: StoryEventCallback<E>,
   ): () => void;
-  waitForActions(): Promise<StoryAction[]>;
+  waitForActions(options?: {
+    includeRunningActions?: boolean;
+  }): Promise<StoryAction[]>;
   observe(): Observation;
   step(id: string, value?: unknown): Promise<Observation>;
   setObservedActions(rules: ObservedActionRules): void;
@@ -446,10 +448,14 @@ function createStoryAPI(): StoryAPI {
       return trackRuntimeUnsub(unsub);
     },
 
-    async waitForActions(): Promise<StoryAction[]> {
+    async waitForActions(
+      options: { includeRunningActions?: boolean } = {},
+    ): Promise<StoryAction[]> {
       // An action that finishes later (QuickLoad) has not changed what the
       // checks below look at until it has (#504)
-      await settleRunningActions();
+      // A callback can request a render flush without waiting for its own
+      // completion. Keep the default external action-completion barrier.
+      if (options.includeRunningActions !== false) await settleRunningActions();
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
       });

@@ -150,9 +150,17 @@ function rebuild(
   function copy(node: unknown, ancestors: object[]): unknown {
     if (counter++ === target) return replacement;
     if (node === null || typeof node !== 'object') return node;
-    if (node instanceof Date || node instanceof RegExp) return node;
     const seen = copies.get(node);
     if (seen) return seen;
+    if (node instanceof Date || node instanceof RegExp) {
+      const out =
+        node instanceof Date
+          ? new Date(node.getTime())
+          : new RegExp(node.source, node.flags);
+      if (out instanceof RegExp) out.lastIndex = (node as RegExp).lastIndex;
+      copies.set(node, out);
+      return out;
+    }
     const out: object = Array.isArray(node)
       ? new Array(node.length)
       : node instanceof Map

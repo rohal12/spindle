@@ -905,9 +905,12 @@ export interface StoryAPI {
   /**
    * Wait for the actions performed with `performAction()` that are still
    * running, then for the next frame's actions to be registered, and return
-   * them.
+   * them. Set `includeRunningActions: false` inside an asynchronous action
+   * callback to flush rendering without waiting for the callback itself.
    */
-  waitForActions(): Promise<StoryAction[]>;
+  waitForActions(options?: {
+    includeRunningActions?: boolean;
+  }): Promise<StoryAction[]>;
 
   /**
    * What the story shows and offers now: the passage text, the

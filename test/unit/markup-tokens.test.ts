@@ -45,6 +45,44 @@ describe('tokenizeMarkup', () => {
     });
   });
 
+  describe('HTML text-only bodies (#703)', () => {
+    it.each([
+      'script',
+      'style',
+      'textarea',
+      'title',
+      'iframe',
+      'xmp',
+      'noembed',
+      'noframes',
+    ])('keeps tags and comment markers literal in <%s>', (tag) => {
+      const body = 'Hello <b>world</b> </other> <!-- literal --> <broken';
+      expect(tokenizeMarkup(`<${tag}>${body}</${tag}>`)).toMatchObject([
+        { type: 'html', tag, isClose: false },
+        { type: 'text', value: body },
+        { type: 'html', tag, isClose: true },
+      ]);
+    });
+
+    it('keeps macros and interpolation active and resumes HTML after the closer', () => {
+      expect(
+        tokenizeMarkup(
+          '<TEXTAREA><b>{$n}{print 2}</textareax></TeXtArEa><b>x</b>',
+        ).map((t) => t.type),
+      ).toEqual([
+        'html',
+        'text',
+        'variable',
+        'macro',
+        'text',
+        'html',
+        'html',
+        'text',
+        'html',
+      ]);
+    });
+  });
+
   describe('text', () => {
     it('returns a single text token for plain text', () => {
       const tokens = tokenizeMarkup('Hello world');

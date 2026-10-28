@@ -25,7 +25,7 @@
 {{
 const LB = String.fromCharCode(123);
 const RB = String.fromCharCode(125);
-const { SIGIL_SCOPES, withSelectors } = shared;
+const { SIGIL_SCOPES, withSelectors, HTML_TEXT_ELEMENTS } = shared;
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const BRANCH_PARENT = { elseif: 'if', else: 'if', case: 'switch', default: 'switch', next: 'timed' };
 const LINK_SEPARATORS = [['|', false], ['->', false], ['<-', true]];
@@ -142,6 +142,8 @@ let skipEnd = -1;
 let attrCode = false;
 /** The macro whose raw body is being read. */
 let rawName = '';
+/** The HTML text-only body being read; its own closer ends this context. */
+let htmlTextTag = '';
 
 /**
  * The index in `inner` (at `at` in the input) of the first `separator` that
@@ -209,12 +211,18 @@ Tokens
 TokenItem
   = TextRun
   / Escape
-  / Comment
-  / LinkLexeme
-  / EmailAutolink
-  / &{ return !textMode; } UriAutolink
-  / &{ return !textMode; } tag:HtmlOpen { return tag; }
-  / &{ return !textMode; } tag:HtmlClose { return VOID_TAGS.has(tag.lower) ? null : tag; }
+  / &{ return !htmlTextTag; } Comment
+  / &{ return !htmlTextTag; } LinkLexeme
+  / &{ return !htmlTextTag; } EmailAutolink
+  / &{ return !textMode && !htmlTextTag; } UriAutolink
+  / &{ return !textMode && !htmlTextTag; } tag:HtmlOpen {
+      if (!tag.isSelfClose && HTML_TEXT_ELEMENTS.has(tag.lower)) htmlTextTag = tag.lower;
+      return tag;
+    }
+  / &{ return !textMode; } tag:HtmlClose &{ return !htmlTextTag || tag.lower === htmlTextTag; } {
+      htmlTextTag = '';
+      return VOID_TAGS.has(tag.lower) ? null : tag;
+    }
   / Value
   / tag:MacroTag
     body:( &{ rawName = tag.lower; return tag.kind === 'open' && hooks.isRaw(rawName); } b:RawTokens { return b; } )?
@@ -282,7 +290,7 @@ Escape
 /** A character that starts no markup here. */
 Literal
   = "{" !(Selectors [$_@%(!/a-zA-Z]) { return lexeme('text', location(), { value: LB }); }
-  / !(&{ return !textMode; } HtmlClose) "<" { return lexeme('text', location(), { value: '<' }); }
+  / !(&{ return !textMode && !htmlTextTag; } HtmlClose) "<" { return lexeme('text', location(), { value: '<' }); }
   / "[" { return lexeme('text', location(), { value: '[' }); }
 
 LinkLexeme

@@ -285,6 +285,12 @@ function persistSession(get: () => StoryState): { error: unknown } | undefined {
     sessionMoments.length = history.length;
   }
 
+  // Reseeding replaces an existing moment's PRNG snapshot. Keep metadata
+  // current without reconstructing the cached variable namespaces (#702).
+  for (let i = 0; i < sessionMoments.length; i++) {
+    sessionMoments[i] = savedMoment(history[i]!, sessionMoments[i]!.variables);
+  }
+
   // Append new entries
   if (sessionMoments.length < history.length) {
     const gap = history.length - sessionMoments.length;

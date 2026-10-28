@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStoryStore, _resetRuntimePhase } from '../../src/store';
+import { installStoryAPI } from '../../src/story-api';
+import { resetPRNG } from '../../src/prng';
 import { on as emitterOn, resetEmitter } from '../../src/event-emitter';
 import { decodeSavePayload, loadSession } from '../../src/saves/save-manager';
 import type { StoryData, Passage } from '../../src/parser';
@@ -43,6 +45,7 @@ function refresh(defaults: Record<string, unknown>): void {
 describe('history navigation', () => {
   beforeEach(() => {
     resetEmitter();
+    resetPRNG();
     _resetRuntimePhase();
     sessionStorage.clear();
     useStoryStore.setState({ maxHistory: 40 });
@@ -144,6 +147,28 @@ describe('history navigation', () => {
     expect(store().variables.n).toBe(7);
     expect(shared.n).toBe(7);
   });
+
+  it.each([undefined, 'old-seed'])(
+    'refreshes cached PRNG metadata after reseeding from %s (#702)',
+    (seed) => {
+      store().init(makeStoryData(), { n: 0 });
+      installStoryAPI();
+      const Story = window.Story;
+      if (seed) Story.prng.init(seed, false);
+      store().navigate('B');
+      Story.prng.init('reseed', false);
+      store().navigate('C');
+      store().goBack();
+      expect(Story.prng.seed).toBe('reseed');
+      store().goForward();
+
+      refresh({ n: 0 });
+      store().goBack();
+      expect(store().currentPassage).toBe('B');
+      expect(Story.prng.isEnabled()).toBe(true);
+      expect(Story.prng.seed).toBe('reseed');
+    },
+  );
 
   describe('back/forward restore recorded snapshots (#159)', () => {
     it('discards changes to variables untouched by the transition', () => {

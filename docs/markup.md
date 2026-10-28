@@ -211,6 +211,8 @@ Button and dialog labels (`{button "Count: {$count}"}`) and selector-based class
 
 The content of `<pre>`, `<textarea>` and `<svg>` is not processed as markdown: indentation and characters such as `#`, `*` and `-` are kept as written. Variables and macros still work inside them.
 
+HTML text-only elements (`<script>`, `<style>`, `<textarea>`, `<title>`, `<iframe>`, `<xmp>`, `<noembed>` and `<noframes>`) keep tag-shaped text and comment markers literal until their own closing tag. For example, `<textarea>Hello <b>world</b></textarea>` has the default value `Hello <b>world</b>`. Variables and macros remain active. Character references such as `&amp;` decode in textarea and title text; raw-text elements such as script and style preserve them as written.
+
 ```
 <pre>
 Inventory:

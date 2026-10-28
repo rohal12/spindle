@@ -78,6 +78,122 @@ afterAll(async () => {
   await browser?.close();
 });
 
+it('lets an asynchronous action wait for its rendered destination (#701)', async () => {
+  await boot({
+    passages: {
+      Start: '{async-control}',
+      Next: '{button "Ready"}Ready{/button}',
+    },
+    script: `Story.defineMacro({
+      name: 'async-control',
+      render(props, ctx) {
+        const perform = async () => {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          Story.goto('Next');
+          const controls = await Story.waitForActions({ includeRunningActions: false });
+          window.finished = controls.some(action => action.label === 'Ready');
+        };
+        const id = ctx.useAction({ type: 'button', key: 'async', label: 'Async', perform });
+        return ctx.h('button', { 'data-action': id, onClick: perform }, 'Async');
+      },
+    });`,
+  });
+  const observation = await page.evaluate(async () => {
+    return Promise.race([
+      Story.step('button:async'),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Action deadlocked')), 1000),
+      ),
+    ]);
+  });
+  expect(observation.passage).toBe('Next');
+  expect(await page.evaluate(() => (window as any).finished)).toBe(true);
+  // The outer default wait still completes after the action's render-only wait.
+  expect(
+    await page.evaluate(async () => (await Story.waitForActions()).length),
+  ).toBeGreaterThan(0);
+});
+
+it.each([undefined, 'old-seed'])(
+  'restores a reseeded history moment after reload from %s (#702)',
+  async (seed) => {
+    await boot({ passages: { Start: 'Start', Next: 'Next', End: 'End' } });
+    await page.evaluate(async (seed) => {
+      Story.setTransition({ type: 'none' });
+      if (seed) Story.prng.init(seed, false);
+      Story.goto('Next');
+      await Story.waitForActions();
+      Story.prng.init('reseed', false);
+      Story.goto('End');
+      await Story.waitForActions();
+    }, seed);
+    await page.reload();
+    await page.waitForSelector('[data-passage="End"]');
+    const result = await page.evaluate(async () => {
+      Story.back();
+      await Story.waitForActions();
+      return {
+        passage: Story.passage,
+        seed: Story.prng.seed,
+        enabled: Story.prng.isEnabled(),
+      };
+    });
+    expect(result).toEqual({ passage: 'Next', seed: 'reseed', enabled: true });
+  },
+);
+
+describe('HTML text-only elements (#703)', () => {
+  it('keeps title and raw fallback bodies literal', async () => {
+    await boot({
+      passages: {
+        Start: encode(
+          '<title id="literal-title">Hello <b>world</b> &amp; rest</title>' +
+            '<xmp id="literal-xmp">Hello <b>world</b> &amp; rest</xmp>' +
+            '<iframe id="literal-frame">Hello <b>world</b> &amp; rest</iframe>',
+        ),
+      },
+    });
+    expect(await page.locator('#literal-title').textContent()).toBe(
+      'Hello <b>world</b> & rest',
+    );
+    for (const id of ['literal-xmp', 'literal-frame']) {
+      expect(await page.locator(`#${id}`).textContent()).toBe(
+        'Hello <b>world</b> &amp; rest',
+      );
+      expect(await page.locator(`#${id} > *`).count()).toBe(0);
+    }
+  });
+
+  it('boots scripts and styles with tag-shaped strings and preserves textarea defaults', async () => {
+    await boot({
+      passages: {
+        Start: encode(
+          '<script>window.tagSample = "<b>";</script>' +
+            '<style>#sample::after { content: "<b> &amp;"; }</style>' +
+            '<div id="sample">Sample</div>' +
+            '<textarea id="literal">Hello <b>world</b> &amp; rest</textarea>' +
+            '<textarea id="active">{print "<i>"}<!-- literal --></textarea>',
+        ),
+      },
+    });
+    expect(await page.evaluate(() => (window as any).tagSample)).toBe('<b>');
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('#sample')!, '::after')
+            .content,
+      ),
+    ).toBe('"<b> &amp;"');
+    expect(await page.locator('#literal').inputValue()).toBe(
+      'Hello <b>world</b> & rest',
+    );
+    expect(await page.locator('#literal > *').count()).toBe(0);
+    expect(await page.locator('#active').inputValue()).toBe(
+      '<i><!-- literal -->',
+    );
+  });
+});
+
 describe('HTML in markdown output is parsed inertly', () => {
   /**
    * Passage markup parses every tag itself, so raw HTML reaches micromark's

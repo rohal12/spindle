@@ -17,8 +17,7 @@
  *   and flags, symbols by description, functions by name.
  * - An object met again (a cycle, or a second reference to it) is equal to
  *   another only when both were first met at the same point of the
- *   walk (#406): a Date or RegExp holding nothing else is compared by value
- *   instead.
+ *   walk (#406, #704).
  */
 import { getClassName } from '../../src/class-registry';
 
@@ -92,9 +91,6 @@ function equalIn(
     if (x.source !== y.source || x.flags !== y.flags) return false;
   }
   if (x instanceof Date || x instanceof RegExp) {
-    const hasFields = registered && extraKeys(x).length > 0;
-    if (hasFields !== (registered && extraKeys(y).length > 0)) return false;
-    if (!hasFields) return true;
     seenA.set(x, seenA.size);
     seenB.set(y, seenB.size);
     return fields();

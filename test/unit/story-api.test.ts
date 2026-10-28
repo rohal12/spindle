@@ -426,6 +426,26 @@ describe('StoryAPI', () => {
       expect(order).toEqual(['performed', 'waited']);
     });
 
+    it('can flush rendered controls without waiting for running actions (#701)', async () => {
+      const order: string[] = [];
+      let done!: () => void;
+      registerSlow(new Promise<void>((r) => (done = r)), order);
+      const performed = Story.performAction('slow');
+      try {
+        const result = await Promise.race([
+          Story.waitForActions({ includeRunningActions: false }).then(
+            () => 'rendered',
+          ),
+          new Promise<string>((r) => setTimeout(() => r('timeout'), 250)),
+        ]);
+        expect(result).toBe('rendered');
+        expect(order).toEqual([]);
+      } finally {
+        done();
+        await performed;
+      }
+    });
+
     it('waitForActions still resolves when the action rejects', async () => {
       registerAction({
         id: 'failing',
