@@ -1,6 +1,7 @@
 import {
   SIGIL_SCOPES,
   lexJs,
+  pairMarkup,
   passagePiecesOfTokens,
   pieceOffset,
   type HtmlToken,
@@ -15,6 +16,9 @@ import { scanMarkupTolerant, tokenizeMarkupTolerant } from '../markup/parse';
 type ScannedMarkup = ReturnType<typeof scanMarkupTolerant>;
 import { jsCodeEnd } from '../markup/code-end';
 import { builtinMacros } from './builtin-macros';
+import { parameterLookup } from '../code-check';
+
+const pairing = parameterLookup(builtinMacros).pairing;
 
 /** The CodeMirror 5 token names Twine themes (see the design spec's table). */
 export type CmStyle =
@@ -458,14 +462,33 @@ export function openConstructStart(text: string): number {
 export function highlightWithOpenStart(text: string): {
   spans: StyledSpan[];
   openStart: number;
+  context: string;
 } {
   try {
     const reading = read(text);
+    const openStart = openStartOf(text, reading);
+    // Retain only the enclosing openers before the lexical tail. Branch
+    // arguments depend on their parent even when it began on an earlier
+    // line; retaining the whole body would make long blocks quadratic (#699).
+    const before = openStart < 0 ? text.length : openStart;
+    const { errors } = pairMarkup(
+      reading.tokens.filter((token) => token.end <= before),
+      pairing,
+    );
+    const openers = errors
+      .filter((error) => error.code === 'unclosed-block')
+      .sort((a, b) => a.start - b.start)
+      .map((error) => text.slice(error.start, error.end));
     return {
       spans: spansOf(text, reading),
-      openStart: openStartOf(text, reading),
+      openStart,
+      context: openers.length ? openers.join('\n') + '\n' : '',
     };
   } catch {
-    return { spans: highlightSpans(text), openStart: openConstructStart(text) };
+    return {
+      spans: highlightSpans(text),
+      openStart: openConstructStart(text),
+      context: '',
+    };
   }
 }

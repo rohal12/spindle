@@ -9,6 +9,7 @@
  */
 import { boot } from './index';
 import { readOnlyValue } from './execute-mutation';
+import { deepClone } from './structural';
 import { isSpecialPassage, useStoryStore } from './store';
 import { noPassageError, specialPassageError } from './runtime-errors';
 import type { StoryAPI } from './story-api';
@@ -134,6 +135,7 @@ export interface TranscriptOptions {
 export interface Transcript {
   /**
    * `Story.step()`, recording the observation it acted on and the choice.
+   * Choice values are copied before the action runs.
    * Await each step before the next: steps are not queued.
    */
   step(id: string, value?: unknown): Promise<Observation>;
@@ -168,13 +170,16 @@ export function createTranscript(
       const action =
         before.actions.find((a) => a.id === id) ??
         story.getActions().find((a) => a.id === id);
+      // Snapshot before the action can mutate its input, including before
+      // awaiting an asynchronous action (#691).
+      const choice = deepClone(value);
       const next = await story.step(id, value);
 
       const chose: TranscriptEntry['chose'] = {
         id,
         label: action?.label ?? id,
       };
-      if (value !== undefined) chose.value = value;
+      if (value !== undefined) chose.value = choice;
       const entry: TranscriptEntry = {
         turn: before.turn,
         passage: before.passage,

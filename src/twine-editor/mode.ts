@@ -10,6 +10,8 @@ import {
 export const LOOK_AHEAD_LINES = 200;
 
 export interface ModeState {
+  /** Enclosing block/element openers, without their previous body text. */
+  context: string;
   /**
    * The text of a construct still open at the end of the previous line,
    * from its start, ending in a line break; `''` when nothing is open.
@@ -68,13 +70,13 @@ function lookAhead(
 
 /** Read the current line's spans and the tail for the next line. */
 function startLine(stream: StringStream, state: ModeState): void {
-  const lineStart = state.tail.length;
-  const head = state.tail + stream.string;
+  const lineStart = state.context.length + state.tail.length;
+  const head = state.context + state.tail + stream.string;
   const line = highlightWithOpenStart(head);
   const open = line.openStart;
   let spans = line.spans;
   // A capped construct still open: no look-ahead until it closes.
-  let capped = state.capped && open === 0;
+  let capped = state.capped && open === state.context.length;
   if (open >= 0 && !capped) {
     const window = lookAhead(stream, head);
     capped = window.capped;
@@ -89,6 +91,7 @@ function startLine(stream: StringStream, state: ModeState): void {
     }));
   state.lineStart = lineStart;
   state.capped = capped;
+  state.context = line.context;
   const rest = open < 0 ? '' : head.slice(open);
   // A capped tail keeps the construct's first line only, so the cost per
   // line stays flat however long it stays open.
@@ -104,7 +107,13 @@ function startLine(stream: StringStream, state: ModeState): void {
 export function mode(): Mode<ModeState> {
   return {
     name: 'spindle',
-    startState: () => ({ tail: '', spans: [], lineStart: 0, capped: false }),
+    startState: () => ({
+      context: '',
+      tail: '',
+      spans: [],
+      lineStart: 0,
+      capped: false,
+    }),
     copyState: (state) => ({ ...state, spans: [...state.spans] }),
     blankLine: (state) => {
       if (state.tail) state.tail += '\n';
@@ -129,6 +138,7 @@ export function mode(): Mode<ModeState> {
         stream.skipToEnd();
         state.spans = [];
         state.tail = '';
+        state.context = '';
         state.capped = false;
         return null;
       }

@@ -282,12 +282,13 @@ class TextEvaluator {
       });
     }
 
-    // Registered widgets take precedence over stray companion markers.
-    if (isSubMacro(node.name)) return '';
-
     const text = getMacroText(node.name);
     if (!text) {
-      const message = getMacro(node.name)
+      const macro = getMacro(node.name);
+      // Explicit implementations take precedence over stray companions,
+      // including their missing-text diagnostics (#689).
+      if (!macro && isSubMacro(node.name)) return '';
+      const message = macro
         ? `{${node.name}} has no text form, so it can't be used in an attribute value or label`
         : `unknown macro {${node.name}}`;
       this.errors.push({ macro: node.name, error: new Error(message) });

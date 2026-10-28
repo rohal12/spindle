@@ -133,6 +133,9 @@ const textMode = options.text === true;
 // Only cursor-context parsing accepts EOF in place of an unfinished closer.
 const completionMode = options.completion === true;
 const hooks = options.hooks;
+// Unclosed comment openers are text. Reject them without rescanning each
+// remaining suffix; completion alone accepts EOF as the closer (#690).
+const lastCommentClose = input.lastIndexOf('-->');
 /** End of the stretch a `.|n|` repetition consumes (see skipTo). */
 let skipEnd = -1;
 /** Whether the attribute whose value is being read holds code. */
@@ -246,7 +249,7 @@ TextRun
  * rendering drops it. (An unclosed `<!--` is ordinary text.)
  */
 Comment
-  = value:$("<!--" (">" / "->" / (!"-->" .)* ("-->" / OpenEnd))) {
+  = value:$("<!--" (">" / "->" / &{ return completionMode || offset() <= lastCommentClose; } (!"-->" .)* ("-->" / OpenEnd))) {
       const node = lexeme('text', location(), { value });
       node.comment = true;
       return node;

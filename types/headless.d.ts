@@ -64,6 +64,7 @@ export interface TranscriptOptions {
 export interface Transcript {
   /**
    * `Story.step()`, recording the observation it acted on and the choice.
+   * Choice values are copied before the action runs.
    * Await each step before the next: steps are not queued.
    */
   step(id: string, value?: unknown): Promise<Observation>;

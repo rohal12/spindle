@@ -903,8 +903,6 @@ function renderMacro(node: MacroNode, key: string) {
     );
   }
 
-  if (isSubMacro(node.name)) return null;
-
   const Component = getMacro(node.name);
   if (Component) {
     return (
@@ -916,6 +914,8 @@ function renderMacro(node: MacroNode, key: string) {
       />
     );
   }
+
+  if (isSubMacro(node.name)) return null;
 
   return (
     <span

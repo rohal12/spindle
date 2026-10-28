@@ -54,11 +54,19 @@ export function markdownToHtml(
   text: string,
   options?: { inline?: boolean },
 ): string {
+  return micromark(text, boundedMarkdownOptions(text, options));
+}
+
+/** Share bounded tokenization with scans that need source token offsets. */
+export function boundedMarkdownOptions(
+  text: string,
+  options?: { inline?: boolean },
+): Options {
   const base = markdownOptions(options);
-  return micromark(text, {
+  return {
     ...base,
     extensions: [...(base.extensions ?? []), unclosedHtml(text), textData],
-  });
+  };
 }
 
 /** Join a data token just read to a data token right before it. */
