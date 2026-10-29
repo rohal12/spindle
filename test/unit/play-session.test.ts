@@ -81,6 +81,46 @@ describe('play session handle', () => {
     await s.close();
   });
 
+  it('snapshots queued nested values and requested names when called (#710)', async () => {
+    const s = await open({ html: 'x' });
+    try {
+      const pending = s.observe();
+      const values = { score: { value: 1 } };
+      const first = s.set(values);
+      values.score.value = 2;
+      const second = s.step('echo', values);
+      const names = ['score'];
+      const read = s.get(names);
+      values.score.value = 3;
+      names[0] = 'other';
+      const results = await Promise.all([pending, first, second, read]);
+      expect(results.slice(1)).toEqual([
+        { echo: [{ score: { value: 1 } }] },
+        { echo: ['echo', { score: { value: 2 } }] },
+        { echo: [['score']] },
+      ]);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('rejects uncloneable queued arguments without poisoning the queue (#710)', async () => {
+    const s = await open({ html: 'x' });
+    try {
+      const pending = s.observe();
+      const invalid = expect(s.step('echo', () => 1)).rejects.toThrow(
+        /could not be cloned/,
+      );
+      const next = s.step('echo', { value: 1 });
+      await invalid;
+      await pending;
+      expect(await next).toEqual({ echo: ['echo', { value: 1 }] });
+      expect(s.closed).toBe(false);
+    } finally {
+      await s.close();
+    }
+  });
+
   it('rejects a call whose arguments cannot be cloned and stays open', async () => {
     const s = await open({ html: 'x' });
     await expect(s.step('x', () => 1)).rejects.toThrow(/could not be cloned/);

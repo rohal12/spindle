@@ -277,26 +277,25 @@ function openComment(tokens: readonly Token[]): number {
 const TAG_START = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/g;
 
 /**
- * Whether the text from `at` is a tag that a `>` on the next line would
- * close (on the same line, `<a@b>` would be an email autolink).
- */
-function closesWithGt(text: string, at: number): boolean {
-  const rest = `${text.slice(at)}\n>`;
-  const [first] = tokenizeMarkupTolerant(rest).tokens;
-  return first?.type === 'html' && first.end === rest.length;
-}
-
-/**
  * Where a tag starts that is text only for want of its `>`, or -1: `</b`,
  * or `<b_r x=` (no error: `<b` is no tag before `_`), which a `>` on a later
  * line makes a tag. In a text-only element only its end tag counts.
  */
 function openTag(text: string, tokens: readonly Token[]): number {
+  let closed: number | undefined;
   for (const { token, element } of markupText(tokens)) {
     for (const m of text.slice(token.start, token.end).matchAll(TAG_START)) {
       const at = token.start + m.index;
       if (element && !(m[1] && m[2]!.toLowerCase() === element)) continue;
-      if (closesWithGt(text, at)) return at;
+      // Only a tag ending at the appended > can have been left open.
+      // Probe once for all candidates: re-tokenizing every suffix makes
+      // plain text such as repeated `</x ` quadratic (#709). The newline
+      // also keeps `<a@b` from becoming an email autolink.
+      closed ??=
+        tokenizeMarkupTolerant(`${text}\n>`).tokens.find(
+          (t) => t.type === 'html' && t.end === text.length + 2,
+        )?.start ?? -1;
+      if (closed === at) return at;
     }
   }
   return -1;

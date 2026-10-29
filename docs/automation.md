@@ -292,7 +292,7 @@ A session you forget to close does not keep Node running: the worker does not ho
 - `BroadcastChannel` is unavailable. Sessions do not hear each other, and Spindle works without it.
 - `localStorage`, `sessionStorage` and `navigator` are happy-dom's, never Node's, and each session has its own: what one session stores, another does not see.
 - The story's `console.log` output goes to the host's stderr, not its stdout, so a host that speaks a protocol on stdout (an MCP server over stdio) is not disturbed. `console.error` goes to stderr as usual.
-- Arguments to `step()` and `set()` must be cloneable; a call whose arguments are not rejects without affecting the session.
+- Request arguments are snapshotted when each session method is called, including nested values and the names array passed to `get()`. Reusing or mutating an object afterwards does not change queued requests or their transcript choices. Arguments must be structured-cloneable; a call whose arguments are not rejects without affecting the session.
 
 #### Example
 

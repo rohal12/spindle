@@ -283,6 +283,17 @@ describe('lexJs nesting', () => {
 });
 
 describe('findCodeEnd', () => {
+  it('finds a raw-body stop after class fields inside a template', () => {
+    const code = '`${class D { function\nstatic x; }} {/do}`;\n';
+    const source = code + '{/do}';
+    expect(
+      findCodeEnd(source, 0, {
+        goal: 'statements',
+        stop: (at) => source.startsWith('{/do}', at),
+      }),
+    ).toBe(code.length);
+  });
+
   it('finds the } closing the code, skipping literals and comments', () => {
     expect(findCodeEnd('/}/.test(s)} x', 0)).toBe(11);
     expect(findCodeEnd('a /* } */ + "}" + `${"}"}` } x', 0)).toBe(27);

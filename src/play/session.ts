@@ -188,7 +188,15 @@ export function openPlaySessionWith(
           reject(new Error(CLOSED_MESSAGE));
           return;
         }
-        queue.push({ op, args, resolve: resolve as Job['resolve'], reject });
+        // Match postMessage's call-time snapshot even while another request
+        // is active. A clone error rejects just this promise before enqueueing.
+        const snapshot: unknown[] = structuredClone(args);
+        queue.push({
+          op,
+          args: snapshot,
+          resolve: resolve as Job['resolve'],
+          reject,
+        });
         pump();
       });
 

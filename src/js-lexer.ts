@@ -97,6 +97,7 @@ interface ParserState {
   start: number;
   end: number;
   exprAllowed: boolean;
+  operandHere: boolean;
   lastTokEnd: number;
   context: unknown[];
   nextToken(): void;
@@ -162,14 +163,6 @@ const SigilParser = class extends (Parser as unknown as Base) {
   typeBeforeLast: TokenType = tt.eof;
   /** Look ahead after a `%name` starting a line (off in look-aheads). */
   lookahead = true;
-  /**
-   * Where a `%` is a transient (true) or the modulo operator (false)
-   * whatever the tokens before it (see parseCode).
-   */
-  percentAt?: ReadonlyMap<number, boolean>;
-  /** Where it read a `%name` as a transient. */
-  transientsRead?: Set<number>;
-
   readToken(code: number): void {
     const self = this as unknown as ParserState;
     // acorn updates it only when parsing; its guesses read it when
@@ -191,15 +184,12 @@ const SigilParser = class extends (Parser as unknown as Base) {
         const afterPrefix =
           self.type === tt.incDec &&
           (this.operandBeforeLast || this.breakBeforeLast);
-        const forced = code === 37 ? this.percentAt?.get(at) : undefined;
         if (
           code === 64 ||
-          (forced ??
-            (self.exprAllowed ||
-              afterPrefix ||
-              (this.lookahead && transientAssignment(self, end))))
+          self.exprAllowed ||
+          afterPrefix ||
+          (this.lookahead && transientAssignment(self, end))
         ) {
-          if (code === 37) this.transientsRead?.add(at);
           self.pos = end;
           self.finishToken(tt.name, self.input.charAt(at) + name);
           return;
@@ -230,6 +220,7 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // or an object key (`class D { function; }`, `{ class: 1 }`)
     const self = this as unknown as ParserState;
     const prevType = self.type;
+    const beforePreviousValue = this.prevValue;
     // The word before, unless it is a member name (`a.static`, `a?.let`),
     // which no contextual keyword is
     this.prevValue = isMemberDot(this.typeBeforeLast) ? undefined : self.value;
@@ -240,7 +231,8 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // acorn takes a `function` or `class` for a statement's (whose `}` a
     // regex may follow) after the `:` of a conditional, and `async function`
     // always. Both are expressions where an operand is (`a ? b : class {} / 2`,
-    // `x = async function () {} / 2`): read them as after what comes before.
+    // `x = async function () {} / 2`), including after contextual operators
+    // such as `of` and `await`: read them as after what comes before.
     if (!property && (type === tt._function || type === tt._class)) {
       const afterAsync =
         type === tt._function &&
@@ -248,8 +240,19 @@ const SigilParser = class extends (Parser as unknown as Base) {
         this.prevValue === 'async' &&
         !this.breakHere;
       const before = afterAsync ? this.typeBeforeLast : prevType;
+      // `yield` ends at a line break; the following declaration then
+      // closes a statement, so a `%name` after it starts a new expression.
+      // For `async function`, retain the operand context from before
+      // `async`: parseIdent has already consumed it as an identifier.
+      const contextualOperand =
+        before === tt.name &&
+        (afterAsync ? this.operandBeforeLast : self.exprAllowed) &&
+        ((afterAsync ? beforePreviousValue : this.prevValue) !== 'yield' ||
+          !(afterAsync ? this.breakBeforeLast : this.breakHere));
       self.type =
-        before === tt.colon && this.colonEndsTernary ? tt.parenL : before;
+        (before === tt.colon && this.colonEndsTernary) || contextualOperand
+          ? tt.parenL
+          : before;
     }
     this.typeBeforeLast = prevType;
     // @ts-expect-error acorn internals
@@ -268,6 +271,31 @@ const SigilParser = class extends (Parser as unknown as Base) {
     ) {
       self.exprAllowed = false;
     }
+  }
+
+  parseIdent(liberal?: boolean): AnyNode {
+    // The parser knows this token is an identifier, even when the
+    // tokenizer guessed `of` was a for-of separator. Set its context
+    // before consuming it, so the following `%` reads as modulo.
+    (this as unknown as ParserState).exprAllowed = false;
+    // @ts-expect-error acorn internals
+    return super.parseIdent(liberal);
+  }
+
+  parseForIn(node: AnyNode, init: AnyNode): AnyNode {
+    // Conversely, this `of` really is a separator. In `const of of
+    // %list`, the preceding identifier can mislead the token-only guess.
+    (this as unknown as ParserState).exprAllowed = true;
+    // @ts-expect-error acorn internals
+    return super.parseForIn(node, init);
+  }
+
+  parseAwait(forInit?: boolean): AnyNode {
+    // `await` is also tokenized as a name; here the parser knows an
+    // operand follows, including a transient such as `await %result`.
+    (this as unknown as ParserState).exprAllowed = true;
+    // @ts-expect-error acorn internals
+    return super.parseAwait(forInit);
   }
 
   braceIsBlock(prevType: TokenType): boolean {
@@ -533,27 +561,11 @@ function parseWithAst(
   src: string,
   goal: JsGoal,
 ): { out: ParsedCode; ast: AnyNode } {
-  // Whether `%name` is a transient or `%` modulo is guessed from the tokens
-  // before it, as acorn guesses whether `/` opens a regex. Where the guess
-  // makes the parser fail at a `%`, the other reading is tried, and the
-  // code parsed again (`for (const of of %list)`, `a⏎of % p`).
-  const percentAt = new Map<number, boolean>();
-  for (;;) {
-    const transientsRead = new Set<number>();
-    try {
-      const ast = parseAst(src, goal, percentAt, transientsRead);
-      const out: ParsedCode = { refs: [], strings: [] };
-      walk(ast, src, out, false, false);
-      out.refs.sort((a, b) => a.start - b.start);
-      return { out, ast };
-    } catch (error) {
-      const pos = (error as { pos?: number }).pos ?? -1;
-      if (!(error instanceof SyntaxError) || percentAt.has(pos)) throw error;
-      TRANS_NAME_RE.lastIndex = pos + 1;
-      if (src.charAt(pos) !== '%' || !TRANS_NAME_RE.test(src)) throw error;
-      percentAt.set(pos, !transientsRead.has(pos));
-    }
-  }
+  const ast = parseAst(src, goal);
+  const out: ParsedCode = { refs: [], strings: [] };
+  walk(ast, src, out, false, false);
+  out.refs.sort((a, b) => a.start - b.start);
+  return { out, ast };
 }
 
 /** The variable at the root of a reference path, and whether it has members. */
@@ -633,24 +645,12 @@ export function readMemberPath(
   return { path, end };
 }
 
-/**
- * Parse `src` as `goal`, reading `%` as `percentAt` says where it says, and
- * noting where it read a transient in `transientsRead`.
- */
-function parseAst(
-  src: string,
-  goal: JsGoal,
-  percentAt: ReadonlyMap<number, boolean>,
-  transientsRead: Set<number>,
-): AnyNode {
+/** Parse `src` as `goal`, using the parser's context for `%name`. */
+function parseAst(src: string, goal: JsGoal): AnyNode {
   try {
     const p = tokenizerAt(src, 0, goal) as ParserState & {
       parse(): AnyNode;
-      percentAt?: ReadonlyMap<number, boolean>;
-      transientsRead?: Set<number>;
     };
-    p.percentAt = percentAt;
-    p.transientsRead = transientsRead;
     if (goal === 'statements') return p.parse();
     // As acorn's parseExpressionAt, and then the code must end
     p.nextToken();
@@ -940,36 +940,58 @@ export function findCodeEnd(
   start: number,
   { goal = 'expression', stop, onRunOut }: FindCodeEndOptions = {},
 ): number {
-  const end = scanCodeEnd(src, start, goal, stop, onRunOut);
-  return end < 0 && !stop ? parsedCodeEnd(src, start, goal) : end;
+  let verifyStop = false;
+  const end = scanCodeEnd(src, start, goal, stop, onRunOut, () => {
+    verifyStop = true;
+  });
+  if (end < 0 || verifyStop) {
+    const parsed = parsedCodeEnd(src, start, goal, stop);
+    if (parsed >= 0) return parsed;
+  }
+  return end;
 }
 
 /**
  * Where the code from `start` ends, as the parser finds it: the `}` it
- * stops at, or -1. The token scan of `findCodeEnd` guesses whether a `/`
- * opens a regex from the tokens before it, and a few rare constructs (a
- * class field named `class` inside a template literal) mislead it; the
- * parser knows. Only asked when the scan finds no end.
+ * stops at (or the `{` matching `stop`), or -1. The token scan of
+ * `findCodeEnd` guesses whether a `/` opens a regex from the tokens before
+ * it, and class fields inside template literals can mislead it. The parser
+ * knows the context. Asked when the scan finds no end or a stop that might
+ * still be template text.
  */
 export function parsedCodeEnd(
   src: string,
   start: number,
   goal: JsGoal,
+  stop?: (index: number) => boolean,
 ): number {
   const p = tokenizerAt(src, start, goal) as ParserState & {
     parse(): unknown;
   };
+  const stopped = {};
+  let stoppedAt = -1;
+  if (stop) {
+    const nextToken = p.nextToken;
+    p.nextToken = () => {
+      nextToken.call(p);
+      if (p.type === tt.braceL && stop(p.start)) {
+        stoppedAt = p.start;
+        throw stopped;
+      }
+    };
+  }
   try {
     if (goal === 'statements') {
       p.parse();
     } else {
       p.nextToken();
       p.parseExpression();
-      if (p.type === tt.braceR) return p.start;
+      if (!stop && p.type === tt.braceR) return p.start;
     }
   } catch (error) {
+    if (error === stopped) return stoppedAt;
     const pos = (error as { pos?: number }).pos ?? -1;
-    if (src.charAt(pos) === '}') return pos;
+    if (!stop && src.charAt(pos) === '}') return pos;
   }
   return -1;
 }
@@ -981,6 +1003,7 @@ function scanCodeEnd(
   goal: JsGoal,
   stop: ((index: number) => boolean) | undefined,
   onRunOut: (() => void) | undefined,
+  onTemplateStop: () => void,
 ): number {
   /** No end: the code runs to the end of `src`. */
   const ranOut = () => {
@@ -993,6 +1016,7 @@ function scanCodeEnd(
   let from = start;
   let afterOperand = false;
   let templateSlip = false;
+  let interpolated = false;
   for (;;) {
     let resumeAt = -1;
     for (const tok of tokens(src, from, goal, { afterOperand })) {
@@ -1044,10 +1068,17 @@ function scanCodeEnd(
         t === tt.num;
       prevEnd = tok.end;
       if (t === tt.braceL) {
-        if (stop?.(tok.start)) return tok.start;
+        if (stop?.(tok.start)) {
+          // A misleading keyword can leave the tokenizer's template
+          // context early. Let the parser verify this possible stop once.
+          if (interpolated) onTemplateStop();
+          return tok.start;
+        }
         stack.push('{');
-      } else if (t === tt.dollarBraceL) stack.push('${');
-      else if (t === tt.parenL) stack.push('(');
+      } else if (t === tt.dollarBraceL) {
+        interpolated = true;
+        stack.push('${');
+      } else if (t === tt.parenL) stack.push('(');
       else if (t === tt.bracketL) stack.push('[');
       else if (t === tt.parenR || t === tt.bracketR) {
         if (last(stack) === (t === tt.parenR ? '(' : '[')) stack.pop();
@@ -1063,6 +1094,8 @@ function scanCodeEnd(
 }
 
 interface Tok {
+  /** Tokenizer expected an operand before this token. */
+  operand?: boolean;
   type: TokenType;
   start: number;
   end: number;
@@ -1146,7 +1179,13 @@ function* tokens(
       yield { error: error as Error, pos };
       return;
     }
-    yield { type: p.type, start: p.start, end: p.end, value: p.value };
+    yield {
+      type: p.type,
+      start: p.start,
+      end: p.end,
+      value: p.value,
+      operand: p.operandHere,
+    };
     if (p.type === tt.eof) return;
   }
 }
@@ -1375,4 +1414,80 @@ export function scanStringLiteral(
     else i++;
   }
   return { end: src.length, closed: false };
+}
+
+/** Identifier replacement boundaries in decoded code (UTF-16). */
+export interface CompletionIdentifier extends Span {
+  kind: 'root' | 'member';
+  /** Decoded name, excluding a root's sigil. */
+  name: string;
+  /** Start of the preceding `.` or `?.`, for bracket-access edits. */
+  dotStart?: number;
+}
+
+/** Read completion boundaries with the same tokenizer as runtime code. */
+export function completionIdentifier(
+  source: string,
+  cursor: number,
+  goal: JsGoal = 'expression',
+): CompletionIdentifier | undefined {
+  let previous: Tok | undefined;
+  for (const token of tokens(source, 0, goal)) {
+    if ('error' in token) {
+      // A bare local sigil is temporarily invalid JavaScript while typing.
+      if (source[token.pos] === '@' && cursor === token.pos + 1)
+        return { kind: 'root', name: '', start: token.pos, end: cursor };
+      return;
+    }
+    const member =
+      previous && isMemberDot(previous.type) ? previous : undefined;
+    if (token.start <= cursor && cursor <= token.end) {
+      if (member && (token.type === tt.name || token.type.keyword)) {
+        return {
+          kind: 'member',
+          name: token.value as string,
+          start: token.start,
+          end: token.end,
+          dotStart: member.start,
+        };
+      }
+      if (token.type === tt.name && !member) {
+        const value = token.value as string;
+        const sigil = sigilAt(source, token.start, value);
+        if (
+          (sigil || value === '$' || value === '_') &&
+          !keyPosition(source, token.end, previous?.type)
+        )
+          return {
+            kind: 'root',
+            name: value.slice(1),
+            start: token.start,
+            end: token.end,
+          };
+      }
+      if (
+        token.type === tt.modulo &&
+        source.slice(token.start, token.end) === '%' &&
+        cursor === token.end &&
+        token.operand
+      )
+        return { kind: 'root', name: '', start: token.start, end: token.end };
+    }
+    if (isMemberDot(token.type) && token.end === cursor) {
+      // Prefer a following identifier's entire suffix, even at its start.
+      previous = token;
+      continue;
+    }
+    if (member && member.end === cursor && token.start >= cursor)
+      return {
+        kind: 'member',
+        name: '',
+        start: cursor,
+        end: cursor,
+        dotStart: member.start,
+      };
+    if (token.start > cursor || token.type === tt.eof) return;
+    previous = token;
+  }
+  return undefined;
 }

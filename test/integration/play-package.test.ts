@@ -104,6 +104,75 @@ describe('package: @rohal12/spindle/play (dist/pkg/play.js)', () => {
     await Promise.all([a.close(), b.close()]);
   });
 
+  it('snapshots queued requests before values are reused (#710)', async () => {
+    const s = await openPlaySession({
+      trusted: true,
+      html: storyHtml({
+        Start: '{$score.value}',
+        StoryVariables: '$score = {"value": 0}\n$other = 10',
+      }),
+    });
+    try {
+      const pending = s.observe();
+      const values = { score: { value: 1 } };
+      const first = s.set(values);
+      const names = ['score'];
+      const firstRead = s.get(names);
+      values.score.value = 2;
+      names[0] = 'other';
+      const second = s.set(values);
+      const secondRead = s.get(['score']);
+      values.score.value = 3;
+      const results = await Promise.all([
+        pending,
+        first,
+        firstRead,
+        second,
+        secondRead,
+      ]);
+      expect(results[2]).toEqual({ score: { value: 1 } });
+      expect(results[4]).toEqual({ score: { value: 2 } });
+    } finally {
+      await s.close();
+    }
+  });
+
+  it('records the object choices requested before queue mutations (#710)', async () => {
+    const html = storyHtml({
+      Start: '{color-choice}',
+      StoryVariables: '$chosen = {"color": ""}',
+    }).replace(
+      '</tw-storydata>',
+      `<script type="text/twine-javascript">
+        Story.defineMacro({ name: 'color-choice', render(props, ctx) {
+          const id = ctx.useAction({ type: 'color', key: 'choice', label: 'Color',
+            perform(value) { Story.set('chosen', value); } });
+          return ctx.h('button', { 'data-action': id }, 'Color');
+        } });
+      </script></tw-storydata>`,
+    );
+    const s = await openPlaySession({ trusted: true, html });
+    try {
+      const action = (await s.observe()).actions[0]!;
+      const pending = s.observe();
+      const value = { color: 'Red' };
+      const red = s.step(action.id, value);
+      const first = s.get(['chosen']);
+      value.color = 'Blue';
+      const blue = s.step(action.id, value);
+      value.color = 'Green';
+      await Promise.all([pending, red, blue]);
+      expect(await first).toEqual({ chosen: { color: 'Red' } });
+      expect(await s.get(['chosen'])).toEqual({ chosen: { color: 'Blue' } });
+      expect((await s.transcript()).map((entry) => entry.chose.value)).toEqual([
+        { color: 'Red' },
+        { color: 'Blue' },
+      ]);
+    } finally {
+      await s.close();
+    }
+  });
+
   it('shares window properties with bare globals in scripts and passages (#635)', async () => {
     const compiled = storyHtml({
       StoryVariables: '$greeting = ""\n$same = false\n$keys = []',
