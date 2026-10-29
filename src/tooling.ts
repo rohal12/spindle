@@ -1,6 +1,9 @@
+import { completionScopes } from './completion-context';
 import { effectiveNamedDefinitions, NameMap } from './utils/macro-names';
 export {
   completionContext,
+  completionTarget,
+  type CompletionTarget,
   type CompletionContext,
   type CompletionContainer,
 } from './completion-context';
@@ -32,6 +35,7 @@ import {
   tokenizeMarkupTolerant as tokenizeRawMarkupTolerant,
   type ParseMarkupOptions as RuntimeParseMarkupOptions,
   type TolerantTokens,
+  mapOffsets,
 } from './markup/parse';
 import {
   parameterLookup,
@@ -97,6 +101,7 @@ export type {
   FindCodeEndOptions,
   JsGoal,
   JsLexHandlers,
+  CompletionIdentifier,
   Sigil,
 } from './js-lexer';
 export { MarkupError, parseSelectors } from './markup/parse';
@@ -347,7 +352,6 @@ export function macroCalls(
   macros: Iterable<ToolingMacro> = [],
 ): MacroCall[] {
   const all = effectiveToolingMacros(macros);
-  const definitions = new NameMap(all.map((macro) => [macro.name, macro]));
   const parametersOf = parameterLookup(all);
   const options = tokenizationOptions({
     macros: all,
@@ -356,7 +360,39 @@ export function macroCalls(
   const hooks = options.hooks!;
   const tokens = tokenizeRawMarkupTolerant(source, options).tokens;
   const calls: MacroCall[] = [];
+  const classifier = macroClassifier(all);
   const classify = (tokens: readonly Token[]) => {
+    for (const call of classifier(tokens)) calls.push(call);
+  };
+  classify(tokens);
+  for (const piece of passagePiecesOf(source, tokens, parametersOf, {
+    isBlock: hooks.isBlock,
+  })) {
+    if (piece.kind !== 'text' || !piece.tokens.length) continue;
+    classify(piece.tokens);
+  }
+  // Consumed arguments are literal even if a same-named widget would
+  // normally evaluate them as markup. Drop heads inside those arguments.
+  let literalEnd = -1;
+  return calls
+    .sort((a, b) => a.token.start - b.token.start)
+    .filter((call) => {
+      if (call.token.start < literalEnd) return false;
+      if (call.kind === 'value' || call.kind === 'branch')
+        literalEnd = call.token.argsEnd;
+      return true;
+    });
+}
+
+/** Shared contextual dispatch for complete and unfinished grammar tokens. */
+function macroClassifier(all: readonly ToolingMacro[]) {
+  const definitions = new NameMap(all.map((macro) => [macro.name, macro]));
+  const hooks = tokenizationOptions({
+    macros: all,
+    hooks: { isBlock: blockLookup(all, false) },
+  }).hooks!;
+  return (tokens: readonly Token[]) => {
+    const calls: MacroCall[] = [];
     const found = new Map<MacroToken, MacroCall>();
     const pending: { node: PairedNode; parent?: MacroToken }[] = pairMarkup(
       tokens,
@@ -392,25 +428,33 @@ export function macroCalls(
       const call = found.get(token) ?? { token, kind: 'branch' as const };
       calls.push(call);
     }
+    return calls;
   };
-  classify(tokens);
-  for (const piece of passagePiecesOf(source, tokens, parametersOf, {
-    isBlock: hooks.isBlock,
-  })) {
-    if (piece.kind !== 'text' || !piece.tokens.length) continue;
-    classify(piece.tokens);
-  }
-  // Consumed arguments are literal even if a same-named widget would
-  // normally evaluate them as markup. Drop heads inside those arguments.
-  let literalEnd = -1;
-  return calls
-    .sort((a, b) => a.token.start - b.token.start)
-    .filter((call) => {
-      if (call.token.start < literalEnd) return false;
-      if (call.kind === 'value' || call.kind === 'branch')
-        literalEnd = call.token.argsEnd;
-      return true;
-    });
+}
+
+/** The opening macro head containing a cursor, including unfinished heads. */
+export function macroCallAt(
+  source: string,
+  cursor: number,
+  macros: Iterable<ToolingMacro> = [],
+): MacroCall | undefined {
+  const all = effectiveToolingMacros(macros);
+  const classify = macroClassifier(all);
+  let selected: MacroCall | undefined;
+  completionScopes(source, cursor, all, (tokens, map) => {
+    const call = classify(tokens).find(
+      ({ token }) => map(token.start) < cursor && cursor <= map(token.end),
+    );
+    if (call)
+      selected = {
+        ...call,
+        token: mapOffsets(call.token, map),
+        ...(call.owner && { owner: mapOffsets(call.owner, map) }),
+      };
+    // A control-owned argument is literal, even for a markup-holding widget.
+    return !call || call.kind === 'invocation';
+  });
+  return selected;
 }
 
 /**

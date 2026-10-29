@@ -1002,6 +1002,17 @@ export function macroCalls(
   macros?: Iterable<ToolingMacro>,
 ): MacroCall[];
 
+/** Opening macro head containing cursor, including unfinished heads. Uses
+ * the same contextual ownership as macroCalls, including independently
+ * evaluated labels/attributes. Returns undefined outside a head. UTF-16
+ * offsets are in source; invalid cursors throw RangeError.
+ */
+export declare function macroCallAt(
+  source: string,
+  cursor: number,
+  macros?: Iterable<ToolingMacro>,
+): MacroCall | undefined;
+
 /** A branch (`{else}`, `{case}`, …) of a macro, with what follows it. */
 export interface PairedBranch {
   tag: MacroToken;
@@ -1340,3 +1351,34 @@ export declare function completionContext(
   cursor: number,
   macros?: Iterable<ToolingMacro>,
 ): CompletionContext;
+
+/** Identifier replacement boundaries in decoded code (UTF-16). */
+export interface CompletionIdentifier {
+  kind: 'root' | 'member';
+  /** Decoded name, excluding a root's sigil. */
+  name: string;
+  /** Includes the sigil for roots and the complete escaped identifier suffix. */
+  start: number;
+  end: number;
+  /** Start of the preceding dot, for bracket-access edits. */
+  dotStart?: number;
+}
+
+/** Full code and identifier boundaries for an edit at the cursor. */
+export type CompletionTarget =
+  | { kind: 'literal' }
+  | (Extract<CompletionContext, { kind: 'code' }> & {
+      identifier?: CompletionIdentifier;
+    });
+
+/** Like completionContext, with full code including the suffix after cursor.
+ * identifier supplies root/member replacement boundaries in code; use
+ * pieceOffset(target, boundary) for original source positions and encode
+ * inserted text through containers from innermost to outermost. Accepts
+ * unfinished enclosing markup; invalid cursors throw RangeError.
+ */
+export declare function completionTarget(
+  source: string,
+  cursor: number,
+  macros?: Iterable<ToolingMacro>,
+): CompletionTarget;

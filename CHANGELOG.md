@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tooling exposes complete identifier replacement spans and source mappings at the cursor, including escaped suffixes in unfinished nested labels and attributes (#706).
+- Tooling exposes contextual dispatch for unfinished macro heads, distinguishing genuine invocations from parent-owned clauses with effective metadata (#707).
+- MathML keeps literal text and case-sensitive attributes through macro and widget bodies, and HTML integration points preserve HTML rendering and reactive content (#708).
+- Twine highlighting probes unfinished HTML candidates with one shared parse instead of repeatedly tokenizing overlapping suffixes (#709).
+- Play sessions snapshot request arguments when called, preserving queued values, requested names and transcript choices after caller mutation (#710).
+- JavaScript parsing resolves modulo/transient ambiguity from parser context without repeatedly reparsing the full code prefix (#711).
+
 - Async custom actions can flush rendered controls with `Story.waitForActions({ includeRunningActions: false })` without waiting for themselves; default waits still include running actions (#701).
 - Session persistence refreshes cached PRNG history metadata after initialization or reseeding so reload and back navigation restore the correct seed (#702).
 - HTML text-only elements preserve tag-shaped text and comment markers, including script and style strings and native textarea defaults (#703).

@@ -26,6 +26,7 @@ import { HTML_TEXT_ELEMENTS, RAW_TEXT_ELEMENTS } from './html-elements';
 import { isCodeAttribute } from './code-attributes';
 import { errorMessage } from '../utils/error-message';
 import { EMPTY_NAMESPACE } from '../utils/namespace';
+import { authorElement, isHtmlEncoding } from './html-integration';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -61,7 +62,7 @@ export const InlineContext = createContext(false);
  */
 export const StructuralContext = createContext(false);
 /**
- * True while rendering inside an element whose content is not markdown: SVG
+ * True while rendering inside an element whose content is not markdown: SVG/MathML
  * (whose namespace `<p>` wrappers would break) and the preformatted `<pre>`
  * `<textarea>`, `<style>` and `<script>`, whose text is literal.
  * Macro and widget bodies read it so their content stays literal too.
@@ -85,12 +86,14 @@ export function useViewScope(): string {
 }
 
 /**
- * True inside an `<svg>` element. SVG attributes are case-sensitive and have
- * no live form properties, so they are set as written (see splitAttributes).
+ * The foreign namespace containing author elements. SVG and MathML attributes
+ * are case-sensitive and have no live HTML form properties.
  */
-const SvgContext = createContext(false);
+const ForeignContext = createContext<'svg' | 'math' | undefined>(undefined);
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const MATH_NAMESPACE = 'http://www.w3.org/1998/Math/MathML';
+const MATH_TEXT_ELEMENTS = new Set(['mi', 'mo', 'mn', 'ms', 'mtext']);
 
 /**
  * Elements whose children must be elements of particular types: markdown
@@ -205,13 +208,15 @@ function PlaceholderAttributes({
   tag,
   attributes,
   placeholders,
-  svg,
+  foreign,
+  math,
   children,
 }: {
   tag: string;
   attributes: Attribute[];
   placeholders: Record<string, ASTNode[]>;
-  svg: boolean;
+  foreign: boolean;
+  math: boolean;
   children: preact.ComponentChildren[];
 }) {
   const scope = useTextScope();
@@ -223,11 +228,11 @@ function PlaceholderAttributes({
     for (const error of result.errors) errors.push([name, error]);
     return [name, result.text, written, true];
   });
-  const { props, direct } = splitAttributes(resolved, svg, tag);
+  const { props, direct } = splitAttributes(resolved, foreign, tag);
   const ref = useDirectAttributes(direct);
   return withAttributeErrors(
     errors,
-    h(tag, ref ? { ...props, ref } : props, children),
+    authorElement(tag, ref ? { ...props, ref } : props, children, math),
   );
 }
 
@@ -236,15 +241,17 @@ function DirectAttributes({
   tag,
   props,
   direct,
+  math,
   children,
 }: {
   tag: string;
   props: Record<string, unknown>;
   direct: [string, string][];
+  math: boolean;
   children: preact.ComponentChildren[];
 }) {
   const ref = useDirectAttributes(direct);
-  return h(tag, { ...props, ref }, children);
+  return authorElement(tag, { ...props, ref }, children, math);
 }
 
 /** An error met while evaluating the named attribute. */
@@ -353,7 +360,8 @@ function convertDomNode(
 
     // Convert attributes, as author HTML's (see splitAttributes): markdown
     // output holds raw HTML from text nodes (a custom macro's, or comments)
-    const svg = el.namespaceURI === SVG_NAMESPACE;
+    const foreign =
+      el.namespaceURI === SVG_NAMESPACE || el.namespaceURI === MATH_NAMESPACE;
     const attributes: Attribute[] = [];
     let placeholders: Record<string, ASTNode[]> | undefined;
     for (const { name, value } of Array.from(el.attributes)) {
@@ -380,12 +388,13 @@ function convertDomNode(
           tag={tag}
           attributes={attributes}
           placeholders={placeholders}
-          svg={svg}
+          foreign={foreign}
+          math={el.namespaceURI === MATH_NAMESPACE}
           children={children}
         />
       );
     }
-    const { props, direct } = splitAttributes(attributes, svg, tag);
+    const { props, direct } = splitAttributes(attributes, foreign, tag);
     if (direct.length > 0) {
       return (
         <DirectAttributes
@@ -393,11 +402,17 @@ function convertDomNode(
           tag={tag}
           props={props}
           direct={direct}
+          math={el.namespaceURI === MATH_NAMESPACE}
           children={children}
         />
       );
     }
-    return h(tag, { ...props, key }, children);
+    return authorElement(
+      tag,
+      { ...props, key },
+      children,
+      el.namespaceURI === MATH_NAMESPACE,
+    );
   }
   return null;
 }
@@ -513,7 +528,7 @@ const PREACT_RESERVED = new Set([
 ]);
 
 /** Names set directly on SVG elements (see splitAttributes). */
-const SVG_DIRECT = new Set([...PREACT_RESERVED, 'class', 'className']);
+const FOREIGN_DIRECT = new Set([...PREACT_RESERVED, 'class', 'className']);
 
 /** Attribute names setAttribute accepts (`@click` is parsed, not settable). */
 const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
@@ -564,7 +579,7 @@ function isNativeDefault(tag: string, name: string): boolean {
  */
 function splitAttributes(
   attributes: Attribute[],
-  svg: boolean,
+  foreign: boolean,
   tag: string,
 ): { props: Record<string, unknown>; direct: [string, string][] } {
   const props: Record<string, unknown> = {};
@@ -576,7 +591,7 @@ function splitAttributes(
     const lower = name.toLowerCase();
     if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
       continue;
-    } else if (!svg && LIVE_PROPERTIES.has(lower)) {
+    } else if (!foreign && LIVE_PROPERTIES.has(lower)) {
       if (!bound && isNativeDefault(tag, lower)) {
         defaults.push([name.toUpperCase(), lower === 'value' ? value : '']);
       } else {
@@ -586,11 +601,11 @@ function splitAttributes(
       !SETTABLE_NAME.test(name) ||
       lower.startsWith('on') ||
       lower === 'translate' ||
-      (svg && (SVG_DIRECT.has(name) || name === '__proto__'))
+      (foreign && (FOREIGN_DIRECT.has(name) || name === '__proto__'))
     ) {
       direct.push([name, value]);
     } else {
-      props[svg ? name : name.toUpperCase()] = value;
+      props[foreign ? name : name.toUpperCase()] = value;
     }
   }
   for (const [name, value] of defaults) props[name] = value;
@@ -752,13 +767,9 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     inline: parentInline,
     structural: parentStructural,
   } = useRenderOptions();
-  const inSvg = useContext(SvgContext);
+  const parentNamespace = useContext(ForeignContext);
   const tag = node.tag.toLowerCase();
-  const isSvgRoot = tag === 'svg';
-  // The content of a foreignObject is HTML again (see below)
-  const isHtmlRoot = inSvg && tag === 'foreignobject';
-  const rawContent = inRaw && !isHtmlRoot;
-  const isRawRoot = !inRaw && (isSvgRoot || PREFORMATTED_ELEMENTS.has(tag));
+  const namespace = tag === 'svg' || tag === 'math' ? tag : parentNamespace;
   const errors: AttributeError[] = [];
   const resolved = Object.entries(node.attributes).map(([k, v]): Attribute => [
     k,
@@ -766,7 +777,24 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     v,
     hasInterpolation(v),
   ]);
-  const { props, direct } = splitAttributes(resolved, inSvg || isSvgRoot, tag);
+  const htmlAnnotation =
+    namespace === 'math' &&
+    tag === 'annotation-xml' &&
+    isHtmlEncoding(resolved.find(([name]) => name === 'encoding')?.[1]);
+  // MathML token elements keep literal text, but their element children use
+  // HTML attributes (Preact also switches their DOM namespace to HTML).
+  const mathText = namespace === 'math' && MATH_TEXT_ELEMENTS.has(tag);
+  const isHtmlRoot =
+    (namespace === 'svg' && tag === 'foreignobject') || htmlAnnotation;
+  const childNamespace = isHtmlRoot || mathText ? undefined : namespace;
+  const rawContent = inRaw && !isHtmlRoot;
+  const isRawRoot =
+    !inRaw && (namespace !== undefined || PREFORMATTED_ELEMENTS.has(tag));
+  const { props, direct } = splitAttributes(
+    resolved,
+    namespace !== undefined,
+    tag,
+  );
   const ref = useDirectAttributes(direct);
   if (ref) props.ref = ref;
   const isInline = INLINE_ELEMENTS.has(tag);
@@ -830,17 +858,26 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   // markdown, for the content of macros and widgets in it too (#477)
   if (isHtmlRoot && children) {
     children = (
-      <SvgContext.Provider value={false}>
+      <ForeignContext.Provider value={undefined}>
         <RawTextContext.Provider value={false}>
           {children}
         </RawTextContext.Provider>
-      </SvgContext.Provider>
+      </ForeignContext.Provider>
     );
   }
-  let element = h(node.tag, props, children);
-  if (isSvgRoot && !inSvg) {
-    element = <SvgContext.Provider value={true}>{element}</SvgContext.Provider>;
+  if (childNamespace !== parentNamespace) {
+    children = (
+      <ForeignContext.Provider value={childNamespace}>
+        {children}
+      </ForeignContext.Provider>
+    );
   }
+  const element = authorElement(
+    node.tag,
+    props,
+    children,
+    namespace === 'math',
+  );
   return withAttributeErrors(
     errors,
     isRawRoot ? (

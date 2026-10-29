@@ -96,6 +96,15 @@ a conditional body executes; custom JavaScript can choose how to use its body.
 Editors can use `kind === 'invocation'` when finding or renaming widget calls,
 preserving parent-owned clauses that happen to share the widget's name.
 
+`macroCallAt(source, cursor, macros?)` returns the opening head containing a
+UTF-16 cursor, including an unfinished head (#707), or `undefined` outside a
+head. It uses the same `MacroCall` shape and ownership rules as `macroCalls`.
+For example, at EOF in `{option "A`, an `option` widget is an `invocation`;
+in `{cycle "$x"}{option "A` or `{listbox "$x"}{option "A`, the call is a
+`value` with the control as `owner`. Labels and attributes have independent
+ownership scopes, and replacement widgets do not inherit built-in control
+ownership. Invalid cursor offsets throw `RangeError`.
+
 ## Pieces of a passage
 
 `passagePieces(source, macros?)` says which parts of a passage are code, which are passage names, and which are text with markup of its own, and where each is: the answer the story-start check and `collectPassageReferences` read, so an editor needn't reconstruct it for variable references (rename, find references, undeclared-variable diagnostics, semantic tokens, hover), syntax checking and passage-name references. It reads half-typed markup, and returns, in source order, with `offset` in UTF-16 units into `source`:
@@ -367,6 +376,36 @@ When code is nested in text, `containers` gives its ownership chain from outermo
 To insert code, encode replacement text from the innermost container outwards. For a `quotes` string, prefix each backslash and either quote character with a backslash; for a `javascript` string, use JavaScript string escaping for its delimiter (including line endings). Attribute and link containers preserve code inside markup braces as written. Do not HTML-encode quotes inside an expression. `containers` is absent at the passage level, and literal contexts remain `{ kind: 'literal' }`.
 
 For example, `completionContext(source, source.length, builtinMacros)` for `source = '{button "{print $obj.'` reports a `string` container with `quote: '"'` and `escapes: 'quotes'`. Replacing the dot with `["first-name"]` requires escaping the quotes in the inserted text to produce `\"` in the passage. Use `pieceOffset` for the replacement range; it retains mappings through decoded strings and CRLF independently of the container chain.
+
+`completionTarget(source, cursor, macros?)` supplies the complete code region
+around a cursor, including the suffix after it (#706). It returns the same
+literal/code distinction, containers and source mappings as `completionContext`,
+with `cursor` in the full decoded `code`. `identifier`, when present, gives
+`{ kind: 'root' | 'member', name, start, end, dotStart? }`. `name` is decoded
+and excludes a root's sigil; `[start, end)` includes the sigil for roots and
+the entire existing identifier, including Unicode escapes after the cursor.
+A member's `dotStart` includes the preceding member operator when replacing
+dot access with bracket access. Empty sigils and empty members support edits
+while typing. Code positions that have no root/member target omit `identifier`.
+
+```js
+const source = String.raw`{print $fo\u006f}`;
+const target = completionTarget(source, 10, builtinMacros);
+if (target.kind === 'code' && target.identifier) {
+  const start = pieceOffset(target, target.identifier.start);
+  const end = pieceOffset(target, target.identifier.end);
+  const edited = source.slice(0, start) + '$foobar' + source.slice(end);
+  // {print $foobar}
+}
+```
+
+For `$obj.$fo\u006f`, a field edit uses `identifier.start` through
+`identifier.end`; choosing a field that needs `["first-name"]` instead starts
+at `identifier.dotStart`. Map both boundaries with `pieceOffset` and encode
+the inserted text through `containers`. These mappings include escaped
+suffixes in complete and unfinished nested labels and attributes. Consumers
+need no identifier parser or guessed closing markup. `completionContext`
+continues to return only the code prefix for existing callers.
 
 ## Macro argument spans
 

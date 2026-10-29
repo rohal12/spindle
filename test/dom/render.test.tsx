@@ -569,7 +569,37 @@ describe('renderNodes', () => {
     });
   });
 
-  describe('SVG rendering', () => {
+  describe('SVG and MathML rendering', () => {
+    it('retains direct annotation attributes when encoding changes (#708)', async () => {
+      useStoryStore.getState().setVariable('encoding', 'application/xml');
+      let el!: HTMLElement;
+      act(() => {
+        el = renderMarkup(
+          '<math><annotation-xml class="keep" encoding="{$encoding}"><div>x</div></annotation-xml></math>',
+        );
+      });
+      const annotation = el.querySelector('annotation-xml')!;
+      expect(annotation.getAttribute('class')).toBe('keep');
+      await act(() => {
+        useStoryStore.getState().setVariable('encoding', 'text/html');
+      });
+      expect(el.querySelector('annotation-xml')!.getAttribute('encoding')).toBe(
+        'text/html',
+      );
+      expect(el.querySelector('annotation-xml')!.getAttribute('class')).toBe(
+        'keep',
+      );
+      expect(el.querySelector('div')!.namespaceURI).toBe(
+        'http://www.w3.org/1999/xhtml',
+      );
+      await act(() => {
+        useStoryStore.getState().setVariable('encoding', 'application/xml');
+      });
+      expect(el.querySelector('annotation-xml')!.getAttribute('class')).toBe(
+        'keep',
+      );
+    });
+
     it('creates SVG elements in the correct namespace', () => {
       const el = renderMarkup(
         '<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">' +

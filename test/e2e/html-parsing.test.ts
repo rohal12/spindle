@@ -78,6 +78,79 @@ afterAll(async () => {
   await browser?.close();
 });
 
+it('preserves MathML text and attributes through macros and widgets (#708)', async () => {
+  await boot({
+    passages: {
+      Start: encode(
+        '<math display="block"><mi>x</mi><mo>+</mo><mn>1</mn>' +
+          '{if true}<mo form="prefix">-</mo>{/if}' +
+          '{operand}' +
+          '<mtext><span title="html">**HTML**</span></mtext>' +
+          '</math>',
+      ),
+      StoryInit: encode(
+        '{widget "operand"}<mi mathvariant="bold">*x*</mi>{/widget}',
+      ),
+    },
+  });
+  const math = page.locator('.passage math');
+  await expect.poll(() => math.count()).toBe(1);
+  expect(await math.getAttribute('display')).toBe('block');
+  expect(await math.locator('mo').allTextContents()).toEqual(['+', '-']);
+  expect(await math.locator('mi').allTextContents()).toEqual(['x', '*x*']);
+  expect(await math.locator('mi').last().getAttribute('mathvariant')).toBe(
+    'bold',
+  );
+  expect(await math.locator('mo').last().getAttribute('form')).toBe('prefix');
+  expect(await math.locator('mi p, mi em, mo ul, mn p').count()).toBe(0);
+  expect(await math.locator('mtext span').getAttribute('title')).toBe('html');
+  const namespaces = await math.evaluate((el) => ({
+    math: el.namespaceURI,
+    token: el.querySelector('mi')!.namespaceURI,
+    html: el.querySelector('mtext span')!.namespaceURI,
+  }));
+  expect(namespaces).toEqual({
+    math: 'http://www.w3.org/1998/Math/MathML',
+    token: 'http://www.w3.org/1998/Math/MathML',
+    html: 'http://www.w3.org/1999/xhtml',
+  });
+  expect(await page.locator('.error').count()).toBe(0);
+});
+
+it.each(['text/html', 'APPLICATION/XHTML+XML'])(
+  'renders reactive HTML in MathML annotation-xml with encoding %s (#708)',
+  async (encoding) => {
+    await boot({
+      passages: {
+        Start: encode(
+          `<math><annotation-xml encoding="${encoding}">` +
+            '<div title="{$title}">{if true}**HTML**{/if}<input value="{$title}"></div>' +
+            '</annotation-xml><annotation-xml encoding="application/xml"><mi>*x*</mi></annotation-xml></math>',
+        ),
+        StoryVariables: '$title = "first"',
+      },
+    });
+    const html = page.locator('.passage annotation-xml div');
+    await expect.poll(() => html.count()).toBe(1);
+    expect(await html.evaluate((el) => el.namespaceURI)).toBe(
+      'http://www.w3.org/1999/xhtml',
+    );
+    expect(await html.getAttribute('title')).toBe('first');
+    expect(await html.locator('strong').textContent()).toBe('HTML');
+    expect(await html.locator('input').inputValue()).toBe('first');
+    await page.evaluate(async () => {
+      Story.set('title', 'second');
+      await Story.waitForActions();
+    });
+    expect(await html.getAttribute('title')).toBe('second');
+    expect(await html.locator('input').inputValue()).toBe('second');
+    expect(await page.locator('.passage annotation-xml mi').textContent()).toBe(
+      '*x*',
+    );
+    expect(await page.locator('.error').count()).toBe(0);
+  },
+);
+
 it('lets an asynchronous action wait for its rendered destination (#701)', async () => {
   await boot({
     passages: {

@@ -157,6 +157,8 @@ Arguments that are not valid JavaScript, such as the text in `{button Don't pani
 
 ## HTML Tags
 
+SVG and MathML preserve literal text and case-sensitive attributes, including content rendered by macros and widgets. For example, `<math display="block"><mi>x</mi><mo>+</mo><mn>1</mn></math>` keeps its plus operator without Markdown wrappers. HTML children of MathML text elements use HTML attributes; HTML-encoded `<annotation-xml>` and SVG `<foreignObject>` also restore Markdown rendering for their contents.
+
 HTML tags work directly in passage content. A tag is `<` followed by a name (a letter, then letters, digits or `-`), its attributes and `>`. Any name makes an element, custom elements included: an unknown or misspelt one such as `<sapn>` renders as an element the browser doesn't know, not as text.
 
 Void tags (`area`, `base`, `br`, `col`, `embed`, `hr`, `img`, `input`, `link`, `meta`, `param`, `source`, `track`, `wbr`) are self-closing and need no closing tag (a redundant one such as `</input>` is ignored). A tag ending in `/>` closes itself too. All other tags require a closing tag, and elements must nest: `<b><i>x</b></i>` is an error.
