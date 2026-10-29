@@ -53,6 +53,12 @@ it.each([
   ['for (p of\nclass C extends Object {} %Math) {}', []],
   ['for (p of\nfunction () {} %Math) {}', []],
   ['async function f() { await class C {} %Math; }', []],
+  ['for (p of async function () {} %Math) {}', []],
+  ['async function f() { await async function () {} %Math; }', []],
+  ['function* g() { yield async function () {} %Math; }', []],
+  ['for (p of async function* () {} %Math) {}', []],
+  ['async function f() { await async function* () {} %Math; }', []],
+  ['function* g() { yield async function* () {} %Math; }', []],
   ['function* g() { yield\nclass C {}\n%value; }', ['%value']],
   ['function* g() { yield\nfunction f() {}\n%value; }', ['%value']],
   ['function* g() { yield\nasync function f() {}\n%value; }', ['%value']],
@@ -82,4 +88,14 @@ it('keeps the syntax error after many corrected modulo statements (#711)', () =>
     expect(error).toBeInstanceOf(CodeSyntaxError);
     expect((error as CodeSyntaxError).pos).toBe(body.length);
   }
+});
+
+it('validates raw code with class fields and delimiter text inside a template', () => {
+  const body = '`${class D { function\nstatic x; }} {/do}`;';
+  expect(
+    validateStoryMarkup(
+      [{ name: 'Start', content: `{do}${body}{/do}` }],
+      doMacro,
+    ),
+  ).toEqual([]);
 });

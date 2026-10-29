@@ -220,6 +220,7 @@ const SigilParser = class extends (Parser as unknown as Base) {
     // or an object key (`class D { function; }`, `{ class: 1 }`)
     const self = this as unknown as ParserState;
     const prevType = self.type;
+    const beforePreviousValue = this.prevValue;
     // The word before, unless it is a member name (`a.static`, `a?.let`),
     // which no contextual keyword is
     this.prevValue = isMemberDot(this.typeBeforeLast) ? undefined : self.value;
@@ -241,11 +242,13 @@ const SigilParser = class extends (Parser as unknown as Base) {
       const before = afterAsync ? this.typeBeforeLast : prevType;
       // `yield` ends at a line break; the following declaration then
       // closes a statement, so a `%name` after it starts a new expression.
+      // For `async function`, retain the operand context from before
+      // `async`: parseIdent has already consumed it as an identifier.
       const contextualOperand =
-        !afterAsync &&
         before === tt.name &&
-        self.exprAllowed &&
-        (this.prevValue !== 'yield' || !this.breakHere);
+        (afterAsync ? this.operandBeforeLast : self.exprAllowed) &&
+        ((afterAsync ? beforePreviousValue : this.prevValue) !== 'yield' ||
+          !(afterAsync ? this.breakBeforeLast : this.breakHere));
       self.type =
         (before === tt.colon && this.colonEndsTernary) || contextualOperand
           ? tt.parenL
@@ -937,36 +940,58 @@ export function findCodeEnd(
   start: number,
   { goal = 'expression', stop, onRunOut }: FindCodeEndOptions = {},
 ): number {
-  const end = scanCodeEnd(src, start, goal, stop, onRunOut);
-  return end < 0 && !stop ? parsedCodeEnd(src, start, goal) : end;
+  let verifyStop = false;
+  const end = scanCodeEnd(src, start, goal, stop, onRunOut, () => {
+    verifyStop = true;
+  });
+  if (end < 0 || verifyStop) {
+    const parsed = parsedCodeEnd(src, start, goal, stop);
+    if (parsed >= 0) return parsed;
+  }
+  return end;
 }
 
 /**
  * Where the code from `start` ends, as the parser finds it: the `}` it
- * stops at, or -1. The token scan of `findCodeEnd` guesses whether a `/`
- * opens a regex from the tokens before it, and a few rare constructs (a
- * class field named `class` inside a template literal) mislead it; the
- * parser knows. Only asked when the scan finds no end.
+ * stops at (or the `{` matching `stop`), or -1. The token scan of
+ * `findCodeEnd` guesses whether a `/` opens a regex from the tokens before
+ * it, and class fields inside template literals can mislead it. The parser
+ * knows the context. Asked when the scan finds no end or a stop that might
+ * still be template text.
  */
 export function parsedCodeEnd(
   src: string,
   start: number,
   goal: JsGoal,
+  stop?: (index: number) => boolean,
 ): number {
   const p = tokenizerAt(src, start, goal) as ParserState & {
     parse(): unknown;
   };
+  const stopped = {};
+  let stoppedAt = -1;
+  if (stop) {
+    const nextToken = p.nextToken;
+    p.nextToken = () => {
+      nextToken.call(p);
+      if (p.type === tt.braceL && stop(p.start)) {
+        stoppedAt = p.start;
+        throw stopped;
+      }
+    };
+  }
   try {
     if (goal === 'statements') {
       p.parse();
     } else {
       p.nextToken();
       p.parseExpression();
-      if (p.type === tt.braceR) return p.start;
+      if (!stop && p.type === tt.braceR) return p.start;
     }
   } catch (error) {
+    if (error === stopped) return stoppedAt;
     const pos = (error as { pos?: number }).pos ?? -1;
-    if (src.charAt(pos) === '}') return pos;
+    if (!stop && src.charAt(pos) === '}') return pos;
   }
   return -1;
 }
@@ -978,6 +1003,7 @@ function scanCodeEnd(
   goal: JsGoal,
   stop: ((index: number) => boolean) | undefined,
   onRunOut: (() => void) | undefined,
+  onTemplateStop: () => void,
 ): number {
   /** No end: the code runs to the end of `src`. */
   const ranOut = () => {
@@ -990,6 +1016,7 @@ function scanCodeEnd(
   let from = start;
   let afterOperand = false;
   let templateSlip = false;
+  let interpolated = false;
   for (;;) {
     let resumeAt = -1;
     for (const tok of tokens(src, from, goal, { afterOperand })) {
@@ -1041,10 +1068,17 @@ function scanCodeEnd(
         t === tt.num;
       prevEnd = tok.end;
       if (t === tt.braceL) {
-        if (stop?.(tok.start)) return tok.start;
+        if (stop?.(tok.start)) {
+          // A misleading keyword can leave the tokenizer's template
+          // context early. Let the parser verify this possible stop once.
+          if (interpolated) onTemplateStop();
+          return tok.start;
+        }
         stack.push('{');
-      } else if (t === tt.dollarBraceL) stack.push('${');
-      else if (t === tt.parenL) stack.push('(');
+      } else if (t === tt.dollarBraceL) {
+        interpolated = true;
+        stack.push('${');
+      } else if (t === tt.parenL) stack.push('(');
       else if (t === tt.bracketL) stack.push('[');
       else if (t === tt.parenR || t === tt.bracketR) {
         if (last(stack) === (t === tt.parenR ? '(' : '[')) stack.pop();
