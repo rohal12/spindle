@@ -59,4 +59,23 @@ describe('segmentRegions', () => {
     const regions = segmentRegions(input);
     expect(regions[0]!.type).toBe('html');
   });
+
+  it.each([
+    '<div><div>\ntext\n</div>\n</div>',
+    '<div><div></div><div>\ntext\n</div>\n</div>',
+    '<DIV><div>\ntext\n</DIV>\n</div>',
+    '<div title="<div>"><div>\ntext\n</div>\n</div>',
+    '<div>\n<!-- <div> -->\ntext\n</div>',
+    '<div>\n{print "<div>"}\ntext\n</div>',
+    '<div><div/>\ntext\n</div>',
+    '<div title="a\n   b"/>',
+    '<img title="a\n   b">',
+    '<div title="a\n   b"></div>',
+    '<div>\ntext\n</div\n>',
+  ])('ends an HTML region at complete tag boundaries (#713): %s', (html) => {
+    expect(segmentRegions(html + '\nnext')).toEqual([
+      { type: 'html', lines: html.split('\n') },
+      { type: 'spindle', lines: ['next'] },
+    ]);
+  });
 });

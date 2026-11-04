@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import * as prettier from 'prettier';
 import { formatPassage } from '../../src/format/format-passage';
+import { parseMarkup, tokenizeMarkup } from '../../src/markup/parse';
 import {
   replaceSpindleTokens,
   restoreSpindleTokens,
@@ -56,6 +57,24 @@ describe('placeholders follow the tokens', () => {
 });
 
 describe('formatting keeps payloads', () => {
+  it.each([
+    '<div title="a\n   b"/>',
+    '<custom-element title="a\n   b"/>',
+    '<img title="a\n   b">',
+    '<div title="a\n   b"></div>',
+  ])('keeps multiline attributes in a closed tag: %s', async (tag) => {
+    for (const prettierOption of [undefined, prettier]) {
+      const options = { prettier: prettierOption };
+      const output = await formatPassage(tag + '\nnext', options);
+      const html = tokenizeMarkup(output).find(
+        (token) => token.type === 'html',
+      );
+      expect(html?.attributes.title).toBe('a\n   b');
+      expect(() => parseMarkup(output)).not.toThrow();
+      expect(await formatPassage(output, options)).toBe(output);
+    }
+  });
+
   it('does not wrap inside a link or a macro', async () => {
     const input =
       'some words [[Go to the old mill->Mill Road]] more {print "a b c d e f g"} words here\n';

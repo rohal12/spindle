@@ -371,7 +371,15 @@ function tokenizerAt(
   goal: JsGoal,
   { onComment, afterOperand = false }: TokenizerOptions = {},
 ): ParserState {
-  const options = onComment ? { ...OPTIONS, onComment } : OPTIONS;
+  // Consumers use absolute offsets, never Acorn's token/node locations.
+  // Its error locations are computed separately from the source. Supplying
+  // a local starting location avoids its backwards newline-prefix search
+  // for every expression on a long passage line.
+  const options = {
+    ...OPTIONS,
+    startLocation: { line: 1, column: 0 },
+    onComment,
+  };
   const p = new SigilParser(options, src, start) as unknown as ParserState;
   if (goal === 'expression') p.type = tt.parenL;
   if (afterOperand) p.exprAllowed = false;
