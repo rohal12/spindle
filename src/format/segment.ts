@@ -1,3 +1,7 @@
+import { tokenizeMarkupTolerant } from '../markup/parse';
+import type { HtmlToken } from '../markup/tokens';
+import { sourceLines } from './source-lines';
+
 /** A run of a passage body that is formatted as one kind of content. */
 export interface Region {
   type: 'spindle' | 'html' | 'script' | 'svg';
@@ -31,6 +35,22 @@ export function segmentRegions(body: string): Region[] {
     lines.pop();
   }
   if (lines.length === 0) return [];
+
+  // Count only real tags: comments, attributes and macro strings can all
+  // contain tag-shaped text. Index once, including the opening region line.
+  const tags: HtmlToken[][] = lines.map(() => []);
+  const lineAt = sourceLines(body);
+  for (const token of tokenizeMarkupTolerant(body).tokens) {
+    if (token.type === 'html') tags[lineAt(token.start)]?.push(token);
+  }
+  const depthOnLine = (line: number, name: string) =>
+    tags[line]!.reduce(
+      (depth, token) =>
+        token.tag.toLowerCase() === name && !token.isSelfClose
+          ? depth + (token.isClose ? -1 : 1)
+          : depth,
+      0,
+    );
 
   const regions: Region[] = [];
   let i = 0;
@@ -70,9 +90,10 @@ export function segmentRegions(body: string): Region[] {
         continue;
       }
 
-      // Check if this is truly multi-line: does the tag close on the same line?
-      const selfClosing = new RegExp(`</${tagName}\\s*>`, 'i');
-      if (selfClosing.test(trimmed)) {
+      // All same-name openers must close, even when an inner one closes on
+      // the opening line. Self-closing tags do not increase the depth.
+      let depth = depthOnLine(i, tagName);
+      if (depth <= 0) {
         pushSpindleLine(regions, line);
         i++;
         continue;
@@ -80,17 +101,10 @@ export function segmentRegions(body: string): Region[] {
 
       // Multi-line HTML block
       const htmlLines: string[] = [line];
-      let depth = 1;
       i++;
       while (i < lines.length && depth > 0) {
         htmlLines.push(lines[i]!);
-        const opens = (
-          lines[i]!.match(new RegExp(`<${tagName}(?:[\\s>]|$)`, 'gi')) ?? []
-        ).length;
-        const closes = (
-          lines[i]!.match(new RegExp(`</${tagName}\\s*>`, 'gi')) ?? []
-        ).length;
-        depth += opens - closes;
+        depth += depthOnLine(i, tagName);
         i++;
       }
       regions.push({ type: 'html', lines: htmlLines });

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- HTML formatting counts all real nested tags from the first region line, preserving valid containers without adding extra closing tags (#713).
+- JavaScript tokenizers skip repeated passage-prefix newline searches when starting at an offset, keeping valid macros on long single lines responsive (#716).
+
 - Tooling exposes complete identifier replacement spans and source mappings at the cursor, including escaped suffixes in unfinished nested labels and attributes (#706).
 - Tooling exposes contextual dispatch for unfinished macro heads, distinguishing genuine invocations from parent-owned clauses with effective metadata (#707).
 - MathML keeps literal text and case-sensitive attributes through macro and widget bodies, and HTML integration points preserve HTML rendering and reactive content (#708).

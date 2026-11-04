@@ -56,13 +56,19 @@ function canonical(markup: string): string {
       // Adjacent text nodes collapse together
       .replace(/ {2,}/g, ' ')
       // Whitespace at a block boundary does not render
-      .replace(/ *\u0001+ */g, '|')
+      .replace(/ *(?:\u0001 *)+/g, '|')
       .replace(/\u0002/g, ' ')
       .replace(/\u0003/g, '\n')
   );
 }
 
 const cases = [
+  '<div><div>\ntext\n</div>\n</div>\nnext\n',
+  '<div><div></div><div>\ntext\n</div>\n</div>\nnext\n',
+  '<div title="<div>"><div>\ntext\n</div>\n</div>\nnext\n',
+  '<div>\n<!-- <div> -->\ntext\n</div>\nnext\n',
+  '<div>\n{print "<div>"}\ntext\n</div>\nnext\n',
+  '<div><div/>\ntext\n</div>\nnext\n',
   '<div>\nLine one\n\nLine two\n</div>\n',
   '<div>\n  a  \n  b\n</div>\n',
   '<div>\na\\\nb\n</div>\n',
