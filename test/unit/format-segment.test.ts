@@ -68,13 +68,14 @@ describe('segmentRegions', () => {
     '<div>\n<!-- <div> -->\ntext\n</div>',
     '<div>\n{print "<div>"}\ntext\n</div>',
     '<div><div/>\ntext\n</div>',
-  ])(
-    'ends a nested HTML region at its actual outer closer (#713): %s',
-    (html) => {
-      expect(segmentRegions(html + '\nnext')).toEqual([
-        { type: 'html', lines: html.split('\n') },
-        { type: 'spindle', lines: ['next'] },
-      ]);
-    },
-  );
+    '<div title="a\n   b"/>',
+    '<img title="a\n   b">',
+    '<div title="a\n   b"></div>',
+    '<div>\ntext\n</div\n>',
+  ])('ends an HTML region at complete tag boundaries (#713): %s', (html) => {
+    expect(segmentRegions(html + '\nnext')).toEqual([
+      { type: 'html', lines: html.split('\n') },
+      { type: 'spindle', lines: ['next'] },
+    ]);
+  });
 });

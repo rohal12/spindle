@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- HTML formatting counts all real nested tags from the first region line, preserving valid containers without adding extra closing tags (#713).
+- HTML formatting counts all real nested tags from the first region line and keeps multiline tags whole, preserving attributes and valid containers without adding extra closing tags (#713).
 - JavaScript tokenizers skip repeated passage-prefix newline searches when starting at an offset, keeping valid macros on long single lines responsive (#716).
 
 - Tooling exposes complete identifier replacement spans and source mappings at the cursor, including escaped suffixes in unfinished nested labels and attributes (#706).

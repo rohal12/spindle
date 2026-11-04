@@ -8,23 +8,6 @@ export interface Region {
   lines: string[];
 }
 
-const VOID_ELEMENTS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
-]);
-
 /**
  * Segment a passage body into regions: spindle (markdown/macros), html blocks, script blocks.
  */
@@ -39,9 +22,13 @@ export function segmentRegions(body: string): Region[] {
   // Count only real tags: comments, attributes and macro strings can all
   // contain tag-shaped text. Index once, including the opening region line.
   const tags: HtmlToken[][] = lines.map(() => []);
+  const tagEndLines = lines.map((_, line) => line);
   const lineAt = sourceLines(body);
   for (const token of tokenizeMarkupTolerant(body).tokens) {
-    if (token.type === 'html') tags[lineAt(token.start)]?.push(token);
+    if (token.type !== 'html') continue;
+    const line = lineAt(token.start);
+    tags[line]!.push(token);
+    tagEndLines[line] = Math.max(tagEndLines[line]!, lineAt(token.end - 1));
   }
   const depthOnLine = (line: number, name: string) =>
     tags[line]!.reduce(
@@ -83,17 +70,13 @@ export function segmentRegions(body: string): Region[] {
       const tagMatch = trimmed.match(/^<([a-zA-Z][\w-]*)/);
       const tagName = tagMatch![1]!.toLowerCase();
 
-      // Skip void elements on their own line — not a multi-line block
-      if (VOID_ELEMENTS.has(tagName) && !lines[i + 1]?.trim().startsWith('<')) {
-        pushSpindleLine(regions, line);
-        i++;
-        continue;
-      }
-
       // All same-name openers must close, even when an inner one closes on
       // the opening line. Self-closing tags do not increase the depth.
       let depth = depthOnLine(i, tagName);
-      if (depth <= 0) {
+      // A closed or void tag can still span lines. Never send its attribute
+      // continuation through prose indentation or split a closing tag.
+      let endLine = tagEndLines[i]!;
+      if (depth <= 0 && endLine === i) {
         pushSpindleLine(regions, line);
         i++;
         continue;
@@ -102,8 +85,9 @@ export function segmentRegions(body: string): Region[] {
       // Multi-line HTML block
       const htmlLines: string[] = [line];
       i++;
-      while (i < lines.length && depth > 0) {
+      while (i < lines.length && (depth > 0 || i <= endLine)) {
         htmlLines.push(lines[i]!);
+        endLine = Math.max(endLine, tagEndLines[i]!);
         depth += depthOnLine(i, tagName);
         i++;
       }
