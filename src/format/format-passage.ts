@@ -246,7 +246,7 @@ async function formatLf(
     if (region.type === 'script') {
       // Same-line <script>…</script> — leave as written
       if (region.lines.length === 1) {
-        lines.push(...region.lines);
+        for (const line of region.lines) lines.push(line);
         continue;
       }
       // Inline <script> — format JS content between tags
@@ -259,7 +259,7 @@ async function formatLf(
       // Without Prettier, where it fails, or where it changed a Spindle
       // token (`{$a}` is an object literal to it), the region stays as written
       if (formatted === undefined || !sameSpindleTokens(innerCode, formatted)) {
-        lines.push(...region.lines);
+        for (const line of region.lines) lines.push(line);
         continue;
       }
       lines.push(region.lines[0]!);
@@ -277,7 +277,7 @@ async function formatLf(
 
     if (region.type === 'svg') {
       // SVG block — leave untouched (Prettier would break rendering)
-      lines.push(...region.lines);
+      for (const line of region.lines) lines.push(line);
       continue;
     }
 
@@ -293,7 +293,7 @@ async function formatLf(
       ) {
         for (let i = 0; i < region.lines.length; i++)
           preservedLines.add(lines.length + i);
-        lines.push(...region.lines);
+        for (const line of region.lines) lines.push(line);
         continue;
       }
       // HTML block — placeholder substitution + Prettier
@@ -302,7 +302,7 @@ async function formatLf(
       // A later whole-line Spindle token may hide an SVG marker. Check
       // before that pass so a literal marker cannot stand in for it.
       if (!placeholdersIntact(svgPlaceholdered, svgTokens, SVG_PLACEHOLDERS)) {
-        lines.push(...region.lines);
+        for (const line of region.lines) lines.push(line);
         continue;
       }
       const { text: placeholdered, tokens } =
@@ -320,7 +320,7 @@ async function formatLf(
         !placeholdersIntact(formatted, tokens, SPINDLE_PLACEHOLDERS) ||
         !placeholdersIntact(formatted, svgTokens, SVG_PLACEHOLDERS)
       ) {
-        lines.push(...region.lines);
+        for (const line of region.lines) lines.push(line);
         continue;
       }
       // A token's line breaks are its payload: keep them out of the line steps below
@@ -722,7 +722,7 @@ function wrapLines(
     }
     // Keep a Markdown hard break on the last wrapped line
     if (line.endsWith('  ')) wrapped[wrapped.length - 1] += '  ';
-    result.push(...wrapped);
+    for (const line of wrapped) result.push(line);
   }
 
   return result;

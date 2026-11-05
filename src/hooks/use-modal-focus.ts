@@ -55,13 +55,36 @@ function tabIndexAttr(el: HTMLElement): number | null {
   return parseInt(raw, 10);
 }
 
+/** Eligible radio stops in one DOM tree, including external form controls. */
+function radioTabStops(root: ParentNode): Set<HTMLInputElement> {
+  const groups = new Map<
+    HTMLFormElement | null,
+    Map<string, HTMLInputElement>
+  >();
+  for (const radio of root.querySelectorAll<HTMLInputElement>(
+    'input[type="radio"]',
+  )) {
+    if (!radio.name || (tabIndexAttr(radio) ?? 0) < 0 || !isAvailable(radio)) {
+      continue;
+    }
+    let names = groups.get(radio.form);
+    if (!names) groups.set(radio.form, (names = new Map()));
+    const stop = names.get(radio.name);
+    // First eligible checked member, otherwise first eligible member (#390).
+    if (!stop || (!stop.checked && radio.checked)) names.set(radio.name, radio);
+  }
+  return new Set([...groups.values()].flatMap((names) => [...names.values()]));
+}
+
+type RadioStops = Map<Node, Set<HTMLInputElement>>;
+
 /**
  * Whether the tab key can reach `el`, an available element (see
  * isAvailable): a negative tabindex only allows scripted focus, and of a
  * radio group the browser tabs to the checked member only (the first one
  * when none is checked), of the members it can reach.
  */
-function isTabStop(el: HTMLElement): boolean {
+function isTabStop(el: HTMLElement, radioStops: RadioStops): boolean {
   const tabIndex = tabIndexAttr(el);
   if (tabIndex !== null && tabIndex < 0) return false;
   // Only an editing host takes focus of its own, not `contenteditable="false"`
@@ -89,22 +112,15 @@ function isTabStop(el: HTMLElement): boolean {
   // another realm's classes
   const input = el as HTMLInputElement;
   if (el.localName === 'input' && input.type === 'radio' && input.name) {
-    const group = Array.from(
-      // Form ownership does not imply DOM ancestry: `form="id"` controls
-      // elsewhere in the same tree belong to the group too (#688).
-      (el.getRootNode() as ParentNode).querySelectorAll<HTMLInputElement>(
-        'input[type="radio"]',
-      ),
-    ).filter(
-      (r) =>
-        r.name === input.name &&
-        r.form === input.form &&
-        // Of the members Tab can reach (#390)
-        (tabIndexAttr(r) ?? 0) >= 0 &&
-        isAvailable(r),
-    );
-    const stop = group.find((r) => r.checked) ?? group[0];
-    return el === stop;
+    const tree = el.getRootNode();
+    let stops = radioStops.get(tree);
+    if (!stops) {
+      // Form ownership is independent of DOM ancestry (#688). Index the
+      // entire tree once, shared across shadow/slot tabindex scopes (#718).
+      stops = radioTabStops(tree as ParentNode);
+      radioStops.set(tree, stops);
+    }
+    return stops.has(input);
   }
   return true;
 }
@@ -114,7 +130,10 @@ function isTabStop(el: HTMLElement): boolean {
  * order Tab visits them: positive tabindexes first, ascending, then the
  * others in document order.
  */
-function focusables(root: ParentNode): HTMLElement[] {
+function focusables(
+  root: ParentNode,
+  radioStops: RadioStops = new Map(),
+): HTMLElement[] {
   // Each shadow host/slot owns a separate tabindex scope. Sort the owners in
   // this scope, then expand their contents in place, as native Tab does.
   const scopes: { el: HTMLElement; stops: HTMLElement[] }[] = [];
@@ -122,7 +141,8 @@ function focusables(root: ParentNode): HTMLElement[] {
     for (const element of composedChildren(parent)) {
       const el = element as HTMLElement;
       const nested = el.shadowRoot ?? (el.localName === 'slot' ? el : null);
-      const stop = el.matches(FOCUSABLE) && isAvailable(el) && isTabStop(el);
+      const stop =
+        el.matches(FOCUSABLE) && isAvailable(el) && isTabStop(el, radioStops);
       if (nested) {
         // A visibility:hidden host can contain explicitly visible controls.
         // Each stop checks its own visibility and its ancestors' subtree gates.
@@ -131,7 +151,7 @@ function focusables(root: ParentNode): HTMLElement[] {
           el,
           stops: [
             ...(stop && !el.shadowRoot?.delegatesFocus ? [el] : []),
-            ...focusables(nested),
+            ...focusables(nested, radioStops),
           ],
         });
       } else {

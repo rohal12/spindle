@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Modal focus traversals index radio groups once per DOM tree, keeping large dialogs responsive while respecting form ownership and live changes (#718).
+- Formatting large HTML, script and SVG regions and wrapping long prose lines no longer exceeds JavaScript's argument-count limit (#719).
+- Widget discovery accumulates large completed and incomplete definition lists without exceeding JavaScript's argument-count limit (#720).
+
 - HTML formatting counts all real nested tags from the first region line and keeps multiline tags whole, preserving attributes and valid containers without adding extra closing tags (#713).
 - JavaScript tokenizers skip repeated passage-prefix newline searches when starting at an offset, keeping valid macros on long single lines responsive (#716).
 
