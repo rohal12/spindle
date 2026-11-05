@@ -4,20 +4,30 @@ import { MarkupError, tokenizeMarkup } from '../../src/markup/parse';
 import { validateStoryMarkup } from '../../src/tooling';
 import { getMacroRegistry } from '../../src/registry';
 
-it('reads deeply nested complete and incomplete templates without recursion (#727)', () => {
-  const nested = '`x${'.repeat(8000) + '0' + '}`'.repeat(8000);
-  const complete = `? ${nested}}after`;
-  expect(lenientClose(complete, 0)).toBe(complete.indexOf('}after'));
-  const onRunOut = () => {
-    ranOut = true;
-  };
-  let ranOut = false;
-  expect(lenientClose('? ' + '`x${'.repeat(8000) + '0}', 0, onRunOut)).toBe(-1);
-  expect(ranOut).toBe(true);
-});
+// These 8,000-level stress cases take longer under V8 coverage in CI.
+const STRESS_TIMEOUT = 60_000;
+
+it(
+  'reads deeply nested complete and incomplete templates without recursion (#727)',
+  { timeout: STRESS_TIMEOUT },
+  () => {
+    const nested = '`x${'.repeat(8000) + '0' + '}`'.repeat(8000);
+    const complete = `? ${nested}}after`;
+    expect(lenientClose(complete, 0)).toBe(complete.indexOf('}after'));
+    const onRunOut = () => {
+      ranOut = true;
+    };
+    let ranOut = false;
+    expect(lenientClose('? ' + '`x${'.repeat(8000) + '0}', 0, onRunOut)).toBe(
+      -1,
+    );
+    expect(ranOut).toBe(true);
+  },
+);
 
 it.each([false, true])(
   'returns positioned diagnostics for deep malformed templates (tolerant=%s, #727)',
+  { timeout: STRESS_TIMEOUT },
   (tolerant) => {
     const content = '{print ? ' + '`x${'.repeat(8000) + '0}';
     expect(() => tokenizeMarkup(content)).toThrow(MarkupError);
