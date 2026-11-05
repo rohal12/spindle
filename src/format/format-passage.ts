@@ -1,7 +1,7 @@
 import { isBlockMacro } from '../markup/ast';
 import { analyzeMarkup, tokenizeMarkupTolerant } from '../markup/parse';
 import type { PairedNode } from '../markup/pair';
-import type { MacroToken } from '../markup/tokens';
+import type { HtmlToken, MacroToken } from '../markup/tokens';
 import { segmentRegions } from './segment';
 import { markdownLines } from './markdown-lines';
 import { sourceLines } from './source-lines';
@@ -379,6 +379,19 @@ async function formatLf(
 /** Literal HTML and opaque SVG, whose text can inherit significant whitespace. */
 const WHITESPACE_AS_WRITTEN = /<(?:pre|textarea|svg)[\s>]|white-space\s*:/i;
 
+/** JavaScript MIME types (including legacy aliases) and module scripts. */
+const JAVASCRIPT_TYPE =
+  /^(?:module|(?:text|application)\/(?:x-)?(?:java|ecma)script|text\/(?:javascript1\.[0-5]|jscript|livescript))$/i;
+
+/** Data scripts have opaque bodies, even inside a larger HTML region. */
+function isDataScript(token: HtmlToken): boolean {
+  if (token.tag.toLowerCase() !== 'script') return false;
+  const type = Object.entries(token.attributes)
+    .find(([name]) => name.toLowerCase() === 'type')?.[1]
+    .trim();
+  return !!type && !JAVASCRIPT_TYPE.test(type);
+}
+
 /** HTML whitespace formatting must not collapse the Markdown in its bodies. */
 const HTML_MARKDOWN_BOUNDARIES = new Set([
   'hardBreakTrailing',
@@ -420,7 +433,8 @@ function whitespaceSensitiveLines(
   isBlock: (name: string) => boolean,
 ): Set<number> {
   const lines = new Set<number>();
-  if (!WHITESPACE_AS_WRITTEN.test(source)) return lines;
+  if (!WHITESPACE_AS_WRITTEN.test(source) && !/<script[\s>]/i.test(source))
+    return lines;
   const lineAt = sourceLines(source);
   const { nodes } = analyzeMarkup(source, { hooks: { isBlock } });
   function visit(nodes: PairedNode[]): void {
@@ -428,7 +442,8 @@ function whitespaceSensitiveLines(
       const { token, body } = node;
       if (
         token.type === 'html' &&
-        (['pre', 'textarea', 'svg'].includes(token.tag.toLowerCase()) ||
+        (isDataScript(token) ||
+          ['pre', 'textarea', 'svg'].includes(token.tag.toLowerCase()) ||
           Object.entries(token.attributes).some(
             ([name, value]) =>
               name.toLowerCase() === 'style' && /white-space\s*:/i.test(value),

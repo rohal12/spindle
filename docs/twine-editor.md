@@ -65,7 +65,7 @@ Check reads one passage, so it reports malformed, unclosed and mismatched tags, 
 
 ### Format
 
-**Format** formats the passage: bodies of block macros are indented, trailing whitespace is removed (Markdown hard breaks, and the indentation of lists and code fences, are kept), the text ends with one newline, and embedded `<script>`, `<style>` and HTML are formatted with a copy of [Prettier](https://prettier.io/) bundled in the format. A region Prettier would break (for example one with a macro in the middle of a JavaScript expression) is left as you wrote it, as is everything the runtime executes (macros, links, `{do}` bodies). The result replaces the passage as one undo step and the cursor stays on its line. If you keep typing while it runs, your text wins and nothing is replaced.
+**Format** formats the passage: bodies of block macros are indented, trailing whitespace is removed (Markdown hard breaks, and the indentation of lists and code fences, are kept), the text ends with one newline, and embedded JavaScript `<script>`, `<style>` and HTML are formatted with a copy of [Prettier](https://prettier.io/) bundled in the format. Data scripts, such as `<script type="application/json">` or `<script type="text/plain">`, keep their contents and whitespace as written. A region Prettier would break (for example one with a macro in the middle of a JavaScript expression) is left as you wrote it, as is everything the runtime executes (macros, links, `{do}` bodies). The result replaces the passage as one undo step and the cursor stays on its line. If you keep typing while it runs, your text wins and nothing is replaced.
 
 The same formatter is available to your own tools as `formatPassage` ([Tooling API](tooling.md#formatting-a-passage)).
 

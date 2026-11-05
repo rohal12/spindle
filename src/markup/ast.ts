@@ -55,6 +55,7 @@ const BLOCK_MACROS = new NameSet([
   'do',
   'button',
   'link',
+  'dialog',
   'listbox',
   'cycle',
   'switch',

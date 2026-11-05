@@ -365,8 +365,16 @@ function spansOf(text: string, reading: Reading): StyledSpan[] {
   const canvas = new Canvas(text.length);
   const comment = openComment(tokens);
   if (comment >= 0) canvas.paint(comment, text.length, 'comment');
-  for (const start of unclosedStarts(text, reading)) {
-    canvas.paint(start, text.length, 'error');
+  const starts = unclosedStarts(text, reading);
+  // Later suffix paints cover earlier ones. Paint only their visible parts,
+  // retaining each paint's span boundary without repeatedly filling the tail.
+  let end = text.length;
+  for (let i = starts.length - 1; i >= 0; i--) {
+    const start = starts[i]!;
+    if (start < end) {
+      canvas.paint(start, end, 'error');
+      end = start;
+    }
   }
   for (const error of errors) {
     if (!isUnclosed(error)) {
@@ -423,7 +431,9 @@ function openStartOf(text: string, reading: Reading): number {
     openDo(tokens)?.start ?? -1,
     openTag(text, tokens),
   ].filter((start) => start >= 0);
-  return starts.length > 0 ? Math.min(...starts) : -1;
+  return starts.length > 0
+    ? starts.reduce((first, start) => Math.min(first, start), Infinity)
+    : -1;
 }
 
 /**
