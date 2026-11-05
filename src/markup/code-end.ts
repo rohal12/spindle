@@ -36,30 +36,6 @@ interface Lenient {
 }
 
 /**
- * Skip the literal opening at `i`: a '…' or "…" string, which must close on
- * its line, or a `…` template, whose `${…}` parts are read as braces.
- * Returns the index just past its closing quote or backtick, or -1.
- */
-function skipLiteral(input: string, i: number): Lenient {
-  const quote = input[i];
-  const template = quote === '`';
-  let ranOut = false;
-  for (let j = i + 1; j < input.length;) {
-    const c = input[j];
-    if (c === '\\') j += 2;
-    else if (c === quote) return { end: j + 1, ranOut };
-    else if (!template && c === '\n') return { end: -1, ranOut };
-    else if (template && c === '$' && input[j + 1] === '{') {
-      const close = lenientRead(input, j + 2);
-      ranOut ||= close.ranOut;
-      if (close.end === -1) return { end: -1, ranOut };
-      j = close.end + 1;
-    } else j++;
-  }
-  return { end: -1, ranOut: ranOut || template };
-}
-
-/**
  * The closing `}` of braces read leniently from `i` (just past a `{`): braces
  * count except inside string and template literals, and a quote that can't
  * start a string (an apostrophe, or one not closed on its line) is text, as
@@ -94,31 +70,83 @@ function lenientRead(input: string, i: number): Lenient {
 let memoInput = '';
 const memo = new Map<number, Lenient>();
 
-function scanLenient(input: string, i: number): Lenient {
-  let depth = 0;
-  let ranOut = false;
-  while (i < input.length) {
+/** A suspended code or literal scan; nested templates use heap frames. */
+type ScanFrame = {
+  start: number;
+  i: number;
+  ranOut: boolean;
+} & ({ kind: 'code'; depth: number } | { kind: 'literal'; quote: string });
+
+function scanLenient(input: string, start: number): Lenient {
+  const codeFrame = (start: number): ScanFrame => ({
+    kind: 'code',
+    start,
+    i: start,
+    depth: 0,
+    ranOut: false,
+  });
+  const frames: ScanFrame[] = [codeFrame(start)];
+  let result: Lenient = { end: -1, ranOut: true };
+  const finish = (end: number, ranOut: boolean) => {
+    const frame = frames.pop()!;
+    result = { end, ranOut };
+    if (frame.kind === 'code') memo.set(frame.start, result);
+    const parent = frames[frames.length - 1];
+    if (!parent) return;
+    parent.ranOut ||= ranOut;
+    if (parent.kind === 'code') {
+      // An unclosed quote/backtick is plain text in the lenient reader.
+      parent.i = end === -1 ? parent.i + 1 : end;
+    } else if (end === -1) {
+      // The interpolation did not close, so neither can its template.
+      parent.i = input.length;
+    } else {
+      parent.i = end + 1;
+    }
+  };
+  while (frames.length) {
+    const frame = frames[frames.length - 1]!;
+    const { i, ranOut } = frame;
+    if (i >= input.length) {
+      finish(-1, ranOut || frame.kind === 'code' || frame.quote === '`');
+      continue;
+    }
     const c = input[i]!;
-    if (c === '{') {
-      depth++;
-      i++;
+    if (frame.kind === 'literal') {
+      if (c === '\\') frame.i += 2;
+      else if (c === frame.quote) finish(i + 1, ranOut);
+      else if (frame.quote !== '`' && c === '\n') finish(-1, ranOut);
+      else if (frame.quote === '`' && c === '$' && input[i + 1] === '{') {
+        const cached = memo.get(i + 2);
+        if (cached) {
+          frame.ranOut ||= cached.ranOut;
+          frame.i = cached.end === -1 ? input.length : cached.end + 1;
+        } else frames.push(codeFrame(i + 2));
+      } else frame.i++;
+    } else if (c === '{') {
+      frame.depth++;
+      frame.i++;
     } else if (c === '}') {
-      if (depth === 0) return { end: i, ranOut };
-      depth--;
-      i++;
+      if (frame.depth === 0) finish(i, ranOut);
+      else {
+        frame.depth--;
+        frame.i++;
+      }
     } else if (
       c === '`' ||
       ((c === '"' || c === "'") &&
         !(i > 0 && NON_STRING_QUOTE_PREFIX.test(input[i - 1]!)))
     ) {
-      const close = skipLiteral(input, i);
-      ranOut ||= close.ranOut;
-      i = close.end === -1 ? i + 1 : close.end;
-    } else {
-      i++;
-    }
+      frames.push({
+        kind: 'literal',
+        start: i,
+        i: i + 1,
+        quote: c,
+        ranOut: false,
+      });
+    } else frame.i++;
   }
-  return { end: -1, ranOut: true };
+  return result;
 }
 
 /**

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Malformed deeply nested template literals return positioned markup diagnostics instead of overflowing the lenient scanner's stack, including in unvisited passages at startup (#727).
+- CodeMirror consumes highlighted spans with a cursor, keeping token emission linear for long valid passages and preserving copied line state (#728).
+- Interface buttons and links register click bodies before rendering so a restart within that same body cancels its pending timers while synchronous code finishes in order (#401).
+
 - Passage formatting preserves JSON, JSON-LD and other non-JavaScript script bodies, including literal whitespace and scripts nested in HTML (#722).
 - Standalone tooling classifies the built-in `dialog` macro as a block without runtime registration (#723).
 - Static macro discovery handles large flat scripts with many writes to one configuration variable without exceeding JavaScript's argument-count limit (#724).

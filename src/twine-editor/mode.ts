@@ -17,8 +17,10 @@ export interface ModeState {
    * from its start, ending in a line break; `''` when nothing is open.
    */
   tail: string;
-  /** The spans left to emit on the current line, in window offsets. */
+  /** The current line’s spans, in window offsets; immutable during emission. */
   spans: StyledSpan[];
+  /** Index of the next span to emit. */
+  spanIndex: number;
   /** Where the current line starts in the window its spans came from. */
   lineStart: number;
   /**
@@ -89,6 +91,7 @@ function startLine(stream: StringStream, state: ModeState): void {
       end: Math.min(span.end, head.length),
       style: span.style,
     }));
+  state.spanIndex = 0;
   state.lineStart = lineStart;
   state.capped = capped;
   state.context = line.context;
@@ -111,17 +114,18 @@ export function mode(): Mode<ModeState> {
       context: '',
       tail: '',
       spans: [],
+      spanIndex: 0,
       lineStart: 0,
       capped: false,
     }),
-    copyState: (state) => ({ ...state, spans: [...state.spans] }),
+    copyState: (state) => ({ ...state }),
     blankLine: (state) => {
       if (state.tail) state.tail += '\n';
     },
     token: (stream, state) => {
       try {
-        if (stream.sol() && state.spans.length === 0) startLine(stream, state);
-        const span = state.spans[0];
+        if (stream.sol()) startLine(stream, state);
+        const span = state.spans[state.spanIndex];
         if (!span) {
           stream.skipToEnd();
           return null;
@@ -131,12 +135,13 @@ export function mode(): Mode<ModeState> {
           stream.pos = span.start - state.lineStart;
           return null;
         }
-        state.spans.shift();
+        state.spanIndex++;
         stream.pos = span.end - state.lineStart;
         return span.style;
       } catch {
         stream.skipToEnd();
         state.spans = [];
+        state.spanIndex = 0;
         state.tail = '';
         state.context = '';
         state.capped = false;

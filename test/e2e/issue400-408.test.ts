@@ -60,6 +60,12 @@ $n = 0
 {button "Schedule"}
   {timed 500ms}{set $n += 1}{/timed}
 {/button}
+${['button', 'link']
+  .flatMap((control) => [
+    `{${control} "${control} schedule then restart"}{timed 50ms}{set $n += 100}{/timed}{do}Story.restart(){/do}{set $n = 2}{/${control}}`,
+    `{${control} "${control} restart then schedule"}{do}Story.restart(){/do}{set $n = 2}{timed 50ms}{set $n += 100}{/timed}{/${control}}`,
+  ])
+  .join('\n')}
 {passage}
 
 :: Start
@@ -244,6 +250,22 @@ describe('a pending interface click body (#401)', () => {
     await page.evaluate('Story.restart()');
     await page.waitForTimeout(800);
     expect(await page.evaluate('Story.get("n")')).toBe(0);
+  });
+
+  it.each([
+    'button schedule then restart',
+    'button restart then schedule',
+    'link schedule then restart',
+    'link restart then schedule',
+  ])('cancels timers from the body doing %s', async (label) => {
+    await open('interfaceClick');
+    await page.getByText(label, { exact: true }).click();
+    expect(await page.evaluate('Story.get("n")')).toBe(2);
+    await page.waitForTimeout(200);
+    expect(await page.evaluate('Story.get("n")')).toBe(2);
+    // Persistent controls can start fresh work in the replacement game.
+    await page.getByText('Schedule', { exact: true }).click();
+    await expect.poll(() => page.evaluate('Story.get("n")')).toBe(3);
   });
 });
 

@@ -68,6 +68,25 @@ it('reports excessive nested labels before startup can overflow (#673)', async (
   );
 });
 
+it('reports deep malformed templates in an unvisited passage at startup (#727)', async () => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await boot({
+    Start: 'Hello',
+    StoryVariables: '',
+    Unvisited: '{print ? ' + '`x${'.repeat(8000) + '0}',
+  });
+  await page.waitForSelector('#root h1');
+  expect(await page.locator('#root h1').textContent()).toBe(
+    'Story Validation Errors',
+  );
+  expect(await page.locator('#root').textContent()).toContain(
+    'Passage "Unvisited", line 1, column 1',
+  );
+  expect(errors).toEqual([expect.stringContaining('validation error(s)')]);
+  expect(await page.locator('.passage').count()).toBe(0);
+});
+
 it('rejects a literal forbidden navigation target at startup (#672)', async () => {
   await boot({ Start: '[[StoryInit]]', StoryVariables: '', StoryInit: '' });
   await page.waitForSelector('#root h1');
