@@ -8,7 +8,7 @@ const STORY_HTML = `<!doctype html>
     <div id="root"></div>
     <tw-storydata name="Interface click" startnode="1" ifid="HEADLESS-INTERFACE-CLICK" format="spindle" format-version="0.0.0">
       <tw-passagedata pid="1" name="Start" tags="">Number: {$n}</tw-passagedata>
-      <tw-passagedata pid="2" name="StoryInterface" tags="">{button "Schedule"}{timed 50ms}{set $n += 1}{/timed}{/button}{button "Restart now"}{do}Story.restart(){/do}{timed 50ms}{set $n += 100}{/timed}{/button}{passage}</tw-passagedata>
+      <tw-passagedata pid="2" name="StoryInterface" tags="">{button "Schedule"}{timed 50ms}{set $n += 1}{/timed}{/button}{button "Restart now"}{do}Story.restart(){/do}{set $n = 2}{timed 50ms}{set $n += 100}{/timed}{/button}{link "Schedule and restart"}{timed 50ms}{set $n += 100}{/timed}{do}Story.restart(){/do}{set $n = 3}{/link}{passage}</tw-passagedata>
       <tw-passagedata pid="3" name="StoryVariables" tags="">$n = 0</tw-passagedata>
     </tw-storydata>
   </body>
@@ -44,11 +44,17 @@ describe('pending click bodies of StoryInterface (#401)', () => {
     await wait(100);
     expect(Story.get('n')).toBe(0);
 
-    // The body that restarts goes on in the new game; work it started
-    // after the restart is the new game's
+    // Synchronous code finishes in order, but the old body's timers are
+    // cancelled even when replacement happens during its own render.
     button('Restart now').click();
+    expect(Story.get('n')).toBe(2);
     await wait(100);
-    expect(Story.get('n')).toBe(100);
+    expect(Story.get('n')).toBe(2);
+
+    document.querySelector<HTMLAnchorElement>('a.macro-link')!.click();
+    expect(Story.get('n')).toBe(3);
+    await wait(100);
+    expect(Story.get('n')).toBe(3);
 
     // The controls work in the replacement game
     Story.restart();

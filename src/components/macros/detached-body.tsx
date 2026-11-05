@@ -149,6 +149,9 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
           render(null, container);
         }
       : null;
+    // Replacement can happen synchronously inside render (for example {do}).
+    // Register first so that cancellation also sees the body doing it.
+    mounted.current.push(container);
     render(
       <FrozenStateContext.Provider value={frozenAlways}>
         <LocalsUpdateContext.Provider value={updater}>
@@ -185,7 +188,6 @@ export function useDetachedBody(): (children: ASTNode[]) => void {
       </FrozenStateContext.Provider>,
       container,
     );
-    mounted.current.push(container);
   };
   return (children) => runWithCommittedMutations(() => run(children));
 }
