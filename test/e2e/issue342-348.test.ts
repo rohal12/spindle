@@ -58,6 +58,13 @@ $choice = "a"
 {radiobutton $choice "a" "A"}
 {radiobutton $choice "b" "B"}
 `,
+  manyRadios: `${header}:: Start
+{dialog "Open"}Modal{/dialog}
+
+:: Modal
+${'<input type="radio" name="choice">'.repeat(400)}
+<button id="after">After</button>
+`,
   skipped: `${header}:: Start
 {dialog "Open"}Modal{/dialog}
 
@@ -296,6 +303,59 @@ describe('a dialog trap follows the real tab stops (#373)', () => {
   });
 
   const activeId = () => page.evaluate(() => document.activeElement?.id);
+
+  it('bounds radio-group work on open and Tab and refreshes live state (#718)', async () => {
+    served = 'manyRadios';
+    await page.goto(baseUrl);
+    await page.evaluate(() => {
+      const original = window.getComputedStyle;
+      (window as any).styleReads = 0;
+      window.getComputedStyle = function (...args) {
+        (window as any).styleReads++;
+        return original.apply(this, args);
+      };
+    });
+    await page.click('button:has-text("Open")');
+    expect(await page.evaluate(() => (window as any).styleReads)).toBeLessThan(
+      40_000,
+    );
+    expect(
+      await page
+        .locator('input')
+        .first()
+        .evaluate((el) => el === document.activeElement),
+    ).toBe(true);
+    await page.evaluate(() => {
+      (window as any).styleReads = 0;
+    });
+    await page.keyboard.press('Tab');
+    expect(await activeId()).toBe('after');
+    expect(await page.evaluate(() => (window as any).styleReads)).toBeLessThan(
+      40_000,
+    );
+    await page.evaluate(() => {
+      const radios = document.querySelectorAll<HTMLInputElement>('input');
+      radios[399]!.checked = true;
+    });
+    await page.keyboard.press('Shift+Tab');
+    expect(
+      await page
+        .locator('input')
+        .last()
+        .evaluate((el) => el === document.activeElement),
+    ).toBe(true);
+    await page.keyboard.press('Tab');
+    await page.evaluate(() => {
+      document.querySelectorAll<HTMLInputElement>('input')[399]!.hidden = true;
+    });
+    await page.keyboard.press('Shift+Tab');
+    expect(
+      await page
+        .locator('input')
+        .first()
+        .evaluate((el) => el === document.activeElement),
+    ).toBe(true);
+  });
 
   it.each(formRadios)(
     'reaches %s form-associated radios and preserves native arrow navigation (#688)',

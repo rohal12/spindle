@@ -180,7 +180,7 @@ export function widgetDefinitions(
           open[open.length - 1]!.isBlock = true;
         }
       }
-      done.push(...open);
+      for (const def of open) done.push(def);
       const defs: WidgetDefinition[] = [];
       for (const { token, isBlock, closeStart } of done) {
         try {
@@ -199,7 +199,8 @@ export function widgetDefinitions(
           // The {widget} macro reports a definition it cannot read
         }
       }
-      found.push(...defs.sort((a, b) => a.start - b.start));
+      defs.sort((a, b) => a.start - b.start);
+      for (const def of defs) found.push(def);
     }
     return found;
   };
