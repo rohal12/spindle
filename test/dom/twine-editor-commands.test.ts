@@ -187,6 +187,17 @@ describe('check', () => {
 });
 
 describe('format', () => {
+  it.each([
+    ['application/json', '[1, 2, 3]'],
+    ['application/ld+json', '[{"name": "Example"}]'],
+    ['text/plain', 'hello.world  '],
+  ])('preserves %s script bodies (#722)', async (type, body) => {
+    const text = `<script type="${type}">\n${body}\n</script>\n`;
+    const editor = create(text);
+    await commands.format!(editor);
+    expect(editor.getValue()).toBe(text);
+  });
+
   it('indents block bodies, keeps the cursor line and undoes in one step', async () => {
     const text = '{if $a}\nyes\n{/if}';
     const editor = create(text);
@@ -198,7 +209,7 @@ describe('format', () => {
     expect(editor.getValue()).toBe(text);
   });
 
-  it('indents the body of a block macro the static default does not know', async () => {
+  it('indents the body of a dialog block', async () => {
     const editor = create('{dialog "Hi"}\nyes\n');
     await commands.format!(editor);
     expect(editor.getValue()).toBe('{dialog "Hi"}\n  yes\n');

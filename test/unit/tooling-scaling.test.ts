@@ -12,6 +12,14 @@ import { splitSigilTemplate } from '../../src/markup/code-attributes';
 import { defaultCodeEnd } from '../../src/markup/code-end';
 import { vi } from 'vitest';
 
+it('tolerates many writes to one macro config without argument spreading (#724)', () => {
+  const source =
+    'let config = {name: "example"};\n' +
+    'config = 0;\n'.repeat(130_000) +
+    'Story.defineMacro(config);';
+  expect(discoverMacros(source)).toEqual([]);
+});
+
 it('indexes companion metadata once for many definitions and tokens (#684)', () => {
   const n = 2000;
   let reads = 0;

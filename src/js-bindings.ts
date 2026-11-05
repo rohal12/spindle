@@ -152,7 +152,10 @@ export class Bindings {
         at < b.scope.end &&
         (!b.ordered || b.at < at || this.functionStart(b.at) !== useFunction),
     );
-    const innermost = Math.max(...visible.map((b) => b.scope.start));
+    const innermost = visible.reduce(
+      (start, b) => Math.max(start, b.scope.start),
+      -Infinity,
+    );
     return visible.filter((b) => b.scope.start === innermost);
   }
 

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Passage formatting preserves JSON, JSON-LD and other non-JavaScript script bodies, including literal whitespace and scripts nested in HTML (#722).
+- Standalone tooling classifies the built-in `dialog` macro as a block without runtime registration (#723).
+- Static macro discovery handles large flat scripts with many writes to one configuration variable without exceeding JavaScript's argument-count limit (#724).
+- Twine highlighting partitions overlapping unclosed-error ranges, retaining span boundaries without repeatedly repainting long suffixes (#725).
+
 - Modal focus traversals index radio groups once per DOM tree, keeping large dialogs responsive while respecting form ownership and live changes (#718).
 - Formatting large HTML, script and SVG regions and wrapping long prose lines no longer exceeds JavaScript's argument-count limit (#719).
 - Widget discovery accumulates large completed and incomplete definition lists without exceeding JavaScript's argument-count limit (#720).
