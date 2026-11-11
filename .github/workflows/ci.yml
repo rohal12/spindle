@@ -90,6 +90,13 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Use Ubuntu archive mirrors
+        run: |
+          # The Azure mirror has repeatedly failed DNS resolution on hosted runners.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '\|://azure\.archive\.ubuntu\.com/|d' /etc/apt/apt-mirrors.txt
+          fi
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
