@@ -78,6 +78,172 @@ afterAll(async () => {
   await browser?.close();
 });
 
+it.each([
+  ['plain HTML', '<button is="story-button" id="custom">Choose</button>'],
+  [
+    'mixed-case attribute',
+    '<button IS="story-button" id="custom">Choose</button>',
+  ],
+  ['bound attribute', '<button is="{$kind}" id="custom">Choose</button>'],
+  [
+    'bound direct attribute',
+    '<button is="story-button" id="custom" translate="{$lang}">Choose</button>',
+  ],
+  [
+    'markdown output',
+    '{raw **Probe** <button is="story-button" id="custom">Choose</button>}',
+  ],
+  [
+    'markdown with direct attributes',
+    '{raw **Probe** <button is="story-button" id="custom" translate="no">Choose</button>}',
+  ],
+  ['markdown with placeholders', '{custom-placeholder}'],
+  [
+    'macro body',
+    '{if true}<button is="story-button" id="custom">Choose</button>{/if}',
+  ],
+  [
+    'preformatted HTML',
+    '<pre><button is="story-button" id="custom">Choose</button></pre>',
+  ],
+  [
+    'SVG HTML integration point',
+    '<svg><foreignObject width="200" height="100"><button is="story-button" id="custom">Choose</button></foreignObject></svg>',
+  ],
+  [
+    'MathML HTML integration point',
+    '<math><annotation-xml encoding="text/html"><button is="story-button" id="custom">Choose</button></annotation-xml></math>',
+  ],
+])('initializes customized built-ins in %s (#733)', async (_name, markup) => {
+  await boot({
+    passages: {
+      Start: encode(markup),
+      StoryVariables: '$n = 0\n$kind = "story-button"\n$lang = "yes"',
+    },
+    script: `Story.defineMacro({ name: 'raw', render: (props, ctx) =>
+      ctx.renderNodes([{ type: 'text', value: props.rawArgs }]) });
+    Story.defineMacro({ name: 'custom-placeholder', render: (props, ctx) =>
+      ctx.renderNodes([
+        { type: 'text', value: '<button is="' },
+        { type: 'expression', expression: '$kind' },
+        { type: 'text', value: '" id="custom">Choose</button>' }
+      ]) });
+    customElements.define('story-button', class extends HTMLButtonElement {
+      static observedAttributes = ['is'];
+      attributeChangedCallback() {
+        this.dataset.isChanges = String(Number(this.dataset.isChanges || 0) + 1);
+      }
+      constructor() {
+        super();
+        this.addEventListener('click', () => Story.set('n', Number(Story.get('n')) + 1));
+      }
+    }, { extends: 'button' });`,
+  });
+  const button = page.locator('.passage #custom');
+  await expect.poll(() => button.count()).toBe(1);
+  expect(
+    await button.evaluate(
+      (el) => el instanceof customElements.get('story-button')!,
+    ),
+  ).toBe(true);
+  expect(await button.getAttribute('is')).toBe('story-button');
+  expect(await button.getAttribute('data-is-changes')).toBe('1');
+  // Native click behavior also works in non-presentational MathML annotations.
+  await button.evaluate((el) => (el as HTMLButtonElement).click());
+  await expect.poll(() => page.evaluate(() => Story.get('n'))).toBe(1);
+  if (markup.includes('{$lang}')) {
+    await page.evaluate(() => Story.set('lang', 'no'));
+    await expect.poll(() => button.getAttribute('translate')).toBe('no');
+    expect(await button.getAttribute('data-is-changes')).toBe('1');
+  }
+  expect(await page.locator('.error').count()).toBe(0);
+});
+
+it.each([
+  ['customized built-in', 'button', 'HTMLButtonElement'],
+  ['autonomous custom element', 'story-probe', 'HTMLElement'],
+] as const)(
+  'preserves the is attribute on a %s with its own is property (#733)',
+  async (_name, tag, base) => {
+    await boot({
+      passages: {
+        Start: encode(`<${tag} is="story-probe" id="custom">Choose</${tag}>`),
+      },
+      script: `customElements.define('story-probe', class extends ${base} {
+        is = 'component-owned';
+        static observedAttributes = ['is'];
+        attributeChangedCallback(name, oldValue, value) {
+          this.dataset.configured = value;
+        }
+      }${tag === 'button' ? ", { extends: 'button' }" : ''});`,
+    });
+    const element = page.locator('.passage #custom');
+    await expect.poll(() => element.count()).toBe(1);
+    expect(
+      await element.evaluate(
+        (el) => el instanceof customElements.get('story-probe')!,
+      ),
+    ).toBe(true);
+    expect(await element.getAttribute('is')).toBe('story-probe');
+    expect(await element.getAttribute('data-configured')).toBe('story-probe');
+    if (tag === 'story-probe') {
+      expect(await element.evaluate((el) => Reflect.get(el, 'is'))).toBe(
+        'component-owned',
+      );
+    }
+    expect(await page.locator('.error').count()).toBe(0);
+  },
+);
+
+it.each([
+  ['back', 2, 'B', 1],
+  ['back', 1, 'C', 2],
+  ['forward', 2, 'B', 1],
+  ['forward', 1, 'A', 0],
+] as const)(
+  'handles %s when beforenavigate lowers maxHistory to %s (#732)',
+  async (action, limit, passage, n) => {
+    await boot({
+      passages: {
+        A: 'A {$n}',
+        B: 'B {$n}',
+        C: 'C {$n}',
+        StoryVariables: '$n = 0',
+      },
+    });
+    await page.evaluate(
+      async ({ action, limit }) => {
+        Story.setTransition({ type: 'none' });
+        Story.set('n', 1);
+        Story.goto('B');
+        await Story.waitForActions();
+        Story.set('n', 2);
+        Story.goto('C');
+        await Story.waitForActions();
+        if (action === 'forward') {
+          Story.back();
+          await Story.waitForActions();
+          Story.back();
+          await Story.waitForActions();
+        }
+        const off = Story.on('beforenavigate', () => {
+          Story.config.maxHistory = limit;
+        });
+        Story[action]();
+        off();
+        await Story.waitForActions();
+      },
+      { action, limit },
+    );
+    expect(await page.evaluate(() => Story.passage)).toBe(passage);
+    expect(await page.evaluate(() => Story.get('n'))).toBe(n);
+    expect(await page.locator('.passage').textContent()).toBe(
+      `${passage} ${n}`,
+    );
+    expect(await page.locator('.error').count()).toBe(0);
+  },
+);
+
 it('preserves MathML text and attributes through macros and widgets (#708)', async () => {
   await boot({
     passages: {

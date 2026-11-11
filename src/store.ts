@@ -509,7 +509,7 @@ function replacesState(fn: () => void): boolean {
  */
 function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   const { historyIndex, history } = get();
-  const target = historyIndex + step;
+  let target = historyIndex + step;
   if (target < 0 || target >= history.length) return;
   finishEnteredMoment(get, set);
 
@@ -523,10 +523,15 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   emit('beforenavigate', targetPassage);
   if (get().navigationId !== navigation) return;
 
+  // Lowering maxHistory in the callback can trim either end without a new
+  // navigation. The retained moments stay adjacent to the current one;
+  // resolve the target again, or cancel if it was removed (#732).
+  target = get().historyIndex + step;
+  if (target < 0 || target >= get().history.length) return;
   const restoredVars = deepClone(reconstructVarsAt(target));
 
   set((state) => {
-    state.historyIndex += step;
+    state.historyIndex = target;
     state.currentPassage = state.history[state.historyIndex]!.passage;
     state.navigationId++;
     state.variables = restoredVars;

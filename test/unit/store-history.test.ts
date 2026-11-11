@@ -262,6 +262,72 @@ describe('history navigation', () => {
       // History: A(x0) B(x1) C(x2) D(x3) B(x4), at the last moment
     }
 
+    it.each([
+      ['goBack', 2, 'D', 3, 0],
+      ['goBack', 4, 'D', 3, 2],
+      ['goForward', 3, 'C', 2, 1],
+    ] as const)(
+      'restores the retained target after a %s callback trims history (#732)',
+      (action, limit, passage, x, index) => {
+        walk();
+        if (action === 'goForward') {
+          store().goBack();
+          store().goBack();
+          store().goBack();
+        }
+        installStoryAPI();
+        const after: string[] = [];
+        emitterOn('afternavigate', (to) => after.push(to));
+        const off = emitterOn('beforenavigate', () => {
+          window.Story.config.maxHistory = limit;
+        });
+
+        store()[action]();
+        off();
+
+        expect(store().currentPassage).toBe(passage);
+        expect(store().variables).toEqual({ x });
+        expect(store().historyIndex).toBe(index);
+        expect(after).toEqual([passage]);
+        refresh({ x: 0 });
+        expect(store().currentPassage).toBe(passage);
+        expect(store().variables).toEqual({ x });
+        expect(store().historyIndex).toBe(index);
+      },
+    );
+
+    it.each(['goBack', 'goForward'] as const)(
+      'cancels %s when its callback removes the target (#732)',
+      (action) => {
+        walk();
+        if (action === 'goForward') {
+          while (store().historyIndex > 0) store().goBack();
+        }
+        const passage = store().currentPassage;
+        const navigation = store().navigationId;
+        store().setVariable('x', 99);
+        store().setTemporary('note', 'keep');
+        installStoryAPI();
+        const after: string[] = [];
+        emitterOn('afternavigate', (to) => after.push(to));
+        emitterOn('beforenavigate', () => {
+          window.Story.config.maxHistory = 1;
+        });
+
+        expect(() => store()[action]()).not.toThrow();
+
+        expect(store().history.map((m) => m.passage)).toEqual([passage]);
+        expect(store().historyIndex).toBe(0);
+        expect(store().currentPassage).toBe(passage);
+        expect(store().variables).toEqual({ x: 99 });
+        expect(store().temporary.note).toBe('keep');
+        expect(store().navigationId).toBe(navigation);
+        expect(after).toEqual([]);
+        expect(session().passage).toBe(passage);
+        expect(session().historyIndex).toBe(0);
+      },
+    );
+
     it('trims the oldest moments at once', () => {
       walk();
       useStoryStore.getState().setMaxHistory(2);

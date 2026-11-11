@@ -540,7 +540,8 @@ const SETTABLE_NAME = /^[A-Za-z_:][\w:.-]*$/;
  */
 function setRawAttribute(el: Element, name: string, value: string) {
   if (SETTABLE_NAME.test(name)) {
-    el.setAttribute(name, value);
+    // Preact may already have set it; avoid firing custom-element callbacks twice.
+    if (el.getAttribute(name) !== value) el.setAttribute(name, value);
     return;
   }
   const parsed = (parseHtmlInert(`<i ${name}=""></i>`).firstChild as Element)
@@ -571,7 +572,10 @@ function isNativeDefault(tag: string, name: string): boolean {
  * loads, also drops an empty `class` and `translate="no"`.
  *
  * On HTML elements an upper-case prop name avoids all of these, and
- * setAttribute lower-cases it back. Names compat matches in any case
+ * setAttribute lower-cases it back. Native tags also pass lowercase `is`
+ * so customized built-ins initialize when Preact creates them (#733),
+ * and set its attribute directly in case the component owns an `is` property.
+ * Names compat matches in any case
  * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
  * whose names are case-sensitive, Preact's reserved names and the `class`
  * and `className` compat rewrites (dropping an empty `class`, turning
@@ -591,6 +595,9 @@ function splitAttributes(
     const lower = name.toLowerCase();
     if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
       continue;
+    } else if (!foreign && lower === 'is' && !tag.includes('-')) {
+      props.is = value;
+      direct.push([name, value]);
     } else if (!foreign && LIVE_PROPERTIES.has(lower)) {
       if (!bound && isNativeDefault(tag, lower)) {
         defaults.push([name.toUpperCase(), lower === 'value' ? value : '']);
@@ -621,13 +628,20 @@ function useDirectAttributes(
   direct: [string, string][],
 ): RefObject<Element | null> | undefined {
   const elementRef = useRef<Element>(null);
+  const currentDirect = useRef(direct);
+  currentDirect.current = direct;
   const directKey = JSON.stringify(direct);
   useLayoutEffect(() => {
     const el = elementRef.current;
     if (!el || direct.length === 0) return;
     for (const [name, value] of direct) setRawAttribute(el, name, value);
     return () => {
-      for (const [name] of direct) el.removeAttribute(name);
+      for (const [name] of direct) {
+        // Keep retained attributes through updates without remove/add callbacks.
+        if (!currentDirect.current.some(([next]) => next === name)) {
+          el.removeAttribute(name);
+        }
+      }
     };
   }, [directKey]);
   return direct.length > 0 ? elementRef : undefined;
