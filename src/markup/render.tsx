@@ -571,7 +571,9 @@ function isNativeDefault(tag: string, name: string): boolean {
  * loads, also drops an empty `class` and `translate="no"`.
  *
  * On HTML elements an upper-case prop name avoids all of these, and
- * setAttribute lower-cases it back. Names compat matches in any case
+ * setAttribute lower-cases it back. The `is` creation option stays lowercase
+ * so customized built-ins initialize when Preact creates them (#733).
+ * Names compat matches in any case
  * (`on…`, `translate`), names setAttribute rejects, and on SVG elements,
  * whose names are case-sensitive, Preact's reserved names and the `class`
  * and `className` compat rewrites (dropping an empty `class`, turning
@@ -591,6 +593,8 @@ function splitAttributes(
     const lower = name.toLowerCase();
     if (BOOLEAN_ATTRIBUTES.has(lower) && written !== '' && value === '') {
       continue;
+    } else if (!foreign && lower === 'is') {
+      props.is = value;
     } else if (!foreign && LIVE_PROPERTIES.has(lower)) {
       if (!bound && isNativeDefault(tag, lower)) {
         defaults.push([name.toUpperCase(), lower === 'value' ? value : '']);
