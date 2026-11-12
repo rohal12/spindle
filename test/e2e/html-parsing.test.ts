@@ -78,6 +78,47 @@ afterAll(async () => {
   await browser?.close();
 });
 
+it('observes visible SVG text without style and script source (#738)', async () => {
+  await boot({
+    passages: {
+      Start: encode(
+        'Before <svg width="100" height="40"><style>.label { fill:red }</style>' +
+          '<script type="application/json">{"invisible":true}</script>' +
+          '<text class="label">Visible</text></svg> After',
+      ),
+    },
+  });
+  expect(await page.evaluate(() => Story.observe().text)).toBe(
+    'Before Visible After',
+  );
+  expect(
+    await page.locator('svg text').evaluate((el) => getComputedStyle(el).fill),
+  ).toBe('rgb(255, 0, 0)');
+});
+
+it('preserves native disclosure and first-legend behavior after setup macros (#739)', async () => {
+  await boot({
+    passages: {
+      Start: encode(
+        '<details>{set _a = 1}<!-- setup -->{set _b = 2}<summary>Title</summary>Secret **clue**</details>' +
+          '<fieldset disabled>{set _b = 1}<legend><button id="allowed">Allowed</button></legend>Choose **settings**.<button id="blocked">Blocked</button></fieldset>',
+      ),
+    },
+  });
+  const summary = page.locator('details > summary');
+  expect(await summary.isVisible()).toBe(true);
+  expect(await page.locator('details strong').isVisible()).toBe(false);
+  await summary.click();
+  expect(await page.locator('details strong').isVisible()).toBe(true);
+  expect(await page.locator('fieldset > legend > #allowed').isEnabled()).toBe(
+    true,
+  );
+  expect(await page.locator('#blocked').isDisabled()).toBe(true);
+  expect(await page.locator('fieldset > p > strong').textContent()).toBe(
+    'settings',
+  );
+});
+
 it.each([
   ['plain HTML', '<button is="story-button" id="custom">Choose</button>'],
   [

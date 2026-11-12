@@ -757,19 +757,25 @@ const LEADING_PARTS: Record<string, string> = {
 };
 
 /**
- * The index of the node opening `nodes` as the leading part of the `tag`
- * container, or -1 when none does: the element itself, or a macro, which may
- * render it ({if}, {include}, a widget: #474).
+ * The end of the leading part of the `tag` container: preceding macros may
+ * render nothing (setup), or produce the part themselves (#474, #739).
+ * Keep that whole prefix direct, stopping at the part or other content.
  */
-function leadingPartIndex(tag: string, nodes: ASTNode[]): number {
+function leadingPartEnd(tag: string, nodes: ASTNode[]): number {
   const part = LEADING_PARTS[tag];
-  const at = nodes.findIndex((n) => !isBlankText(n));
-  const first = nodes[at];
-  return part &&
-    (first?.type === 'macro' ||
-      (first?.type === 'html' && first.tag.toLowerCase() === part))
-    ? at
-    : -1;
+  if (!part) return 0;
+  let end = 0;
+  for (let at = 0; at < nodes.length; at++) {
+    const node = nodes[at]!;
+    if (isBlankText(node)) continue;
+    if (node.type === 'macro') {
+      end = at + 1;
+      continue;
+    }
+    if (node.type === 'html' && node.tag.toLowerCase() === part) end = at + 1;
+    break;
+  }
+  return end;
 }
 
 function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
@@ -833,7 +839,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
       // The summary of a details element and the legend of a fieldset stay
       // its direct children: rendered apart from the markdown of the rest of
       // the content.
-      const leadAt = leadingPartIndex(tag, node.children);
+      const leadEnd = leadingPartEnd(tag, node.children);
       const body = (nodes: ASTNode[]) =>
         renderNodes(nodes, { nobr, locals, inline: isInline });
       structural =
@@ -843,13 +849,12 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
         node.children
           .filter((n) => n.type !== 'text')
           .map((n) => renderSingleNode(n))
-      ) : leadAt === -1 ? (
+      ) : leadEnd === 0 ? (
         body(node.children)
       ) : (
         <>
-          {body(node.children.slice(0, leadAt))}
-          {renderSingleNode(node.children[leadAt]!)}
-          {body(node.children.slice(leadAt + 1))}
+          {renderInlineNodes(node.children.slice(0, leadEnd))}
+          {body(node.children.slice(leadEnd))}
         </>
       );
       if (isInline !== parentInline) {

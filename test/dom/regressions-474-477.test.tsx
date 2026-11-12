@@ -94,6 +94,27 @@ describe('summaries and legends produced by macros (#474)', () => {
       null,
     );
   });
+
+  it.each([
+    '{set _a = 1}',
+    '{set _a = 1} <!-- setup --> {set _b = 2}',
+    '{if false}nothing{/if}',
+  ])('keeps native leading parts after setup macros %s (#739)', (setup) => {
+    const el = renderPassage(
+      `<details id="hint">${setup}<summary id="label">Read hint</summary>Secret **clue**</details>` +
+        `<fieldset id="group" disabled>${setup}<legend id="l"><button id="enable">Allowed</button></legend>Choose **settings**.<button id="setting">Blocked</button></fieldset>`,
+    );
+    expectDirectSummary(el);
+    expect(el.querySelector('#group > legend#l')).not.toBeNull();
+    expect(el.querySelector('#group > p strong')!.textContent).toBe('settings');
+  });
+
+  it('keeps a macro-produced leading part after setup macros (#739)', () => {
+    const el = renderPassage(
+      '<details id="hint">{set _a = 1}{if _a}<summary id="label">Read hint</summary>{/if}Secret **clue**</details>',
+    );
+    expectDirectSummary(el);
+  });
 });
 
 describe('fieldset legends (#475)', () => {

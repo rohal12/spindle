@@ -34,7 +34,7 @@ export function* composedElements(root: ParentNode): Generator<HTMLElement> {
 }
 
 /** Elements whose content is never text the reader reads. */
-const NOT_TEXT = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT']);
+const NOT_TEXT = new Set(['script', 'style', 'template', 'noscript']);
 
 /**
  * Whether the element hides its whole subtree, including stylesheet rules.
@@ -46,7 +46,7 @@ export function isHidden(el: Element): boolean {
     el.getAttribute('aria-hidden') === 'true' ||
     /(^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') ?? '') ||
     el.ownerDocument.defaultView?.getComputedStyle(el).display === 'none' ||
-    NOT_TEXT.has(el.tagName) ||
+    NOT_TEXT.has(el.localName.toLowerCase()) ||
     (el.parentElement?.tagName === 'DETAILS' &&
       !el.parentElement.hasAttribute('open') &&
       el !==

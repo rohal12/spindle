@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { highlightWithOpenStart } from '../../src/twine-editor/highlight';
 import { runLines } from '../support/twine-editor-mode';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
@@ -37,4 +37,57 @@ describe('overlapping editor errors (#725)', () => {
       );
     },
   );
+});
+
+describe('unfinished macro ownership (#737)', () => {
+  it('bounds recovery ownership searches through the actual mode', () => {
+    const text = '{print '.repeat(2000);
+    const findIndex = Array.prototype.findIndex;
+    let comparisons = 0;
+    const search = vi
+      .spyOn(Array.prototype, 'findIndex')
+      .mockImplementation(function (this: unknown[], predicate, thisArg) {
+        return findIndex.call(this, (value, index, array) => {
+          comparisons++;
+          return predicate.call(thisArg, value, index, array);
+        });
+      });
+    let tokens;
+    try {
+      tokens = runLines(text);
+    } finally {
+      search.mockRestore();
+    }
+    expect(tokens.map(([, token]) => token).join('')).toBe(text);
+    expect(comparisons).toBeLessThan(text.length * 10);
+  });
+
+  it(
+    'highlights repeated unfinished macro heads through CodeMirror in bounded time',
+    { timeout: LINEAR_TIMEOUT },
+    () => {
+      const small = '{print '.repeat(1000);
+      const large = '{print '.repeat(8000);
+      expect(highlightWithOpenStart(large).openStart).toBe(0);
+      const tokens = runLines(large);
+      expect(tokens.map(([, text]) => text).join('')).toBe(large);
+      expect(tokens.every(([, , style]) => style === 'error')).toBe(true);
+      expectAboutLinear(
+        () => runLines(small),
+        () => runLines(large),
+        { rounds: 3 },
+      );
+    },
+  );
+
+  it('retains recovery styles and continues the last macro on the next line', () => {
+    expect(runLines('prefix {print {print\n 1}')).toEqual([
+      [0, 'prefix ', null],
+      [0, '{print ', 'error'],
+      [0, '{print', 'keyword'],
+      [1, ' ', 'error'],
+      [1, '1', 'number'],
+      [1, '}', 'keyword'],
+    ]);
+  });
 });
