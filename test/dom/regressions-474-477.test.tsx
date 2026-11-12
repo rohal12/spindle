@@ -115,6 +115,68 @@ describe('summaries and legends produced by macros (#474)', () => {
     );
     expectDirectSummary(el);
   });
+
+  it.each([
+    ['details', 'summary'],
+    ['fieldset', 'legend'],
+  ])(
+    'keeps body macros after a macro-produced %s leading part in Markdown',
+    (tag, part) => {
+      const label = `<${part}>Title</${part}>`;
+      setup({}, [makePassage(2, 'LeadingPart', label)]);
+      registerWidget('LeadingWidget', parseMarkup(label), [], false);
+      for (const setupMacro of ['', '{set _a = 1}']) {
+        for (const leadingMacro of [
+          `{if true}${label}{/if}`,
+          '{include "LeadingPart"}',
+          '{LeadingWidget}',
+        ]) {
+          const el = renderPassage(
+            `<${tag}>${setupMacro}${leadingMacro}{print "Hello"} **world**</${tag}>`,
+          );
+          expect(el.querySelector(`${tag} > ${part}`)).not.toBeNull();
+          expect(el.querySelector(`${tag} > p`)!.textContent).toBe(
+            'Hello world',
+          );
+          expect(el.querySelector(`${tag} > p > strong`)!.textContent).toBe(
+            'world',
+          );
+          expect(el.querySelector(tag)!.textContent).toBe('TitleHello world');
+        }
+      }
+    },
+  );
+
+  it.each([
+    ['details', 'summary'],
+    ['fieldset', 'legend'],
+  ])(
+    'keeps %s body macros in Markdown when no native part leads them',
+    (tag, part) => {
+      setup({}, [
+        makePassage(2, 'Body', 'Hello'),
+        makePassage(
+          3,
+          'OptionalPart',
+          `{if false}<${part}>Title</${part}>{/if}Hello`,
+        ),
+      ]);
+      registerWidget('BodyWidget', parseMarkup('Hello'), [], false);
+      for (const bodyMacro of [
+        '{print "Hello"}',
+        '{include "Body"}',
+        '{include inline "OptionalPart"}',
+        '{BodyWidget}',
+        `{if false}<${part}>Title</${part}>{else}Hello{/if}`,
+      ]) {
+        const el = renderPassage(
+          `<${tag}>{set _a = 1}${bodyMacro} **world**</${tag}>`,
+        );
+        expect(el.querySelector(`${tag} > p`)!.textContent).toBe('Hello world');
+        expect(el.querySelector(tag)!.textContent).toBe('Hello world');
+      }
+    },
+  );
 });
 
 describe('fieldset legends (#475)', () => {

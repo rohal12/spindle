@@ -119,6 +119,33 @@ it('preserves native disclosure and first-legend behavior after setup macros (#7
   );
 });
 
+it('keeps body macros in the paragraph after macro-produced native leading parts', async () => {
+  await boot({
+    passages: {
+      Start: encode(
+        '<details open>{set _a = 1}{if true}<summary>Title</summary>{/if}{print "Hello"} **world**</details>' +
+          '<fieldset disabled>{set _b = 1}{if true}<legend><button id="allowed">Allowed</button></legend>{/if}{print "Choose"} **settings**.<button id="blocked">Blocked</button></fieldset>' +
+          '<fieldset id="body-only">{set _c = 1}{print "Hello"} **world**</fieldset>',
+      ),
+    },
+  });
+  expect(await page.locator('details > summary').textContent()).toBe('Title');
+  expect(await page.locator('details > p').textContent()).toBe('Hello world');
+  expect(await page.locator('details > p > strong').textContent()).toBe(
+    'world',
+  );
+  expect(await page.locator('fieldset > legend > #allowed').isEnabled()).toBe(
+    true,
+  );
+  expect(await page.locator('#blocked').isDisabled()).toBe(true);
+  expect(await page.locator('fieldset[disabled] > p').textContent()).toBe(
+    'Choose settings.Blocked',
+  );
+  expect(await page.locator('#body-only > p').textContent()).toBe(
+    'Hello world',
+  );
+});
+
 it.each([
   ['plain HTML', '<button is="story-button" id="custom">Choose</button>'],
   [

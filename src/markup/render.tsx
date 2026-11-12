@@ -4,7 +4,7 @@ import { VarDisplay } from '../components/macros/VarDisplay';
 import { ExprDisplay } from '../components/macros/ExprDisplay';
 import { WidgetInvocation } from '../components/macros/WidgetInvocation';
 import { getWidget } from '../widgets/widget-registry';
-import { getMacro, isSubMacro } from '../registry';
+import { getMacro, getMacroParameters, isSubMacro } from '../registry';
 import { markdownToHtml } from './markdown';
 import { h } from 'preact';
 import type { ASTNode, HtmlNode, MacroNode } from './ast';
@@ -27,6 +27,10 @@ import { isCodeAttribute } from './code-attributes';
 import { errorMessage } from '../utils/error-message';
 import { EMPTY_NAMESPACE } from '../utils/namespace';
 import { authorElement, isHtmlEncoding } from './html-integration';
+import { parseMarkup } from './parse';
+import { useStoryStore } from '../store';
+import { passageTarget } from '../components/macros/macro-args';
+import { splitIncludeFlag } from '../components/macros/include-args';
 
 export interface LocalsUpdater {
   update: (key: string, value: unknown) => void;
@@ -755,24 +759,99 @@ const LEADING_PARTS: Record<string, string> = {
   details: 'summary',
   fieldset: 'legend',
 };
+const SETUP_MACROS = new Set(['set', 'unset', 'do', 'widget']);
+
+function isSetupMacro(node: MacroNode): boolean {
+  return (
+    SETUP_MACROS.has(node.name.toLowerCase()) &&
+    !getWidget(node.name) &&
+    getMacroParameters.source(node.name) === 'builtin'
+  );
+}
+
+/**
+ * Only promote bodies whose first output is a literal part (or nothing).
+ * Nested/dynamic macros stay at the existing boundary: inspecting their
+ * possible output recursively can be expensive and cannot predict effects.
+ */
+function hasKnownLeadingPart(node: MacroNode, part: string): boolean {
+  if (node.className || node.id) return false;
+  const widget = getWidget(node.name);
+  let bodies: ASTNode[][];
+  if (widget) {
+    bodies = [widget.body];
+  } else if (getMacroParameters.source(node.name) === 'builtin') {
+    const name = node.name.toLowerCase();
+    if (name === 'if' || name === 'switch') {
+      const branches = node.branches ?? [];
+      if (branches.some((branch) => branch.className || branch.id))
+        return false;
+      bodies = branches.map((branch) => branch.children);
+    } else if (name === 'for' || name === 'nobr') {
+      bodies = [node.children];
+    } else if (name === 'include') {
+      try {
+        const target = passageTarget(
+          splitIncludeFlag(node.rawArgs).passage ?? '',
+        );
+        if (target.kind !== 'name') return false;
+        const passage = useStoryStore
+          .getState()
+          .storyData?.passages.get(target.name);
+        if (!passage) return false;
+        bodies = [parseMarkup(passage.content)];
+      } catch {
+        // Let the include report its own argument or parsing error at render.
+        return false;
+      }
+    } else return false;
+  } else return false;
+  let found = false;
+  for (const body of bodies) {
+    // Prose makes renderNodes wrap even a literal part in a paragraph.
+    if (
+      body.some(
+        (n) =>
+          n.type === 'text' &&
+          (n.value.trim() !== '' || BLANK_LINE_RE.test(n.value)),
+      )
+    )
+      return false;
+    const first = body.find(
+      (n) => !isBlankText(n) && !(n.type === 'macro' && isSetupMacro(n)),
+    );
+    if (!first) continue;
+    if (first.type !== 'html' || first.tag.toLowerCase() !== part) return false;
+    found = true;
+  }
+  return found;
+}
 
 /**
  * The end of the leading part of the `tag` container: preceding macros may
  * render nothing (setup), or produce the part themselves (#474, #739).
- * Keep that whole prefix direct, stopping at the part or other content.
+ * Keep the prefix through a literal part direct. Without one, preserve the
+ * first macro boundary, extending past setup only for a known native part.
  */
 function leadingPartEnd(tag: string, nodes: ASTNode[]): number {
   const part = LEADING_PARTS[tag];
   if (!part) return 0;
   let end = 0;
+  let setup = true;
   for (let at = 0; at < nodes.length; at++) {
     const node = nodes[at]!;
     if (isBlankText(node)) continue;
     if (node.type === 'macro') {
-      end = at + 1;
+      if (end === 0) end = at + 1;
+      if (setup && !isSetupMacro(node)) {
+        if (end < at + 1 && hasKnownLeadingPart(node, part)) {
+          end = at + 1;
+        }
+        setup = false;
+      }
       continue;
     }
-    if (node.type === 'html' && node.tag.toLowerCase() === part) end = at + 1;
+    if (node.type === 'html' && node.tag.toLowerCase() === part) return at + 1;
     break;
   }
   return end;
