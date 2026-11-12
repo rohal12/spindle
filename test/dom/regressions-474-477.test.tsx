@@ -94,6 +94,89 @@ describe('summaries and legends produced by macros (#474)', () => {
       null,
     );
   });
+
+  it.each([
+    '{set _a = 1}',
+    '{set _a = 1} <!-- setup --> {set _b = 2}',
+    '{if false}nothing{/if}',
+  ])('keeps native leading parts after setup macros %s (#739)', (setup) => {
+    const el = renderPassage(
+      `<details id="hint">${setup}<summary id="label">Read hint</summary>Secret **clue**</details>` +
+        `<fieldset id="group" disabled>${setup}<legend id="l"><button id="enable">Allowed</button></legend>Choose **settings**.<button id="setting">Blocked</button></fieldset>`,
+    );
+    expectDirectSummary(el);
+    expect(el.querySelector('#group > legend#l')).not.toBeNull();
+    expect(el.querySelector('#group > p strong')!.textContent).toBe('settings');
+  });
+
+  it('keeps a macro-produced leading part after setup macros (#739)', () => {
+    const el = renderPassage(
+      '<details id="hint">{set _a = 1}{if _a}<summary id="label">Read hint</summary>{/if}Secret **clue**</details>',
+    );
+    expectDirectSummary(el);
+  });
+
+  it.each([
+    ['details', 'summary'],
+    ['fieldset', 'legend'],
+  ])(
+    'keeps body macros after a macro-produced %s leading part in Markdown',
+    (tag, part) => {
+      const label = `<${part}>Title</${part}>`;
+      setup({}, [makePassage(2, 'LeadingPart', label)]);
+      registerWidget('LeadingWidget', parseMarkup(label), [], false);
+      for (const setupMacro of ['', '{set _a = 1}']) {
+        for (const leadingMacro of [
+          `{if true}${label}{/if}`,
+          '{include "LeadingPart"}',
+          '{LeadingWidget}',
+        ]) {
+          const el = renderPassage(
+            `<${tag}>${setupMacro}${leadingMacro}{print "Hello"} **world**</${tag}>`,
+          );
+          expect(el.querySelector(`${tag} > ${part}`)).not.toBeNull();
+          expect(el.querySelector(`${tag} > p`)!.textContent).toBe(
+            'Hello world',
+          );
+          expect(el.querySelector(`${tag} > p > strong`)!.textContent).toBe(
+            'world',
+          );
+          expect(el.querySelector(tag)!.textContent).toBe('TitleHello world');
+        }
+      }
+    },
+  );
+
+  it.each([
+    ['details', 'summary'],
+    ['fieldset', 'legend'],
+  ])(
+    'keeps %s body macros in Markdown when no native part leads them',
+    (tag, part) => {
+      setup({}, [
+        makePassage(2, 'Body', 'Hello'),
+        makePassage(
+          3,
+          'OptionalPart',
+          `{if false}<${part}>Title</${part}>{/if}Hello`,
+        ),
+      ]);
+      registerWidget('BodyWidget', parseMarkup('Hello'), [], false);
+      for (const bodyMacro of [
+        '{print "Hello"}',
+        '{include "Body"}',
+        '{include inline "OptionalPart"}',
+        '{BodyWidget}',
+        `{if false}<${part}>Title</${part}>{else}Hello{/if}`,
+      ]) {
+        const el = renderPassage(
+          `<${tag}>{set _a = 1}${bodyMacro} **world**</${tag}>`,
+        );
+        expect(el.querySelector(`${tag} > p`)!.textContent).toBe('Hello world');
+        expect(el.querySelector(tag)!.textContent).toBe('Hello world');
+      }
+    },
+  );
 });
 
 describe('fieldset legends (#475)', () => {

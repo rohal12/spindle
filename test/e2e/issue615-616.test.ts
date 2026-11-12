@@ -134,6 +134,99 @@ async function navigate(type: string) {
   });
 }
 
+it('bounds stylesheet enumeration during SVG alias installation and cleanup (#736)', async () => {
+  const result = await page.evaluate(async () => {
+    const count = 4000;
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(
+      Array.from({ length: count }, (_, i) => `.unused${i} { fill: red }`).join(
+        '\n',
+      ) + '@media all { .painted { opacity: 0.9 } }',
+    );
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    const original = [...sheet.cssRules];
+    const descriptor = Object.getOwnPropertyDescriptor(
+      CSSStyleSheet.prototype,
+      'cssRules',
+    )!;
+    let reads = 0;
+    Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', {
+      ...descriptor,
+      get() {
+        const rules = descriptor.get!.call(this) as CSSRuleList;
+        return new Proxy(rules, {
+          get(target, key) {
+            if (key === Symbol.iterator) {
+              return function* () {
+                for (let i = 0; i < target.length; i++) {
+                  reads++;
+                  yield target[i];
+                }
+              };
+            }
+            if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+            return Reflect.get(target, key, target);
+          },
+        });
+      },
+    });
+    try {
+      const Story = (window as any).Story;
+      Story.setTransition({ type: 'crossfade', duration: 1 });
+      await Story.step('link:Next');
+      // Action readiness can precede the transition's cleanup timer under
+      // load. Keep counting until the outgoing snapshot is actually gone.
+      while (document.querySelector('.passage-snapshot')) {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+      }
+      const enumerated = reads;
+      return {
+        count,
+        reads: enumerated,
+        restored: [...sheet.cssRules].every((rule, i) => rule === original[i]),
+        length: sheet.cssRules.length,
+      };
+    } finally {
+      Object.defineProperty(CSSStyleSheet.prototype, 'cssRules', descriptor);
+    }
+  });
+  expect(result.reads).toBeLessThan(result.count * 20);
+  expect(result.restored).toBe(true);
+  expect(result.length).toBe(result.count + 1);
+});
+
+it('preserves author stylesheet edits made while SVG aliases are installed (#736)', async () => {
+  await page.evaluate(() => {
+    const style = document.createElement('style');
+    style.id = 'edited-styles';
+    style.textContent = '.painted { fill: red } .unused { fill: blue }';
+    document.head.appendChild(style);
+  });
+  await navigate('crossfade');
+  await page.evaluate(() => {
+    const sheet = (document.querySelector('#edited-styles') as HTMLStyleElement)
+      .sheet!;
+    sheet.deleteRule(0);
+    sheet.insertRule('.authored { fill: green }', 0);
+    (window as any).Story.setTransition({ type: 'none' });
+    (window as any).Story.goto('Start');
+  });
+  await page.evaluate(() => (window as any).Story.waitForActions());
+  expect(await page.locator('.passage-snapshot').count()).toBe(0);
+  expect(
+    await page.evaluate(() => {
+      const sheet = (
+        document.querySelector('#edited-styles') as HTMLStyleElement
+      ).sheet!;
+      return [...sheet.cssRules].map(
+        (rule) => (rule as CSSStyleRule).selectorText,
+      );
+    }),
+  ).toEqual(['.authored', '.unused']);
+});
+
 it('navigates with an opaque imported stylesheet in the outgoing passage', async () => {
   await page.locator('.passage').evaluate(async (element, url) => {
     const style = document.createElement('style');

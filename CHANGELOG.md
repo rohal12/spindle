@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
+- Twine highlighting indexes unfinished macro ownership instead of repeatedly searching earlier recovery errors (#737).
+- Reader observations exclude SVG stylesheet and script bodies while preserving visible SVG text (#738).
+- Native summaries and legends remain direct children of their containers after setup macros, preserving disclosure labels and enabled controls in disabled fieldsets. Later body macros retain their Markdown paragraphs and spacing (#739).
+
 - Back and Forward revalidate their target after a navigation callback lowers the history limit, restoring the correct variables or safely cancelling when the target was removed (#732).
 - Authored customized built-in HTML elements preserve their creation-time `is` option so their registered constructors and behavior initialize across renderer paths. Their `is` attribute remains available to attribute callbacks even when the component defines an `is` property, without repeating callbacks for unchanged attributes (#733).
 

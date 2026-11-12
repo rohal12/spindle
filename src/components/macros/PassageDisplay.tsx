@@ -369,7 +369,7 @@ function installSnapshotSvgStyles(
     return result;
   };
   type RuleContainer = CSSStyleSheet | CSSGroupingRule;
-  const inserted: [RuleContainer, CSSRule][] = [];
+  const inserted = new Map<RuleContainer, Set<CSSRule>>();
   const sheets = new Set<CSSStyleSheet>();
   const sheetRules = (sheet: CSSStyleSheet) => {
     if (
@@ -387,14 +387,19 @@ function installSnapshotSvgStyles(
     }
   };
   const visit = (parent: RuleContainer, base: string) => {
-    for (const rule of [...parent.cssRules]) {
+    // Work backwards so inserting adjacent aliases leaves the remaining
+    // original indexes intact, without copying the live list per rule.
+    for (let at = parent.cssRules.length - 1; at >= 0; at--) {
+      const rule = parent.cssRules[at]!;
       if (snapshotSvgRules.has(rule)) continue;
       if (rule instanceof CSSStyleRule) {
-        let index = [...parent.cssRules].indexOf(rule) + 1;
+        let index = at + 1;
         for (const css of rulesOf([rule], base)) {
           parent.insertRule(css, index);
           const insertedRule = parent.cssRules[index++]!;
-          inserted.push([parent, insertedRule]);
+          let rules = inserted.get(parent);
+          if (!rules) inserted.set(parent, (rules = new Set()));
+          rules.add(insertedRule);
           snapshotSvgRules.add(insertedRule);
         }
       } else if (rule instanceof CSSImportRule) {
@@ -412,10 +417,13 @@ function installSnapshotSvgStyles(
   // including anonymous layers. They match snapshot elements only.
   for (const sheet of targetSheets) sheetRules(sheet);
   return () => {
-    for (const [parent, rule] of inserted) {
-      const index = [...parent.cssRules].indexOf(rule);
-      if (index >= 0) parent.deleteRule(index);
-      snapshotSvgRules.delete(rule);
+    for (const [parent, rules] of inserted) {
+      // Rules may have changed during the transition. Match identities in
+      // one backwards pass, preserving authored insertions and removals.
+      for (let index = parent.cssRules.length - 1; index >= 0; index--) {
+        if (rules.has(parent.cssRules[index]!)) parent.deleteRule(index);
+      }
+      for (const rule of rules) snapshotSvgRules.delete(rule);
     }
   };
 }

@@ -18,6 +18,7 @@ type ScannedMarkup = ReturnType<typeof scanMarkupTolerant>;
 import { jsCodeEnd } from '../markup/code-end';
 import { builtinMacros } from './builtin-macros';
 import { parameterLookup } from '../code-check';
+import { upperBound } from '../utils/sorted';
 
 const pairing = parameterLookup(builtinMacros).pairing;
 
@@ -407,26 +408,39 @@ function spansOf(text: string, reading: Reading): StyledSpan[] {
 }
 
 /**
- * Where the construct starts whose code, starting at `at`, may end
- * elsewhere once text follows: the damage of an error the code is in, or
- * the tag holding the code (a raw body starts where its opener ends).
+ * Owners of code that may end elsewhere once text follows: the damage of
+ * an error the code is in, or the tag holding the code (a raw body starts
+ * where its opener ends). Index once for all open code positions.
  */
-function openCodeStart(scan: ScannedMarkup, at: number): number {
-  const i = scan.errors.findIndex(
-    (e, i) => scan.damage[i]! < at && at <= Math.max(e.offset, e.end),
-  );
-  if (i >= 0) return scan.damage[i]!;
-  const token = scan.tokens.find(
-    (t) => t.type !== 'text' && t.start < at && at <= t.end,
-  );
-  return token ? token.start : -1;
+function openCodeStarts(scan: ScannedMarkup, ends: number[]): number[] {
+  if (!ends.length) return [];
+  // Damage starts are ordered but their ranges may overlap. Prefix maxima
+  // let each query find the first owning error, just as findIndex did.
+  const damageEnds: number[] = [];
+  for (const error of scan.errors) {
+    damageEnds.push(
+      Math.max(
+        damageEnds[damageEnds.length - 1] ?? -1,
+        error.offset,
+        error.end,
+      ),
+    );
+  }
+  const tokens = scan.tokens.filter((token) => token.type !== 'text');
+  const starts = tokens.map((token) => token.start);
+  return ends.map((at) => {
+    const i = upperBound(damageEnds, at - 1);
+    if (i < scan.damage.length && scan.damage[i]! < at) return scan.damage[i]!;
+    const token = tokens[upperBound(starts, at - 1) - 1];
+    return token && at <= token.end ? token.start : -1;
+  });
 }
 
 function openStartOf(text: string, reading: Reading): number {
   const { tokens } = reading;
   const starts = [
     ...unclosedStarts(text, reading),
-    ...reading.openEnds.map((at) => openCodeStart(reading, at)),
+    ...openCodeStarts(reading, reading.openEnds),
     openComment(tokens),
     openDo(tokens)?.start ?? -1,
     openTag(text, tokens),
