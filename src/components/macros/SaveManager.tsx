@@ -34,6 +34,11 @@ import { DialogCloseContext } from '../PassageDialog';
 import { defineMacro } from '../../define-macro';
 import { errorMessage } from '../../utils/error-message';
 
+/** How long a Delete button stays armed without a second press. */
+const ARMED_DELETE_MS = 5000;
+const ARMED_DELETE_LABEL = 'Press again to delete';
+const ARMED_DELETE_HINT = 'Press again to delete this save';
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const secs = Math.floor(diff / 1000);
@@ -71,6 +76,8 @@ export function SaveManagerContent({
   } | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // The save whose Delete button has been pressed once (see handleDelete)
+  const [armedId, setArmedId] = useState<string | null>(null);
   const renameCancelled = useRef(false);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -136,6 +143,38 @@ export function SaveManagerContent({
       clearTimeout(closeTimer.current);
     };
   }, []);
+
+  // While a Delete button is armed, anything else the player does (a press
+  // elsewhere, a key, Escape) or a pause puts it back. Blur and Tab are
+  // covered by the button's onBlur; the document listeners cover browsers
+  // that do not focus a button on click. Escape disarms only: the dialog
+  // stays open.
+  useEffect(() => {
+    if (armedId === null) return;
+    const disarm = () => setArmedId(null);
+    const onArmedButton = (e: Event) =>
+      e.target instanceof Element && !!e.target.closest('[data-armed]');
+    const onPointerDown = (e: Event) => {
+      if (!onArmedButton(e)) disarm();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        disarm();
+      } else if (!onArmedButton(e)) {
+        disarm();
+      }
+    };
+    const timer = window.setTimeout(disarm, ARMED_DELETE_MS);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [armedId]);
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => {
@@ -229,8 +268,13 @@ export function SaveManagerContent({
     }
   };
 
+  /** The first press arms the button; a second press on it deletes. */
   const handleDelete = async (saveId: string) => {
-    if (!confirm('Delete this save?')) return;
+    if (armedId !== saveId) {
+      setArmedId(saveId);
+      return;
+    }
+    setArmedId(null);
     await runAction('Save deleted', 'Failed to delete save', async () => {
       await deleteSaveById(saveId);
       // The save may have been held by a slot; hasSave() and QuickLoad
@@ -475,10 +519,34 @@ export function SaveManagerContent({
                           </button>
                           <button
                             type="button"
-                            class="save-slot-action danger"
+                            class={
+                              armedId === save.meta.id
+                                ? 'save-slot-action danger is-armed'
+                                : 'save-slot-action danger'
+                            }
+                            data-armed={
+                              armedId === save.meta.id ? 'true' : undefined
+                            }
+                            aria-label={
+                              armedId === save.meta.id
+                                ? ARMED_DELETE_HINT
+                                : undefined
+                            }
+                            title={
+                              armedId === save.meta.id
+                                ? ARMED_DELETE_HINT
+                                : undefined
+                            }
                             onClick={() => handleDelete(save.meta.id)}
+                            onBlur={() =>
+                              setArmedId((id) =>
+                                id === save.meta.id ? null : id,
+                              )
+                            }
                           >
-                            Delete
+                            {armedId === save.meta.id
+                              ? ARMED_DELETE_LABEL
+                              : 'Delete'}
                           </button>
                         </div>
                       </div>
@@ -515,6 +583,14 @@ export function SaveManagerContent({
               </div>
             </div>
           )}
+      </div>
+
+      <div
+        class="saves-sr-only"
+        role="status"
+        aria-live="polite"
+      >
+        {armedId !== null ? ARMED_DELETE_HINT : ''}
       </div>
 
       {status && (

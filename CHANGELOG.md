@@ -127,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Deleting a save in the save dialog asks for a second press on the same button instead of the browser's confirmation box. The first press turns the button into "Press again to delete" (class `is-armed`, `data-armed="true"`, announced to screen readers); moving on, pressing Escape or waiting a few seconds puts it back. Styles can mark the armed state.
 - **Breaking:** Node entry points now require Node.js 24 or later. The optional compiler peer and development compiler now use twee-ts 2.x, including its resolved project configuration paths (#612).
 - Documentation covers null defaults, computed loop locals, the four merged variable scopes, passage lifecycle hooks, loading controls and save/settings dialog customization (#603–#606).
 

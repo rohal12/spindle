@@ -561,6 +561,25 @@ tw-storydata {
   background: rgba(239, 83, 80, 0.1);
 }
 
+.save-slot-action.danger.is-armed {
+  color: #ef5350;
+  background: rgba(239, 83, 80, 0.15);
+  border-color: rgba(239, 83, 80, 0.5);
+}
+
+/* Read by screen readers, not shown: announces an armed Delete button */
+.saves-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .save-slot-new {
   display: flex;
   align-items: center;
