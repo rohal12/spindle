@@ -100,6 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Navigation events say how the story moved: `beforenavigate` handlers receive `(passageName, kind)` and `afternavigate` handlers `(to, from, kind)`, where `kind` is `'navigate'` for a navigation that records a new moment (a link, `{goto}`, `Story.goto()`, a watcher's goto) and `'back'` or `'forward'` for a move through the history (`Story.back()`, `Story.forward()`, the `{back}` and `{forward}` buttons). The type is exported as `NavigationKind`. Handlers that take fewer arguments are unaffected.
+- `Story.history` reads the history: `length` (the moments kept), `index` (the current moment), `passage(index?)` and `variables(index?)` (the variables recorded on entering a moment, which Back and Forward restore, as a frozen copy). An index the history does not hold throws a `RangeError` naming the valid range. Stories ported from SugarCube can use these in place of `State.length`, `State.size` and `State.index`.
+
 - Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).
 
 - Public tokenizers accept effective macro and widget metadata through `options.macros`, exposing live calls inside widgets named `do` with original offsets and tolerant recovery (#652).
