@@ -761,12 +761,13 @@ A `beforenavigate` handler that itself navigates, goes back or forward, restarts
 
 `afternavigate` fires as soon as the story state changes, before the new passage is rendered (with a `fade-through` transition the new passage mounts only after the outgoing fade). Code that needs the rendered DOM — pagers, drag-and-drop, focus, third-party widgets — listens for the render events instead:
 
-| Event           | Arguments                            | Fires when                                                                                                                                                                             |
-| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot. |
-| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                    |
+| Event           | Arguments                            | Fires when                                                                                                                                                                               |
+| --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot.   |
+| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                      |
+| `dialogclose`   | `(passage: string)`                  | A dialog has closed, whichever way: the `✕` button, Escape, a backdrop click, `Story.closeDialog()`, `Story.closeAllDialogs()`, a restart, or leaving the passage of an open `{dialog}`. |
 
-Both fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
+`passagerender` and `dialogrender` fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
 
 ```js
 Story.on('dialogrender', function (passage, panel) {
@@ -774,6 +775,20 @@ Story.on('dialogrender', function (passage, panel) {
 });
 Story.openDialog('Inventory');
 ```
+
+`dialogclose` fires once for each `dialogrender`, with the same `passage` (`''` for a dialog without one). By then the dialog is out of the DOM (when it closed because the story left its passage, a transition may still show an inert copy of the outgoing passage, dialog included, until the transition ends), focus is back on the element that had it before the dialog opened (if that element is still there), and `Story.isDialogOpen()` is `true` only if other dialogs are still open. A handler can release what it set up in `dialogrender`, and can move focus itself:
+
+```js
+Story.on('dialogclose', function (passage) {
+  if (passage === 'Inventory') stopDragAndDrop();
+  // The control that opened the dialog may be gone by now
+  if (document.activeElement === document.body) {
+    document.querySelector('.passage a, .passage button')?.focus();
+  }
+});
+```
+
+Dialogs that close together (`Story.closeAllDialogs()`, a restart) each fire their own `dialogclose`, the innermost first. Those a restart closes fire after `storyinit`. A dialog still open when the page is closed or reloaded fires nothing. As with the render events, an exception in a handler is logged to the console and the other handlers still run.
 
 Content that re-renders _inside_ a passage or dialog because a variable changed does not fire these events. For DOM work tied to such content, use a [custom macro](custom-macros.md#stateful-macros-with-hooks) with `ctx.hooks.useEffect`, which runs after the macro's own content is committed.
 
