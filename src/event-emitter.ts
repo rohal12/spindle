@@ -16,6 +16,7 @@ type EventMap = {
   afternavigate: (to: string, from: string) => void;
   passagerender: (passage: string, element: HTMLElement) => void;
   dialogrender: (passage: string, element: HTMLElement) => void;
+  dialogclose: (passage: string) => void;
 };
 
 export type StoryEvent = keyof EventMap;
@@ -34,6 +35,7 @@ const VALID_EVENTS = new Set<string>([
   'afternavigate',
   'passagerender',
   'dialogrender',
+  'dialogclose',
 ]);
 
 // Each event key maps to a Set of callbacks.
@@ -76,9 +78,9 @@ export function emit<E extends StoryEvent>(
 }
 
 /**
- * Emit an event from inside a render commit (layout effect). A throwing
- * handler is logged instead of propagating into Preact and breaking the
- * render; the remaining handlers still run.
+ * Emit an event from inside a render commit (layout effect), or once one is
+ * over (`dialogclose`). A throwing handler is logged instead of propagating
+ * into Preact and breaking the render; the remaining handlers still run.
  */
 export function emitFromRender<E extends StoryEvent>(
   event: E,

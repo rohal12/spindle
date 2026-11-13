@@ -98,6 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `dialogclose` event: `Story.on('dialogclose', (passage) => …)` fires once for each dialog that closes, whichever way it closed (the `✕` button, Escape, a backdrop click, `Story.closeDialog()`, `Story.closeAllDialogs()`, a restart, leaving the passage of an open `{dialog}`), with the passage `dialogrender` gave for it. It fires after the dialog is removed from the DOM (a passage transition may still show an inert copy of the outgoing passage, dialog included) and focus has returned to the element that had it before the dialog opened, so a handler can release what it set up in `dialogrender` or move focus, and `Story.isDialogOpen()` inside it is `true` only if other dialogs are still open. Dialogs that close together fire innermost first. A story ported from SugarCube can use it where it listened for `:dialogclosed`.
+
 - Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).
 
 - Public tokenizers accept effective macro and widget metadata through `options.macros`, exposing live calls inside widgets named `do` with original offsets and tolerant recovery (#652).

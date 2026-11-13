@@ -150,6 +150,15 @@ export interface StoryEventMap {
    * without one).
    */
   dialogrender: (passage: string, element: HTMLElement) => void;
+  /**
+   * A dialog has closed, whichever way: fires once for each `dialogrender`,
+   * with the same `passage`, after the dialog is removed from the DOM (a
+   * passage transition may still show an inert copy of the outgoing passage,
+   * dialog included) and focus is back on the element that had it before the
+   * dialog opened. Not fired for dialogs still open when the page is closed
+   * or reloaded.
+   */
+  dialogclose: (passage: string) => void;
 }
 
 /** Event name that can be passed to `Story.on()`. */
