@@ -126,6 +126,16 @@ export interface Passage {
 }
 
 /**
+ * How the story moved, as the navigation events report it: `'navigate'`
+ * recorded a new history moment (a link, `{goto}`, `Story.goto()`, a
+ * watcher's goto); `'back'` and `'forward'` moved through the moments already
+ * recorded (`Story.back()`, `Story.forward()`, the `{back}` and `{forward}`
+ * buttons).
+ * @see {@link ../../src/event-emitter.ts} for the implementation.
+ */
+export type NavigationKind = 'navigate' | 'back' | 'forward';
+
+/**
  * Map of story event names to their callback signatures.
  * @see {@link ../../src/event-emitter.ts} for the implementation.
  */
@@ -136,6 +146,15 @@ export interface StoryEventMap {
   variableChanged: (
     changed: Record<string, { from: unknown; to: unknown }>,
   ) => void;
+  /**
+   * A setting's value changed through the settings controls or
+   * `Story.settings.set()`, and has been stored. `name` is the setting's name
+   * and `value` the new value. Does not fire when a setting is registered,
+   * when persisted values are applied at startup (read those with
+   * `Story.settings.get()` from `storyinit` on), or when a value is set to
+   * what it already is.
+   */
+  settingchanged: (name: string, value: unknown) => void;
   beforesave: (
     slot: string | undefined,
     custom: Record<string, unknown> | undefined,
@@ -143,8 +162,16 @@ export interface StoryEventMap {
   aftersave: (slot: string | undefined) => void;
   beforeload: (slot: string | undefined) => void;
   afterload: (slot: string | undefined) => void;
-  beforenavigate: (passageName: string) => void;
-  afternavigate: (to: string, from: string) => void;
+  /**
+   * The story is about to move to `passageName`. `Story.passage` and
+   * `Story.history` still describe the moment being left.
+   */
+  beforenavigate: (passageName: string, kind: NavigationKind) => void;
+  /**
+   * The story moved from passage `from` to passage `to`. `Story.passage` and
+   * `Story.history` describe the moment arrived at.
+   */
+  afternavigate: (to: string, from: string, kind: NavigationKind) => void;
   /**
    * A passage's `.passage` element was committed to the DOM (first render,
    * navigation, back/forward, restart, load). Fires after the transition
@@ -157,6 +184,15 @@ export interface StoryEventMap {
    * without one).
    */
   dialogrender: (passage: string, element: HTMLElement) => void;
+  /**
+   * A dialog has closed, whichever way: fires once for each `dialogrender`,
+   * with the same `passage`, after the dialog is removed from the DOM (a
+   * passage transition may still show an inert copy of the outgoing passage,
+   * dialog included) and focus is back on the element that had it before the
+   * dialog opened. Not fired for dialogs still open when the page is closed
+   * or reloaded.
+   */
+  dialogclose: (passage: string) => void;
 }
 
 /** Event name that can be passed to `Story.on()`. */
@@ -731,6 +767,21 @@ export interface StoryAPI {
   /** Go forward one step in history. Throws like `goto()`. */
   forward(): void;
 
+  /**
+   * Record the story variables as they are now as the state of the current
+   * moment, without navigating. From then on a page refresh, a save made on
+   * this passage and loaded, and moving back to this moment restore them,
+   * not the state on entering the passage. Use it for a change the player
+   * makes on a passage without leaving it (in a dialog, say).
+   *
+   * Writes the session, and throws like `goto()` once the moment is
+   * recorded. If the player had gone back, the moments after the current
+   * one are dropped. No events fire, the passage is not rendered again and
+   * the moment keeps the PRNG state it was entered with. Does nothing when
+   * the variables are as recorded already.
+   */
+  recordMoment(): void;
+
   /** Restart the story from the beginning. */
   restart(): void;
 
@@ -818,6 +869,29 @@ export interface StoryAPI {
 
   /** The current passage name. */
   readonly passage: string;
+
+  /**
+   * The history: the moments Back and Forward move through, oldest first.
+   * Read-only. `Story.config.maxHistory` limits how many are kept.
+   */
+  readonly history: {
+    /** The number of moments kept. */
+    readonly length: number;
+    /** The index of the current moment (0 is the oldest kept). */
+    readonly index: number;
+    /**
+     * The passage name of the moment at `index` (the current moment when
+     * left out). Throws a `RangeError` if the history has no such moment.
+     */
+    passage(index?: number): string;
+    /**
+     * The story variables recorded for the moment at `index` (the current
+     * moment when left out): the state on entering it, which Back and
+     * Forward restore. A frozen copy, keyed by name without the `$`. Throws a
+     * `RangeError` if the history has no such moment.
+     */
+    variables(index?: number): Record<string, unknown>;
+  };
 
   /** The settings API. */
   readonly settings: SettingsAPI;

@@ -7,7 +7,8 @@
  * Each moment records the variables as they were on entering its passage
  * (navigate() snapshots the live variables at the time of the navigation).
  * Back/forward and loads restore that entry snapshot; edits made on a passage
- * after entering it are discarded (docs/saves.md, "What a Load Restores").
+ * after entering it are discarded (docs/saves.md, "What a Load Restores"),
+ * unless Story.recordMoment() made them the moment's recorded state.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fc from 'fast-check';
@@ -142,6 +143,18 @@ function modelNavigate(m: HistoryModel, passage: PassageName): void {
   m.visitCounts[passage] = (m.visitCounts[passage] ?? 0) + 1;
 }
 
+/**
+ * Record the live state as the current moment's (Story.recordMoment()):
+ * the moments after it are dropped, unless the state is as recorded. The
+ * moment keeps its entry PRNG state, and so its rolls.
+ */
+function modelRecord(m: HistoryModel): void {
+  const current = m.moments[m.index]!;
+  if (structEq(m.live, current.vars)) return;
+  current.vars = cloneVars(m.live);
+  m.moments = m.moments.slice(0, m.index + 1);
+}
+
 /** Back at the start of a fresh game. */
 function modelFresh(m: HistoryModel): void {
   m.moments = [{ passage: 'Start', vars: cloneVars(m.start), rolls: [] }];
@@ -262,6 +275,16 @@ class Forward implements Cmd {
   toString = () => 'Forward';
 }
 
+class RecordMoment implements Cmd {
+  check = () => true;
+  run(m: HistoryModel): void {
+    Story.recordMoment();
+    modelRecord(m);
+    assertMatches(m);
+  }
+  toString = () => 'RecordMoment';
+}
+
 /** A random draw: replays the moment's earlier draws after returning to it. */
 class Roll implements Cmd {
   check = () => true;
@@ -276,14 +299,17 @@ class Roll implements Cmd {
   toString = () => 'Roll';
 }
 
+type ScriptCall = 'goto' | 'back' | 'forward' | 'restart' | 'record';
+
 /**
  * Navigation from running story code ({do}, a {button}): the code's writes
  * so far are committed first, the navigation records them, and the code
- * goes on from the state the navigation leaves.
+ * goes on from the state the navigation leaves. Story.recordMoment() takes
+ * its place in the code the same way.
  */
 class ScriptNavigate implements Cmd {
   constructor(
-    readonly kind: 'goto' | 'back' | 'forward' | 'restart',
+    readonly kind: ScriptCall,
     readonly v: number,
   ) {}
   check = () => true;
@@ -293,6 +319,7 @@ class ScriptNavigate implements Cmd {
       back: 'Story.back()',
       forward: 'Story.forward()',
       restart: 'Story.restart()',
+      record: 'Story.recordMoment()',
     }[this.kind];
     executeMutation(`$x = ${this.v}; ${call}; $y = ${this.v}`, {}, () => {});
     m.live.x = this.v;
@@ -304,6 +331,7 @@ class ScriptNavigate implements Cmd {
       m.index++;
       modelReenter(m);
     } else if (this.kind === 'restart') modelFresh(m);
+    else if (this.kind === 'record') modelRecord(m);
     m.live.y = this.v;
     assertMatches(m);
   }
@@ -331,7 +359,7 @@ class Refresh implements Cmd {
       // A load restores the current moment's entry snapshot
       modelReenter(m);
     } else {
-      // Nothing navigated since (re)start: the session was cleared
+      // Nothing navigated or recorded since (re)start: there is no session
       modelFresh(m);
     }
     assertMatches(m);
@@ -403,6 +431,7 @@ const simpleCommands: fc.Arbitrary<Cmd>[] = [
   fc.constantFrom(...PASSAGES).map((p) => new Goto(p)),
   fc.constant(new Back()),
   fc.constant(new Forward()),
+  fc.constant(new RecordMoment()),
   fc.constant(new Roll()),
   fc.double({ min: -1, max: 7, noNaN: true }).map((n) => new SetMaxHistory(n)),
 ];
@@ -414,9 +443,13 @@ const allCommands = fc.commands(
     fc.constant(new Refresh()),
     fc
       .tuple(
-        fc.constantFrom('goto', 'back', 'forward', 'restart') as fc.Arbitrary<
-          'goto' | 'back' | 'forward' | 'restart'
-        >,
+        fc.constantFrom(
+          'goto',
+          'back',
+          'forward',
+          'restart',
+          'record',
+        ) as fc.Arbitrary<ScriptCall>,
         fc.integer({ min: 0, max: 9 }),
       )
       .map(([k, v]) => new ScriptNavigate(k, v)),

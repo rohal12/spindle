@@ -63,11 +63,18 @@ describe('event-emitter', () => {
     expect(() => emit('storyinit')).not.toThrow();
   });
 
-  it('afternavigate passes (to, from) args', () => {
+  it('afternavigate passes (to, from, kind) args', () => {
     const cb = vi.fn();
     on('afternavigate', cb);
-    emit('afternavigate', 'Room', 'Start');
-    expect(cb).toHaveBeenCalledWith('Room', 'Start');
+    emit('afternavigate', 'Room', 'Start', 'navigate');
+    expect(cb).toHaveBeenCalledWith('Room', 'Start', 'navigate');
+  });
+
+  it('beforenavigate passes (passageName, kind) args', () => {
+    const cb = vi.fn();
+    on('beforenavigate', cb);
+    emit('beforenavigate', 'Start', 'back');
+    expect(cb).toHaveBeenCalledWith('Start', 'back');
   });
 
   it('resetEmitter() clears all listeners', () => {
