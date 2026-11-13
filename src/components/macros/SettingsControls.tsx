@@ -1,19 +1,18 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useId, useState } from 'preact/hooks';
 import { settings, subscribeSettings, type SettingDef } from '../../settings';
 import { defineMacro } from '../../define-macro';
 
-function SettingControl({ name, def }: { name: string; def: SettingDef }) {
-  const [value, setValue] = useState(() => settings.get(name));
-
-  // Follow changes made elsewhere: Story.settings.set(), another view
-  useEffect(() => {
-    const sync = () => setValue(settings.get(name));
-    sync();
-    return subscribeSettings(sync);
-  }, [name]);
-
-  const update = (newValue: unknown) => settings.set(name, newValue);
-
+function SettingRow({
+  def,
+  value,
+  describedBy,
+  update,
+}: {
+  def: SettingDef;
+  value: unknown;
+  describedBy: string | undefined;
+  update: (value: unknown) => void;
+}) {
   switch (def.type) {
     case 'toggle':
       return (
@@ -22,6 +21,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
           <input
             type="checkbox"
             checked={!!value}
+            aria-describedby={describedBy}
             onChange={(e) => update((e.target as HTMLInputElement).checked)}
           />
         </label>
@@ -33,6 +33,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
           <span>{def.config.label}</span>
           <select
             value={String(value)}
+            aria-describedby={describedBy}
             onChange={(e) => update((e.target as HTMLSelectElement).value)}
           >
             {def.config.options.map((opt) => (
@@ -59,6 +60,7 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
             max={def.config.max}
             step={def.config.step}
             value={Number(value)}
+            aria-describedby={describedBy}
             onInput={(e) =>
               update(parseFloat((e.target as HTMLInputElement).value))
             }
@@ -66,6 +68,46 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
         </label>
       );
   }
+}
+
+function SettingControl({ name, def }: { name: string; def: SettingDef }) {
+  const [value, setValue] = useState(() => settings.get(name));
+  const descriptionId = useId();
+  // Plain text, never markup. No description, no element.
+  const text = def.config.description;
+  const description =
+    typeof text === 'string' && text.trim() !== '' ? text : null;
+
+  // Follow changes made elsewhere: Story.settings.set(), another view
+  useEffect(() => {
+    const sync = () => setValue(settings.get(name));
+    sync();
+    return subscribeSettings(sync);
+  }, [name]);
+
+  const update = (newValue: unknown) => settings.set(name, newValue);
+
+  const row = (
+    <SettingRow
+      def={def}
+      value={value}
+      describedBy={description === null ? undefined : descriptionId}
+      update={update}
+    />
+  );
+  if (description === null) return row;
+
+  return (
+    <div class="settings-item">
+      {row}
+      <p
+        id={descriptionId}
+        class="settings-description"
+      >
+        {description}
+      </p>
+    </div>
+  );
 }
 
 function SettingsControlsContent({

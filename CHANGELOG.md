@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `Story.on('settingchanged', (name, value) => …)` fires after a setting's value changed and was stored, whether through the settings controls or `Story.settings.set()`, so story code can apply a setting (a theme, a text size) without polling. It does not fire when settings are registered, when persisted values are applied at startup (read those with `Story.settings.get()` from `storyinit` on), or when a value is set to what it already is.
+- `Story.settings.addToggle`, `addList` and `addRange` accept an optional plain-text `description`. `{settings-controls}` shows it under the setting in a `.settings-description` element that the control references with `aria-describedby`; settings without one render as before.
 
 ### Fixed
 

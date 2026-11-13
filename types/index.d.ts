@@ -42,12 +42,21 @@ export interface SavePayload {
   prng?: { seed: string; pull: number } | null;
 }
 
+/** What every setting type shares. */
+interface SettingConfigBase {
+  label: string;
+  /**
+   * Plain text shown with the setting in `{settings-controls}`, under its
+   * control. Not markup.
+   */
+  description?: string;
+}
+
 /**
  * Configuration for a toggle (boolean) setting.
  * @see {@link ../../src/settings.ts} for the implementation.
  */
-export interface ToggleConfig {
-  label: string;
+export interface ToggleConfig extends SettingConfigBase {
   default: boolean;
 }
 
@@ -55,8 +64,7 @@ export interface ToggleConfig {
  * Configuration for a list (dropdown) setting.
  * @see {@link ../../src/settings.ts} for the implementation.
  */
-export interface ListConfig {
-  label: string;
+export interface ListConfig extends SettingConfigBase {
   options: string[];
   default: string;
 }
@@ -65,8 +73,7 @@ export interface ListConfig {
  * Configuration for a range (slider) setting.
  * @see {@link ../../src/settings.ts} for the implementation.
  */
-export interface RangeConfig {
-  label: string;
+export interface RangeConfig extends SettingConfigBase {
   min: number;
   max: number;
   step: number;

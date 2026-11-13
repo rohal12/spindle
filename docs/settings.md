@@ -69,6 +69,42 @@ Story.settings.addRange("setting_name", {
 })
 ```
 
+## Descriptions
+
+Every setting type accepts an optional `description`: a line of plain text that `{settings-controls}` shows under the setting's control.
+
+```
+Story.settings.addToggle("hints", {
+  label: "Show hints",
+  description: "Hints appear after a choice has been waiting for a while.",
+  default: true
+})
+```
+
+The description is text, not markup: `*`, `<` and `{` appear as typed. A setting without a description (or an empty or blank one) renders exactly as before.
+
+For a setting with a description, `{settings-controls}` wraps the control row and the description:
+
+```html
+<div class="settings-item">
+  <label class="settings-row">
+    <span>Show hints</span>
+    <input
+      type="checkbox"
+      aria-describedby="…"
+    />
+  </label>
+  <p
+    class="settings-description"
+    id="…"
+  >
+    Hints appear after …
+  </p>
+</div>
+```
+
+The control's `aria-describedby` names the description, so assistive technology reads it with the control. Style `.settings-item` and `.settings-description` to place it.
+
 ## The Settings Button
 
 The `{settings}` macro renders a button that opens the settings dialog. It only appears if at least one setting has been defined.

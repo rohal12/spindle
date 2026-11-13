@@ -2,19 +2,23 @@ import { emit } from './event-emitter';
 import { useStoryStore } from './store';
 import { createNamespace, hasOwn, ownValue } from './utils/namespace';
 
-export interface ToggleConfig {
+/** What every setting type shares. */
+interface SettingConfigBase {
   label: string;
+  /** Plain text shown with the setting in `{settings-controls}`. */
+  description?: string;
+}
+
+export interface ToggleConfig extends SettingConfigBase {
   default: boolean;
 }
 
-export interface ListConfig {
-  label: string;
+export interface ListConfig extends SettingConfigBase {
   options: string[];
   default: string;
 }
 
-export interface RangeConfig {
-  label: string;
+export interface RangeConfig extends SettingConfigBase {
   min: number;
   max: number;
   step: number;
