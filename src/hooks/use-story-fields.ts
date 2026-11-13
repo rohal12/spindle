@@ -33,6 +33,19 @@ export const PendingIterationContext = createContext<
 export const OutgoingContext = createContext<(() => boolean) | null>(null);
 
 /**
+ * Tells the macros that run code as they mount ({set}, {do}, {unset},
+ * {goto}, {computed}, the count of an {include}) whether they come too late: the
+ * passage they belong to was on the page and has been left since. State
+ * that changed before the navigation can still render new content into the
+ * passage on its way out, and its code would run against the destination's
+ * state (#352, as #410 for timers). The macros that mount while the passage
+ * is first rendered are never late, whatever that render navigates. Null
+ * outside a displayed passage, and in a click body, which renders apart
+ * from the passage and runs as part of the click.
+ */
+export const LateMountContext = createContext<(() => boolean) | null>(null);
+
+/**
  * Story state fields `keys`, re-rendering when any of them changes (as one
  * useStoryStore() selector per field would). The result keeps its identity
  * while the fields don't change, as the store's snapshot must.
