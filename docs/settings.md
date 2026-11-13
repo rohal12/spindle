@@ -81,7 +81,7 @@ Story.settings.addToggle("hints", {
 })
 ```
 
-The description is text, not markup: `*`, `<` and `{` appear as typed. A setting without a description (or with an empty one) renders exactly as before.
+The description is text, not markup: `*`, `<` and `{` appear as typed. A setting without a description (or an empty or blank one) renders exactly as before.
 
 For a setting with a description, `{settings-controls}` wraps the control row and the description:
 
