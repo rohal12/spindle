@@ -7,7 +7,10 @@ import { defineMacro } from '../../define-macro';
 import { MacroError, logMacroError } from './MacroError';
 import { currentSourceLocation } from '../../utils/source-location';
 import { checkVariableName, ownValue } from '../../utils/namespace';
-import { PendingIterationContext } from '../../hooks/use-story-fields';
+import {
+  LateMountContext,
+  PendingIterationContext,
+} from '../../hooks/use-story-fields';
 
 /**
  * The previous output before the first successful evaluation. Distinct from
@@ -130,6 +133,8 @@ defineMacro({
     const name = target.slice(1);
     const localsUpdate = isLocal ? ctx.update : null;
     const pendingIteration = ctx.hooks.useContext(PendingIterationContext);
+    // In a passage that was left it must not compute (see LateMountContext)
+    const tooLate = ctx.hooks.useContext(LateMountContext)?.() ?? false;
 
     const prevOutput = ctx.hooks.useRef<unknown>(UNSET);
     // The navigation the target was last checked in
@@ -151,7 +156,7 @@ defineMacro({
     const ran = ctx.hooks.useRef(false);
     if (!ran.current) {
       ran.current = true;
-      compute();
+      if (!tooLate) compute();
     }
 
     // The merged values only decide when to recompute; computeAndApply reads
@@ -160,7 +165,7 @@ defineMacro({
     ctx.hooks.useLayoutEffect(() => {
       // A queued effect can outlive the loop state its locals belong to.
       // Let the owner reconcile first, dropping any removed iterations.
-      if (!pendingIteration?.(useStoryStore.getState())) compute();
+      if (!tooLate && !pendingIteration?.(useStoryStore.getState())) compute();
     }, [ctx.merged, pendingIteration]);
 
     return null;

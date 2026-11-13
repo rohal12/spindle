@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `{set}`, `{do}`, `{unset}`, `{goto}`, `{computed}` and the render count of `{include}` no longer run when they mount in a passage that was already left. State changed just before a navigation (`Story.set` then `Story.goto` in one tick, or a link that sets a variable and goes on) could show a branch in the passage on its way out, whose code then ran against the destination's state and failed on the temporary variables it no longer had.
+
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
 - Twine highlighting indexes unfinished macro ownership instead of repeatedly searching earlier recovery errors (#737).
 - Reader observations exclude SVG stylesheet and script bodies while preserving visible SVG text (#738).

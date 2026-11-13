@@ -1,4 +1,6 @@
 import {
+  useCallback,
+  useContext,
   useMemo,
   useEffect,
   useLayoutEffect,
@@ -14,7 +16,11 @@ import {
   InterfaceContext,
   useViewScope,
 } from '../markup/render';
-import { useStoryFields } from '../hooks/use-story-fields';
+import {
+  LateMountContext,
+  OutgoingContext,
+  useStoryFields,
+} from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
@@ -156,28 +162,43 @@ export function Passage({
     }
   }, [passage.name, navigationId]);
 
+  // The macros that mount after this passage was left must not run (see
+  // LateMountContext). Those of its first render are not late: that render
+  // may itself navigate away, and the macros after the navigation still run.
+  const hasLeft = useContext(OutgoingContext);
+  const committed = useRef(false);
+  useLayoutEffect(() => {
+    committed.current = true;
+  }, []);
+  const lateMount = useCallback(
+    () => committed.current && !!hasLeft?.(),
+    [hasLeft],
+  );
+
   const nobr = passage.tags.includes('nobr');
   const viewScope = useViewScope();
 
   const inner = (
     <InterfaceContext.Provider value={false}>
       <ViewScopeContext.Provider value={viewScope}>
-        <div
-          ref={elRef}
-          class="passage"
-          data-passage={passage.name}
-          data-tags={passage.tags.join(' ')}
-          data-transition={dataTransition}
-        >
-          {headerContent && <div class="passage-header">{headerContent}</div>}
-          {content}
-          {footerContent && <div class="passage-footer">{footerContent}</div>}
-          {doneContent && (
-            <EntryRenderBoundary>
-              <div hidden>{doneContent}</div>
-            </EntryRenderBoundary>
-          )}
-        </div>
+        <LateMountContext.Provider value={lateMount}>
+          <div
+            ref={elRef}
+            class="passage"
+            data-passage={passage.name}
+            data-tags={passage.tags.join(' ')}
+            data-transition={dataTransition}
+          >
+            {headerContent && <div class="passage-header">{headerContent}</div>}
+            {content}
+            {footerContent && <div class="passage-footer">{footerContent}</div>}
+            {doneContent && (
+              <EntryRenderBoundary>
+                <div hidden>{doneContent}</div>
+              </EntryRenderBoundary>
+            )}
+          </div>
+        </LateMountContext.Provider>
       </ViewScopeContext.Provider>
     </InterfaceContext.Provider>
   );
