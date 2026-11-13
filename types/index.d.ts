@@ -751,6 +751,21 @@ export interface StoryAPI {
   /** Go forward one step in history. Throws like `goto()`. */
   forward(): void;
 
+  /**
+   * Record the story variables as they are now as the state of the current
+   * moment, without navigating. From then on a page refresh, a save made on
+   * this passage and loaded, and moving back to this moment restore them,
+   * not the state on entering the passage. Use it for a change the player
+   * makes on a passage without leaving it (in a dialog, say).
+   *
+   * Writes the session, and throws like `goto()` once the moment is
+   * recorded. If the player had gone back, the moments after the current
+   * one are dropped. No events fire, the passage is not rendered again and
+   * the moment keeps the PRNG state it was entered with. Does nothing when
+   * the variables are as recorded already.
+   */
+  recordMoment(): void;
+
   /** Restart the story from the beginning. */
   restart(): void;
 
