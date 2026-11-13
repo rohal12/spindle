@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo } from 'preact/hooks';
 import { useStoryFields } from '../hooks/use-story-fields';
-import { parseMarkup } from '../markup/parse';
+import { MarkupError, parseMarkup, tokenizeMarkup } from '../markup/parse';
 import {
   renderInlineNodes,
   InterfaceContext,
@@ -11,6 +11,30 @@ import { errorMessage } from '../utils/error-message';
 
 const DEFAULT_MARKUP =
   '<header class="story-menubar">{story-title}{back}{forward}{restart}{quicksave}{quickload}{saves}{settings}</header>\n{passage}';
+
+/**
+ * Whether interface markup uses the `{passage}` macro, however it is
+ * written: with selectors (`{#story.main passage}`) and in any case
+ * (`{Passage}`; macro names are case-insensitive). The text in an escaped
+ * `\{passage}`, a comment, an attribute value, a label or code is no use
+ * of the macro. Malformed markup counts as using it: the interface shows
+ * its error then, which is the problem to report.
+ */
+export function usesPassageMacro(markup: string): boolean {
+  let tokens;
+  try {
+    tokens = tokenizeMarkup(markup);
+  } catch (err) {
+    if (err instanceof MarkupError) return true;
+    throw err;
+  }
+  return tokens.some(
+    (token) =>
+      token.type === 'macro' &&
+      !token.isClose &&
+      token.name.toLowerCase() === 'passage',
+  );
+}
 
 export function StoryInterface() {
   const { storyData } = useStoryFields('storyData');

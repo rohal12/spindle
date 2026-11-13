@@ -18,7 +18,7 @@ import type {
   SaveExport,
 } from './saves/types';
 import { executeStoryInit } from './story-init';
-import { emit } from './event-emitter';
+import { emit, type NavigationKind } from './event-emitter';
 import {
   resetTriggers,
   checkTriggersOnNavigation,
@@ -521,7 +521,8 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   // the game on, and this traversal is dropped rather than applied to a
   // history that is no longer the one it was computed from (#516)
   const navigation = get().navigationId;
-  emit('beforenavigate', targetPassage);
+  const kind: NavigationKind = step < 0 ? 'back' : 'forward';
+  emit('beforenavigate', targetPassage, kind);
   if (get().navigationId !== navigation) return;
 
   // Lowering maxHistory in the callback can trim either end without a new
@@ -545,7 +546,7 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   restorePRNGFromMoment(get().history[get().historyIndex]);
   keepDrawsSoFar();
   persistSessionThen(get, () =>
-    emit('afternavigate', targetPassage, previousPassage),
+    emit('afternavigate', targetPassage, previousPassage, kind),
   );
 }
 
@@ -1537,7 +1538,7 @@ export const useStoryStore = create<StoryState>()(
       // traversal, this navigation must then give way to the callback's.
       const navigation = get().navigationId;
       if (
-        replacesState(() => emit('beforenavigate', passageName)) ||
+        replacesState(() => emit('beforenavigate', passageName, 'navigate')) ||
         get().navigationId !== navigation
       )
         return;
@@ -1594,7 +1595,7 @@ export const useStoryStore = create<StoryState>()(
       persistSessionThen(get, () => {
         if (
           replacesState(() =>
-            emit('afternavigate', passageName, previousPassage),
+            emit('afternavigate', passageName, previousPassage, 'navigate'),
           )
         ) {
           return;

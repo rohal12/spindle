@@ -1,8 +1,10 @@
 import { useStoryStore, trackRuntimeUnsub, recordHookWrite } from './store';
 import type { StoryState, VariableNamespaces } from './store';
+import { freeze } from 'immer';
 import {
   on as emitterOn,
   emit,
+  type NavigationKind,
   type StoryEvent,
   type StoryEventCallback,
 } from './event-emitter';
@@ -70,6 +72,7 @@ import type { TransitionConfig } from './transition';
 
 export type { StoryAction };
 export type { MacroMetadata };
+export type { NavigationKind };
 
 // Deferred-render promise lifecycle.
 // deferRender() creates a promise; ready() resolves it. A deferRender() while
@@ -155,6 +158,12 @@ export interface StoryAPI {
   previousPassage(): Passage | undefined;
   readonly title: string;
   readonly passage: string;
+  readonly history: {
+    readonly length: number;
+    readonly index: number;
+    passage(index?: number): string;
+    variables(index?: number): Record<string, unknown>;
+  };
   readonly settings: typeof settings;
   registerClass(name: string, ctor: new (...args: any[]) => any): void;
   defineMacro(config: MacroDefinition): void;
@@ -281,6 +290,25 @@ function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
   setByPath(namespace, key.split('.'), value);
 }
 
+/**
+ * The history index `index` names (the current moment's when left out), or
+ * a RangeError naming the moments the history holds.
+ */
+function momentIndex(index: number | undefined): number {
+  const { history, historyIndex } = useStoryStore.getState();
+  const at = index ?? historyIndex;
+  if (!Number.isInteger(at) || at < 0 || at >= history.length) {
+    const held =
+      history.length === 0
+        ? 'no moments yet'
+        : `moments 0 to ${history.length - 1}`;
+    throw new RangeError(
+      `spindle: History index ${String(at)} is out of range: the history holds ${held}.`,
+    );
+  }
+  return at;
+}
+
 /** A method calling the store action `name`, as the store holds it then. */
 function storeAction<K extends keyof StoryState>(name: K): StoryState[K] {
   return ((...args: unknown[]) =>
@@ -364,6 +392,26 @@ function createStoryAPI(): StoryAPI {
 
     get passage(): string {
       return useStoryStore.getState().currentPassage;
+    },
+
+    history: {
+      get length(): number {
+        return useStoryStore.getState().history.length;
+      },
+      get index(): number {
+        return useStoryStore.getState().historyIndex;
+      },
+      passage(index?: number): string {
+        const at = momentIndex(index);
+        return useStoryStore.getState().history[at]!.passage;
+      },
+      variables(index?: number): Record<string, unknown> {
+        const at = momentIndex(index);
+        // The copy Back and Forward would restore, frozen like the values
+        // Story.get() hands out: it is the caller's own, and a write to it
+        // fails instead of seeming to change the recorded moment
+        return freeze(useStoryStore.getState().getHistoryVariables(at), true);
+      },
     },
 
     settings,
