@@ -310,7 +310,7 @@ describe('values in saves', () => {
       );
       // The navigation itself happened, with its events
       expect(Story.passage).toBe('Hall');
-      expect(after).toHaveBeenLastCalledWith('Hall', 'Room');
+      expect(after).toHaveBeenLastCalledWith('Hall', 'Room', 'navigate');
       // The session keeps its last good copy
       expect(sessionStorage.getItem(`spindle.session.${ifid}`)).toBe(before);
 

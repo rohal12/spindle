@@ -514,4 +514,280 @@ describe('history navigation', () => {
       expect(store().variables).toEqual(after);
     });
   });
+
+  describe('how the story moved, and reading the history', () => {
+    /** What `Story.history` reads now. */
+    const read = () => {
+      const { history } = window.Story;
+      return {
+        length: history.length,
+        index: history.index,
+        passage: history.passage(),
+        variables: { ...history.variables() },
+      };
+    };
+
+    /** A at x0, B at x1, C at x2, with the Story API installed. */
+    function walk(): void {
+      store().init(makeStoryData(), { x: 0 });
+      installStoryAPI();
+      store().setVariable('x', 1);
+      window.Story.goto('B');
+      store().setVariable('x', 2);
+      window.Story.goto('C');
+    }
+
+    it('tells a new step from a move back or forward', () => {
+      store().init(makeStoryData(), { x: 0 });
+      installStoryAPI();
+      const Story = window.Story;
+      const events: unknown[][] = [];
+      Story.on('beforenavigate', (...args) => events.push(['before', ...args]));
+      Story.on('afternavigate', (...args) => events.push(['after', ...args]));
+
+      Story.goto('B');
+      Story.back();
+      Story.forward();
+      Story.back();
+      Story.goto('C');
+
+      expect(events).toEqual([
+        ['before', 'B', 'navigate'],
+        ['after', 'B', 'A', 'navigate'],
+        ['before', 'A', 'back'],
+        ['after', 'A', 'B', 'back'],
+        ['before', 'B', 'forward'],
+        ['after', 'B', 'A', 'forward'],
+        ['before', 'A', 'back'],
+        ['after', 'A', 'B', 'back'],
+        ['before', 'C', 'navigate'],
+        ['after', 'C', 'A', 'navigate'],
+      ]);
+    });
+
+    it('reports a navigation its own handler started with that one’s kind', () => {
+      walk();
+      const Story = window.Story;
+      const events: string[] = [];
+      Story.on('afternavigate', (to, from, kind) =>
+        events.push(`${from}>${to} ${kind}`),
+      );
+      let redirect = true;
+      Story.on('beforenavigate', (to, kind) => {
+        events.push(`before ${to} ${kind}`);
+        if (redirect) {
+          redirect = false;
+          Story.back();
+        }
+      });
+
+      // The handler's Back takes the place of the navigation to D
+      Story.goto('D');
+
+      expect(store().currentPassage).toBe('B');
+      expect(events).toEqual([
+        'before D navigate',
+        'before B back',
+        'C>B back',
+      ]);
+    });
+
+    it('reads the moments kept and the current one', () => {
+      walk();
+      const { history } = window.Story;
+
+      expect(history.length).toBe(3);
+      expect(history.index).toBe(2);
+      expect([0, 1, 2].map((i) => history.passage(i))).toEqual(['A', 'B', 'C']);
+      expect([0, 1, 2].map((i) => history.variables(i))).toEqual([
+        { x: 0 },
+        { x: 1 },
+        { x: 2 },
+      ]);
+      expect(history.passage()).toBe('C');
+      expect(history.variables()).toEqual({ x: 2 });
+
+      window.Story.back();
+      expect(read()).toEqual({
+        length: 3,
+        index: 1,
+        passage: 'B',
+        variables: { x: 1 },
+      });
+    });
+
+    it('reads the state on entering a moment, not later changes in it', () => {
+      walk();
+      store().setVariable('x', 50);
+
+      expect(window.Story.get('x')).toBe(50);
+      expect(window.Story.history.variables()).toEqual({ x: 2 });
+      window.Story.back();
+      window.Story.forward();
+      expect(store().variables).toEqual(window.Story.history.variables());
+    });
+
+    it('reads the history before the move in beforenavigate and after it in afternavigate', () => {
+      walk();
+      const Story = window.Story;
+      const seen: unknown[] = [];
+      Story.on('beforenavigate', (to, kind) =>
+        seen.push(['before', to, kind, read()]),
+      );
+      Story.on('afternavigate', (to, _from, kind) =>
+        seen.push(['after', to, kind, read()]),
+      );
+      const at = (
+        length: number,
+        index: number,
+        passage: string,
+        x: number,
+      ) => ({ length, index, passage, variables: { x } });
+
+      Story.back();
+      Story.back();
+      Story.forward();
+      // A new step from B drops the moment after it (C)
+      store().setVariable('x', 7);
+      Story.goto('D');
+
+      expect(seen).toEqual([
+        ['before', 'B', 'back', at(3, 2, 'C', 2)],
+        ['after', 'B', 'back', at(3, 1, 'B', 1)],
+        ['before', 'A', 'back', at(3, 1, 'B', 1)],
+        ['after', 'A', 'back', at(3, 0, 'A', 0)],
+        ['before', 'B', 'forward', at(3, 0, 'A', 0)],
+        ['after', 'B', 'forward', at(3, 1, 'B', 1)],
+        ['before', 'D', 'navigate', at(3, 1, 'B', 1)],
+        ['after', 'D', 'navigate', at(3, 2, 'D', 7)],
+      ]);
+    });
+
+    it('counts from the oldest moment kept once the history is trimmed', () => {
+      walk();
+      const Story = window.Story;
+      Story.config.maxHistory = 2;
+
+      expect(Story.history.length).toBe(2);
+      expect(Story.history.index).toBe(1);
+      expect(Story.history.passage(0)).toBe('B');
+      expect(Story.history.variables(0)).toEqual({ x: 1 });
+      expect(() => Story.history.passage(2)).toThrow(RangeError);
+
+      // A navigation over the limit drops the oldest moment
+      const lengths: number[] = [];
+      Story.on('afternavigate', () => lengths.push(Story.history.length));
+      store().setVariable('x', 3);
+      Story.goto('D');
+      expect(lengths).toEqual([2]);
+      expect(read()).toEqual({
+        length: 2,
+        index: 1,
+        passage: 'D',
+        variables: { x: 3 },
+      });
+      expect(Story.history.passage(0)).toBe('C');
+      expect(Story.history.variables(0)).toEqual({ x: 2 });
+    });
+
+    it('reads a loaded game', () => {
+      walk();
+      window.Story.back();
+      const payload = store().getSavePayload();
+      store().restart();
+      expect(read()).toEqual({
+        length: 1,
+        index: 0,
+        passage: 'A',
+        variables: { x: 0 },
+      });
+
+      store().loadFromPayload(payload);
+
+      const { history } = window.Story;
+      expect(history.length).toBe(3);
+      expect(history.index).toBe(1);
+      expect([0, 1, 2].map((i) => history.passage(i))).toEqual(['A', 'B', 'C']);
+      expect([0, 1, 2].map((i) => history.variables(i))).toEqual([
+        { x: 0 },
+        { x: 1 },
+        { x: 2 },
+      ]);
+    });
+
+    it('reads the trimmed history of a save made under a higher limit', () => {
+      walk();
+      const payload = store().getSavePayload();
+      window.Story.config.maxHistory = 2;
+      store().loadFromPayload(payload);
+
+      const { history } = window.Story;
+      expect(history.length).toBe(2);
+      expect(history.index).toBe(1);
+      expect(history.passage(0)).toBe('B');
+      expect(history.variables(0)).toEqual({ x: 1 });
+      expect(history.variables()).toEqual({ x: 2 });
+    });
+
+    it('reads the history restored after a page refresh', () => {
+      walk();
+      window.Story.back();
+
+      refresh({ x: 0 });
+
+      const { history } = window.Story;
+      expect(history.length).toBe(3);
+      expect(history.index).toBe(1);
+      expect(history.passage()).toBe('B');
+      expect([0, 1, 2].map((i) => history.variables(i))).toEqual([
+        { x: 0 },
+        { x: 1 },
+        { x: 2 },
+      ]);
+    });
+
+    it('hands out frozen copies', () => {
+      store().init(makeStoryData(), { bag: { coins: 1 } });
+      installStoryAPI();
+      window.Story.goto('B');
+      const { history } = window.Story;
+
+      const first = history.variables(0);
+      expect(Object.isFrozen(first)).toBe(true);
+      expect(Object.isFrozen(first.bag)).toBe(true);
+      expect(() => {
+        (first.bag as { coins: number }).coins = 99;
+      }).toThrow(TypeError);
+      expect(() => {
+        first.added = true;
+      }).toThrow(TypeError);
+      expect(history.variables(0)).not.toBe(first);
+      expect(history.variables(0)).toEqual({ bag: { coins: 1 } });
+      window.Story.back();
+      expect(store().variables).toEqual({ bag: { coins: 1 } });
+    });
+
+    it.each([-1, 3, 1.5, NaN])(
+      'throws a RangeError naming the valid range for index %s',
+      (index) => {
+        walk();
+        const { history } = window.Story;
+        const message = `spindle: History index ${index} is out of range: the history holds moments 0 to 2.`;
+        expect(() => history.passage(index)).toThrow(new RangeError(message));
+        expect(() => history.variables(index)).toThrow(new RangeError(message));
+      },
+    );
+
+    it('cannot be written to', () => {
+      walk();
+      const history = window.Story.history as { length: number; index: number };
+      expect(() => {
+        history.length = 0;
+      }).toThrow(TypeError);
+      expect(() => {
+        history.index = 0;
+      }).toThrow(TypeError);
+      expect(read()).toMatchObject({ length: 3, index: 2 });
+    });
+  });
 });
