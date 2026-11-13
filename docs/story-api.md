@@ -747,6 +747,12 @@ Story.on('variableChanged', function (changed) {
   }
 });
 
+// A setting changed in the settings dialog or by Story.settings.set()
+// (see settings.md#reacting-to-changes)
+Story.on('settingchanged', function (name, value) {
+  if (name === 'theme') document.body.dataset.theme = value;
+});
+
 // Loading a game: `slot` is the named slot passed to Story.load(slot),
 // or undefined for the default slot, the saves dialog, and session
 // restore after a page refresh. A save made in `beforeload` belongs to
@@ -1033,7 +1039,7 @@ The settings API. See [Settings](settings.md) for full details.
 - `Story.settings.addList(name, options)` — define a list setting
 - `Story.settings.addRange(name, options)` — define a range setting
 - `Story.settings.get(name)` — get a setting's current value
-- `Story.settings.set(name, value)` — change a setting's value
+- `Story.settings.set(name, value)` — change a setting's value (emits `settingchanged` when the value differs)
 - `Story.settings.getAll()` — get all settings as an object
 - `Story.settings.hasAny()` — returns `true` if any settings are defined
 

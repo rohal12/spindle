@@ -139,6 +139,15 @@ export interface StoryEventMap {
   variableChanged: (
     changed: Record<string, { from: unknown; to: unknown }>,
   ) => void;
+  /**
+   * A setting's value changed through the settings controls or
+   * `Story.settings.set()`, and has been stored. `name` is the setting's name
+   * and `value` the new value. Does not fire when a setting is registered,
+   * when persisted values are applied at startup (read those with
+   * `Story.settings.get()` from `storyinit` on), or when a value is set to
+   * what it already is.
+   */
+  settingchanged: (name: string, value: unknown) => void;
   beforesave: (
     slot: string | undefined,
     custom: Record<string, unknown> | undefined,

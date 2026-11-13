@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Story.on('settingchanged', (name, value) => …)` fires after a setting's value changed and was stored, whether through the settings controls or `Story.settings.set()`, so story code can apply a setting (a theme, a text size) without polling. It does not fire when settings are registered, when persisted values are applied at startup (read those with `Story.settings.get()` from `storyinit` on), or when a value is set to what it already is.
+
 ### Fixed
 
 - A `StoryInterface` that writes `{passage}` with selectors or in another case (`{#passages passage}`, `{Passage}`) no longer logs the warning that it does not contain `{passage}`. The check reads the markup of the `StoryInterface` passage instead of searching for the literal text (a `{passage}` inside a widget or an included passage is still not looked into), so an escaped `\{passage}`, or the text in an attribute value or a comment, now does warn. The documented example `{#my-story .custom-story passage}` was not markup (selectors are written without a space between them) and is corrected to `{#my-story.custom-story passage}`.
