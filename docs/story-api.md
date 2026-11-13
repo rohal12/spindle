@@ -61,7 +61,7 @@ Navigate to a passage.
 {/do}
 ```
 
-Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
+Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.recordMoment()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
 
 The same holds for everything else running code sets off: a `{link}`, `{button}`, input or menubar action it performs with `Story.performAction()` (or a click or input event it dispatches), and the `{set}`, `{unset}`, `{computed}` and `{goto}` in a link or button body that runs. Their writes take effect at that point, as if the code had made them: the code reads them next, and a later write of the code's own wins over them, while one made before them does not.
 
@@ -76,6 +76,39 @@ Go to the previous passage in history.
 Go to the next passage in history (after going back).
 
 `Story.goto()`, `Story.back()` and `Story.forward()` write the [session](saves.md#session-persistence). If the story variables hold a value a save cannot hold (a function, an instance of an unregistered class, a unique symbol; see [What Cannot Be Saved](saves.md#what-cannot-be-saved)), the navigation completes and then throws an error naming the variable.
+
+### `Story.recordMoment()`
+
+Record the story variables as they are now as the state of the current moment, without navigating. Spindle records the variables when a passage is entered, and a page refresh, a load and Back/Forward restore that state (see [What a Load Restores](saves.md#what-a-load-restores)): a change made on the passage afterwards is lost by them. Call `Story.recordMoment()` after such a change to keep it, for example when the player changes something in a dialog opened over the passage:
+
+```
+:: Wardrobe
+{button "Wear the hat"}
+  {do}
+    $worn = "hat";
+    Story.recordMoment();
+  {/do}
+{/button}
+```
+
+From then on, these restore the recorded variables:
+
+- a page refresh (the call writes the [session](saves.md#session-persistence));
+- loading a save made on this passage after the call;
+- moving back or forward to this moment.
+
+What the call does and does not do:
+
+- It is not a navigation. `beforenavigate` and `afternavigate` do not fire, the passage is not rendered again and no transition plays; open dialogs stay open; visit and render counts and temporary variables stay as they are. Watchers and `variableChanged` handlers are not called: they ran when the variables changed.
+- It records all story variables, including what the passage's own `{set}` and `{do}` changed when the passage rendered. A restore renders the passage again, so those run again, on top of the recorded state. In a passage where you record, let such code set values (`{set $door = "open"}`) rather than add to them (`{set $gold += 5}`), or make the change in the link that leads to the passage.
+- The moment keeps the PRNG state it was entered with. A restore renders the passage again from that state, so the passage's rolls come out as they did the first time. Rolls made after it rendered (in a button, say) are drawn again from the same position after a restore; their recorded results are not changed.
+- If the player has gone back, so that the current moment is not the newest, the moments after it are dropped, as navigating from there drops them: `Story.forward()` and `{forward}` then have nowhere to go.
+- When the variables are as the moment has them recorded already, the call does nothing: nothing is written and the moments after the current one stay.
+- It returns nothing. Like `Story.goto()`, it throws when the variables hold a value a save cannot hold, after it has recorded the moment (the session keeps its last good copy; see [Session Persistence](saves.md#session-persistence)).
+- In `StoryInit` (which runs on every page load, also before a session is restored over it) and in `storyinit` handlers of a new game (at the first start and after a restart) it does nothing: Spindle records the start moment itself once they have run. The same holds in a watcher that runs because a passage was entered: the navigation records the moment after its watchers.
+- In a `beforesave` handler it records the handler's changes so far in the live history as well; without it they are stored in the save only.
+
+Inside running code it takes its place in program order, as `Story.goto()` does: in the example above the write to `$worn` is recorded, and a write after the call would not be.
 
 ### `Story.restart()`
 
@@ -262,7 +295,7 @@ Save operations (`save`, `load`, `deleteSave`, `getSaveInfo`, `listSaves`, `expo
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage, plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage (or the state [`Story.recordMoment()`](#story-recordmoment) recorded there since), plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot
@@ -545,6 +578,62 @@ Returns `true` if **any** of the named passages have been rendered at least once
 
 Returns `true` if **all** of the named passages have been rendered at least once.
 
+## History
+
+Every navigation records a **moment**: the passage entered, and the story variables as they were on entering it. `Story.back()` and `Story.forward()` move through the moments and restore those variables. [`Story.config.maxHistory`](#story-config-maxhistory) limits how many moments are kept.
+
+### `Story.history`
+
+The moments kept, oldest first (read-only).
+
+| Member              | Type     | Description                                                                                                |
+| ------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `length`            | `number` | The number of moments kept                                                                                 |
+| `index`             | `number` | The index of the current moment; `0` is the oldest moment kept                                             |
+| `passage(index?)`   | `string` | The passage name of the moment at `index`, or of the current moment when `index` is left out               |
+| `variables(index?)` | `object` | The story variables recorded for the moment at `index`, or for the current moment when `index` is left out |
+
+```js
+var h = Story.history;
+console.log(h.length); // 3
+console.log(h.index); // 2: the newest moment
+console.log(h.passage()); // "Forest"
+console.log(h.passage(0)); // "Start"
+console.log(h.variables(1).gold); // $gold on entering the second moment
+
+// What Back and Forward buttons of your own can do
+var canGoBack = h.index > 0;
+var canGoForward = h.index < h.length - 1;
+```
+
+`variables()` returns the state **on entering** the moment, which is what Back and Forward restore. Changes made since in the passage (a button, an input) are not in it; read those with `Story.get()`. The result is a frozen copy, keyed by variable name without the `$`: writing to it throws in strict mode and never changes the history. Temporary and transient variables are not recorded.
+
+`passage()` and `variables()` throw a `RangeError` that names the valid range when the history has no moment at `index`:
+
+```js
+Story.history.passage(7);
+// RangeError: spindle: History index 7 is out of range: the history holds moments 0 to 2.
+```
+
+Indexes count from the oldest moment **kept**. Once the history has reached `Story.config.maxHistory`, each new moment drops the oldest one, so index `0` is no longer the start passage and a moment's index goes down as older ones are dropped.
+
+In a `beforenavigate` handler the values are those before the move, in an `afternavigate` handler those after it (see [Navigation events](#navigation-events)). A new step taken after going back drops the moments after the current one, so after a `'navigate'` the current moment is always the newest:
+
+```js
+// Tell the player what a new step changed
+Story.on('afternavigate', function (to, from, kind) {
+  var h = Story.history;
+  if (kind !== 'navigate' || h.index === 0) return;
+  var before = h.variables(h.index - 1).gold;
+  var now = h.variables().gold;
+  if (now !== before) console.log('Gold: ' + before + ' → ' + now);
+});
+```
+
+After `Story.load()`, and after a page refresh restores the [session](saves.md#session-persistence), `Story.history` is the loaded game's history (trimmed to `Story.config.maxHistory`). After `Story.restart()` it holds the start moment only.
+
+While the story JavaScript first runs, the story has not started: `length` is `0`, `index` is `-1`, and `passage()` and `variables()` throw. From the first `storyinit` event on there is always a current moment.
+
 ## Actions
 
 Interactive components (links, buttons, inputs, menubar buttons) automatically register themselves as **actions** — discoverable, programmatically executable units. This enables automated testing, AI agent integration, and story coverage analysis without DOM interaction.
@@ -630,9 +719,9 @@ A custom action registered with `ctx.useAction()` takes part the same way when i
 Subscribe to story events. Returns an unsubscribe function.
 
 ```js
-// Navigation events
-var unsub = Story.on('afternavigate', function (to, from) {
-  console.log('Navigated from ' + from + ' to ' + to);
+// Navigation events (see "Navigation events" below)
+var unsub = Story.on('afternavigate', function (to, from, kind) {
+  console.log('Navigated from ' + from + ' to ' + to + ' (' + kind + ')');
 });
 
 // The passage's DOM is in the document (see "Render events" below)
@@ -680,16 +769,44 @@ Story.on('afterload', function (slot) {
 unsub();
 ```
 
+#### Navigation events
+
+| Event            | Arguments                                          | Fires when                                                                                                                                           |
+| ---------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `beforenavigate` | `(passageName: string, kind: NavigationKind)`      | The story is about to move to `passageName`. `Story.passage`, the variables and [`Story.history`](#story-history) are those of the moment it leaves. |
+| `afternavigate`  | `(to: string, from: string, kind: NavigationKind)` | The story has moved from passage `from` to passage `to`. `Story.passage`, the variables and `Story.history` are those of the moment it arrived at.   |
+
+`kind` says how the story moved:
+
+| `kind`       | The move                                                                                                                                                               |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'navigate'` | A navigation that records a new [history](#history) moment: a link, `{goto}`, `Story.goto()`, a `goto` fired by a [watcher](#story-watch-condition-callbackoroptions). |
+| `'back'`     | `Story.back()` or the `{back}` button: the story moved to the moment before the current one. No moment is recorded.                                                    |
+| `'forward'`  | `Story.forward()` or the `{forward}` button: the story moved to the moment after the current one. No moment is recorded.                                               |
+
+A handler that takes fewer arguments works as before. A restart or a load fires neither event: a restart fires `beforerestart` and `storyinit`, a load `beforeload` and `afterload`.
+
+```js
+// Autosave when the player takes a new step, not when they move back or
+// forward through steps already taken
+Story.on('afternavigate', function (to, from, kind) {
+  if (kind === 'navigate') Story.save('auto');
+});
+```
+
+A `beforenavigate` handler that itself navigates, goes back or forward, restarts or loads takes the story where it says: the move it was called for is dropped, and no `afternavigate` fires for that move. The handler's own move fires its events, with its own `kind`.
+
 #### Render events
 
 `afternavigate` fires as soon as the story state changes, before the new passage is rendered (with a `fade-through` transition the new passage mounts only after the outgoing fade). Code that needs the rendered DOM — pagers, drag-and-drop, focus, third-party widgets — listens for the render events instead:
 
-| Event           | Arguments                            | Fires when                                                                                                                                                                             |
-| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot. |
-| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                    |
+| Event           | Arguments                            | Fires when                                                                                                                                                                               |
+| --------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `passagerender` | `(passage: string, el: HTMLElement)` | A passage's `.passage` element has been committed to the DOM: first render, navigation, back/forward, restart, load. `el` is the live element, never the outgoing transition snapshot.   |
+| `dialogrender`  | `(passage: string, el: HTMLElement)` | A dialog has opened and rendered (`Story.openDialog()`, `{dialog}`, `watch` dialogs, menubar dialogs). `el` is its `.dialog-panel`.                                                      |
+| `dialogclose`   | `(passage: string)`                  | A dialog has closed, whichever way: the `✕` button, Escape, a backdrop click, `Story.closeDialog()`, `Story.closeAllDialogs()`, a restart, or leaving the passage of an open `{dialog}`. |
 
-Both fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
+`passagerender` and `dialogrender` fire once per mount, after the DOM commit and before the browser paints. An exception in a handler is logged to the console and does not break rendering.
 
 ```js
 Story.on('dialogrender', function (passage, panel) {
@@ -697,6 +814,20 @@ Story.on('dialogrender', function (passage, panel) {
 });
 Story.openDialog('Inventory');
 ```
+
+`dialogclose` fires once for each `dialogrender`, with the same `passage` (`''` for a dialog without one). By then the dialog is out of the DOM (when it closed because the story left its passage, a transition may still show an inert copy of the outgoing passage, dialog included, until the transition ends), focus is back on the element that had it before the dialog opened (if that element is still there), and `Story.isDialogOpen()` is `true` only if other dialogs are still open. A handler can release what it set up in `dialogrender`, and can move focus itself:
+
+```js
+Story.on('dialogclose', function (passage) {
+  if (passage === 'Inventory') stopDragAndDrop();
+  // The control that opened the dialog may be gone by now
+  if (document.activeElement === document.body) {
+    document.querySelector('.passage a, .passage button')?.focus();
+  }
+});
+```
+
+Dialogs that close together (`Story.closeAllDialogs()`, a restart) each fire their own `dialogclose`, the innermost first. Those a restart closes fire after `storyinit`. A dialog still open when the page is closed or reloaded fires nothing. As with the render events, an exception in a handler is logged to the console and the other handlers still run.
 
 Content that re-renders _inside_ a passage or dialog because a variable changed does not fire these events. For DOM work tied to such content, use a [custom macro](custom-macros.md#stateful-macros-with-hooks) with `ctx.hooks.useEffect`, which runs after the macro's own content is committed.
 
@@ -918,7 +1049,7 @@ Configuration options for the story engine.
 
 #### `Story.config.maxHistory`
 
-Get or set the maximum number of history moments to keep. Oldest entries are discarded when the limit is exceeded. Default: `40`.
+Get or set the maximum number of history moments to keep. Oldest entries are discarded when the limit is exceeded. Default: `40`. [`Story.history`](#story-history) reads the moments kept.
 
 Lowering the limit takes effect at once: history keeps the newest moments that include the current one, so `Story.back()` can't go further back than the new limit allows (if the player had gone back further than that, the moments after the newest kept one are dropped too). The session autosave is updated with the trimmed history, and a save made under a higher limit is trimmed when loaded. Raising the limit doesn't change history.
 

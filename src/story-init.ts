@@ -1,6 +1,11 @@
 import { ActionsDisabledContext } from './hooks/use-action';
 import { h, render } from 'preact';
-import { useStoryStore, recordStoryInitState, missingPassage } from './store';
+import {
+  useStoryStore,
+  recordStoryInitState,
+  settingUpStart,
+  missingPassage,
+} from './store';
 import { parseMarkup } from './markup/parse';
 import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { renderNodes } from './markup/render';
@@ -49,13 +54,15 @@ export function executeStoryInit() {
     container.style.display = 'none';
     document.body.appendChild(container);
     storyInitContainer = container;
-    render(
-      h(
-        ActionsDisabledContext.Provider,
-        { value: true },
-        h(() => renderNodes(ast), null),
+    settingUpStart(() =>
+      render(
+        h(
+          ActionsDisabledContext.Provider,
+          { value: true },
+          h(() => renderNodes(ast), null),
+        ),
+        container,
       ),
-      container,
     );
 
     // The start moment was recorded before StoryInit ran; its synchronous
@@ -94,11 +101,9 @@ export function initializeStory(session?: SavePayload): void {
 
   if (session) {
     useStoryStore.getState().loadFromPayload(session);
-  }
-
-  emit('storyinit');
-
-  if (!session) {
+    emit('storyinit');
+  } else {
+    settingUpStart(() => emit('storyinit'));
     recordStoryInitState();
   }
 }
