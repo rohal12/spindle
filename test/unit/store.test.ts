@@ -1121,7 +1121,7 @@ describe('useStoryStore', () => {
       expect(passageDuringHook).toBe('Start');
     });
 
-    it('beforenavigate receives target passage name', () => {
+    it('beforenavigate receives the target passage name and the kind', () => {
       const story = makeStoryData([
         makePassage(1, 'Start'),
         makePassage(2, 'Room'),
@@ -1132,7 +1132,7 @@ describe('useStoryStore', () => {
       emitterOn('beforenavigate', cb);
 
       useStoryStore.getState().navigate('Room');
-      expect(cb).toHaveBeenCalledWith('Room');
+      expect(cb).toHaveBeenCalledWith('Room', 'navigate');
     });
 
     it('emits afternavigate after state change', () => {
@@ -1151,7 +1151,7 @@ describe('useStoryStore', () => {
       expect(passageDuringHook).toBe('Room');
     });
 
-    it('afternavigate receives (to, from)', () => {
+    it('afternavigate receives (to, from, kind)', () => {
       const story = makeStoryData([
         makePassage(1, 'Start'),
         makePassage(2, 'Room'),
@@ -1162,7 +1162,7 @@ describe('useStoryStore', () => {
       emitterOn('afternavigate', cb);
 
       useStoryStore.getState().navigate('Room');
-      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+      expect(cb).toHaveBeenCalledWith('Room', 'Start', 'navigate');
     });
 
     it('hooks fire on goBack()', () => {
@@ -1179,8 +1179,8 @@ describe('useStoryStore', () => {
       emitterOn('afternavigate', afterCb);
 
       useStoryStore.getState().goBack();
-      expect(beforeCb).toHaveBeenCalledWith('Start');
-      expect(afterCb).toHaveBeenCalledWith('Start', 'Room');
+      expect(beforeCb).toHaveBeenCalledWith('Start', 'back');
+      expect(afterCb).toHaveBeenCalledWith('Start', 'Room', 'back');
     });
 
     it('hooks fire on goForward()', () => {
@@ -1198,8 +1198,8 @@ describe('useStoryStore', () => {
       emitterOn('afternavigate', afterCb);
 
       useStoryStore.getState().goForward();
-      expect(beforeCb).toHaveBeenCalledWith('Room');
-      expect(afterCb).toHaveBeenCalledWith('Room', 'Start');
+      expect(beforeCb).toHaveBeenCalledWith('Room', 'forward');
+      expect(afterCb).toHaveBeenCalledWith('Room', 'Start', 'forward');
     });
 
     it('hooks do NOT fire on loadFromPayload()', () => {
