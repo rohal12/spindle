@@ -1,7 +1,13 @@
 // A consumer on Node's ESM resolution (NodeNext) resolves every published
 // entry point and every type the type files import from each other. Each
 // assignment fails to compile if a type resolves to `any` or is missing.
-import type { Observation, StoryAPI } from '@rohal12/spindle';
+import type {
+  ListConfig,
+  Observation,
+  RangeConfig,
+  StoryAPI,
+  ToggleConfig,
+} from '@rohal12/spindle';
 import type { TranscriptEntry } from '@rohal12/spindle/headless';
 import type {
   ObservedAction,
@@ -55,3 +61,10 @@ export const tokenOptions: Tooling.ParseMarkupOptions = {
   macros: [widgetMacro],
   text: true,
 };
+
+// Every setting type takes the optional plain-text description.
+export const settingConfigs: [ToggleConfig, ListConfig, RangeConfig] = [
+  { label: 'A', description: 'About A', default: true },
+  { label: 'B', description: 'About B', options: ['x'], default: 'x' },
+  { label: 'C', description: 'About C', min: 0, max: 1, step: 1, default: 0 },
+];

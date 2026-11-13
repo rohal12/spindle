@@ -18,7 +18,7 @@ import type {
   SaveExport,
 } from './saves/types';
 import { executeStoryInit } from './story-init';
-import { emit } from './event-emitter';
+import { emit, type NavigationKind } from './event-emitter';
 import {
   resetTriggers,
   checkTriggersOnNavigation,
@@ -58,6 +58,7 @@ import {
   existingObjects,
   locateObjects,
   deepEqual,
+  deepEqualStrict,
   mergesWith,
   pathKey,
   shareEqual,
@@ -520,7 +521,8 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   // the game on, and this traversal is dropped rather than applied to a
   // history that is no longer the one it was computed from (#516)
   const navigation = get().navigationId;
-  emit('beforenavigate', targetPassage);
+  const kind: NavigationKind = step < 0 ? 'back' : 'forward';
+  emit('beforenavigate', targetPassage, kind);
   if (get().navigationId !== navigation) return;
 
   // Lowering maxHistory in the callback can trim either end without a new
@@ -544,8 +546,26 @@ function moveInHistory(get: StoreGet, set: StoreSet, step: -1 | 1): void {
   restorePRNGFromMoment(get().history[get().historyIndex]);
   keepDrawsSoFar();
   persistSessionThen(get, () =>
-    emit('afternavigate', targetPassage, previousPassage),
+    emit('afternavigate', targetPassage, previousPassage, kind),
   );
+}
+
+/** How many runs of settingUpStart() are under way. */
+let startSetups = 0;
+
+/**
+ * Run `fn`, which sets up the start moment of a new game: the StoryInit
+ * passage, or the `storyinit` handlers at boot (unless a session was
+ * restored) and on restart. recordStoryInitState() records what it leaves
+ * behind, so recordMoment() has nothing to do meanwhile (see there).
+ */
+export function settingUpStart<T>(fn: () => T): T {
+  startSetups++;
+  try {
+    return fn();
+  } finally {
+    startSetups--;
+  }
 }
 
 /**
@@ -568,6 +588,70 @@ export function recordStoryInitState(): void {
     state.history[0]!.prng = prng;
   });
   keepDrawsSoFar();
+}
+
+/**
+ * Record the live variables as the state of the current moment (see
+ * StoryState.recordMoment): what a navigation does for the moment it
+ * enters, without the navigation.
+ */
+function recordCurrentMoment(get: StoreGet, set: StoreSet): void {
+  const { storyData, history, historyIndex, variables } = get();
+  if (!storyData || historyIndex < 0) return;
+  // The start moment is recorded once StoryInit and the `storyinit` handlers
+  // have run (recordStoryInitState). A session written before that would
+  // hold it half set up, and a refresh would restore that over the StoryInit
+  // it runs again.
+  if (startSetups > 0 && history.length === 1) return;
+  // navigate() records the moment it entered, and writes the session, once
+  // the watchers reacting to it (this call is in one) have run
+  if (
+    navigationTriggerPhase &&
+    enteredMoment?.navigationId === get().navigationId
+  ) {
+    return;
+  }
+
+  // Nothing to record when the variables are as recorded (after a load the
+  // live ones are another object): the moments after this one stay
+  const recorded =
+    variables === lastNavigationVars ||
+    deepEqualStrict(reconstructVarsAt(historyIndex), variables);
+  if (!recorded) {
+    // The moment's patch is computed before anything changes: copying the
+    // values can throw (a getter), which must leave the history as it was
+    const entry =
+      historyIndex > 0
+        ? computeVarPatches(reconstructVarsAt(historyIndex - 1), variables)
+        : null;
+    // What changed is new play: as on a navigation from here, the moments
+    // after this one are dropped
+    patchEntries.length = historyIndex;
+    // patchEntries[i] leads from moment i to moment i + 1
+    if (entry) patchEntries[historyIndex - 1] = entry;
+    else variableBase = variables;
+    // The session takes the moment anew, with the variables as they are
+    if (sessionMoments.length > historyIndex) {
+      sessionMoments.length = historyIndex;
+    }
+    // The next navigate() diffs from this recorded snapshot
+    lastNavigationVars = variables;
+    if (historyIndex < history.length - 1) {
+      set((state) => {
+        state.history = state.history.slice(0, historyIndex + 1);
+      });
+    }
+    // What the watchers the passage's render consumed did is recorded now:
+    // a load must not bring them back to do it again
+    clearReplayWatchers();
+  }
+  // A save whose `beforesave` hooks are running (this call is in one) saves
+  // the moment as recorded here: only what the hooks change from now on is
+  // still to be written into its snapshot (see keepHookWrites)
+  for (const capture of hookCaptures) capture.before = variables;
+  // The moment keeps the PRNG state it was entered with: a load renders the
+  // passage again, and its rolls replay from there
+  if (!recorded) persistSessionThen(get);
 }
 
 // ---------------------------------------------------------------------------
@@ -836,12 +920,20 @@ function loadedEntryMoment(
   return moment;
 }
 
-/** The variable paths `Story.set` writes while a save's hooks run. */
-const hookWrites = new Set<Map<string, string[]>>();
+/**
+ * A save whose `beforesave` hooks are running: the variables the hooks
+ * started from, and the variable paths `Story.set` has written since.
+ */
+interface HookCapture {
+  before: Record<string, unknown>;
+  writes: Map<string, string[]>;
+}
+
+const hookCaptures = new Set<HookCapture>();
 
 /** Note that `path` of the variables was written (see keepHookWrites). */
 export function recordHookWrite(path: string[]): void {
-  for (const writes of hookWrites) writes.set(pathKey(path), path);
+  for (const { writes } of hookCaptures) writes.set(pathKey(path), path);
 }
 
 /**
@@ -1033,6 +1125,15 @@ export interface StoryState {
   navigate: (passageName: string) => void;
   goBack: () => void;
   goForward: () => void;
+  /**
+   * Record the story variables as they are now as the current moment's
+   * recorded state, without navigating: a page refresh, a save made here
+   * and loaded, and moving back to the moment then restore them, not the
+   * state on entering the passage. Writes the session. Moments after the
+   * current one are dropped, as a navigation from it drops them. Does
+   * nothing when the variables are as recorded.
+   */
+  recordMoment: () => void;
   setVariable: (name: string, value: unknown) => void;
   setTemporary: (name: string, value: unknown) => void;
   deleteVariable: (name: string) => void;
@@ -1158,6 +1259,7 @@ const PROGRAM_ORDER_ACTIONS = [
   'navigate',
   'goBack',
   'goForward',
+  'recordMoment',
   'restart',
   'save',
   'load',
@@ -1436,7 +1538,7 @@ export const useStoryStore = create<StoryState>()(
       // traversal, this navigation must then give way to the callback's.
       const navigation = get().navigationId;
       if (
-        replacesState(() => emit('beforenavigate', passageName)) ||
+        replacesState(() => emit('beforenavigate', passageName, 'navigate')) ||
         get().navigationId !== navigation
       )
         return;
@@ -1493,7 +1595,7 @@ export const useStoryStore = create<StoryState>()(
       persistSessionThen(get, () => {
         if (
           replacesState(() =>
-            emit('afternavigate', passageName, previousPassage),
+            emit('afternavigate', passageName, previousPassage, 'navigate'),
           )
         ) {
           return;
@@ -1505,6 +1607,8 @@ export const useStoryStore = create<StoryState>()(
     goBack: () => moveInHistory(get, set, -1),
 
     goForward: () => moveInHistory(get, set, 1),
+
+    recordMoment: () => recordCurrentMoment(get, set),
 
     setVariable: (name: string, value: unknown) => {
       set((state) => {
@@ -1607,7 +1711,7 @@ export const useStoryStore = create<StoryState>()(
 
       executeStoryInit();
       clearSession(storyData.ifid);
-      emit('storyinit');
+      settingUpStart(() => emit('storyinit'));
       // The storyinit handlers' changes belong to the start moment too
       recordStoryInitState();
     },
@@ -1830,12 +1934,14 @@ export const useStoryStore = create<StoryState>()(
     },
 
     beginSave: () => {
-      const before = get().variables;
+      const capture: HookCapture = {
+        before: get().variables,
+        writes: new Map(),
+      };
       const replaced = latestStateApplied;
-      const writes = new Map<string, string[]>();
-      hookWrites.add(writes);
+      hookCaptures.add(capture);
       const dispose = () => {
-        hookWrites.delete(writes);
+        hookCaptures.delete(capture);
       };
       return Object.assign(
         () => {
@@ -1848,8 +1954,8 @@ export const useStoryStore = create<StoryState>()(
             );
           }
           const payload = get().getSavePayload();
-          keepHookWrites(payload, before, get().variables, [
-            ...writes.values(),
+          keepHookWrites(payload, capture.before, get().variables, [
+            ...capture.writes.values(),
           ]);
           return payload;
         },

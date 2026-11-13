@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Story.on('settingchanged', (name, value) => …)` fires after a setting's value changed and was stored, whether through the settings controls or `Story.settings.set()`, so story code can apply a setting (a theme, a text size) without polling. It does not fire when settings are registered, when persisted values are applied at startup (read those with `Story.settings.get()` from `storyinit` on), or when a value is set to what it already is.
+- `Story.settings.addToggle`, `addList` and `addRange` accept an optional plain-text `description`. `{settings-controls}` shows it under the setting in a `.settings-description` element that the control references with `aria-describedby`; settings without one render as before.
+
 ### Fixed
 
+- A `StoryInterface` that writes `{passage}` with selectors or in another case (`{#passages passage}`, `{Passage}`) no longer logs the warning that it does not contain `{passage}`. The check reads the markup of the `StoryInterface` passage instead of searching for the literal text (a `{passage}` inside a widget or an included passage is still not looked into), so an escaped `\{passage}`, or the text in an attribute value or a comment, now does warn. The documented example `{#my-story .custom-story passage}` was not markup (selectors are written without a space between them) and is corrected to `{#my-story.custom-story passage}`.
+- Navigating no longer keeps memory: a passage shown inside an element of the story interface held the DOM nodes, event listeners and component state of the passage before it, so each navigation added to them for the rest of the session. A passage's content, header, footer and done passages are drawn by components that Preact compares instead of vnodes kept between renders, and the passage on its way out is drawn again from the props it was shown with.
 - `{set}`, `{do}`, `{unset}`, `{goto}`, `{computed}` and the render count of `{include}` no longer run when they mount in a passage that was already left. State changed just before a navigation (`Story.set` then `Story.goto` in one tick, or a link that sets a variable and goes on) could show a branch in the passage on its way out, whose code then ran against the destination's state and failed on the temporary variables it no longer had.
 
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
@@ -99,6 +106,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Formatting preserves significant whitespace in standalone and embedded SVG text (#569).
 
 ### Added
+
+- Navigation events say how the story moved: `beforenavigate` handlers receive `(passageName, kind)` and `afternavigate` handlers `(to, from, kind)`, where `kind` is `'navigate'` for a navigation that records a new moment (a link, `{goto}`, `Story.goto()`, a watcher's goto) and `'back'` or `'forward'` for a move through the history (`Story.back()`, `Story.forward()`, the `{back}` and `{forward}` buttons). The type is exported as `NavigationKind`. Handlers that take fewer arguments are unaffected.
+- `Story.history` reads the history: `length` (the moments kept), `index` (the current moment), `passage(index?)` and `variables(index?)` (the variables recorded on entering a moment, which Back and Forward restore, as a frozen copy). An index the history does not hold throws a `RangeError` naming the valid range. Stories ported from SugarCube can use these in place of `State.length`, `State.size` and `State.index`.
+- `dialogclose` event: `Story.on('dialogclose', (passage) => …)` fires once for each dialog that closes, whichever way it closed (the `✕` button, Escape, a backdrop click, `Story.closeDialog()`, `Story.closeAllDialogs()`, a restart, leaving the passage of an open `{dialog}`), with the passage `dialogrender` gave for it. It fires after the dialog is removed from the DOM (a passage transition may still show an inert copy of the outgoing passage, dialog included) and focus has returned to the element that had it before the dialog opened, so a handler can release what it set up in `dialogrender` or move focus, and `Story.isDialogOpen()` inside it is `true` only if other dialogs are still open. Dialogs that close together fire innermost first. A story ported from SugarCube can use it where it listened for `:dialogclosed`.
+- `Story.recordMoment()` records the story variables as they are as the state of the current moment, without navigating: a page refresh, a save made on the passage and loaded, and Back/Forward then restore a change made on the passage (in a dialog opened over it, say) instead of the state on entering it. It writes the session, drops the moments after the current one when the player had gone back, keeps the moment's entry PRNG state, and takes its place in program order inside running code.
 
 - Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).
 

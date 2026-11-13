@@ -33,13 +33,13 @@ By default it renders as:
 You can override the wrapper's `id` and `class` using the standard macro syntax:
 
 ```
-{#my-story .custom-story passage}
+{#my-story.custom-story passage}
 ```
 
 This renders as `<div id="my-story" class="custom-story">` instead.
 
 ::: warning
-If your `StoryInterface` passage does not contain `{passage}`, no passage content will be displayed. Spindle logs a warning to the browser console when this happens.
+If your `StoryInterface` passage does not contain `{passage}`, no passage content will be displayed. Spindle logs a warning to the browser console when this happens. Any way of writing the macro in the passage itself counts (`{#my-story.custom-story passage}`, `{Passage}`); text that only looks like it, such as an escaped `\{passage}` or one in an attribute value or a comment, does not. The check reads only this passage: a `{passage}` inside a widget or an included passage is not looked into, so the warning can appear although the passage is displayed.
 :::
 
 ## Basic Example
