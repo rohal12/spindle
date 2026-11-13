@@ -3,17 +3,23 @@ import { createNamespace, hasOwn, ownValue } from './utils/namespace';
 
 export interface ToggleConfig {
   label: string;
+  /** Plain text shown with the setting in `{settings-controls}`. */
+  description?: string;
   default: boolean;
 }
 
 export interface ListConfig {
   label: string;
+  /** Plain text shown with the setting in `{settings-controls}`. */
+  description?: string;
   options: string[];
   default: string;
 }
 
 export interface RangeConfig {
   label: string;
+  /** Plain text shown with the setting in `{settings-controls}`. */
+  description?: string;
   min: number;
   max: number;
   step: number;

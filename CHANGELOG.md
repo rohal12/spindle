@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Story.settings.addToggle`, `addList` and `addRange` accept an optional plain-text `description`. `{settings-controls}` shows it under the setting in a `.settings-description` element that the control references with `aria-describedby`; settings without one render as before.
+
 ### Fixed
 
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
