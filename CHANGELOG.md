@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Navigating no longer keeps memory: a passage shown inside an element of the story interface held the DOM nodes, event listeners and component state of the passage before it, so each navigation added to them for the rest of the session. A passage's content, header, footer and done passages are drawn by components that Preact compares instead of vnodes kept between renders, and the passage on its way out is drawn again from the props it was shown with.
+
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
 - Twine highlighting indexes unfinished macro ownership instead of repeatedly searching earlier recovery errors (#737).
 - Reader observations exclude SVG stylesheet and script bodies while preserving visible SVG text (#738).
