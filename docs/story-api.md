@@ -659,7 +659,7 @@ Story.on('variableChanged', function (changed) {
 });
 
 // A setting changed in the settings dialog or by Story.settings.set()
-// (see "Reacting to changes" in settings.md)
+// (see settings.md#reacting-to-changes)
 Story.on('settingchanged', function (name, value) {
   if (name === 'theme') document.body.dataset.theme = value;
 });

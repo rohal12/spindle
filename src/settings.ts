@@ -137,7 +137,10 @@ export const settings = {
    * nothing.
    */
   set(name: string, value: unknown): void {
-    const unchanged = hasOwn(values, name) && Object.is(values[name], value);
+    const unchanged =
+      hasOwn(values, name) &&
+      (values[name] === value ||
+        (values[name] !== values[name] && value !== value));
     values[name] = value;
     persist();
     if (unchanged) return;

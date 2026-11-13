@@ -93,7 +93,7 @@ Read a setting's current value from JavaScript:
 
 ## Reacting to Changes
 
-Story code that applies a setting (a theme, a text size) listens for the `settingchanged` event. It fires after a setting's value changed and was stored, with the setting's name and its new value:
+Story code that applies a setting (a theme, a text size) listens for the `settingchanged` event, registered in Story JavaScript or `StoryInit`. It fires after a setting's value changed and was stored, with the setting's name and its new value:
 
 ```
 {do}
@@ -107,9 +107,9 @@ It fires for a change made with the controls in the settings dialog (or `{settin
 
 - when a setting is registered with `addToggle`, `addList` or `addRange`;
 - when persisted values are applied at startup;
-- when a value is set to the value the setting already has.
+- when a value is set to the value the setting already has (compared with `===`; for an object or array that means the same object).
 
-So a handler never sees the value a setting starts with. Apply start values by reading them with `Story.settings.get()` once the story is initialized: settings registered in `StoryInit` can be read right after their `add…` call, and every start value, persisted values included, can be read from `StoryInit` onward and in a `storyinit` handler. A common pattern, in `StoryInit`, is one function that applies the settings, called from a `storyinit` handler and from a `settingchanged` handler.
+So a handler never sees the value a setting starts with. Apply start values by reading them with `Story.settings.get()` once the story is initialized: settings registered in `StoryInit` can be read right after their `add…` call, and every start value, persisted values included, can be read from `StoryInit` onward and in a `storyinit` handler. In Story JavaScript, `Story.settings.get()` right after an `add…` call returns the default, not the persisted value. A common pattern, in `StoryInit`, is one function that applies the settings, called from a `storyinit` handler and from a `settingchanged` handler.
 
 ```
 {do}
@@ -122,6 +122,8 @@ So a handler never sees the value a setting starts with. Apply start values by r
   });
 {/do}
 ```
+
+A handler that changes the setting it is handling runs again for that new value before the remaining handlers see the first one, so change other settings from a handler, not the same one.
 
 Handlers follow the same rules as other `Story.on` handlers: those registered in Story JavaScript last for the whole session, while those registered later (in `StoryInit` or passages) are removed by `Story.restart()`. Settings themselves are not reset by a restart, and a restart does not fire `settingchanged`.
 

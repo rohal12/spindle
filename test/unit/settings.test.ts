@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { settings } from '../../src/settings';
+import { settings, subscribeSettings } from '../../src/settings';
 import { on, resetEmitter } from '../../src/event-emitter';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
@@ -337,6 +337,33 @@ describe('settingchanged event', () => {
     cb.mockClear();
     settings.addToggle('music3', { label: 'Music', default: true });
     expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('updates the settings controls before handlers run', () => {
+    settings.addToggle('order5', { label: 'O', default: false });
+    const order: string[] = [];
+    const unsubscribe = subscribeSettings(() => order.push('controls'));
+    on('settingchanged', () => order.push('handler'));
+    settings.set('order5', true);
+    unsubscribe();
+    expect(order).toEqual(['controls', 'handler']);
+  });
+
+  it('treats 0 and -0, and NaN and NaN, as the same value', () => {
+    settings.addRange('volume6', {
+      label: 'V',
+      min: -5,
+      max: 5,
+      step: 1,
+      default: 0,
+    });
+    const cb = vi.fn();
+    on('settingchanged', cb);
+    settings.set('volume6', -0);
+    settings.set('volume6', NaN);
+    expect(cb).toHaveBeenCalledOnce();
+    settings.set('volume6', NaN);
+    expect(cb).toHaveBeenCalledOnce();
   });
 
   it('lets a handler change another setting', () => {
