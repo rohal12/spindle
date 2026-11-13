@@ -5,7 +5,14 @@
  *
  * Run: npx tsc --noEmit
  */
-import type { StoryAPI as SourceAPI } from './story-api';
+import type {
+  NavigationKind as SourceNavigationKind,
+  StoryAPI as SourceAPI,
+} from './story-api';
+import type {
+  StoryEvent as SourceStoryEvent,
+  StoryEventCallback as SourceStoryEventCallback,
+} from './event-emitter';
 import type { parseStoryVariables as SourceParse } from './story-variables';
 import type {
   MacroContext as SourceMacroContext,
@@ -16,6 +23,9 @@ import type { ASTNode as SourceASTNode } from './markup/ast';
 import type { bootStory as SourceBootStory } from './headless';
 import type {
   StoryAPI as PublishedAPI,
+  NavigationKind as PublishedNavigationKind,
+  StoryEvent as PublishedStoryEvent,
+  StoryEventCallback as PublishedStoryEventCallback,
   MacroContext as PublishedMacroContext,
   MacroDefinition as PublishedMacroDefinition,
   MacroProps as PublishedMacroProps,
@@ -164,6 +174,19 @@ type ToolingChecks = [
   >,
 ];
 type _toolingTypes = AssertTrue<ToolingChecks>;
+
+// The story events and what each passes to its callbacks. The `on()` of the
+// two StoryAPI types above stay assignable to each other when a callback
+// gains or loses an argument, so the arguments are compared here.
+type EventChecks = [
+  Same<SourceStoryEvent, PublishedStoryEvent>,
+  Same<
+    { [E in SourceStoryEvent]: Parameters<SourceStoryEventCallback<E>> },
+    { [E in PublishedStoryEvent]: Parameters<PublishedStoryEventCallback<E>> }
+  >,
+  Same<SourceNavigationKind, PublishedNavigationKind>,
+];
+type _eventTypes = AssertTrue<EventChecks>;
 
 // A typical custom macro written against the published types must type-check,
 // and misuse of the hooks must not (no `any` leaking through).

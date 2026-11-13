@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `StoryInterface` that writes `{passage}` with selectors or in another case (`{#passages passage}`, `{Passage}`) no longer logs the warning that it does not contain `{passage}`. The check reads the markup of the `StoryInterface` passage instead of searching for the literal text (a `{passage}` inside a widget or an included passage is still not looked into), so an escaped `\{passage}`, or the text in an attribute value or a comment, now does warn. The documented example `{#my-story .custom-story passage}` was not markup (selectors are written without a space between them) and is corrected to `{#my-story.custom-story passage}`.
+
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
 - Twine highlighting indexes unfinished macro ownership instead of repeatedly searching earlier recovery errors (#737).
 - Reader observations exclude SVG stylesheet and script bodies while preserving visible SVG text (#738).
@@ -98,6 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Navigation events say how the story moved: `beforenavigate` handlers receive `(passageName, kind)` and `afternavigate` handlers `(to, from, kind)`, where `kind` is `'navigate'` for a navigation that records a new moment (a link, `{goto}`, `Story.goto()`, a watcher's goto) and `'back'` or `'forward'` for a move through the history (`Story.back()`, `Story.forward()`, the `{back}` and `{forward}` buttons). The type is exported as `NavigationKind`. Handlers that take fewer arguments are unaffected.
+- `Story.history` reads the history: `length` (the moments kept), `index` (the current moment), `passage(index?)` and `variables(index?)` (the variables recorded on entering a moment, which Back and Forward restore, as a frozen copy). An index the history does not hold throws a `RangeError` naming the valid range. Stories ported from SugarCube can use these in place of `State.length`, `State.size` and `State.index`.
 - `dialogclose` event: `Story.on('dialogclose', (passage) => …)` fires once for each dialog that closes, whichever way it closed (the `✕` button, Escape, a backdrop click, `Story.closeDialog()`, `Story.closeAllDialogs()`, a restart, leaving the passage of an open `{dialog}`), with the passage `dialogrender` gave for it. It fires after the dialog is removed from the DOM (a passage transition may still show an inert copy of the outgoing passage, dialog included) and focus has returned to the element that had it before the dialog opened, so a handler can release what it set up in `dialogrender` or move focus, and `Story.isDialogOpen()` inside it is `true` only if other dialogs are still open. Dialogs that close together fire innermost first. A story ported from SugarCube can use it where it listened for `:dialogclosed`.
 
 - Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).

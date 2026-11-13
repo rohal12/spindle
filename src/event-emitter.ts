@@ -1,3 +1,10 @@
+/**
+ * How the story moved: `'navigate'` recorded a new history moment (a link,
+ * `{goto}`, `Story.goto()`, a watcher's goto); `'back'` and `'forward'`
+ * moved through the moments already recorded.
+ */
+export type NavigationKind = 'navigate' | 'back' | 'forward';
+
 type EventMap = {
   storyinit: () => void;
   beforerestart: () => void;
@@ -12,8 +19,8 @@ type EventMap = {
   aftersave: (slot: string | undefined) => void;
   beforeload: (slot: string | undefined) => void;
   afterload: (slot: string | undefined) => void;
-  beforenavigate: (passageName: string) => void;
-  afternavigate: (to: string, from: string) => void;
+  beforenavigate: (passageName: string, kind: NavigationKind) => void;
+  afternavigate: (to: string, from: string, kind: NavigationKind) => void;
   passagerender: (passage: string, element: HTMLElement) => void;
   dialogrender: (passage: string, element: HTMLElement) => void;
   dialogclose: (passage: string) => void;
