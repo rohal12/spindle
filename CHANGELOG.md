@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `StoryInterface` that writes `{passage}` with selectors or in another case (`{#passages passage}`, `{Passage}`) no longer logs the warning that it does not contain `{passage}`. The check reads the markup of the `StoryInterface` passage instead of searching for the literal text (a `{passage}` inside a widget or an included passage is still not looked into), so an escaped `\{passage}`, or the text in an attribute value or a comment, now does warn. The documented example `{#my-story .custom-story passage}` was not markup (selectors are written without a space between them) and is corrected to `{#my-story.custom-story passage}`.
+
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).
 - Twine highlighting indexes unfinished macro ownership instead of repeatedly searching earlier recovery errors (#737).
 - Reader observations exclude SVG stylesheet and script bodies while preserving visible SVG text (#738).

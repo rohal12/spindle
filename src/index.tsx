@@ -32,6 +32,7 @@ import { registerWidgetDefinitions } from './widgets/register-widget-def';
 import { errorMessage } from './utils/error-message';
 import type { ASTNode } from './markup/ast';
 import { passageShown } from './components/macros/PassageDisplay';
+import { usesPassageMacro } from './components/StoryInterface';
 import './macros/register-builtins';
 import builtinCSS from './styles.css?inline';
 
@@ -292,11 +293,11 @@ export function boot() {
   // Wire up trigger system: check triggers on variable mutations, reinit on history nav/load
   connectTriggersToStore();
 
-  // Warn if StoryInterface passage exists but doesn't contain {passage}
+  // Warn if StoryInterface passage exists but doesn't use {passage}
   const storyInterfacePassage = storyData.passages.get('StoryInterface');
   if (
     storyInterfacePassage &&
-    !storyInterfacePassage.content.includes('{passage}')
+    !usesPassageMacro(storyInterfacePassage.content)
   ) {
     console.warn(
       'spindle: StoryInterface passage does not contain {passage}. ' +
