@@ -133,6 +133,7 @@ export interface StoryAPI {
   goto(passageName: string): void;
   back(): void;
   forward(): void;
+  recordMoment(): void;
   restart(): void;
   save(slot?: string, custom?: Record<string, unknown>): Promise<void>;
   load(slot?: string): Promise<void>;
@@ -341,6 +342,7 @@ function createStoryAPI(): StoryAPI {
     goto: storeAction('navigate'),
     back: storeAction('goBack'),
     forward: storeAction('goForward'),
+    recordMoment: storeAction('recordMoment'),
     restart: storeAction('restart'),
     save: storeAction('save'),
     load: storeAction('load'),

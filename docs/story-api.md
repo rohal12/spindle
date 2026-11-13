@@ -61,7 +61,7 @@ Navigate to a passage.
 {/do}
 ```
 
-Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
+Inside running code, `Story.goto()`, `Story.back()`, `Story.forward()`, `Story.recordMoment()`, `Story.restart()` and `Story.save()` act in program order: the code's writes made before the call are applied first (so `{do}$hp = 0; Story.goto("Game Over"){/do}` records `$hp` as 0 in the Game Over moment, and a save includes it), and the code then continues from the state the call leaves, such as the new passage's empty temporaries.
 
 The same holds for everything else running code sets off: a `{link}`, `{button}`, input or menubar action it performs with `Story.performAction()` (or a click or input event it dispatches), and the `{set}`, `{unset}`, `{computed}` and `{goto}` in a link or button body that runs. Their writes take effect at that point, as if the code had made them: the code reads them next, and a later write of the code's own wins over them, while one made before them does not.
 
@@ -76,6 +76,39 @@ Go to the previous passage in history.
 Go to the next passage in history (after going back).
 
 `Story.goto()`, `Story.back()` and `Story.forward()` write the [session](saves.md#session-persistence). If the story variables hold a value a save cannot hold (a function, an instance of an unregistered class, a unique symbol; see [What Cannot Be Saved](saves.md#what-cannot-be-saved)), the navigation completes and then throws an error naming the variable.
+
+### `Story.recordMoment()`
+
+Record the story variables as they are now as the state of the current moment, without navigating. Spindle records the variables when a passage is entered, and a page refresh, a load and Back/Forward restore that state (see [What a Load Restores](saves.md#what-a-load-restores)): a change made on the passage afterwards is lost by them. Call `Story.recordMoment()` after such a change to keep it, for example when the player changes something in a dialog opened over the passage:
+
+```
+:: Wardrobe
+{button "Wear the hat"}
+  {do}
+    $worn = "hat";
+    Story.recordMoment();
+  {/do}
+{/button}
+```
+
+From then on, these restore the recorded variables:
+
+- a page refresh (the call writes the [session](saves.md#session-persistence));
+- loading a save made on this passage after the call;
+- moving back or forward to this moment.
+
+What the call does and does not do:
+
+- It is not a navigation. `beforenavigate` and `afternavigate` do not fire, the passage is not rendered again and no transition plays; open dialogs stay open; visit and render counts and temporary variables stay as they are. Watchers and `variableChanged` handlers are not called: they ran when the variables changed.
+- It records all story variables, including what the passage's own `{set}` and `{do}` changed when the passage rendered. A restore renders the passage again, so those run again, on top of the recorded state. In a passage where you record, let such code set values (`{set $door = "open"}`) rather than add to them (`{set $gold += 5}`), or make the change in the link that leads to the passage.
+- The moment keeps the PRNG state it was entered with. A restore renders the passage again from that state, so the passage's rolls come out as they did the first time. Rolls made after it rendered (in a button, say) are drawn again from the same position after a restore; their recorded results are not changed.
+- If the player has gone back, so that the current moment is not the newest, the moments after it are dropped, as navigating from there drops them: `Story.forward()` and `{forward}` then have nowhere to go.
+- When the variables are as the moment has them recorded already, the call does nothing: nothing is written and the moments after the current one stay.
+- It returns nothing. Like `Story.goto()`, it throws when the variables hold a value a save cannot hold, after it has recorded the moment (the session keeps its last good copy; see [Session Persistence](saves.md#session-persistence)).
+- In `StoryInit` (which runs on every page load, also before a session is restored over it) and in `storyinit` handlers of a new game (at the first start and after a restart) it does nothing: Spindle records the start moment itself once they have run. The same holds in a watcher that runs because a passage was entered: the navigation records the moment after its watchers.
+- In a `beforesave` handler it records the handler's changes so far in the live history as well; without it they are stored in the save only.
+
+Inside running code it takes its place in program order, as `Story.goto()` does: in the example above the write to `$worn` is recorded, and a write after the call would not be.
 
 ### `Story.restart()`
 
@@ -262,7 +295,7 @@ Save operations (`save`, `load`, `deleteSave`, `getSaveInfo`, `listSaves`, `expo
 
 ### `Story.load(slot?)`
 
-Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage, plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
+Load a saved game. When `slot` is provided, loads from the named slot. A load restores the state at the start of the saved passage (or the state [`Story.recordMoment()`](#story-recordmoment) recorded there since), plus the variables a `beforesave` handler changed. Other variables changed on that passage after entering it are not restored, and the passage runs again (see [What a Load Restores](saves.md#what-a-load-restores)).
 
 ```javascript
 Story.load(); // load from default slot

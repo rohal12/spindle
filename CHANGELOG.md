@@ -98,6 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Story.recordMoment()` records the story variables as they are as the state of the current moment, without navigating: a page refresh, a save made on the passage and loaded, and Back/Forward then restore a change made on the passage (in a dialog opened over it, say) instead of the state on entering it. It writes the session, drops the moments after the current one when the player had gone back, keeps the moment's entry PRNG state, and takes its place in program order inside running code.
+
 - Tooling exports `macroCalls(source, macros?)` to distinguish macro/widget invocations, parent-consumed value clauses and declared branches with original source spans and owner tokens (#680).
 
 - Public tokenizers accept effective macro and widget metadata through `options.macros`, exposing live calls inside widgets named `do` with original offsets and tolerant recovery (#652).
