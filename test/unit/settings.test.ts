@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { settings } from '../../src/settings';
+import { on, resetEmitter } from '../../src/event-emitter';
 import { useStoryStore } from '../../src/store';
 import type { StoryData, Passage } from '../../src/parser';
 
@@ -257,5 +258,128 @@ describe('settings registered before the story IFID is known', () => {
       expect(s.getToggle('constructor')).toBe(false);
       expect(s.getList('toString')).toBe('b');
     });
+  });
+});
+
+describe('settingchanged event', () => {
+  beforeEach(() => {
+    resetEmitter();
+    localStorage.clear();
+    settings.getDefinitions().clear();
+    useStoryStore.getState().init(makeStoryData([makePassage(1, 'Start', '')]));
+  });
+
+  it('fires with the name and new value, after the value is stored', () => {
+    settings.addList('theme1', {
+      label: 'Theme',
+      options: ['light', 'dark'],
+      default: 'light',
+    });
+    const seen: unknown[][] = [];
+    on('settingchanged', (name, value) => {
+      seen.push([
+        name,
+        value,
+        settings.get(name),
+        JSON.parse(localStorage.getItem('spindle.test-ifid.settings')!)[name],
+      ]);
+    });
+    settings.set('theme1', 'dark');
+    expect(seen).toEqual([['theme1', 'dark', 'dark', 'dark']]);
+    expect(
+      JSON.parse(localStorage.getItem('spindle.test-ifid.settings')!).theme1,
+    ).toBe('dark');
+  });
+
+  it('fires once per real change, not for the value a setting already has', () => {
+    settings.addToggle('music2', { label: 'Music', default: true });
+    settings.addRange('volume2', {
+      label: 'Volume',
+      min: 0,
+      max: 10,
+      step: 1,
+      default: 5,
+    });
+    const cb = vi.fn();
+    on('settingchanged', cb);
+
+    settings.set('music2', true);
+    settings.set('volume2', 5);
+    expect(cb).not.toHaveBeenCalled();
+
+    settings.set('music2', false);
+    settings.set('music2', false);
+    settings.set('volume2', 6);
+    expect(cb.mock.calls).toEqual([
+      ['music2', false],
+      ['volume2', 6],
+    ]);
+  });
+
+  it('does not fire when settings are registered, also with a value already set', () => {
+    const cb = vi.fn();
+    on('settingchanged', cb);
+    settings.addToggle('music3', { label: 'Music', default: true });
+    settings.addList('theme3', {
+      label: 'Theme',
+      options: ['a3', 'b3'],
+      default: 'a3',
+    });
+    settings.addRange('volume3', {
+      label: 'Volume',
+      min: 0,
+      max: 10,
+      step: 1,
+      default: 5,
+    });
+    // Registering again keeps the changed value and fires nothing more
+    settings.set('music3', false);
+    cb.mockClear();
+    settings.addToggle('music3', { label: 'Music', default: true });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('lets a handler change another setting', () => {
+    settings.addToggle('a4', { label: 'A', default: false });
+    settings.addToggle('b4', { label: 'B', default: false });
+    const seen: string[] = [];
+    on('settingchanged', (name, value) => {
+      seen.push(`${name}=${value}`);
+      if (name === 'a4') settings.set('b4', value);
+    });
+    settings.set('a4', true);
+    expect(seen).toEqual(['a4=true', 'b4=true']);
+  });
+
+  it('does not fire when persisted values are applied at start', async () => {
+    localStorage.setItem(
+      'spindle.test-ifid.settings',
+      JSON.stringify({ music: false, volume: 5 }),
+    );
+    vi.resetModules();
+    const emitter = await import('../../src/event-emitter');
+    const { settings: s } = await import('../../src/settings');
+    const { useStoryStore: store } = await import('../../src/store');
+    const cb = vi.fn();
+    emitter.on('settingchanged', cb);
+
+    // Registered by Story JavaScript, before the IFID is known
+    s.addToggle('music', { label: 'Music', default: true });
+    store.getState().init(makeStoryData([makePassage(1, 'Start', '')]));
+    // Registered later (StoryInit)
+    s.addRange('volume', {
+      label: 'Volume',
+      min: 0,
+      max: 10,
+      step: 1,
+      default: 1,
+    });
+
+    expect(s.get('music')).toBe(false);
+    expect(s.get('volume')).toBe(5);
+    expect(cb).not.toHaveBeenCalled();
+
+    s.set('music', true);
+    expect(cb).toHaveBeenCalledOnce();
   });
 });

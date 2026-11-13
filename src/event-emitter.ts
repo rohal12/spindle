@@ -5,6 +5,7 @@ type EventMap = {
   variableChanged: (
     changed: Record<string, { from: unknown; to: unknown }>,
   ) => void;
+  settingchanged: (name: string, value: unknown) => void;
   beforesave: (
     slot: string | undefined,
     custom: Record<string, unknown> | undefined,
@@ -26,6 +27,7 @@ const VALID_EVENTS = new Set<string>([
   'beforerestart',
   'actionsChanged',
   'variableChanged',
+  'settingchanged',
   'beforesave',
   'aftersave',
   'beforeload',

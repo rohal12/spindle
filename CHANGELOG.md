@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Story.on('settingchanged', (name, value) => …)` fires after a setting's value changed and was stored, whether through the settings controls or `Story.settings.set()`, so story code can apply a setting (a theme, a text size) without polling. It does not fire when settings are registered, when persisted values are applied at startup (read those with `Story.settings.get()` from `storyinit` on), or when a value is set to what it already is.
+
 ### Fixed
 
 - SVG transition snapshots traverse stylesheet rules once during alias installation and cleanup, avoiding repeated CSSOM enumeration for large stylesheets (#736).

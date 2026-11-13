@@ -91,6 +91,40 @@ Read a setting's current value from JavaScript:
 {/do}
 ```
 
+## Reacting to Changes
+
+Story code that applies a setting (a theme, a text size) listens for the `settingchanged` event. It fires after a setting's value changed and was stored, with the setting's name and its new value:
+
+```
+{do}
+  Story.on("settingchanged", function (name, value) {
+    if (name === "dark_mode") document.body.classList.toggle("dark", value);
+  });
+{/do}
+```
+
+It fires for a change made with the controls in the settings dialog (or `{settings-controls}`) and for one made with `Story.settings.set()`. It does not fire:
+
+- when a setting is registered with `addToggle`, `addList` or `addRange`;
+- when persisted values are applied at startup;
+- when a value is set to the value the setting already has.
+
+So a handler never sees the value a setting starts with. Apply start values by reading them with `Story.settings.get()` once the story is initialized: settings registered in `StoryInit` can be read right after their `add…` call, and every start value, persisted values included, can be read from `StoryInit` onward and in a `storyinit` handler. A common pattern, in `StoryInit`, is one function that applies the settings, called from a `storyinit` handler and from a `settingchanged` handler.
+
+```
+{do}
+  function applyTheme() {
+    document.body.classList.toggle("dark", Story.settings.get("dark_mode"));
+  }
+  Story.on("storyinit", applyTheme);
+  Story.on("settingchanged", function (name) {
+    if (name === "dark_mode") applyTheme();
+  });
+{/do}
+```
+
+Handlers follow the same rules as other `Story.on` handlers: those registered in Story JavaScript last for the whole session, while those registered later (in `StoryInit` or passages) are removed by `Story.restart()`. Settings themselves are not reset by a restart, and a restart does not fire `settingchanged`.
+
 ## Persistence
 
 Settings are stored in `localStorage` keyed by the story's IFID. They persist across page refreshes and are independent of the save system.

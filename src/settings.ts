@@ -1,3 +1,4 @@
+import { emit } from './event-emitter';
 import { useStoryStore } from './store';
 import { createNamespace, hasOwn, ownValue } from './utils/namespace';
 
@@ -130,10 +131,18 @@ export const settings = {
     return valueOf(name, 0);
   },
 
+  /**
+   * Store a value, notify the settings controls, then emit `settingchanged`.
+   * Setting the value a setting already has changes nothing and emits
+   * nothing.
+   */
   set(name: string, value: unknown): void {
+    const unchanged = hasOwn(values, name) && Object.is(values[name], value);
     values[name] = value;
     persist();
+    if (unchanged) return;
     for (const listener of [...listeners]) listener();
+    emit('settingchanged', name, value);
   },
 
   getAll(): Record<string, unknown> {

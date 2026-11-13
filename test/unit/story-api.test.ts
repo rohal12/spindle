@@ -492,6 +492,44 @@ describe('StoryAPI', () => {
     });
   });
 
+  describe('on(settingchanged)', () => {
+    it('fires with the name and value when a setting changes', async () => {
+      const { settings } = await import('../../src/settings');
+      settings.addToggle('story-api-sound', { label: 'Sound', default: true });
+      const cb = vi.fn();
+      const unsub = Story.on('settingchanged', cb);
+
+      settings.set('story-api-sound', false);
+      expect(cb).toHaveBeenCalledExactlyOnceWith('story-api-sound', false);
+
+      settings.set('story-api-sound', false);
+      expect(cb).toHaveBeenCalledOnce();
+
+      unsub();
+      settings.set('story-api-sound', true);
+      expect(cb).toHaveBeenCalledOnce();
+    });
+
+    it('survives a restart for a handler registered at startup, not for one from the runtime', async () => {
+      const { settings } = await import('../../src/settings');
+      settings.addToggle('story-api-restart', { label: 'R', default: false });
+      const atStartup = vi.fn();
+      const atRuntime = vi.fn();
+      Story.on('settingchanged', atStartup);
+      enterRuntimePhase();
+      Story.on('settingchanged', atRuntime);
+
+      settings.set('story-api-restart', true);
+      expect(atStartup).toHaveBeenCalledTimes(1);
+      expect(atRuntime).toHaveBeenCalledTimes(1);
+
+      Story.restart();
+      settings.set('story-api-restart', false);
+      expect(atStartup).toHaveBeenCalledTimes(2);
+      expect(atRuntime).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('on(storyinit)', () => {
     it('fires callback via Story.on API on restart', () => {
       const cb = vi.fn();
