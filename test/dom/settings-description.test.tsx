@@ -97,12 +97,17 @@ describe('{settings-controls} descriptions', () => {
       description: '',
       default: false,
     });
+    settings.addToggle('blank', {
+      label: 'Blank',
+      description: '  ',
+      default: false,
+    });
     const el = renderControls();
     expect(el.querySelector('.settings-description')).toBeNull();
     expect(el.querySelector('.settings-item')).toBeNull();
     expect(
       el.querySelectorAll('.settings-controls > .settings-row'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     for (const input of el.querySelectorAll('input')) {
       expect(input.hasAttribute('aria-describedby')).toBe(false);
     }

@@ -75,7 +75,8 @@ function SettingControl({ name, def }: { name: string; def: SettingDef }) {
   const descriptionId = useId();
   // Plain text, never markup. No description, no element.
   const text = def.config.description;
-  const description = typeof text === 'string' && text !== '' ? text : null;
+  const description =
+    typeof text === 'string' && text.trim() !== '' ? text : null;
 
   // Follow changes made elsewhere: Story.settings.set(), another view
   useEffect(() => {
