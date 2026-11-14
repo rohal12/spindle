@@ -1175,48 +1175,206 @@ describe('SaveManagerContent', () => {
   });
 
   describe('delete', () => {
-    it('clicking Delete with confirm removes the save', async () => {
+    const deleteButtons = () =>
+      [
+        ...container.querySelectorAll('.save-slot-action.danger'),
+      ] as HTMLElement[];
+    const deleteButton = (i: number) => deleteButtons()[i]!;
+    const slotCount = () => container.querySelectorAll('.save-slot').length;
+    const press = async (el: HTMLElement) => {
+      await act(async () => el.click());
+      await flush();
+    };
+
+    it('the first press arms the button and deletes nothing', async () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
-
-      // Mock confirm to return true
-      globalThis.confirm = vi.fn<() => boolean>(() => true);
+      const confirmSpy = vi.fn<() => boolean>(() => true);
+      globalThis.confirm = confirmSpy;
+      window.confirm = confirmSpy;
 
       renderSaveManager(container, onClose);
       await flush();
+      const before = slotCount();
 
-      const deleteBtns = [
-        ...container.querySelectorAll('.save-slot-action.danger'),
-      ].filter((b) => b.textContent === 'Delete');
-      await act(async () => (deleteBtns[0] as HTMLElement).click());
+      const btn = deleteButton(0);
+      expect(btn.textContent).toBe('Delete');
+      expect(btn.hasAttribute('aria-label')).toBe(false);
+      await press(btn);
+
+      expect(slotCount()).toBe(before);
+      expect(container.querySelector('.saves-status')).toBeNull();
+      const armed = deleteButton(0);
+      expect(armed.textContent).toBe('Press again to delete');
+      expect(armed.classList.contains('is-armed')).toBe(true);
+      expect(armed.getAttribute('data-armed')).toBe('true');
+      expect(armed.getAttribute('aria-label')).toBe(
+        'Press again to delete this save',
+      );
+      expect(armed.getAttribute('title')).toBe(
+        'Press again to delete this save',
+      );
+      // Announced to screen readers
+      expect(
+        container.querySelector('.saves-sr-only[role="status"]')!.textContent,
+      ).toBe('Press again to delete this save');
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('a second press on the same button deletes the save', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      const confirmSpy = vi.fn<() => boolean>(() => true);
+      globalThis.confirm = confirmSpy;
+      window.confirm = confirmSpy;
+
+      renderSaveManager(container, onClose);
       await flush();
+      const before = slotCount();
+
+      await press(deleteButton(0));
+      await press(deleteButton(0));
 
       const status = container.querySelector('.saves-status');
       expect(status).not.toBeNull();
       expect(status!.textContent).toContain('Save deleted');
+      expect(slotCount()).toBe(before - 1);
+      expect(confirmSpy).not.toHaveBeenCalled();
     });
 
-    it('clicking Delete with cancel does nothing', async () => {
+    it('blur disarms the button', async () => {
       const ptId = useStoryStore.getState().playthroughId;
       await createSave(IFID, ptId, makePayload());
-
-      globalThis.confirm = vi.fn<() => boolean>(() => false);
-
       renderSaveManager(container, onClose);
       await flush();
+      const before = slotCount();
 
-      const beforeSlots = container.querySelectorAll('.save-slot').length;
+      const btn = deleteButton(0);
+      await press(btn);
+      expect(deleteButton(0).classList.contains('is-armed')).toBe(true);
 
-      const deleteBtns = [
-        ...container.querySelectorAll('.save-slot-action.danger'),
-      ].filter((b) => b.textContent === 'Delete');
-      await act(async () => (deleteBtns[0] as HTMLElement).click());
+      await act(async () => {
+        deleteButton(0).focus();
+        deleteButton(0).blur();
+      });
       await flush();
+      expect(deleteButton(0).textContent).toBe('Delete');
+      expect(deleteButton(0).hasAttribute('data-armed')).toBe(false);
 
-      const afterSlots = container.querySelectorAll('.save-slot').length;
-      expect(afterSlots).toBe(beforeSlots);
+      // The next press arms again instead of deleting
+      await press(deleteButton(0));
+      expect(slotCount()).toBe(before);
+      expect(deleteButton(0).classList.contains('is-armed')).toBe(true);
+    });
 
-      vi.restoreAllMocks();
+    it('Escape disarms the button and leaves the dialog open', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      renderSaveManager(container, onClose);
+      await flush();
+      const before = slotCount();
+
+      const reached = vi.fn();
+      document.addEventListener('keydown', reached);
+      try {
+        await press(deleteButton(0));
+        const escape = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        });
+        await act(async () => {
+          deleteButton(0).dispatchEvent(escape);
+        });
+        await flush();
+        // Handled here: the dialog's own Escape handler does not see it
+        expect(reached).not.toHaveBeenCalled();
+        expect(escape.defaultPrevented).toBe(true);
+      } finally {
+        document.removeEventListener('keydown', reached);
+      }
+      expect(deleteButton(0).textContent).toBe('Delete');
+      expect(slotCount()).toBe(before);
+    });
+
+    it('pressing anything else disarms the button', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      renderSaveManager(container, onClose);
+      await flush();
+      const before = slotCount();
+
+      // A press elsewhere
+      await press(deleteButton(0));
+      await act(async () => {
+        container
+          .querySelector('.saves-header')!
+          .dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      });
+      await flush();
+      expect(deleteButton(0).textContent).toBe('Delete');
+
+      // A key elsewhere
+      await press(deleteButton(0));
+      await act(async () => {
+        container
+          .querySelector('.saves-header')!
+          .dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'a', bubbles: true }),
+          );
+      });
+      await flush();
+      expect(deleteButton(0).textContent).toBe('Delete');
+
+      // Pressing the armed button itself does not disarm it
+      await press(deleteButton(0));
+      await act(async () => {
+        deleteButton(0).dispatchEvent(
+          new Event('pointerdown', { bubbles: true }),
+        );
+      });
+      await flush();
+      expect(deleteButton(0).classList.contains('is-armed')).toBe(true);
+      expect(slotCount()).toBe(before);
+    });
+
+    it('arming one save disarms another', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      await createSave(IFID, ptId, makePayload());
+      renderSaveManager(container, onClose);
+      await flush();
+      const before = slotCount();
+      expect(slotCount()).toBe(before);
+
+      await press(deleteButton(0));
+      await press(deleteButton(1));
+      const armed = deleteButtons().filter((b) =>
+        b.classList.contains('is-armed'),
+      );
+      expect(armed).toHaveLength(1);
+      expect(slotCount()).toBe(before);
+    });
+
+    it('disarms after a pause', async () => {
+      const ptId = useStoryStore.getState().playthroughId;
+      await createSave(IFID, ptId, makePayload());
+      renderSaveManager(container, onClose);
+      await flush();
+      const before = slotCount();
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await act(async () => deleteButton(0).click());
+        expect(deleteButton(0).classList.contains('is-armed')).toBe(true);
+        await act(async () => {
+          vi.advanceTimersByTime(6000);
+        });
+        expect(deleteButton(0).textContent).toBe('Delete');
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(slotCount()).toBe(before);
     });
 
     it('deleting slot saves clears the slots and the store save cache', async () => {
@@ -1234,16 +1392,22 @@ describe('SaveManagerContent', () => {
       expect(store.hasSave()).toBe(true);
       expect(store.hasSave('named')).toBe(true);
 
-      globalThis.confirm = vi.fn<() => boolean>(() => true);
       renderSaveManager(container, onClose);
       await flush();
       expect(container.querySelectorAll('.save-slot').length).toBe(2);
 
       for (let i = 0; i < 2; i++) {
-        const deleteBtn = [
-          ...container.querySelectorAll('.save-slot-action.danger'),
-        ].find((b) => b.textContent === 'Delete');
-        await act(async () => (deleteBtn as HTMLElement).click());
+        const deleteBtn = container.querySelector(
+          '.save-slot-action.danger',
+        ) as HTMLElement;
+        // The first press arms, the second deletes
+        await act(async () => deleteBtn.click());
+        await flush();
+        await act(async () =>
+          (
+            container.querySelector('.save-slot-action.danger') as HTMLElement
+          ).click(),
+        );
         await flush();
       }
       expect(container.querySelectorAll('.save-slot').length).toBe(0);

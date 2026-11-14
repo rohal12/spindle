@@ -61,9 +61,18 @@ From the dialog you can:
 - **Create** a new named save in the current playthrough
 - **Load** any existing save (the game moves to that save's playthrough, see [Playthroughs](#playthroughs))
 - **Rename** a save
-- **Delete** a save
+- **Delete** a save: the first press arms the button (it reads "Press again to delete"), and a second press on it deletes. Moving on to anything else, pressing Escape, or waiting a few seconds puts it back
 - **Export** a save to a JSON file
 - **Import** a save from a JSON file
+
+An armed Delete button has the class `is-armed` and the attribute `data-armed="true"`, and its `aria-label` and `title` read "Press again to delete this save", so a stylesheet can mark it:
+
+```css
+.save-slot-action.is-armed {
+  background: #b71c1c;
+  color: #fff;
+}
+```
 
 ## Playthroughs
 
