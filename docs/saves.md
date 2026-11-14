@@ -4,7 +4,7 @@ Spindle stores saves in the browser's IndexedDB, organized by playthroughs.
 
 ## Session Persistence
 
-Spindle automatically saves the current game state to the browser's session storage on every navigation. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same history, and the variables as they were when the player entered the current passage (see [What a Load Restores](#what-a-load-restores)).
+Spindle automatically saves the current game state to the browser's session storage on every navigation, and when [`Story.recordMoment()`](story-api.md#story-recordmoment) records a change. If the player refreshes the page (F5), the story resumes from where they left off — same passage, same history, and the variables as they were when the player entered the current passage, or as `Story.recordMoment()` recorded them since (see [What a Load Restores](#what-a-load-restores)).
 
 - Session state persists across page refreshes within the same tab.
 - A refresh continues in the tab's own [playthrough](#playthroughs), so later saves are grouped as before it, even if another tab has since restarted the game.
@@ -24,6 +24,8 @@ Where the thrown error appears depends on what started the navigation:
 - A link or button the player clicks: the browser reports it as an uncaught error in the console, with its stack.
 - `{goto}`, or `Story.goto()` in `{do}`: it is logged to the console like any other error in that macro (`spindle: Error in {goto}…`).
 - `Story.goto()`, `Story.back()` or `Story.forward()` in your own JavaScript: it is thrown to your code.
+
+`Story.recordMoment()` reports such a value the same way: it records the moment, shows the banner, and the error appears as listed above for `Story.goto()`.
 
 ## Quick Save and Quick Load
 
@@ -139,7 +141,20 @@ Temporary variables (`_name`) are **not** saved — they reset on load.
 
 Loading a save (or restoring the session after a refresh) restores the state at the **start of the saved passage**: the story variables, and the seeded PRNG state, recorded when the player entered it. The passage is then rendered again, so its `{set}`, `{do}` and other macros run once more, exactly as they did on the first visit, and its random rolls replay the same values.
 
-Changes made on the passage after entering it — typing into a `{textbox}`, clicking a `{button}` that sets a variable — are **not** restored. This matches how moving back and forward through history works, and how SugarCube treats saves. If a choice must survive a save, make it lead to another passage (for example with a link or `{goto}`), which records it in the history.
+Changes made on the passage after entering it — typing into a `{textbox}`, clicking a `{button}` that sets a variable — are **not** restored. This matches how moving back and forward through history works, and how SugarCube treats saves. If a choice must survive a save, make it lead to another passage (for example with a link or `{goto}`), which records it in the history, or record it where it is made with `Story.recordMoment()`.
+
+[`Story.recordMoment()`](story-api.md#story-recordmoment) records the story variables as they are at the call as the state of the current passage's moment, without a navigation. A page refresh, a save made afterwards and loaded, and Back and Forward then restore that state instead of the one on entering the passage. Use it for a change the player makes without leaving the passage, such as equipping an item in a dialog opened with `Story.openDialog()` (a story ported from SugarCube does this by writing into `State.current.variables`):
+
+```
+{button "Wear the hat"}
+  {do}
+    $worn = "hat";
+    Story.recordMoment();
+  {/do}
+{/button}
+```
+
+The passage is still rendered again by a restore, with the PRNG state it was entered with, so its own `{set}` and `{do}` run again on top of the recorded variables and its rolls replay: in a passage where you record, have that code set values rather than add to them.
 
 Variables a [`beforesave`](story-api.md#storyonevent-callback) handler changes are the exception: they are restored by a load. Engines that keep their state outside Spindle can write it to a story variable in `beforesave` and read it back in `afterload`:
 
@@ -148,7 +163,7 @@ Story.on('beforesave', () => Story.set('engine', engine.snapshot()));
 Story.on('afterload', () => engine.restore(Story.get('engine')));
 ```
 
-The handler's changes are stored with the saved passage's start state. The live history is not changed, so moving back and forward does not bring them back.
+The handler's changes are stored with the saved passage's start state. The live history is not changed, so moving back and forward does not bring them back (unless the handler calls `Story.recordMoment()`).
 
 Random numbers the save and load handlers (`beforesave`, `aftersave`, `afterload`) draw with `random()` or `Story.random()` do not advance the seeded PRNG: the story draws the same values again afterwards. Saving never changes the rolls that follow, and the passage replays its rolls after a load. Use `Math.random()` there for values that must not repeat the story's next rolls.
 

@@ -11,7 +11,7 @@ import {
   FrozenStateContext,
   OutgoingContext,
 } from '../../hooks/use-story-fields';
-import { Passage, renderPassageContent } from '../Passage';
+import { Passage, renderPassageContent, type PassageProps } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
 import { skipString } from './arg-utils';
@@ -807,7 +807,13 @@ defineMacro({
       () => isOutgoing(useStoryStore.getState()),
       [isOutgoing],
     );
-    const lastElement = useRef<preact.VNode | null>(null);
+    // What the passage on display was drawn with (see the render below):
+    // props, not the vnode, which a vnode of the next render could not
+    // be released from (the parent a vnode is placed under stays with it)
+    const lastShown = useRef<{
+      key: string;
+      props: PassageProps;
+    } | null>(null);
 
     // Container ref for snapshot insertion
     const containerRef = useRef<HTMLDivElement>(null);
@@ -1001,20 +1007,30 @@ defineMacro({
 
     // Between a navigation and the commit of its passage, the old passage is
     // still mounted. It must not execute against the destination's state, so
-    // it keeps the element and the state it last rendered with (#352).
+    // it is drawn with what it was last drawn with (#352): the same props.
     const outgoing = !renderDeferred && displayed.id !== navigationId;
-    const passageElement =
-      outgoing && lastElement.current
-        ? lastElement.current
-        : effectivePassage && (
-            <Passage
-              passage={effectivePassage}
-              key={renderDeferred ? 'loading' : `nav-${displayed.id}`}
-              dataTransition={renderDeferred ? 'none' : resolvedTypeRef.current}
-              navigationId={renderDeferred ? undefined : displayed.id}
-            />
-          );
-    lastElement.current = passageElement || null;
+    const shown =
+      outgoing && lastShown.current
+        ? lastShown.current
+        : effectivePassage
+          ? {
+              key: renderDeferred ? 'loading' : `nav-${displayed.id}`,
+              props: {
+                passage: effectivePassage,
+                dataTransition: renderDeferred
+                  ? 'none'
+                  : resolvedTypeRef.current,
+                navigationId: renderDeferred ? undefined : displayed.id,
+              },
+            }
+          : null;
+    const passageElement = shown && (
+      <Passage
+        key={shown.key}
+        {...shown.props}
+      />
+    );
+    lastShown.current = shown;
 
     return (
       <div

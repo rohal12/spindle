@@ -472,8 +472,92 @@ describe('StoryAPI', () => {
       const unsub = Story.on('afternavigate', cb);
 
       useStoryStore.getState().navigate('Room');
-      expect(cb).toHaveBeenCalledWith('Room', 'Start');
+      expect(cb).toHaveBeenCalledWith('Room', 'Start', 'navigate');
       unsub();
+    });
+
+    it('passes the kind of move as the last argument', () => {
+      const before = vi.fn();
+      const after = vi.fn();
+      const unsubs = [
+        Story.on('beforenavigate', before),
+        Story.on('afternavigate', after),
+      ];
+
+      Story.goto('Room');
+      Story.back();
+      Story.forward();
+      unsubs.forEach((unsub) => unsub());
+
+      expect(before.mock.calls).toEqual([
+        ['Room', 'navigate'],
+        ['Start', 'back'],
+        ['Room', 'forward'],
+      ]);
+      expect(after.mock.calls).toEqual([
+        ['Room', 'Start', 'navigate'],
+        ['Start', 'Room', 'back'],
+        ['Room', 'Start', 'forward'],
+      ]);
+    });
+  });
+
+  describe('history', () => {
+    it('reads the moments kept, the current one and their passages', () => {
+      expect(Story.history.length).toBe(1);
+      expect(Story.history.index).toBe(0);
+      expect(Story.history.passage()).toBe('Start');
+
+      Story.goto('Room');
+      Story.goto('End');
+      Story.back();
+
+      expect(Story.history.length).toBe(3);
+      expect(Story.history.index).toBe(1);
+      expect(Story.history.passage()).toBe('Room');
+      expect(Story.history.passage(0)).toBe('Start');
+      expect(Story.history.passage(2)).toBe('End');
+    });
+
+    it('reads the variables recorded for a moment as a frozen copy', () => {
+      Story.set('bag', ['key']);
+      Story.goto('Room');
+      Story.set('bag', ['key', 'map']);
+
+      // The state on entering Room: the later write is not part of it
+      const recorded = Story.history.variables();
+      expect(recorded.bag).toEqual(['key']);
+      expect(Story.history.variables(1)).toEqual(recorded);
+      expect(Story.history.variables(0).bag).toBeUndefined();
+      expect(Object.isFrozen(recorded)).toBe(true);
+      expect(() => recorded.bag.push('lamp')).toThrow(TypeError);
+      expect(Story.history.variables().bag).toEqual(['key']);
+    });
+
+    it('throws a RangeError naming the valid range', () => {
+      Story.goto('Room');
+      expect(() => Story.history.passage(2)).toThrow(
+        new RangeError(
+          'spindle: History index 2 is out of range: the history holds moments 0 to 1.',
+        ),
+      );
+      expect(() => Story.history.variables(-1)).toThrow(
+        new RangeError(
+          'spindle: History index -1 is out of range: the history holds moments 0 to 1.',
+        ),
+      );
+    });
+
+    it('is empty before the story has started', () => {
+      // As when the story JavaScript first runs, before the start passage
+      useStoryStore.setState({ history: [], historyIndex: -1 });
+      expect(Story.history.length).toBe(0);
+      expect(Story.history.index).toBe(-1);
+      const error = new RangeError(
+        'spindle: History index -1 is out of range: the history holds no moments yet.',
+      );
+      expect(() => Story.history.passage()).toThrow(error);
+      expect(() => Story.history.variables()).toThrow(error);
     });
   });
 
@@ -489,6 +573,44 @@ describe('StoryAPI', () => {
         }),
       );
       unsub();
+    });
+  });
+
+  describe('on(settingchanged)', () => {
+    it('fires with the name and value when a setting changes', async () => {
+      const { settings } = await import('../../src/settings');
+      settings.addToggle('story-api-sound', { label: 'Sound', default: true });
+      const cb = vi.fn();
+      const unsub = Story.on('settingchanged', cb);
+
+      settings.set('story-api-sound', false);
+      expect(cb).toHaveBeenCalledExactlyOnceWith('story-api-sound', false);
+
+      settings.set('story-api-sound', false);
+      expect(cb).toHaveBeenCalledOnce();
+
+      unsub();
+      settings.set('story-api-sound', true);
+      expect(cb).toHaveBeenCalledOnce();
+    });
+
+    it('survives a restart for a handler registered at startup, not for one from the runtime', async () => {
+      const { settings } = await import('../../src/settings');
+      settings.addToggle('story-api-restart', { label: 'R', default: false });
+      const atStartup = vi.fn();
+      const atRuntime = vi.fn();
+      Story.on('settingchanged', atStartup);
+      enterRuntimePhase();
+      Story.on('settingchanged', atRuntime);
+
+      settings.set('story-api-restart', true);
+      expect(atStartup).toHaveBeenCalledTimes(1);
+      expect(atRuntime).toHaveBeenCalledTimes(1);
+
+      Story.restart();
+      settings.set('story-api-restart', false);
+      expect(atStartup).toHaveBeenCalledTimes(2);
+      expect(atRuntime).toHaveBeenCalledTimes(1);
     });
   });
 

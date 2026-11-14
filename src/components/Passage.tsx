@@ -1,5 +1,6 @@
 import {
-  useMemo,
+  useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -14,12 +15,17 @@ import {
   InterfaceContext,
   useViewScope,
 } from '../markup/render';
-import { useStoryFields } from '../hooks/use-story-fields';
+import {
+  LateMountContext,
+  OutgoingContext,
+  useStoryFields,
+} from '../hooks/use-story-fields';
 import type { Passage as PassageData } from '../parser';
 import { sourceLocationOf } from '../utils/source-location';
 import { emitFromRender } from '../event-emitter';
 import { duringEntryRender } from '../triggers';
 import type { ComponentChildren } from 'preact';
+import { memo } from 'preact/compat';
 import {
   EntryRenderContext,
   markPassageRendered,
@@ -52,21 +58,68 @@ export function renderPassageContent(passage: PassageData) {
 }
 
 /**
- * The content of a special passage shown with every passage (PassageHeader,
- * PassageFooter, PassageDone), or null. One that fails to render is logged
- * and left out, so it can't take the passage down with it.
+ * A passage's rendered content, drawn again only when the passage or its
+ * text changes (the props are compared shallowly, so a parent re-rendering
+ * with the same passage skips it).
+ *
+ * It is a component and not a vnode kept by `useMemo`. A kept vnode that is
+ * placed again carries Preact's links (its parent, its rendered children) to
+ * the tree it was first placed in. A navigation's tree reaches the kept vnode
+ * of the passage on its way out, so every tree held the one before it and
+ * none was ever freed. The `content` prop is only here so that an edit of
+ * the passage text in place draws it again.
  */
-function renderSpecialPassage(passage: PassageData | undefined) {
-  if (!passage) return null;
+const PassageBody = memo(function PassageBody({
+  passage,
+}: {
+  passage: PassageData;
+  content: string;
+}) {
   try {
-    return renderPassageContent(passage);
+    return <>{renderPassageContent(passage)}</>;
+  } catch (err) {
+    return (
+      <div class="error">
+        Error parsing passage &ldquo;{passage.name}&rdquo;
+        {sourceLocationOf(passage)}: {errorMessage(err)}
+      </div>
+    );
+  }
+});
+
+/**
+ * A special passage shown with every passage (PassageHeader, PassageFooter,
+ * PassageDone), in its wrapper; nothing if it has no content. One that fails
+ * to render is logged and left out, so it can't take the passage down with
+ * it. Memoized like PassageBody.
+ */
+const SpecialPassage = memo(function SpecialPassage({
+  passage,
+  kind,
+}: {
+  passage: PassageData;
+  content: string;
+  kind: 'header' | 'footer' | 'done';
+}) {
+  let content: ComponentChildren;
+  try {
+    content = renderPassageContent(passage);
   } catch (err) {
     console.error(`spindle: Error in ${passage.name}:`, err);
     return null;
   }
-}
+  if (!content) return null;
+  if (kind === 'done') {
+    return (
+      <EntryRenderBoundary>
+        <div hidden>{content}</div>
+      </EntryRenderBoundary>
+    );
+  }
+  return <div class={`passage-${kind}`}>{content}</div>;
+});
 
-interface PassageProps {
+export interface PassageProps {
   passage: PassageData;
   dataTransition?: string;
   /** The navigation this passage displays; omitted for placeholders. */
@@ -102,45 +155,26 @@ export function Passage({
   const isCodePassage = CODE_PASSAGES.has(passage.name);
   const [doneReady, setDoneReady] = useState(false);
 
-  const content = useMemo(() => {
-    try {
-      return renderPassageContent(passage);
-    } catch (err) {
-      return (
-        <div class="error">
-          Error parsing passage &ldquo;{passage.name}&rdquo;
-          {sourceLocationOf(passage)}: {errorMessage(err)}
-        </div>
-      );
-    }
-  }, [passage.content, passage.name]);
-
   // Code passages are shown without the special passages
   const special = (name: string) =>
     isCodePassage ? undefined : storyData?.passages.get(name);
-  const headerPassage = special('PassageHeader');
-  const footerPassage = special('PassageFooter');
+  const specialPassage = (name: string, kind: 'header' | 'footer' | 'done') => {
+    const found = special(name);
+    return found ? (
+      <SpecialPassage
+        passage={found}
+        content={found.content}
+        kind={kind}
+      />
+    ) : null;
+  };
   const donePassage = special('PassageDone');
-
-  const headerContent = useMemo(
-    () => renderSpecialPassage(headerPassage),
-    [headerPassage?.content],
-  );
-  const footerContent = useMemo(
-    () => renderSpecialPassage(footerPassage),
-    [footerPassage?.content],
-  );
 
   // Defer PassageDone to after DOM commit
   useEffect(() => {
     if (donePassage) setDoneReady(true);
     return () => setDoneReady(false);
   }, [passage.name]);
-
-  const doneContent = useMemo(
-    () => (doneReady ? renderSpecialPassage(donePassage) : null),
-    [doneReady, donePassage?.content],
-  );
 
   // Signal that this passage's DOM is committed (after descendants' layout
   // effects, before paint). Runs once per mount: PassageDisplay keys the
@@ -156,28 +190,42 @@ export function Passage({
     }
   }, [passage.name, navigationId]);
 
+  // The macros that mount after this passage was left must not run (see
+  // LateMountContext). Those of its first render are not late: that render
+  // may itself navigate away, and the macros after the navigation still run.
+  const hasLeft = useContext(OutgoingContext);
+  const committed = useRef(false);
+  useLayoutEffect(() => {
+    committed.current = true;
+  }, []);
+  const lateMount = useCallback(
+    () => committed.current && !!hasLeft?.(),
+    [hasLeft],
+  );
+
   const nobr = passage.tags.includes('nobr');
   const viewScope = useViewScope();
 
   const inner = (
     <InterfaceContext.Provider value={false}>
       <ViewScopeContext.Provider value={viewScope}>
-        <div
-          ref={elRef}
-          class="passage"
-          data-passage={passage.name}
-          data-tags={passage.tags.join(' ')}
-          data-transition={dataTransition}
-        >
-          {headerContent && <div class="passage-header">{headerContent}</div>}
-          {content}
-          {footerContent && <div class="passage-footer">{footerContent}</div>}
-          {doneContent && (
-            <EntryRenderBoundary>
-              <div hidden>{doneContent}</div>
-            </EntryRenderBoundary>
-          )}
-        </div>
+        <LateMountContext.Provider value={lateMount}>
+          <div
+            ref={elRef}
+            class="passage"
+            data-passage={passage.name}
+            data-tags={passage.tags.join(' ')}
+            data-transition={dataTransition}
+          >
+            {specialPassage('PassageHeader', 'header')}
+            <PassageBody
+              passage={passage}
+              content={passage.content}
+            />
+            {specialPassage('PassageFooter', 'footer')}
+            {doneReady && specialPassage('PassageDone', 'done')}
+          </div>
+        </LateMountContext.Provider>
       </ViewScopeContext.Provider>
     </InterfaceContext.Provider>
   );

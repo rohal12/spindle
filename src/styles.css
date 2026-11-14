@@ -317,6 +317,18 @@ tw-storydata {
   gap: 1em;
 }
 
+.settings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+
+.settings-description {
+  margin: 0;
+  font-size: 0.85em;
+  color: #9e9e9e;
+}
+
 .settings-row select,
 .settings-row input[type='range'] {
   accent-color: #64b5f6;

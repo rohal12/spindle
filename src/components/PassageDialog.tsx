@@ -24,6 +24,38 @@ import { DialogCloseContext, DialogPanelContext } from './dialog-close-context';
 
 export { DialogCloseContext };
 
+/** A dialog that closed, by its passage and its place in the opening order. */
+interface ClosedDialog {
+  passage: string;
+  opened: number;
+}
+
+/** How many dialogs have rendered: the place of the last in opening order. */
+let dialogsOpened = 0;
+
+/** The dialogs unmounted by the render pass under way, not announced yet. */
+let closedDialogs: ClosedDialog[] = [];
+
+/**
+ * Emit `dialogclose` for a dialog that is unmounting, once the render pass
+ * that unmounts it is over. The effect cleanups run before the dialog's DOM is
+ * removed, and of dialogs closing together the lower one unmounts first,
+ * while only the last restores focus (see useModalFocus): by the next
+ * microtask the dialogs are gone, focus is back and `Story.isDialogOpen()`
+ * tells the close. Dialogs that closed together are announced innermost
+ * first.
+ */
+function announceDialogClose(closed: ClosedDialog): void {
+  if (closedDialogs.length === 0) {
+    queueMicrotask(() => {
+      const dialogs = closedDialogs.sort((a, b) => b.opened - a.opened);
+      closedDialogs = [];
+      for (const { passage } of dialogs) emitFromRender('dialogclose', passage);
+    });
+  }
+  closedDialogs.push(closed);
+}
+
 interface PassageDialogProps {
   passageName?: string;
   fallbackMarkup?: string;
@@ -112,11 +144,13 @@ export function PassageDialog({
     return () => panel.removeAttribute('aria-labelledby');
   }, [label, markup]);
 
-  // Signal that the dialog's DOM is committed (once per open).
+  // Signal that the dialog's DOM is committed (once per open), and that the
+  // dialog has closed (once for each dialogrender, with the same passage).
   useLayoutEffect(() => {
-    if (panelRef.current) {
-      emitFromRender('dialogrender', passageName ?? '', panelRef.current);
-    }
+    if (!panelRef.current) return;
+    const closed = { passage: passageName ?? '', opened: ++dialogsOpened };
+    emitFromRender('dialogrender', closed.passage, panelRef.current);
+    return () => announceDialogClose(closed);
   }, []);
 
   const handleBackdrop = (e: MouseEvent) => {

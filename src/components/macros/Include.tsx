@@ -1,6 +1,6 @@
 import { DisplayOnlyContext } from '../../display-only';
 import { useStoryStore } from '../../store';
-import { useStoryFields } from '../../hooks/use-story-fields';
+import { LateMountContext, useStoryFields } from '../../hooks/use-story-fields';
 import { parseMarkup } from '../../markup/parse';
 import { NobrContext } from '../../markup/render';
 import { defineMacro } from '../../define-macro';
@@ -15,6 +15,9 @@ defineMacro({
   parameters: INCLUDE_PARAMETERS,
   render(_props, ctx) {
     const displayOnly = ctx.hooks.useContext(DisplayOnlyContext);
+    // Mounting in a passage that was left: it must not count (see
+    // LateMountContext)
+    const tooLate = ctx.hooks.useContext(LateMountContext)?.() ?? false;
     const { storyData } = useStoryFields('storyData');
 
     const { inline } = ctx.args;
@@ -42,9 +45,10 @@ defineMacro({
 
     // Count the inclusion when its content mounts or the passage changes,
     // not on every render (an unrelated variable update re-renders it)
+    // (tooLate is read when the effect runs for the content that mounted)
     const included = !failure && !!passage;
     ctx.hooks.useEffect(() => {
-      if (included && !displayOnly) {
+      if (included && !displayOnly && !tooLate) {
         useStoryStore.getState().trackRender(passageName);
       }
     }, [included, passageName, displayOnly]);

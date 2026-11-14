@@ -1,4 +1,5 @@
 import { useStoryStore } from '../../store';
+import { LateMountContext } from '../../hooks/use-story-fields';
 import { defineMacro } from '../../define-macro';
 import { evaluatePassageName } from './macro-args';
 import { logMacroError, MacroError } from './MacroError';
@@ -10,7 +11,11 @@ defineMacro({
   render(_props, ctx) {
     // Boxed: anything can be thrown, including null and other falsy values
     const [failure, setFailure] = ctx.hooks.useState<{ error: unknown }>();
+    // Mounting in a passage that was left: it must not navigate (see
+    // LateMountContext)
+    const tooLate = ctx.hooks.useContext(LateMountContext)?.() ?? false;
     ctx.hooks.useLayoutEffect(() => {
+      if (tooLate) return;
       // Reported like an error in {do}: thrown out of an effect, it would
       // abort the rest of the render's effects (e.g. the session could not
       // be written because the state holds a function). The location is

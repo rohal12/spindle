@@ -1,4 +1,5 @@
-import { useRef } from 'preact/hooks';
+import { useContext, useRef } from 'preact/hooks';
+import { LateMountContext } from '../../hooks/use-story-fields';
 import { currentSourceLocation } from '../../utils/source-location';
 import { errorMessage } from '../../utils/error-message';
 
@@ -34,7 +35,8 @@ export function logMacroError(
 }
 
 /**
- * Run `effect` once, during the macro's first render. If it throws, the
+ * Run `effect` once, during the macro's first render, unless that is in a
+ * passage already left (see LateMountContext). If it throws, the
  * error is logged under `{macro rawArgs}` and shown in place of the macro
  * from then on; otherwise the macro renders nothing.
  */
@@ -42,8 +44,11 @@ export function useRunOnce(macro: string, rawArgs: string, effect: () => void) {
   // Unset until the effect has run. Boxed: anything can be thrown,
   // including null and other falsy values.
   const failure = useRef<{ error: unknown } | null | undefined>(undefined);
+  const lateMount = useContext(LateMountContext);
   if (failure.current === undefined) {
     failure.current = null;
+    // Mounting in a passage that was left: it must not run (see LateMountContext)
+    if (lateMount?.()) return null;
     const location = currentSourceLocation();
     try {
       effect();
