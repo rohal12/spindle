@@ -1,5 +1,6 @@
 import { createContext } from 'preact';
 import { useCallback, useContext, useLayoutEffect, useRef } from 'preact/hooks';
+import { h, type ComponentChildren } from 'preact';
 import {
   registerAction,
   generateActionId,
@@ -50,6 +51,20 @@ export function actionAttributes(
     'data-action': action.id || undefined,
     ref: action.ref,
   };
+}
+
+/** Render a native macro button with its registered action and label. */
+export function renderActionButton(
+  action: ControlAction,
+  control: { id?: string; cls?: string },
+  onClick: () => void,
+  label: ComponentChildren,
+) {
+  return h(
+    'button',
+    { type: 'button', ...actionAttributes(action, control), onClick },
+    label,
+  );
 }
 
 /**

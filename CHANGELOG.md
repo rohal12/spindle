@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Outgoing snapshot controls no longer belong to live or cloned forms, keeping obsolete values and required fields out of live submissions and validation (#757).
+- Named details accordions in outgoing snapshots retain their open state independently of incoming accordions in the same group (#758).
+- `{cycle}` shows “Choose an option” for a nullish binding until the first click selects the first option, keeping the displayed selection consistent with story state (#759).
+
 - A `StoryInterface` that writes `{passage}` with selectors or in another case (`{#passages passage}`, `{Passage}`) no longer logs the warning that it does not contain `{passage}`. The check reads the markup of the `StoryInterface` passage instead of searching for the literal text (a `{passage}` inside a widget or an included passage is still not looked into), so an escaped `\{passage}`, or the text in an attribute value or a comment, now does warn. The documented example `{#my-story .custom-story passage}` was not markup (selectors are written without a space between them) and is corrected to `{#my-story.custom-story passage}`.
 - Navigating no longer keeps memory: a passage shown inside an element of the story interface held the DOM nodes, event listeners and component state of the passage before it, so each navigation added to them for the rest of the session. A passage's content, header, footer and done passages are drawn by components that Preact compares instead of vnodes kept between renders, and the passage on its way out is drawn again from the props it was shown with.
 - `{set}`, `{do}`, `{unset}`, `{goto}`, `{computed}` and the render count of `{include}` no longer run when they mount in a passage that was already left. State changed just before a navigation (`Story.set` then `Story.goto` in one tick, or a link that sets a variable and goes on) could show a branch in the passage on its way out, whose code then ran against the destination's state and failed on the temporary variables it no longer had.

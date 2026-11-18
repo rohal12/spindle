@@ -525,16 +525,23 @@ function cloneSnapshotTree(
   if (custom) clone.setAttribute('data-spindle-snapshot-tag', source.localName);
   if (svg) clone.setAttribute('data-spindle-snapshot-svg', svgMarker);
   if (svg) svgState.copies.push({ source, clone: clone as SVGElement, ids });
-  // A passive radio must not join either a live form's group or another
-  // snapshot's group. With no name it cannot share checkedness at insertion.
+  // An explicit empty form reference prevents both external association and
+  // fallback to an ancestor form, including forms inside the snapshot.
+  // Inert controls otherwise still submit values and participate in validation.
   if (
     html &&
-    source.localName === 'input' &&
-    (source as HTMLInputElement).type === 'radio'
-  ) {
+    source.matches('button, fieldset, input, object, output, select, textarea')
+  )
+    clone.setAttribute('form', '');
+  // Passive radios and details must not join live or other snapshot groups.
+  // Removing the name preserves their state when either tree is inserted.
+  if (
+    html &&
+    (source.localName === 'details' ||
+      (source.localName === 'input' &&
+        (source as HTMLInputElement).type === 'radio'))
+  )
     clone.removeAttribute('name');
-    clone.removeAttribute('form');
-  }
   // IDs and the passage class are removed, and custom tags become spans.
   // Freeze native and custom content before those selectors stop matching.
   const computed = getComputedStyle(source);
