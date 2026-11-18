@@ -920,9 +920,9 @@ defineMacro({
         return;
       }
 
-      // One-shot, used up by the first navigation, whatever we do with it
-      // (not by the initial render, which no navigation caused)
-      const next = store.consumeNextTransition();
+      // Consume once per navigation and share across all displays (including
+      // when tags override it). Initial render doesn't consume the one-shot.
+      const next = store.consumeNextTransition(navigationId);
 
       // Cancel any in-progress transition
       cancelTransition();

@@ -102,13 +102,36 @@ export function observableText(
     if (out !== '' && !out.endsWith('\n')) out += '\n';
   };
 
-  const walk = (node: Node, inPre: boolean) => {
+  // A use element has no DOM children for its rendered instance tree. Follow
+  // local references at that position, never unused definitions or external
+  // documents. Bound both depth and total work for cyclic or expanding graphs.
+  const references = new Set<Element>();
+  let instanceNodes = 10_000;
+  const localTarget = (use: Element): Element | undefined => {
+    const href =
+      use.getAttribute('href') ??
+      use.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    if (!href?.startsWith('#') || href.length === 1) return;
+    let id: string;
+    try {
+      id = decodeURIComponent(href.slice(1));
+    } catch {
+      return;
+    }
+    const root = use.getRootNode() as Document | ShadowRoot | Element;
+    return 'getElementById' in root
+      ? (root.getElementById(id) ?? undefined)
+      : [root, ...root.querySelectorAll('[id]')].find((node) => node.id === id);
+  };
+
+  const walk = (node: Node, inPre: boolean, instanceRoot?: Element) => {
+    if (instanceRoot && --instanceNodes < 0) return;
     if (node.nodeType === 3) {
       const parent =
         (node as Text).assignedSlot ??
         node.parentElement ??
         (node.getRootNode() as ShadowRoot).host;
-      if (parent && !isRendered(parent, visibilityRoot)) return;
+      if (parent && !isRendered(parent, instanceRoot ?? visibilityRoot)) return;
       const data = node.textContent ?? '';
       if (inPre) out += data;
       else {
@@ -121,20 +144,41 @@ export function observableText(
     }
     if (node.nodeType !== 1) return;
     const child = node as Element;
-    if (isHidden(child) || (skip && child !== el && child.matches(skip)))
+    if (
+      isHidden(child, child === instanceRoot) ||
+      (skip && child !== el && child.matches(skip))
+    )
       return;
+    if (
+      child.namespaceURI === 'http://www.w3.org/2000/svg' &&
+      child.localName === 'use'
+    ) {
+      if (!isRendered(child, instanceRoot ?? visibilityRoot)) return;
+      const target = localTarget(child);
+      if (
+        !target ||
+        target.namespaceURI !== child.namespaceURI ||
+        references.has(target) ||
+        references.size >= 32
+      )
+        return;
+      references.add(target);
+      walk(target, inPre, target);
+      references.delete(target);
+      return;
+    }
     if (
       child.matches('input, textarea, select') ||
       (child.hasAttribute('data-action') &&
         getAction(child.getAttribute('data-action')!)?.type === 'cycle')
     ) {
       if (child.matches('input[type="hidden" i]')) return;
-      if (!isRendered(child, visibilityRoot)) return;
+      if (!isRendered(child, instanceRoot ?? visibilityRoot)) return;
       out += controlMarker(child);
       return;
     }
     if (child.tagName === 'BR') {
-      if (isRendered(child, visibilityRoot)) out += '\n';
+      if (isRendered(child, instanceRoot ?? visibilityRoot)) out += '\n';
       return;
     }
     const block = BLOCKS.has(child.tagName);
@@ -146,7 +190,7 @@ export function observableText(
       ? rendered.filter((c) => c.nodeType === 1 && !isHidden(c as Element))
       : rendered;
     for (const c of children) {
-      walk(c, inPre || child.tagName === 'PRE');
+      walk(c, inPre || child.tagName === 'PRE', instanceRoot);
     }
     if (child.tagName === 'TD' || child.tagName === 'TH') out += '\t';
     if (block) endLine();

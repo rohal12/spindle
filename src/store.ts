@@ -1197,7 +1197,7 @@ export interface StoryState {
   getHistoryVariables: (index: number) => Record<string, unknown>;
   setTransition: (config: TransitionConfig | null) => void;
   setNextTransition: (config: TransitionConfig | null) => void;
-  consumeNextTransition: () => TransitionConfig | null;
+  consumeNextTransition: (navigationId?: number) => TransitionConfig | null;
   deferRender: () => void;
   clearDeferredRender: () => void;
 }
@@ -1398,6 +1398,10 @@ function clearAndRestart(
   return reported(cleared, message);
 }
 
+// All mounted passage displays share the override consumed for a navigation.
+let consumedTransition:
+  { navigationId: number; config: TransitionConfig | null } | undefined;
+
 export const useStoryStore = create<StoryState>()(
   storyStore((set, get) => ({
     storyData: null,
@@ -1452,6 +1456,7 @@ export const useStoryStore = create<StoryState>()(
       variableDefaults: Record<string, unknown> = {},
       transientDefaults: Record<string, unknown> = {},
     ) => {
+      consumedTransition = undefined;
       const startPassage = storyData.passagesById.get(storyData.startNode);
       if (!startPassage) {
         throw new Error(
@@ -2109,8 +2114,17 @@ export const useStoryStore = create<StoryState>()(
       });
     },
 
-    consumeNextTransition: (): TransitionConfig | null => {
+    consumeNextTransition: (navigationId): TransitionConfig | null => {
+      if (
+        navigationId !== undefined &&
+        consumedTransition?.navigationId === navigationId
+      ) {
+        return consumedTransition.config;
+      }
       const current = get().nextTransition;
+      if (navigationId !== undefined) {
+        consumedTransition = { navigationId, config: current };
+      }
       if (current !== null) {
         set((state) => {
           state.nextTransition = null;

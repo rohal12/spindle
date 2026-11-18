@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Page refresh restores sessions containing classes registered in `StoryInit`, including when initialization navigates before restoration (#762).
+- Reader observations honor CSS rules and later inline declarations that override `display:none`, retaining visible text, actions and errors (#761).
+- Inline SVG applies HTML's known SVG name adjustments, preserving gradients, viewport attributes and HTML inside lowercase or mixed-case `foreignObject` markup (#763).
+- Reader observations include text rendered by local SVG `<use>` instances in order, with bounded expansion of nested references (#764).
+- Multiple passage displays share each navigation's one-shot transition, including when passage tags override it (#765).
+
 - Outgoing snapshot controls no longer belong to live or cloned forms, keeping obsolete values and required fields out of live submissions and validation (#757).
 - Named details accordions in outgoing snapshots retain their open state independently of incoming accordions in the same group (#758).
 - `{cycle}` shows “Choose an option” for a nullish binding until the first click selects the first option, keeping the displayed selection consistent with story state (#759).

@@ -11,7 +11,7 @@ import { resetIdCounters } from './action-registry';
 import { initializeStory } from './story-init';
 import { storyContextErrors } from './story-context-passage';
 import { connectTriggersToStore } from './triggers';
-import { loadSession } from './saves/save-manager';
+import { prepareSessionRestore } from './saves/save-manager';
 import {
   parseStoryVariables,
   validatePassages,
@@ -262,7 +262,7 @@ export function boot() {
 
   // Run StoryInit, restore the session if the page was refreshed, and fire
   // storyinit after all state is settled (defaults + StoryInit + session)
-  initializeStory(loadSession(storyData.ifid));
+  initializeStory(prepareSessionRestore(storyData.ifid));
 
   // Every other passage's markup, now that StoryInit may have defined macros;
   // so are the variable references, which macros' parameters decide

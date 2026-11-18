@@ -47,19 +47,31 @@ const SVG_NOT_TEXT = new Set([
   'marker',
 ]);
 
+/** Detached/headless DOMs may have no computed value; CSSOM still resolves
+ * duplicate inline declarations and priorities correctly.
+ */
+function styleValue(el: Element, name: 'display' | 'visibility'): string {
+  return (
+    el.ownerDocument.defaultView?.getComputedStyle?.(el)[name] ||
+    (el as HTMLElement).style?.[name] ||
+    ''
+  );
+}
+
 /**
  * Whether the element hides its whole subtree, including stylesheet rules.
  * This needs computed styles but no layout, so it also works headlessly.
+ * A symbol referenced by SVG use is rendered only as an instance root.
  */
-export function isHidden(el: Element): boolean {
+export function isHidden(el: Element, svgInstanceRoot = false): boolean {
   return (
     el.hasAttribute('hidden') ||
     el.getAttribute('aria-hidden') === 'true' ||
-    /(^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') ?? '') ||
-    el.ownerDocument.defaultView?.getComputedStyle(el).display === 'none' ||
+    styleValue(el, 'display') === 'none' ||
     NOT_TEXT.has(el.localName.toLowerCase()) ||
     (el.namespaceURI === 'http://www.w3.org/2000/svg' &&
-      SVG_NOT_TEXT.has(el.localName.toLowerCase())) ||
+      SVG_NOT_TEXT.has(el.localName.toLowerCase()) &&
+      !(svgInstanceRoot && el.localName.toLowerCase() === 'symbol')) ||
     (el.parentElement?.tagName === 'DETAILS' &&
       !el.parentElement.hasAttribute('open') &&
       el !==
@@ -96,12 +108,10 @@ function inClosedDetails(el: Element, root?: Element): boolean {
  * read StoryContext inside its deliberately hidden host.
  */
 export function isRendered(el: Element, root?: Element): boolean {
-  const style = (e: Element) =>
-    e.ownerDocument.defaultView?.getComputedStyle(e);
-  const visibility = style(el)?.visibility;
+  const visibility = styleValue(el, 'visibility');
   if (visibility === 'hidden' || visibility === 'collapse') return false;
   for (let e: Element | null = el; e; e = composedParent(e)) {
-    if (style(e)?.display === 'none') return false;
+    if (styleValue(e, 'display') === 'none') return false;
     if (e === root) break;
     const parent = e.parentElement;
     // Connected light DOM may have no place in its host's rendered tree.

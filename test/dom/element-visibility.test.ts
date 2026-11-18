@@ -3,9 +3,20 @@ import { afterEach, expect, it } from 'vitest';
 import {
   isReaderVisible,
   isRendered,
+  isHidden,
 } from '../../src/utils/element-visibility';
 
 afterEach(() => document.body.replaceChildren());
+
+it.each([
+  '<style>.show { display: block !important }</style><div class="show" style="display:none"><button>Action</button></div>',
+  '<div style="display:none;display:block"><button>Action</button></div>',
+])('uses cascaded display instead of raw declarations (#761)', (html) => {
+  document.body.innerHTML = html;
+  const el = document.querySelector('div')!;
+  expect(isHidden(el)).toBe(false);
+  expect(isReaderVisible(el.querySelector('button')!)).toBe(true);
+});
 
 it.each(['hidden', 'inert', 'display', 'aria-hidden'])(
   'checks %s on a shadow host and its ancestors (#650)',

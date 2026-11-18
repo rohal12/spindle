@@ -570,6 +570,23 @@ describe('renderNodes', () => {
   });
 
   describe('SVG and MathML rendering', () => {
+    it('adjusts known SVG names while preserving unknown foreign names (#763)', () => {
+      const el = renderMarkup(
+        '<svg viewbox="0 0 100 100"><lineargradient id="paint" gradientunits="userSpaceOnUse"/>' +
+          '<CustomShape CustomAttribute="keep"/></svg>',
+      );
+      expect(el.querySelector('svg')!.getAttribute('viewBox')).toBe(
+        '0 0 100 100',
+      );
+      expect(el.querySelector('#paint')!.localName).toBe('linearGradient');
+      expect(el.querySelector('#paint')!.getAttribute('gradientUnits')).toBe(
+        'userSpaceOnUse',
+      );
+      const custom = el.querySelector('CustomShape')!;
+      expect(custom.localName).toBe('CustomShape');
+      expect(custom.getAttribute('CustomAttribute')).toBe('keep');
+    });
+
     it('retains direct annotation attributes when encoding changes (#708)', async () => {
       useStoryStore.getState().setVariable('encoding', 'application/xml');
       let el!: HTMLElement;
