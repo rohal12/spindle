@@ -53,6 +53,34 @@ describe('link separators inside label markup (#441)', () => {
     expect(link('[[Go->Hall]]')).toEqual({ display: 'Go', target: 'Hall' });
     expect(link('[[Hall]]')).toEqual({ display: 'Hall', target: 'Hall' });
   });
+
+  it.each(['.{$theme}', '#{@id}.prefix-{%tone}', '.choice#{$id}'])(
+    'keeps code separators inside dynamic label selectors %s (#741)',
+    (selectors) => {
+      const display = `{${selectors} if $key || $lockpick}Open{else}Inspect{/if}`;
+      for (const source of [
+        `[[${display}->Hall]]`,
+        `[[${display}|Hall]]`,
+        `[[Hall<-${display}]]`,
+      ]) {
+        expect(link(source)).toEqual({ display, target: 'Hall' });
+        const token = tokenizeMarkup(source)[0]!;
+        expect(token.type).toBe('link');
+        if (token.type !== 'link') throw new Error('Expected a link');
+        expect(source.slice(token.displayStart, token.displayEnd)).toBe(
+          display,
+        );
+        expect(source.slice(token.targetStart, token.targetEnd)).toBe('Hall');
+      }
+    },
+  );
+
+  it('keeps strings in dynamically styled expressions inside the label (#741)', () => {
+    expect(link('[[{.{$theme} ($key ? "|->" : "<-")}->Hall]]')).toEqual({
+      display: '{.{$theme} ($key ? "|->" : "<-")}',
+      target: 'Hall',
+    });
+  });
 });
 
 const payload: SavePayload = {

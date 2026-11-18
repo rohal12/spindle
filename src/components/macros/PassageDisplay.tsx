@@ -236,6 +236,31 @@ function snapshotUrls(
  */
 const snapshotSvgRules = new WeakSet<CSSRule>();
 
+/** Keep only snapshot aliases, retaining their media/layer/nesting context. */
+function snapshotRuleText(rules: Iterable<CSSRule>): string {
+  const text: string[] = [];
+  for (const rule of rules) {
+    if (snapshotSvgRules.has(rule)) text.push(rule.cssText);
+    else if ('cssRules' in rule && !(rule instanceof CSSKeyframesRule)) {
+      const body = snapshotRuleText((rule as CSSGroupingRule).cssRules);
+      if (body)
+        text.push(
+          `${rule.cssText.slice(0, rule.cssText.indexOf('{'))}{${body}}`,
+        );
+    }
+  }
+  return text.join('\n');
+}
+
+interface SnapshotSvgState {
+  opaqueRoots: Set<Node>;
+  copies: {
+    source: Element;
+    clone: SVGElement;
+    ids: ReadonlyMap<string, string>;
+  }[];
+}
+
 /** A detached style element has no sheet yet. Carry its CSSOM, including
  * script-inserted rules and imported styles, into the passive tree.
  */
@@ -459,13 +484,18 @@ function cloneSnapshotTree(
   pseudoRules: string[] = [],
   svgMarker = String(++snapshotPseudoId),
   cleanups: (() => void)[] = [],
+  svgState: SnapshotSvgState = { opaqueRoots: new Set(), copies: [] },
 ): Element {
   const html = source.namespaceURI === 'http://www.w3.org/1999/xhtml';
   const svg = source.namespaceURI === 'http://www.w3.org/2000/svg';
   const custom = html && source.localName.includes('-');
+  const linkedSheet =
+    html &&
+    source.localName === 'link' &&
+    (source as HTMLLinkElement).relList.contains('stylesheet');
   const clone = document.createElementNS(
     source.namespaceURI,
-    custom ? 'span' : source.localName,
+    linkedSheet ? 'style' : custom ? 'span' : source.localName,
   );
   for (const attr of [...source.attributes]) {
     if (
@@ -494,6 +524,17 @@ function cloneSnapshotTree(
     clone.setAttribute('data-spindle-snapshot-original-id', source.id);
   if (custom) clone.setAttribute('data-spindle-snapshot-tag', source.localName);
   if (svg) clone.setAttribute('data-spindle-snapshot-svg', svgMarker);
+  if (svg) svgState.copies.push({ source, clone: clone as SVGElement, ids });
+  // A passive radio must not join either a live form's group or another
+  // snapshot's group. With no name it cannot share checkedness at insertion.
+  if (
+    html &&
+    source.localName === 'input' &&
+    (source as HTMLInputElement).type === 'radio'
+  ) {
+    clone.removeAttribute('name');
+    clone.removeAttribute('form');
+  }
   // IDs and the passage class are removed, and custom tags become spans.
   // Freeze native and custom content before those selectors stop matching.
   const computed = getComputedStyle(source);
@@ -533,7 +574,14 @@ function cloneSnapshotTree(
     for (const node of from.childNodes) {
       to.appendChild(
         node instanceof Element
-          ? cloneSnapshotTree(node, localIds, rules, svgMarker, cleanups)
+          ? cloneSnapshotTree(
+              node,
+              localIds,
+              rules,
+              svgMarker,
+              cleanups,
+              svgState,
+            )
           : node.cloneNode(false),
       );
     }
@@ -544,24 +592,20 @@ function cloneSnapshotTree(
     pseudoRules,
     source instanceof HTMLTemplateElement ? snapshotIds(from) : ids,
   );
-  if (source instanceof HTMLStyleElement && source.sheet) {
+  if (source.localName === 'style' || linkedSheet) {
+    const sourceSheet = (source as HTMLStyleElement | HTMLLinkElement).sheet;
+    // HTML and generated content are already frozen in computed declarations.
+    // Authored rules must never remain active against the incoming passage.
+    clone.textContent = '';
     const root = source.getRootNode() as Document | ShadowRoot;
-    if (root.querySelector('svg')) {
-      let opaque = false;
-      const copy = copySnapshotSheet(source.sheet, ids, () => {
-        opaque = true;
+    if (sourceSheet && root.querySelector('svg')) {
+      const copy = copySnapshotSheet(sourceSheet, ids, () => {
+        svgState.opaqueRoots.add(root);
       });
-      // A real style element can retain opaque @imports; constructed sheets
-      // discard them. Serialize the original CSSOM with aliases in that case.
-      const sheet = opaque ? source.sheet : copy;
-      const dispose = installSnapshotSvgStyles(root, ids, svgMarker, [sheet]);
-      clone.textContent = snapshotUrls(
-        [...sheet.cssRules].map((rule) => rule.cssText).join('\n'),
-        ids,
-        source.sheet.href ?? document.baseURI,
-      );
+      const dispose = installSnapshotSvgStyles(root, ids, svgMarker, [copy]);
+      clone.textContent = snapshotRuleText(copy.cssRules);
       dispose();
-      if (source.sheet.disabled) clone.setAttribute('media', 'not all');
+      if (sourceSheet.disabled) clone.setAttribute('media', 'not all');
     }
   }
   if (source.shadowRoot) {
@@ -635,13 +679,27 @@ function createSnapshot(
   const cleanups: (() => void)[] = [];
   const ids = snapshotIds(passageEl);
   const svgMarker = String(++snapshotPseudoId);
+  const svgState: SnapshotSvgState = { opaqueRoots: new Set(), copies: [] };
   const clone = cloneSnapshotTree(
     passageEl,
     ids,
     pseudoRules,
     svgMarker,
     cleanups,
+    svgState,
   ) as HTMLElement;
+  // Opaque imported CSS cannot be scoped through the CSSOM. Freeze rendered
+  // SVG nodes instead of re-importing global rules into the live document.
+  // Definitions must keep specified values: copying computed defaults there
+  // replaces the fill/currentColor inherited by each use instance.
+  for (const { source, clone: copy, ids: localIds } of svgState.copies) {
+    if (
+      svgState.opaqueRoots.has(source.getRootNode()) &&
+      !source.closest('defs, symbol, clipPath, mask, pattern, marker')
+    ) {
+      copyComputedStyle(getComputedStyle(source), copy.style, localIds);
+    }
+  }
   // These belong to the outgoing transition and container, not its frozen
   // visual content. In particular, copied entrance animation must not win.
   clone.style.removeProperty('animation');

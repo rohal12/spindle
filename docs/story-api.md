@@ -887,6 +887,8 @@ const o = Story.observe();
 
 Observation text keeps table cells separated by tabs and rows by newlines. A closed `<details>` contributes only its first `<summary>`; errors in its collapsed body are omitted until it opens. Stylesheet rules such as `display: none` and `visibility: hidden` hide text and errors too, including in dialogs and `StoryContext`; a later observation reflects visibility changes. Variable and inline expression failures are reported as local errors.
 
+Native HTML controls also show their current state without an action registration: edited text fields use their live values, checkboxes and radios show checkedness, and selects show the selected option labels (an array for multiple selections). Hidden inputs are omitted. SVG text and HTML inside `foreignObject` contribute text; SVG titles, descriptions, metadata, and definition subtrees do not.
+
 Action `value` fields are detached snapshots: JSON trees keep their strings, numbers, booleans, nulls, arrays and objects. Other values use Spindle's stable text description: for example, `1n` becomes `"1n"`, `Symbol('key')` becomes `'Symbol("key")'`, and a cyclic object can become `'{"self":<ref 0>}'`. Unreadable values become `"<unkeyable>"`. These descriptions are for inspection; pass a new input value to `step()` to edit a control. `getActions()` continues to expose the original values.
 
 Before the first passage is on screen, `observe()` throws `spindle: Story.observe() needs a mounted story`.
