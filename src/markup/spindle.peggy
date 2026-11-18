@@ -144,24 +144,19 @@ let attrCode = false;
 let rawName = '';
 /** The HTML text-only body being read; its own closer ends this context. */
 let htmlTextTag = '';
+/** First bracket boundary of the current (non-nesting) link label. */
+let linkTextEnd = -1;
 
 /**
  * The index in `inner` (at `at` in the input) of the first `separator` that
  * is not inside a {…} of the label: its code (`{if $a || $b}`, a string with
  * a pipe) belongs to the label, not to the link's syntax.
  */
-function linkSeparatorIndex(inner, at, separator) {
+function linkSeparatorIndex(inner, at, separator, spans) {
+  let span = 0;
   for (let i = 0; i < inner.length; i++) {
-    const c = inner.charAt(i);
-    if (c === '\\' && /[{}]/.test(inner.charAt(i + 1))) {
-      i++;
-    } else if (c === LB) {
-      // Selectors, then a macro name or the sigil of a variable or expression
-      const head = /^(?:[.#][\w-]*)* ?(\/?[a-zA-Z][\w-]*|(?=[$_@%(!]))/.exec(inner.slice(i + 1));
-      if (!head) continue;
-      const close = hooks.closeBrace(input, at + i + 1 + head[0].length, at + i + 1);
-      // One that does not end inside the label is no markup of it
-      if (close !== -1 && close < at + inner.length) i = close - at;
+    if (span < spans.length && i === spans[span].start - at) {
+      i = spans[span++].end - at - 1;
     } else if (inner.startsWith(separator, i)) {
       return i;
     }
@@ -294,8 +289,8 @@ Literal
   / "[" { return lexeme('text', location(), { value: '[' }); }
 
 LinkLexeme
-  = &{ return !textMode; } "[[" ss:Here s:Selectors at:Here inner:$LinkText ("]]" / OpenEnd) {
-      const link = lexeme('link', location(), parseLink(inner, at, (separator) => linkSeparatorIndex(inner, at, separator)));
+  = &{ return !textMode; } "[[" ss:Here s:Selectors at:Here inner:LinkText ("]]" / OpenEnd) {
+      const link = lexeme('link', location(), parseLink(inner.value, at, (separator) => linkSeparatorIndex(inner.value, at, separator, inner.spans)));
       link.selectorSpan = selectorSpan(s, ss, at);
       return withSelectors(link, s);
     }
@@ -307,7 +302,25 @@ LinkLexeme
  * exponentially; a link's text can't hold [[ now.)
  */
 LinkText
-  = (!("]]" / "[[") .)*
+  = start:Here &{
+      const close = input.indexOf(']]', start);
+      const nested = input.indexOf('[[', start);
+      linkTextEnd = Math.min(close < 0 ? input.length : close, nested < 0 ? input.length : nested);
+      return true;
+    }
+    parts:(!("]]" / "[[") part:(LinkLabelCode / .) { return typeof part === 'string' ? null : part; })* end:Here {
+      return { value: input.slice(start, end), spans: parts.filter(Boolean) };
+    }
+
+/** Use the same selectors and macro names as the markup being skipped. */
+LinkLabelCode
+  = start:Here "\\" [{}] end:Here { return { start, end }; }
+  / start:Here "{" Selectors codeStart:Here ("/"? MacroName / &[$_@%(!]) nameEnd:Here
+    &{
+      const close = hooks.closeBrace(input, nameEnd, codeStart);
+      return close >= 0 && close < linkTextEnd && skipTo(close);
+    }
+    $(.|{ return skipEnd - offset(); }|) "}" end:Here { return { start, end }; }
 
 /** `.class#id` selectors, and the one space after them. */
 Selectors

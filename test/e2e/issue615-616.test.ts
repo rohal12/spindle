@@ -238,7 +238,8 @@ it('navigates with an opaque imported stylesheet in the outgoing passage', async
     element.appendChild(style);
     element.insertAdjacentHTML(
       'beforeend',
-      '<svg class="imported-svg" width="40" height="40"><rect class="imported-art" width="40" height="40"/></svg>',
+      '<svg class="imported-svg" width="40" height="40"><rect class="imported-art" width="40" height="40"/></svg>' +
+        '<svg class="opaque-inheritance" width="100" height="40"><defs><rect id="opaque-shape" width="40" height="40"/><rect id="opaque-color" width="40" height="40" fill="currentColor"/></defs><use href="#opaque-shape" fill="red"/><use href="#opaque-color" x="50" color="lime"/></svg>',
     );
     await loaded;
     const imported = (style.sheet!.cssRules[0] as CSSImportRule).styleSheet!;
@@ -250,6 +251,9 @@ it('navigates with an opaque imported stylesheet in the outgoing passage', async
         throw error;
     }
   }, cssUrl);
+  const before = await page
+    .locator('.passage .opaque-inheritance')
+    .screenshot();
   await navigate('fade-through');
   expect(await page.locator('.passage-snapshot').count()).toBe(1);
   await page.waitForFunction(
@@ -258,6 +262,10 @@ it('navigates with an opaque imported stylesheet in the outgoing passage', async
         document.querySelector('.passage-snapshot .imported-art')!,
       ).stroke === 'rgb(0, 128, 0)',
   );
+  const after = await page
+    .locator('.passage-snapshot .opaque-inheritance')
+    .screenshot();
+  expect(await pixelDifference(before, after)).toBeLessThanOrEqual(1);
 });
 
 async function visualStyles(root: string) {

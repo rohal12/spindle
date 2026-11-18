@@ -35,6 +35,17 @@ export function* composedElements(root: ParentNode): Generator<HTMLElement> {
 
 /** Elements whose content is never text the reader reads. */
 const NOT_TEXT = new Set(['script', 'style', 'template', 'noscript']);
+const SVG_NOT_TEXT = new Set([
+  'title',
+  'desc',
+  'metadata',
+  'defs',
+  'symbol',
+  'clippath',
+  'mask',
+  'pattern',
+  'marker',
+]);
 
 /**
  * Whether the element hides its whole subtree, including stylesheet rules.
@@ -47,6 +58,8 @@ export function isHidden(el: Element): boolean {
     /(^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') ?? '') ||
     el.ownerDocument.defaultView?.getComputedStyle(el).display === 'none' ||
     NOT_TEXT.has(el.localName.toLowerCase()) ||
+    (el.namespaceURI === 'http://www.w3.org/2000/svg' &&
+      SVG_NOT_TEXT.has(el.localName.toLowerCase())) ||
     (el.parentElement?.tagName === 'DETAILS' &&
       !el.parentElement.hasAttribute('open') &&
       el !==

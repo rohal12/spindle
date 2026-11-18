@@ -74,6 +74,23 @@ describe('observableText', () => {
   });
 
   describe('hidden content', () => {
+    it('omits SVG metadata and definitions but keeps drawn text and foreign HTML (#742)', () => {
+      const el = fixture(
+        '<svg><title>Map title</title><desc>Map description</desc>' +
+          '<metadata>Export details</metadata><defs><text>Unused</text></defs>' +
+          '<symbol><text>Symbol</text></symbol><clipPath><text>Clip</text></clipPath>' +
+          '<mask><text>Mask</text></mask><pattern><text>Pattern</text></pattern>' +
+          '<marker><text>Marker</text></marker><text>Visible</text>' +
+          '<foreignObject></foreignObject></svg>',
+      );
+      // Construct the HTML integration point explicitly: happy-dom's innerHTML
+      // currently gives foreignObject descendants the SVG namespace.
+      const html = document.createElement('div');
+      html.innerHTML = 'HTML <span title="Tooltip">text</span>';
+      el.querySelector('foreignObject')!.append(html);
+      expect(observableText(el)).toBe('Visible\nHTML text');
+    });
+
     it.each([
       ['hidden', '<p hidden>x</p>'],
       ['display:none', '<p style="display:none">x</p>'],
@@ -97,6 +114,63 @@ describe('observableText', () => {
   });
 
   describe('controls', () => {
+    it('reads edited native fields without registering actions (#743)', () => {
+      const el = fixture(
+        '<textarea>Original</textarea> <input value="Before">',
+      );
+      el.querySelector('textarea')!.value = 'Edited note';
+      el.querySelector('input')!.value = 'After';
+      expect(observableText(el)).toBe(
+        '[textarea: "Edited note"] [input: "After"]',
+      );
+    });
+
+    it('describes native selected labels rather than unselected options (#743)', () => {
+      const el = fixture(
+        '<select><option value="r">Red</option><option value="b">Blue</option></select> <select multiple><option value="a" selected>Alpha</option><option>Beta</option><option value="g" selected>Gamma</option></select>',
+      );
+      el.querySelector('select')!.value = 'b';
+      expect(observableText(el)).toBe(
+        '[select: "Blue"] [select: ["Alpha","Gamma"]]',
+      );
+      el.querySelector('select')!.selectedIndex = -1;
+      expect(observableText(el)).toBe(
+        '[select: ""] [select: ["Alpha","Gamma"]]',
+      );
+    });
+
+    it('describes native checkedness and omits hidden controls (#743)', () => {
+      const el = fixture(
+        '<input type="checkbox"> <input type="radio" name="choice" value="a" checked> <input type="radio" name="choice" value="b"> <input type="hidden" value="Secret"><input hidden value="Hidden"><input style="display:none" value="None">',
+      );
+      el.querySelector('input')!.checked = true;
+      el.querySelectorAll('input')[2]!.checked = true;
+      expect(observableText(el)).toBe(
+        '[checkbox: checked] [radio = "a": unselected] [radio = "b": selected]',
+      );
+    });
+
+    it('uses option text when the label attribute is empty (#743)', () => {
+      expect(
+        text(
+          '<select><option label="">Blue</option></select> <select><option label="Shown">Other text</option></select>',
+        ),
+      ).toBe('[select: "Blue"] [select: "Shown"]');
+    });
+
+    it('normalizes native input types before describing checkedness (#743)', () => {
+      const el = fixture(
+        '<input type="CHECKBOX" checked> <input type="RADIO" checked value="yes">',
+      );
+      expect(observableText(el)).toBe(
+        '[checkbox: checked] [radio = "yes": selected]',
+      );
+      for (const input of el.querySelectorAll('input')) input.checked = false;
+      expect(observableText(el)).toBe(
+        '[checkbox: unchecked] [radio = "yes": unselected]',
+      );
+    });
+
     it('shows a textbox with its quoted value', () => {
       register({
         id: 'textbox:$name',
@@ -187,6 +261,13 @@ describe('observableText', () => {
 });
 
 describe('observableErrors', () => {
+  it('omits errors in non-rendered SVG subtrees (#742)', () => {
+    const el = fixture(
+      '<svg><title class="error">Title</title><defs><text class="error">Unused</text></defs><text class="error">Visible</text><foreignObject><div class="error">HTML</div></foreignObject></svg>',
+    );
+    expect(observableErrors(el)).toEqual(['Visible', 'HTML']);
+  });
+
   it('returns the trimmed text of each error', () => {
     expect(
       observableErrors(fixture('<div><div class="error">Boom</div></div>')),

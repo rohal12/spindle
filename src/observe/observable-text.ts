@@ -39,18 +39,33 @@ function formatValue(value: unknown): string {
   }
 }
 
-/** What a control with an action shows: its type, variable and value. */
+function selectedLabels(el: HTMLSelectElement): string | string[] {
+  const labels = Array.from(el.options)
+    .filter((option) => option.selected)
+    .map(
+      (option) =>
+        // An empty label attribute falls back to the option's text.
+        option.getAttribute('label') ||
+        (option.textContent ?? '').trim().replace(/\s+/g, ' '),
+    );
+  return el.multiple ? labels : (labels[0] ?? '');
+}
+
+/** What a control shows: its type, optional action variable and live value. */
 function controlMarker(el: Element): string {
   const own = el as Partial<HTMLInputElement>;
   const action = getAction(el.getAttribute('data-action') ?? '');
-  const type = action?.type ?? el.getAttribute('type') ?? el.localName;
+  const type =
+    action?.type ?? el.getAttribute('type')?.toLowerCase() ?? el.localName;
   const isCheckbox = type === 'checkbox';
   const value =
     action?.value !== undefined
       ? action.value
       : isCheckbox
         ? !!own.checked
-        : (own.value ?? '');
+        : el.localName === 'select' && !el.hasAttribute('data-action')
+          ? selectedLabels(el as HTMLSelectElement)
+          : (own.value ?? '');
   const shown = isCheckbox
     ? value
       ? 'checked'
@@ -61,8 +76,10 @@ function controlMarker(el: Element): string {
     variable && !variable.startsWith('$') ? `$${variable}` : variable;
   // A radio is one choice of its variable: its own value, and whether it is
   // the one selected (the action's value is the variable's, shared by all)
-  if (type === 'radiobutton' && own.value !== undefined) {
-    const state = action?.value === own.value ? 'selected' : 'unselected';
+  if ((type === 'radiobutton' || type === 'radio') && own.value !== undefined) {
+    const selected =
+      action?.value !== undefined ? action.value === own.value : !!own.checked;
+    const state = selected ? 'selected' : 'unselected';
     return `[${type}${name ? ` ${name}` : ''} = ${formatValue(own.value)}: ${state}]`;
   }
   return `[${type}${name ? ` ${name}` : ''}: ${shown}]`;
@@ -70,7 +87,7 @@ function controlMarker(el: Element): string {
 
 /**
  * The text a reader sees in the element, as lines: blocks and `<br>` break
- * lines, hidden elements are left out, and a control with a `data-action`
+ * lines, hidden elements are left out, and a native or action-associated control
  * becomes a marker such as `[textbox $name: "Alice"]`. Elements inside `el`
  * that match `skip` are left out with their content. `visibilityRoot` bounds
  * ancestor checks when reading StoryContext inside its hidden host.
@@ -107,10 +124,11 @@ export function observableText(
     if (isHidden(child) || (skip && child !== el && child.matches(skip)))
       return;
     if (
-      child.hasAttribute('data-action') &&
-      (child.matches('input, textarea, select') ||
+      child.matches('input, textarea, select') ||
+      (child.hasAttribute('data-action') &&
         getAction(child.getAttribute('data-action')!)?.type === 'cycle')
     ) {
+      if (child.matches('input[type="hidden" i]')) return;
       if (!isRendered(child, visibilityRoot)) return;
       out += controlMarker(child);
       return;
