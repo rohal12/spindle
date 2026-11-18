@@ -80,6 +80,16 @@ it('observes drawn SVG text and edited native controls (#742, #743)', async () =
     expect(text).not.toContain(hidden);
 });
 
+it('observes the visible text of options with empty labels (#743)', async () => {
+  await boot({
+    Start:
+      '<select><option label="">Blue</option></select> <select><option label="Shown">Other text</option></select>',
+  });
+  expect(await page.evaluate(() => Story.observe().text)).toBe(
+    '[select: "Blue"] [select: "Shown"]',
+  );
+});
+
 it.each([
   ['fade-through', 'html'],
   ['crossfade', 'html'],

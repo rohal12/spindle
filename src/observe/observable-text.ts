@@ -44,7 +44,8 @@ function selectedLabels(el: HTMLSelectElement): string | string[] {
     .filter((option) => option.selected)
     .map(
       (option) =>
-        option.getAttribute('label') ??
+        // An empty label attribute falls back to the option's text.
+        option.getAttribute('label') ||
         (option.textContent ?? '').trim().replace(/\s+/g, ' '),
     );
   return el.multiple ? labels : (labels[0] ?? '');

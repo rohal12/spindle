@@ -150,6 +150,14 @@ describe('observableText', () => {
       );
     });
 
+    it('uses option text when the label attribute is empty (#743)', () => {
+      expect(
+        text(
+          '<select><option label="">Blue</option></select> <select><option label="Shown">Other text</option></select>',
+        ),
+      ).toBe('[select: "Blue"] [select: "Shown"]');
+    });
+
     it('normalizes native input types before describing checkedness (#743)', () => {
       const el = fixture(
         '<input type="CHECKBOX" checked> <input type="RADIO" checked value="yes">',
