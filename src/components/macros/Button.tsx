@@ -1,4 +1,4 @@
-import { actionAttributes, useControlAction } from '../../hooks/use-action';
+import { renderActionButton, useControlAction } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { useDetachedBody } from './detached-body';
 
@@ -25,14 +25,6 @@ defineMacro({
       perform: handleClick,
     });
 
-    return (
-      <button
-        type="button"
-        {...actionAttributes(action, ctx)}
-        onClick={handleClick}
-      >
-        {label}
-      </button>
-    );
+    return renderActionButton(action, ctx, handleClick, label);
   },
 });

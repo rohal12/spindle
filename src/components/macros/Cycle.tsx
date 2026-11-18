@@ -1,4 +1,4 @@
-import { actionAttributes } from '../../hooks/use-action';
+import { renderActionButton } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { VARIABLE_PARAMETER, useVariableAction } from './input-macro';
 import { OPTION_CLAUSE } from './option-clauses';
@@ -12,18 +12,20 @@ defineMacro({
   parameters: [VARIABLE_PARAMETER],
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
+    const label = ctx.value == null ? 'Choose an option' : String(ctx.value);
 
     const handleClick = () => {
       if (options.length === 0) return;
       const current = ctx.getValue!();
-      const currentIndex = options.indexOf(String(current));
+      const currentIndex =
+        current == null ? -1 : options.indexOf(String(current));
       const nextIndex = (currentIndex + 1) % options.length;
       ctx.setValue!(options[nextIndex]);
     };
 
     const action = useVariableAction(ctx, {
       type: 'cycle',
-      label: ctx.value == null ? options[0] || '' : String(ctx.value),
+      label,
       options,
       perform: (v) => {
         if (v !== undefined) {
@@ -34,14 +36,6 @@ defineMacro({
       },
     });
 
-    return (
-      <button
-        type="button"
-        {...actionAttributes(action, ctx)}
-        onClick={handleClick}
-      >
-        {ctx.value == null ? options[0] || '' : String(ctx.value)}
-      </button>
-    );
+    return renderActionButton(action, ctx, handleClick, label);
   },
 });

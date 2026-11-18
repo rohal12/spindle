@@ -687,6 +687,46 @@ describe('extended macro components', () => {
   });
 
   describe('{cycle}', () => {
+    it.each([null, undefined])(
+      'shows an unselected state for %s and selects the first option on click (#759)',
+      (initial) => {
+        useStoryStore.getState().setVariable('mode', initial);
+        let el!: HTMLElement;
+        act(() => {
+          el = renderPassage(
+            '{cycle $mode}{option "null"}{option "undefined"}{option "hard"}{/cycle}',
+          );
+        });
+        const button = el.querySelector('button.macro-cycle')!;
+        const action = () => getActions().find((a) => a.type === 'cycle')!;
+        expect(button.textContent).toBe('Choose an option');
+        expect(useStoryStore.getState().variables.mode).toBe(initial);
+        expect(action().label).toBe('Choose an option');
+        expect(action().value).toBe(initial);
+
+        act(() => (button as HTMLButtonElement).click());
+        expect(button.textContent).toBe('null');
+        expect(useStoryStore.getState().variables.mode).toBe('null');
+        expect(action().value).toBe('null');
+
+        act(() => action().perform());
+        expect(button.textContent).toBe('undefined');
+        expect(useStoryStore.getState().variables.mode).toBe('undefined');
+        expect(action().label).toBe('undefined');
+        act(() => render(null, el));
+      },
+    );
+
+    it('keeps an empty cycle unselected when clicked (#759)', () => {
+      useStoryStore.getState().setVariable('mode', null);
+      const el = renderPassage('{cycle $mode}{/cycle}');
+      const button = el.querySelector<HTMLButtonElement>('button.macro-cycle')!;
+      expect(button.textContent).toBe('Choose an option');
+      act(() => button.click());
+      expect(useStoryStore.getState().variables.mode).toBeNull();
+      act(() => render(null, el));
+    });
+
     it('renders a button with current value', () => {
       useStoryStore.getState().setVariable('mode', 'easy');
       const el = renderPassage(

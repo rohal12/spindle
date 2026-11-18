@@ -400,6 +400,10 @@ A dropdown select menu.
 ### `{cycle}`
 
 A button that cycles through options on each click.
+If the bound variable is `null` or `undefined`, the button says “Choose an
+option” until the first click selects the first option. Rendering the button
+does not change the variable. An existing value is shown as-is, and clicking
+advances to the next option (or the first option if the value is not listed).
 
 ```
 {cycle $stance}

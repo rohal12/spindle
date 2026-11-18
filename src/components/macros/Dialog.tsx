@@ -1,4 +1,4 @@
-import { actionAttributes, useControlAction } from '../../hooks/use-action';
+import { renderActionButton, useControlAction } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
 
@@ -33,13 +33,7 @@ defineMacro({
 
     return (
       <>
-        <button
-          type="button"
-          {...actionAttributes(action, ctx)}
-          onClick={openDialog}
-        >
-          {label}
-        </button>
+        {renderActionButton(action, ctx, openDialog, label)}
         {open && (
           <PassageDialog
             passageName={passageName}
