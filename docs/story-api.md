@@ -889,6 +889,8 @@ Observation text keeps table cells separated by tabs and rows by newlines. A clo
 
 Native HTML controls also show their current state without an action registration: edited text fields use their live values, checkboxes and radios show checkedness, and selects show the selected option labels (an array for multiple selections). Hidden inputs are omitted. SVG text and HTML inside `foreignObject` contribute text; SVG titles, descriptions, metadata, and definition subtrees do not.
 
+Local SVG `<use>` references contribute text at each instance position, with visibility inherited from that instance's `<use>` host. Unused definitions and external references remain excluded; cyclic or excessively expanding references are bounded.
+
 Action `value` fields are detached snapshots: JSON trees keep their strings, numbers, booleans, nulls, arrays and objects. Other values use Spindle's stable text description: for example, `1n` becomes `"1n"`, `Symbol('key')` becomes `'Symbol("key")'`, and a cyclic object can become `'{"self":<ref 0>}'`. Unreadable values become `"<unkeyable>"`. These descriptions are for inspection; pass a new input value to `step()` to edit a control. `getActions()` continues to expose the original values.
 
 Before the first passage is on screen, `observe()` throws `spindle: Story.observe() needs a mounted story`.

@@ -52,7 +52,9 @@ const SVG_NOT_TEXT = new Set([
  */
 function styleValue(el: Element, name: 'display' | 'visibility'): string {
   return (
-    el.ownerDocument.defaultView?.getComputedStyle?.(el)[name] ||
+    (el.ownerDocument.defaultView ?? globalThis.window)?.getComputedStyle?.(el)[
+      name
+    ] ||
     (el as HTMLElement).style?.[name] ||
     ''
   );
@@ -107,9 +109,14 @@ function inClosedDetails(el: Element, root?: Element): boolean {
  * `<details>`. An optional root bounds ancestor checks, so observations can
  * read StoryContext inside its deliberately hidden host.
  */
-export function isRendered(el: Element, root?: Element): boolean {
+export function isRendered(
+  el: Element,
+  root?: Element,
+  checkVisibility = true,
+): boolean {
   const visibility = styleValue(el, 'visibility');
-  if (visibility === 'hidden' || visibility === 'collapse') return false;
+  if (checkVisibility && (visibility === 'hidden' || visibility === 'collapse'))
+    return false;
   for (let e: Element | null = el; e; e = composedParent(e)) {
     if (styleValue(e, 'display') === 'none') return false;
     if (e === root) break;

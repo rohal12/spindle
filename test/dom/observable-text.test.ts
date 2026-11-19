@@ -74,6 +74,30 @@ describe('observableText', () => {
   });
 
   describe('hidden content', () => {
+    it('inherits SVG use visibility without running cloned custom elements', () => {
+      let constructions = 0;
+      customElements.define(
+        'observation-svg-label',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            constructions++;
+          }
+        },
+      );
+      const el = fixture(
+        '<svg><defs style="visibility:hidden">' +
+          '<g id="labels"><text>Inherited</text>' +
+          '<foreignObject><observation-svg-label style="visibility:visible">Explicit</observation-svg-label></foreignObject></g>' +
+          '</defs><use href="#labels" style="visibility:visible"/>' +
+          '<use href="#labels" style="visibility:hidden"/></svg>',
+      );
+      const before = constructions;
+      expect(observableText(el)).toBe('InheritedExplicitExplicit');
+      expect(observableText(el)).toBe('InheritedExplicitExplicit');
+      expect(constructions).toBe(before);
+    });
+
     it('expands local SVG use instances at their rendered positions (#764)', () => {
       const el = fixture(
         '<svg><defs style="display:none">' +

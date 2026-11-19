@@ -125,6 +125,10 @@ it.each(['lowercase', 'mixed case'])(
       source = source
         .replace(/svg/g, 'SvG')
         .replace(/viewbox/g, 'VIEWbox')
+        .replace(/width/g, 'WIDTH')
+        .replace(/height/g, 'HEIGHT')
+        .replace(/id=/g, 'ID=')
+        .replace(/fill=/g, 'FILL=')
         .replace(/foreignobject/g, 'ForeignOBJECT')
         .replace(/lineargradient/g, 'LinearGRADIENT');
     }
@@ -137,10 +141,14 @@ it.each(['lowercase', 'mixed case'])(
         const foreign = svg.querySelector('foreignObject')!;
         const gradient = svg.querySelector('linearGradient')!;
         return {
+          width: svg.getAttribute('width'),
+          height: svg.getAttribute('height'),
           viewBox: svg.getAttribute('viewBox'),
           foreign: foreign.constructor.name,
           gradient: gradient.constructor.name,
           units: gradient.getAttribute('gradientUnits'),
+          id: gradient.id,
+          fill: svg.querySelector('rect')!.getAttribute('fill'),
           html: foreign.querySelector('div')!.namespaceURI,
         };
       };
@@ -179,6 +187,57 @@ it('observes repeated SVG use text without unused or hidden definitions (#764)',
   }));
   expect(result.width).toBeGreaterThan(0);
   expect(result.text).toBe('Visible SVG choiceVisible SVG choiceSymbol label');
+});
+
+it('observes SVG instance visibility inherited from use instead of definition ancestors (#764)', async () => {
+  await boot({
+    Start:
+      '<svg width="400" height="100"><defs visibility="hidden">' +
+      '<text id="inherited" y="20">Inherited label</text>' +
+      '<text id="explicit" y="40" visibility="visible">Explicit label</text>' +
+      '<text id="hidden" y="60" visibility="hidden">Hidden label</text>' +
+      '</defs><use href="#inherited" visibility="visible"/>' +
+      '<use href="#explicit" visibility="hidden"/>' +
+      '<use href="#hidden" visibility="visible"/></svg>',
+  });
+  expect((await page.evaluate(() => Story.observe())).text).toBe(
+    'Inherited labelExplicit label',
+  );
+});
+
+it('resolves SVG instance styles within the instance and keeps repeated observations stable (#764)', async () => {
+  await boot({
+    Start:
+      '<style>defs text, use text { visibility:hidden }.shown { visibility:visible }' +
+      '.omitted { display:none }</style>' +
+      '<svg width="400" height="100"><defs>' +
+      '<g id="labels"><text y="20">Inherited label</text>' +
+      '<text y="40" class="shown">Explicit label</text>' +
+      '<text class="omitted">Hidden label</text></g></defs>' +
+      '<use href="#labels" visibility="hidden"/>' +
+      '<use href="#labels" visibility="visible"/></svg>',
+  });
+  const result = await page.evaluate(async () => {
+    const root = document.querySelector('.passage')!;
+    const before = root.innerHTML;
+    let callbacks = 0;
+    const observer = new MutationObserver(() => {
+      if (++callbacks < 10) Story.observe();
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    const text = Story.observe().text;
+    Story.observe();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    observer.disconnect();
+    return { text, callbacks, unchanged: before === root.innerHTML };
+  });
+  expect(result.text).toBe('Explicit labelInherited labelExplicit label');
+  expect(result.callbacks).toBeLessThanOrEqual(1);
+  expect(result.unchanged).toBe(true);
 });
 
 it('uses one override for both passage displays and then restores the default (#765)', async () => {

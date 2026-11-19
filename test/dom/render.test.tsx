@@ -572,12 +572,14 @@ describe('renderNodes', () => {
   describe('SVG and MathML rendering', () => {
     it('adjusts known SVG names while preserving unknown foreign names (#763)', () => {
       const el = renderMarkup(
-        '<svg viewbox="0 0 100 100"><lineargradient id="paint" gradientunits="userSpaceOnUse"/>' +
+        '<svg WIDTH="100" HEIGHT="100" viewbox="0 0 100 100"><lineargradient ID="paint" gradientunits="userSpaceOnUse"/>' +
           '<CustomShape CustomAttribute="keep"/></svg>',
       );
       expect(el.querySelector('svg')!.getAttribute('viewBox')).toBe(
         '0 0 100 100',
       );
+      expect(el.querySelector('svg')!.getAttribute('width')).toBe('100');
+      expect(el.querySelector('svg')!.getAttribute('height')).toBe('100');
       expect(el.querySelector('#paint')!.localName).toBe('linearGradient');
       expect(el.querySelector('#paint')!.getAttribute('gradientUnits')).toBe(
         'userSpaceOnUse',

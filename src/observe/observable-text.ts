@@ -6,6 +6,7 @@ import {
   isRendered,
 } from '../utils/element-visibility';
 import { getAction } from '../action-registry';
+import { SvgInstances } from './svg-instances';
 
 /** Elements that start and end a line. */
 const BLOCKS = new Set([
@@ -106,8 +107,10 @@ export function observableText(
   // local references at that position, never unused definitions or external
   // documents. Bound both depth and total work for cyclic or expanding graphs.
   const references = new Set<Element>();
+  const instances = new SvgInstances();
   let instanceNodes = 10_000;
   const localTarget = (use: Element): Element | undefined => {
+    use = instances.source(use);
     const href =
       use.getAttribute('href') ??
       use.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
@@ -153,7 +156,9 @@ export function observableText(
       child.namespaceURI === 'http://www.w3.org/2000/svg' &&
       child.localName === 'use'
     ) {
-      if (!isRendered(child, instanceRoot ?? visibilityRoot)) return;
+      // Visibility is inherited by the instance and can be overridden inside
+      // it; unlike display:none, it does not hide the entire subtree.
+      if (!isRendered(child, instanceRoot ?? visibilityRoot, false)) return;
       const target = localTarget(child);
       if (
         !target ||
@@ -163,7 +168,8 @@ export function observableText(
       )
         return;
       references.add(target);
-      walk(target, inPre, target);
+      const instance = instances.expand(child, target);
+      if (instance) walk(instance, inPre, instance);
       references.delete(target);
       return;
     }
@@ -196,7 +202,11 @@ export function observableText(
     if (block) endLine();
   };
 
-  walk(el, false);
+  try {
+    walk(el, false);
+  } finally {
+    instances.dispose();
+  }
   return (
     out
       .split('\n')
