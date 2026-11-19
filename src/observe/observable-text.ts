@@ -4,7 +4,9 @@ import {
   composedParent,
   isHidden,
   isRendered,
+  hidesContents,
 } from '../utils/element-visibility';
+import { isFullyRevealed, revealedText } from '../utils/type-reveal';
 import { getAction } from '../action-registry';
 import { SvgInstances } from './svg-instances';
 
@@ -134,8 +136,13 @@ export function observableText(
         (node as Text).assignedSlot ??
         node.parentElement ??
         (node.getRootNode() as ShadowRoot).host;
-      if (parent && !isRendered(parent, instanceRoot ?? visibilityRoot)) return;
-      const data = node.textContent ?? '';
+      if (
+        parent &&
+        (hidesContents(parent) ||
+          !isRendered(parent, instanceRoot ?? visibilityRoot))
+      )
+        return;
+      const data = revealedText(node as Text);
       if (inPre) out += data;
       else {
         // Source whitespace between blocks isn't a line of its own
@@ -152,13 +159,14 @@ export function observableText(
       (skip && child !== el && child.matches(skip))
     )
       return;
+    if (!isRendered(child, instanceRoot ?? visibilityRoot, false)) return;
     if (
       child.namespaceURI === 'http://www.w3.org/2000/svg' &&
       child.localName === 'use'
     ) {
       // Visibility is inherited by the instance and can be overridden inside
       // it; unlike display:none, it does not hide the entire subtree.
-      if (!isRendered(child, instanceRoot ?? visibilityRoot, false)) return;
+      if (hidesContents(child) || !isFullyRevealed(child)) return;
       const target = localTarget(child);
       if (
         !target ||
@@ -179,7 +187,11 @@ export function observableText(
         getAction(child.getAttribute('data-action')!)?.type === 'cycle')
     ) {
       if (child.matches('input[type="hidden" i]')) return;
-      if (!isRendered(child, instanceRoot ?? visibilityRoot)) return;
+      if (
+        !isRendered(child, instanceRoot ?? visibilityRoot) ||
+        !isFullyRevealed(child)
+      )
+        return;
       out += controlMarker(child);
       return;
     }
@@ -188,6 +200,7 @@ export function observableText(
       return;
     }
     const block = BLOCKS.has(child.tagName);
+    if (hidesContents(child)) return;
     if (block) endLine();
     const closedDetails =
       child.tagName === 'DETAILS' && !child.hasAttribute('open');
@@ -241,5 +254,6 @@ export function observableErrors(
     .filter(
       (e) => e.matches('.error') && !left(e) && isRendered(e, visibilityRoot),
     )
-    .map((e) => observableText(e, skip, visibilityRoot).trim());
+    .map((e) => observableText(e, skip, visibilityRoot).trim())
+    .filter(Boolean);
 }
