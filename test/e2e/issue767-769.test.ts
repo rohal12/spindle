@@ -129,6 +129,39 @@ it('follows content-visibility through shadow trees and slots (#767)', async () 
   );
 });
 
+it('keeps contents visible where content-visibility cannot apply (#767)', async () => {
+  await boot({
+    Start:
+      '<span style="content-visibility:hidden">Inline {button "Inline choice"}{/button}<span class="error">Inline error</span></span>' +
+      '<div style="display:contents;content-visibility:hidden">Contents {button "Contents choice"}{/button}</div>' +
+      '<table><tr style="content-visibility:hidden"><td>Row</td></tr><tr><td style="content-visibility:hidden">Cell secret</td></tr></table>' +
+      '<ruby style="content-visibility:hidden">Ruby<rt>Annotation</rt></ruby>' +
+      '<span hidden="until-found">Inline found</span>' +
+      '<svg><g style="content-visibility:hidden"><text>SVG secret</text></g><text>SVG shown</text></svg>',
+  });
+  const rendered = await page.locator('.passage').innerText();
+  expect(rendered).toContain('Inline choice');
+  expect(rendered).toContain('Contents choice');
+  expect(rendered).toContain('Row');
+  expect(rendered).toContain('Ruby');
+  expect(rendered).toContain('Inline found');
+  expect(rendered).not.toContain('Cell secret');
+  const observed = await page.evaluate(() => Story.observe());
+  expect(observed.text).toContain('Inline choiceInline error');
+  expect(observed.text).toContain('Contents choice');
+  expect(observed.text).toContain('Row');
+  expect(observed.text).toContain('RubyAnnotation');
+  expect(observed.text).toContain('Inline found');
+  expect(observed.text).not.toContain('Cell secret');
+  expect(observed.text).toContain('SVG shown');
+  expect(observed.text).not.toContain('SVG secret');
+  expect(observed.actions.map((a) => a.label)).toEqual([
+    'Inline choice',
+    'Contents choice',
+  ]);
+  expect(observed.errors).toEqual(['Inline error']);
+});
+
 it('observes only the typewriter prefix and offers fully revealed choices (#769)', async () => {
   // Long intervals let the test stop the clock after measurement, before tick 1.
   await page.clock.install();

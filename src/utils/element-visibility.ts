@@ -120,13 +120,48 @@ export function isHidden(el: Element, svgInstanceRoot = false): boolean {
   );
 }
 
-/** content-visibility suppresses descendants, leaving the element's own box. */
+// Layout containment cannot apply to these box types. In particular, an
+// ordinary inline span still paints its contents with content-visibility:hidden.
+const NO_LAYOUT_CONTAINMENT = new Set([
+  'none',
+  'contents',
+  'ruby',
+  'ruby-base',
+  'ruby-text',
+  'ruby-base-container',
+  'ruby-text-container',
+  'table-row',
+  'table-row-group',
+  'table-header-group',
+  'table-footer-group',
+  'table-column',
+  'table-column-group',
+]);
+
+/** content-visibility suppresses contents only in layout containment boxes. */
 export function hidesContents(el: Element): boolean {
   const value = styleValue(el, 'content-visibility');
-  return (
+  const hidden =
     value === 'hidden' ||
-    (value === '' && el.getAttribute('hidden')?.toLowerCase() === 'until-found')
-  );
+    (value === '' &&
+      el.getAttribute('hidden')?.toLowerCase() === 'until-found');
+  if (!hidden) return false;
+  // Some headless DOMs omit the native table-cell and inline display defaults.
+  const display =
+    styleValue(el, 'display') ||
+    (el.localName === 'td' || el.localName === 'th' ? 'table-cell' : 'inline');
+  if (NO_LAYOUT_CONTAINMENT.has(display)) return false;
+  if (display === 'inline' || display === 'inline list-item') {
+    // SVG rendering and native replaced/formatting contexts still suppress
+    // their contents even when the computed display is inline.
+    return (
+      el.namespaceURI === 'http://www.w3.org/2000/svg' ||
+      el.matches(
+        'img, input, textarea, select, button, fieldset, video, audio, canvas, iframe, embed',
+      )
+    );
+  }
+  return true;
 }
 
 /**

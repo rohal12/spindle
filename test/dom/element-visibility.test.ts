@@ -33,6 +33,22 @@ it('hides contents, but keeps the content-visibility host box (#767, #768)', () 
   expect(isReaderVisible(button)).toBe(true);
 });
 
+it.each(['', 'inline', 'contents', 'table-row', 'ruby', 'ruby-text'])(
+  'ignores content-visibility without a layout containment box (%s, #767)',
+  (display) => {
+    document.body.innerHTML = `<span style="display:${display};content-visibility:hidden"><button>Action</button></span>`;
+    expect(isReaderVisible(document.querySelector('button')!)).toBe(true);
+  },
+);
+
+it.each(['inline-block', 'block'])(
+  'hides content in layout containment boxes (%s, #767)',
+  (display) => {
+    document.body.innerHTML = `<span style="display:${display};content-visibility:hidden"><button>Action</button></span>`;
+    expect(isReaderVisible(document.querySelector('button')!)).toBe(false);
+  },
+);
+
 it.each([
   '<style>.show { display: block !important }</style><div class="show" style="display:none"><button>Action</button></div>',
   '<div style="display:none;display:block"><button>Action</button></div>',

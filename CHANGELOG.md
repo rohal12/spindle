@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Reader observations exclude text, actions and errors inside `content-visibility: hidden` subtrees, including dialogs, shadow trees and `StoryContext` (#767).
+- Reader observations exclude text, actions and errors inside `content-visibility: hidden` subtrees where layout containment applies, including dialogs, shadow trees and `StoryContext`, while retaining visible inline and `display: contents` content (#767).
 - Reader observations honor author CSS that shows elements with the `hidden` attribute, while preserving unrevealed `hidden="until-found"` contents (#768).
 - Typewriter observations expose only the revealed text and errors, offering choices after their labels are revealed, consistently in browsers and headless sessions (#769).
 - Page refresh restores sessions containing classes registered in `StoryInit`, including when initialization navigates before restoration (#762).
