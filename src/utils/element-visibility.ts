@@ -47,15 +47,49 @@ const SVG_NOT_TEXT = new Set([
   'marker',
 ]);
 
+// DOM shims may omit the native hidden rules. Supply their defaults at zero
+// specificity, before author rules, so the CSS cascade still decides visibility.
+const hiddenDefaults = new WeakSet<Node>();
+const needsHiddenDefaults = new WeakMap<Document, boolean>();
+function ensureHiddenDefaults(el: Element): void {
+  if (!el.hasAttribute('hidden')) return;
+  const doc = el.ownerDocument;
+  const view = doc.defaultView ?? globalThis.window;
+  let needed = needsHiddenDefaults.get(doc);
+  if (needed === undefined) {
+    const detached = doc.implementation.createHTMLDocument('');
+    const probe = detached.createElement('div');
+    probe.hidden = true;
+    detached.body.append(probe);
+    // Browsers don't compute styles in documents without a browsing context.
+    needed = view?.getComputedStyle(probe).display === 'block';
+    needsHiddenDefaults.set(doc, needed);
+  }
+  const root = el.getRootNode() as Document | ShadowRoot;
+  if (!needed || hiddenDefaults.has(root)) return;
+  const container = root.nodeType === 9 ? (root as Document).head : root;
+  if (root.nodeType !== 9 && !('host' in root)) return;
+  const style = doc.createElement('style');
+  style.textContent =
+    ':where([hidden]:not([hidden="until-found" i])){display:none}' +
+    ':where([hidden="until-found" i]){content-visibility:hidden}';
+  container.prepend(style);
+  hiddenDefaults.add(root);
+}
+
 /** Detached/headless DOMs may have no computed value; CSSOM still resolves
  * duplicate inline declarations and priorities correctly.
  */
-function styleValue(el: Element, name: 'display' | 'visibility'): string {
+function styleValue(
+  el: Element,
+  name: 'display' | 'visibility' | 'content-visibility',
+): string {
+  ensureHiddenDefaults(el);
   return (
-    (el.ownerDocument.defaultView ?? globalThis.window)?.getComputedStyle?.(el)[
-      name
-    ] ||
-    (el as HTMLElement).style?.[name] ||
+    (el.ownerDocument.defaultView ?? globalThis.window)
+      ?.getComputedStyle?.(el)
+      .getPropertyValue(name) ||
+    (el as HTMLElement).style?.getPropertyValue(name) ||
     ''
   );
 }
@@ -66,10 +100,13 @@ function styleValue(el: Element, name: 'display' | 'visibility'): string {
  * A symbol referenced by SVG use is rendered only as an instance root.
  */
 export function isHidden(el: Element, svgInstanceRoot = false): boolean {
+  const display = styleValue(el, 'display');
   return (
-    el.hasAttribute('hidden') ||
+    (el.hasAttribute('hidden') &&
+      el.getAttribute('hidden')?.toLowerCase() !== 'until-found' &&
+      display === '') ||
     el.getAttribute('aria-hidden') === 'true' ||
-    styleValue(el, 'display') === 'none' ||
+    display === 'none' ||
     NOT_TEXT.has(el.localName.toLowerCase()) ||
     (el.namespaceURI === 'http://www.w3.org/2000/svg' &&
       SVG_NOT_TEXT.has(el.localName.toLowerCase()) &&
@@ -81,6 +118,50 @@ export function isHidden(el: Element, svgInstanceRoot = false): boolean {
           (c) => c.tagName === 'SUMMARY',
         ))
   );
+}
+
+// Layout containment cannot apply to these box types. In particular, an
+// ordinary inline span still paints its contents with content-visibility:hidden.
+const NO_LAYOUT_CONTAINMENT = new Set([
+  'none',
+  'contents',
+  'ruby',
+  'ruby-base',
+  'ruby-text',
+  'ruby-base-container',
+  'ruby-text-container',
+  'table-row',
+  'table-row-group',
+  'table-header-group',
+  'table-footer-group',
+  'table-column',
+  'table-column-group',
+]);
+
+/** content-visibility suppresses contents only in layout containment boxes. */
+export function hidesContents(el: Element): boolean {
+  const value = styleValue(el, 'content-visibility');
+  const hidden =
+    value === 'hidden' ||
+    (value === '' &&
+      el.getAttribute('hidden')?.toLowerCase() === 'until-found');
+  if (!hidden) return false;
+  // Some headless DOMs omit the native table-cell and inline display defaults.
+  const display =
+    styleValue(el, 'display') ||
+    (el.localName === 'td' || el.localName === 'th' ? 'table-cell' : 'inline');
+  if (NO_LAYOUT_CONTAINMENT.has(display)) return false;
+  if (display === 'inline' || display === 'inline list-item') {
+    // SVG rendering and native replaced/formatting contexts still suppress
+    // their contents even when the computed display is inline.
+    return (
+      el.namespaceURI === 'http://www.w3.org/2000/svg' ||
+      el.matches(
+        'img, input, textarea, select, button, fieldset, video, audio, canvas, iframe, embed',
+      )
+    );
+  }
+  return true;
 }
 
 /**
@@ -119,6 +200,7 @@ export function isRendered(
     return false;
   for (let e: Element | null = el; e; e = composedParent(e)) {
     if (styleValue(e, 'display') === 'none') return false;
+    if (e !== el && hidesContents(e)) return false;
     if (e === root) break;
     const parent = e.parentElement;
     // Connected light DOM may have no place in its host's rendered tree.

@@ -1,4 +1,5 @@
 import { isReaderVisible } from './utils/element-visibility';
+import { isFullyRevealed } from './utils/type-reveal';
 import { readOnlyValue } from './execute-mutation';
 import { emit } from './event-emitter';
 import {
@@ -307,7 +308,10 @@ export function isActionVisible(action: StoryAction): boolean {
   // Older custom actions need not associate a DOM control. Keep those
   // registrations available; built-ins and associated custom controls are
   // filtered against the live DOM.
-  return elements.length === 0 || elements.some(isReaderVisible);
+  return (
+    elements.length === 0 ||
+    elements.some((el) => isReaderVisible(el) && isFullyRevealed(el))
+  );
 }
 
 export function clearActions(): void {

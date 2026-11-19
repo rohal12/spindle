@@ -9,6 +9,47 @@ import {
 afterEach(() => document.body.replaceChildren());
 
 it.each([
+  '<div hidden style="display:block"><button>Action</button></div>',
+  '<style>.show { display:block }</style><div hidden class="show"><button>Action</button></div>',
+])('honors author display overrides of hidden (#768)', (html) => {
+  document.body.innerHTML = html;
+  expect(isHidden(document.querySelector('div')!)).toBe(false);
+  expect(isReaderVisible(document.querySelector('button')!)).toBe(true);
+});
+
+it('hides contents, but keeps the content-visibility host box (#767, #768)', () => {
+  document.body.innerHTML =
+    '<div style="content-visibility:hidden"><button>Action</button></div>';
+  const host = document.querySelector('div')!;
+  const button = document.querySelector('button')!;
+  expect(isReaderVisible(host)).toBe(true);
+  expect(isReaderVisible(button)).toBe(false);
+  host.style.contentVisibility = 'visible';
+  expect(isReaderVisible(button)).toBe(true);
+  host.setAttribute('hidden', 'until-found');
+  host.style.removeProperty('content-visibility');
+  expect(isReaderVisible(button)).toBe(false);
+  host.style.contentVisibility = 'visible';
+  expect(isReaderVisible(button)).toBe(true);
+});
+
+it.each(['', 'inline', 'contents', 'table-row', 'ruby', 'ruby-text'])(
+  'ignores content-visibility without a layout containment box (%s, #767)',
+  (display) => {
+    document.body.innerHTML = `<span style="display:${display};content-visibility:hidden"><button>Action</button></span>`;
+    expect(isReaderVisible(document.querySelector('button')!)).toBe(true);
+  },
+);
+
+it.each(['inline-block', 'block'])(
+  'hides content in layout containment boxes (%s, #767)',
+  (display) => {
+    document.body.innerHTML = `<span style="display:${display};content-visibility:hidden"><button>Action</button></span>`;
+    expect(isReaderVisible(document.querySelector('button')!)).toBe(false);
+  },
+);
+
+it.each([
   '<style>.show { display: block !important }</style><div class="show" style="display:none"><button>Action</button></div>',
   '<div style="display:none;display:block"><button>Action</button></div>',
 ])('uses cascaded display instead of raw declarations (#761)', (html) => {
