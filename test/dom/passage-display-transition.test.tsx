@@ -140,6 +140,50 @@ describe('PassageDisplay transition state machine', () => {
     expect(useStoryStore.getState().nextTransition).toBeNull();
   });
 
+  it.each([{ tags: [] }, { tags: ['transition:none'] }])(
+    'shares one-shot transitions between displays with tags %j (#765)',
+    ({ tags }) => {
+      const store = () => useStoryStore.getState();
+      store().init(
+        makeStoryData([
+          makePassage(1, 'Start', 'Start'),
+          makePassage(2, 'Room', 'Room', tags),
+          makePassage(3, 'End', 'End'),
+        ]),
+      );
+      store().setTransition({ type: 'fade-through', duration: 500 });
+      act(() => {
+        render(
+          <>{renderNodes(parseMarkup('{#first passage}{#second passage}'))}</>,
+          container,
+        );
+      });
+      store().setNextTransition({ type: tags.length ? 'crossfade' : 'none' });
+      act(() => store().navigate('Room'));
+      expect(container.querySelectorAll('.passage-snapshot')).toHaveLength(0);
+      expect(
+        [...container.querySelectorAll('.passage')].map((p) => [
+          p.getAttribute('data-passage'),
+          p.getAttribute('data-transition'),
+        ]),
+      ).toEqual([
+        ['Room', 'none'],
+        ['Room', 'none'],
+      ]);
+      expect(store().nextTransition).toBeNull();
+      act(() => store().navigate('End'));
+      expect(container.querySelectorAll('.passage-snapshot')).toHaveLength(2);
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(
+        [...container.querySelectorAll('.passage')].map((p) =>
+          p.getAttribute('data-transition'),
+        ),
+      ).toEqual(['fade-through', 'fade-through']);
+    },
+  );
+
   it('first passage uses fade behavior regardless of store default', () => {
     const storyData = makeStoryData([
       makePassage(1, 'Start', 'Hello', ['transition:crossfade']),

@@ -74,6 +74,46 @@ describe('observableText', () => {
   });
 
   describe('hidden content', () => {
+    it('inherits SVG use visibility without running cloned custom elements', () => {
+      let constructions = 0;
+      customElements.define(
+        'observation-svg-label',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            constructions++;
+          }
+        },
+      );
+      const el = fixture(
+        '<svg><defs style="visibility:hidden">' +
+          '<g id="labels"><text>Inherited</text>' +
+          '<foreignObject><observation-svg-label style="visibility:visible">Explicit</observation-svg-label></foreignObject></g>' +
+          '</defs><use href="#labels" style="visibility:visible"/>' +
+          '<use href="#labels" style="visibility:hidden"/></svg>',
+      );
+      const before = constructions;
+      expect(observableText(el)).toBe('InheritedExplicitExplicit');
+      expect(observableText(el)).toBe('InheritedExplicitExplicit');
+      expect(constructions).toBe(before);
+    });
+
+    it('expands local SVG use instances at their rendered positions (#764)', () => {
+      const el = fixture(
+        '<svg><defs style="display:none">' +
+          '<text id="label">Label</text><text id="unused">Unused</text>' +
+          '<symbol id="icon"><text>Icon</text></symbol>' +
+          '<g id="cycle"><use href="#cycle"/></g></defs>' +
+          '<text>Before </text><use href="#label"/><text> Between </text>' +
+          '<use href="#label"/><use href="#icon"/><use href="#cycle"/>' +
+          '<use href="#label" style="display:none"/>' +
+          '<use href="#label" style="visibility:hidden"/>' +
+          '<use href="elsewhere.svg#label"/><use href="#missing"/>' +
+          '<text> After</text></svg>',
+      );
+      expect(observableText(el)).toBe('Before Label Between LabelIcon After');
+    });
+
     it('omits SVG metadata and definitions but keeps drawn text and foreign HTML (#742)', () => {
       const el = fixture(
         '<svg><title>Map title</title><desc>Map description</desc>' +

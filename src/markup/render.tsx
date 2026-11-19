@@ -27,6 +27,7 @@ import { isCodeAttribute } from './code-attributes';
 import { errorMessage } from '../utils/error-message';
 import { EMPTY_NAMESPACE } from '../utils/namespace';
 import { authorElement, isHtmlEncoding } from './html-integration';
+import { svgTagName, svgAttributeName } from './svg-names';
 import { parseMarkup } from './parse';
 import { useStoryStore } from '../store';
 import { passageTarget } from '../components/macros/macro-args';
@@ -871,7 +872,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
   const namespace = tag === 'svg' || tag === 'math' ? tag : parentNamespace;
   const errors: AttributeError[] = [];
   const resolved = Object.entries(node.attributes).map(([k, v]): Attribute => [
-    k,
+    namespace === 'svg' ? svgAttributeName(k) : k,
     resolveAttributeValue(k, v, scope, errors),
     v,
     hasInterpolation(v),
@@ -971,7 +972,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     );
   }
   const element = authorElement(
-    node.tag,
+    namespace === 'svg' ? svgTagName(node.tag) : node.tag,
     props,
     children,
     namespace === 'math',

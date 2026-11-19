@@ -84,8 +84,13 @@ export function executeStoryInit() {
  * handlers set synchronously belongs to the start moment, like StoryInit's
  * changes; a restored session keeps the history it recorded.
  */
-export function initializeStory(session?: SavePayload): void {
+export function initializeStory(
+  savedSession?: SavePayload | (() => SavePayload | undefined),
+): void {
   executeStoryInit();
+  // StoryInit can register the classes needed to revive saved variables.
+  let session =
+    typeof savedSession === 'function' ? savedSession() : savedSession;
 
   // A session that refers to a passage the story no longer has (it was
   // updated since) is dropped: the game starts from the beginning

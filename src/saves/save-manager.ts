@@ -953,17 +953,33 @@ export function saveSession(
  * warning, and the story starts fresh.
  */
 export function loadSession(ifid: string): SavePayload | undefined {
+  return prepareSessionRestore(ifid)();
+}
+
+/** Capture storage before StoryInit can navigate and write a new session,
+ * but defer revival until its class registrations have run.
+ */
+export function prepareSessionRestore(
+  ifid: string,
+): () => SavePayload | undefined {
+  let raw: string | null;
   try {
-    const raw = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${ifid}`);
-    if (!raw) return undefined;
-    return decodePayload(JSON.parse(raw));
-  } catch (err) {
-    if (err instanceof IncompatibleSaveError) {
-      console.warn(`spindle: ${err.message}; the session was not restored.`);
-      clearSession(ifid);
-    }
-    return undefined;
+    raw = sessionStorage.getItem(`${SESSION_KEY_PREFIX}${ifid}`);
+  } catch {
+    return () => undefined;
   }
+  return () => {
+    try {
+      if (!raw) return undefined;
+      return decodePayload(JSON.parse(raw));
+    } catch (err) {
+      if (err instanceof IncompatibleSaveError) {
+        console.warn(`spindle: ${err.message}; the session was not restored.`);
+        clearSession(ifid);
+      }
+      return undefined;
+    }
+  };
 }
 
 export function clearSession(ifid: string): void {
