@@ -3,11 +3,13 @@ import { expect, it, vi } from 'vitest';
 import { act } from 'preact/test-utils';
 import { bootStory } from '../../src/headless';
 import { storyHtml } from './story-html';
+import { typewriterChoice } from '../support/typewriter-choice';
 
 it('observes CSS visibility and logical typewriter progress without layout (#767-#769)', async () => {
   const Story = await bootStory({
     html: storyHtml({
       StoryVariables: '$word = "AB"',
+      StoryInit: typewriterChoice,
       Start:
         '<style>.closed { content-visibility:hidden }.shown { display:block }</style>' +
         'Visible.<div id="panel" class="closed">Secret {button "Choice"}{/button}<span class="error">Error</span></div>' +
@@ -19,6 +21,9 @@ it('observes CSS visibility and logical typewriter progress without layout (#767
         'Before. {type 1s}AB {button "Go"}{/button}<span class="error">Oops</span><input value="secret">{/type}',
       Nested: '{type 1s}A{type 2s}BC{/type}D{/type}',
       Reactive: '{type 1s}{$word}{/type}',
+      TypedLabel: '{typed-choice}{type 1s}Secret{/type}{/typed-choice}',
+      NestedTypedLabel:
+        '{type 1s}{typed-choice}{type 2s}Secret{/type}{/typed-choice}{/type}',
       Uncontained:
         '<span style="content-visibility:hidden">Inline {button "Inline choice"}{/button}<span class="error">Inline error</span></span>' +
         '<div style="display:contents;content-visibility:hidden">Contents {button "Contents choice"}{/button}</div>' +
@@ -110,6 +115,22 @@ it('observes CSS visibility and logical typewriter progress without layout (#767
     expect(Story.observe().text).toBe('AB');
     expect((await tick(1000)).text).toBe('ABC');
     expect((await tick(1000)).text).toBe('ABCD');
+
+    for (const passage of ['TypedLabel', 'NestedTypedLabel']) {
+      await act(async () => {
+        Story.goto(passage);
+      });
+      await Story.waitForActions();
+      expect(Story.observe().text).toBe('');
+      expect(Story.observe().actions).toEqual([]);
+      const half = passage === 'TypedLabel' ? 3000 : 6000;
+      seen = await tick(half);
+      expect(seen.text).toBe('Sec');
+      expect(seen.actions).toEqual([]);
+      seen = await tick(half);
+      expect(seen.text).toBe('Secret');
+      expect(seen.actions.map((a) => a.label)).toEqual(['Secret']);
+    }
   } finally {
     vi.useRealTimers();
   }

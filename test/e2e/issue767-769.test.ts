@@ -3,6 +3,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { storyHtml } from '../headless/story-html';
+import { typewriterChoice } from '../support/typewriter-choice';
 import type { StoryAPI } from '../../types/index';
 declare const Story: StoryAPI;
 
@@ -198,3 +199,32 @@ it('observes only the typewriter prefix and offers fully revealed choices (#769)
   expect(done.text).toContain('AB GoOops[input: "secret"]');
   expect(done.errors).toEqual(['Oops']);
 });
+
+it.each([false, true])(
+  'waits for typewriters inside control labels (outer typewriter: %s, #769)',
+  async (outer) => {
+    await page.clock.install();
+    const choice = '{typed-choice}{type 10s}Secret{/type}{/typed-choice}';
+    await boot({
+      StoryInit: typewriterChoice,
+      Start: outer ? `{type 5s}${choice}{/type}` : choice,
+    });
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll<HTMLElement>('.macro-type-inner')].every(
+        (el) => el.style.clipPath.includes('100%'),
+      ),
+    );
+    await page.clock.pauseAt(new Date());
+    const initial = await page.evaluate(() => Story.observe());
+    expect(initial.text).toBe('');
+    expect(initial.actions).toEqual([]);
+    await page.clock.runFor(30_000);
+    const partial = await page.evaluate(() => Story.observe());
+    expect(partial.text).toBe('Sec');
+    expect(partial.actions).toEqual([]);
+    await page.clock.runFor(30_000);
+    const done = await page.evaluate(() => Story.observe());
+    expect(done.text).toBe('Secret');
+    expect(done.actions.map((a) => a.label)).toEqual(['Secret']);
+  },
+);

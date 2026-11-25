@@ -1,4 +1,4 @@
-import { composedParent } from './element-visibility';
+import { composedElements, composedParent } from './element-visibility';
 
 /** Remaining revealed characters at this node, across nested typewriters. */
 function revealedCharacters(node: Node): number {
@@ -37,8 +37,19 @@ export function revealedText(node: Text): string {
  */
 export function isFullyRevealed(el: Element): boolean {
   const available = revealedCharacters(el);
-  return (
-    available === Infinity ||
-    (!!el.textContent && available >= el.textContent.length)
-  );
+  if (
+    available !== Infinity &&
+    (!el.textContent || available < el.textContent.length)
+  )
+    return false;
+  // Custom controls may wrap a typewriter in their label. An enclosing
+  // typewriter finishing does not reveal a slower one inside the control.
+  for (const child of composedElements(el)) {
+    if (
+      child.hasAttribute('data-type-revealed') &&
+      revealedCharacters(child) < (child.textContent?.length ?? 0)
+    )
+      return false;
+  }
+  return true;
 }
