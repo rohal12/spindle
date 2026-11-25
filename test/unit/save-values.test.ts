@@ -194,7 +194,8 @@ describe('values in saves', () => {
       Story.set({ kept: { inner: shared }, moved: 1 });
       Story.goto('Room');
       await Story.waitForActions();
-      Story.set('moved', shared);
+      // Reuse the state-owned value; retained setter inputs are isolated.
+      Story.set('moved', (Story.get('kept') as { inner: unknown }).inner);
       Story.goto('Hall');
       await Story.waitForActions();
       Story.back();

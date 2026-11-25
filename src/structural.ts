@@ -10,7 +10,7 @@
 // Temporal values, with shared references and cycles.
 
 import { registeredClassName } from './class-registry';
-import { hasOwn, setOwn } from './utils/namespace';
+import { defineData, hasOwn } from './utils/namespace';
 import { deleteByPath, getByPath, setByPath } from './utils/object-path';
 import {
   ERROR_HIDDEN_KEYS,
@@ -54,7 +54,7 @@ function builtinLike<C extends object>(
   made(empty);
   if (registeredClassName(obj) === undefined) return empty;
   Object.setPrototypeOf(empty, Object.getPrototypeOf(obj) as object);
-  for (const key of extraKeys(obj)) setOwn(empty, key, value(key));
+  for (const key of extraKeys(obj)) defineData(empty, key, value(key));
   return empty;
 }
 
@@ -102,13 +102,11 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
    */
   function copyKeys(obj: object, copy: object): object {
     for (const key of Object.keys(obj)) {
-      setOwn(copy, key, clone((obj as Record<string, unknown>)[key]));
+      defineData(copy, key, clone((obj as Record<string, unknown>)[key]));
     }
     for (const sym of Object.getOwnPropertySymbols(obj)) {
       if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) continue;
-      (copy as Record<symbol, unknown>)[sym] = clone(
-        (obj as Record<symbol, unknown>)[sym],
-      );
+      defineData(copy, sym, clone((obj as Record<symbol, unknown>)[sym]));
     }
     return copy;
   }
@@ -184,7 +182,7 @@ export function deepClone<T>(value: T, options: DeepCloneOptions = {}): T {
       // Holes stay holes
       const arr = builtin(obj, new Array(val.length) as unknown[]);
       for (const key of arrayIndices(val))
-        arr[Number(key)] = clone(val[Number(key)]);
+        defineData(arr, key, clone(val[Number(key)]));
       return arr;
     }
 
@@ -360,13 +358,13 @@ export function shareEqual<T>(prev: unknown, curr: T): T {
     }
     if (Array.isArray(c) && Array.isArray(p)) {
       const out = collection(new Array(c.length) as unknown[]);
-      for (const key of arrayIndices(c)) out[Number(key)] = shareKey(key);
+      for (const key of arrayIndices(c)) defineData(out, key, shareKey(key));
       return out;
     }
     if (mergesWith(p, c, false)) {
       const out = Object.create(Object.getPrototypeOf(c) as object | null);
       done.set(c, out);
-      for (const key of Object.keys(cr)) setOwn(out, key, shareKey(key));
+      for (const key of Object.keys(cr)) defineData(out, key, shareKey(key));
       return out;
     }
     return fresh(c);

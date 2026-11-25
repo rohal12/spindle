@@ -286,7 +286,7 @@ A button that opens a modal dialog showing another passage. The label goes in th
 {dialog "View Inventory"}Inventory Screen{/dialog}
 ```
 
-The passage named in the body must exist: a name no passage has stops the story when it starts.
+The passage named in the body must exist: a name no passage has stops the story when it starts. Whitespace around the name is ignored. A matching pair of enclosing single or double quotes is optional; otherwise quotes and apostrophes are part of the name, so `{dialog "Open"}James'{/dialog}` opens `James'`. Inside a quoted name, `\"`, `\'` and `\\` escape quotes and backslashes.
 
 The dialog closes when the player clicks outside it or presses Escape.
 

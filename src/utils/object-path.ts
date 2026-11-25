@@ -1,6 +1,6 @@
 import { current as draftState, isDraft, original } from 'immer';
 import { registeredClassName } from '../class-registry';
-import { hasOwn, isArrayIndex } from './namespace';
+import { defineData, hasOwn, isArrayIndex } from './namespace';
 import { atomicName } from './value-kinds';
 
 /**
@@ -56,12 +56,7 @@ export function shallowCopy(value: object): Record<string, unknown> {
   // Define rather than assign (Object.assign), so that a "__proto__" key
   // stays a key instead of replacing the copy's prototype
   for (const key of Object.keys(value)) {
-    Object.defineProperty(copy, key, {
-      value: (value as Record<string, unknown>)[key],
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
+    defineData(copy, key, (value as Record<string, unknown>)[key]);
   }
   return copy as Record<string, unknown>;
 }

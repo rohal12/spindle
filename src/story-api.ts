@@ -26,6 +26,7 @@ import { registerClass } from './class-registry';
 import {
   frozenCopy,
   readOnlyValue,
+  adoptStateValues,
   getActiveMutationScope,
   mutateState,
 } from './execute-mutation';
@@ -282,12 +283,18 @@ function warnIfUndeclared(isTransient: boolean, key: string): void {
   );
 }
 
-/** Set a single variable on an Immer draft, resolving dot-paths if present. */
-function setOne(draft: VariableNamespaces, name: string, value: unknown): void {
-  const { isTransient, key } = parseName(name);
-  const namespace = isTransient ? draft.transient : draft.variables;
-
-  setByPath(namespace, key.split('.'), value);
+/** Adopt the whole batch before writes can replace state-owned inputs. */
+function setEntries(
+  draft: VariableNamespaces,
+  entries: readonly [string, unknown][],
+  adopt: (value: unknown) => unknown,
+): void {
+  const adopted = entries.map(([name, value]) => [name, adopt(value)] as const);
+  for (const [name, value] of adopted) {
+    const { isTransient, key } = parseName(name);
+    const namespace = isTransient ? draft.transient : draft.variables;
+    setByPath(namespace, key.split('.'), value);
+  }
 }
 
 /**
@@ -345,22 +352,20 @@ function createStoryAPI(): StoryAPI {
         warnIfUndeclared(isTransient, key);
         if (!isTransient) recordHookWrite(key.split('.'));
       }
-      // One store update for all keys, so watchers see them together. Made
-      // while mutation code runs ({do}, ctx.mutate, watcher run actions), it
-      // follows the code's own pending writes (program order, #215): see
-      // routeStoreUpdate.
+      // One store update for all keys, in program order with any running
+      // mutation. Nested writes use the mutation merge to preserve aliases.
       if (entries.some(([k]) => k.includes('.'))) {
-        // A write below a variable goes through the commit mutation code
-        // uses (nested in the running code, if any: it continues from the
-        // code's pending writes, and they are committed first): an update of a draft would give the written path new
-        // objects and leave the other references to the old ones (#295).
         mutateState((work, adopt) => {
-          for (const [k, v] of entries) setOne(work, k, adopt(v));
+          setEntries(work, entries, adopt);
         });
         return;
       }
       useStoryStore.getState().updateVariables((draft) => {
-        for (const [k, v] of entries) setOne(draft, k, v);
+        // One adopter for the batch keeps shared references and cycles,
+        // including references to state already owned by the running code.
+        // Freezing caller inputs alone cannot protect mutable internal slots.
+        const adopt = adoptStateValues(draft);
+        setEntries(draft, entries, adopt);
       });
     },
 

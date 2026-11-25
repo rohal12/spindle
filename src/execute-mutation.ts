@@ -116,6 +116,16 @@ function clonerFor(
   return (value) => deepClone(value, { keepUnregistered: true, seen, settle });
 }
 
+/** Adopt setter inputs into a draft, retaining references to owned state. */
+export function adoptStateValues(target: VariableNamespaces): Cloner {
+  const held = locateObjects(namespacesOf(useStoryStore.getState()), []);
+  const scope = getActiveMutationScope();
+  if (scope) {
+    for (const [value, path] of locateObjects(scope, [])) held.set(value, path);
+  }
+  return clonerFor(target, held);
+}
+
 /** One cloner per target copy, made when first used. */
 const clonersFor = (
   paths?: (target: object) => ReadonlyMap<object, ObjectPath>,

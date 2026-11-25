@@ -1,7 +1,7 @@
 // Class registry for preserving class instances across clone/save/load cycles.
 
 import { parse, stringify } from 'devalue';
-import { hasOwn } from './utils/namespace';
+import { defineData, hasOwn } from './utils/namespace';
 import {
   arrayIndices,
   extraKeys,
@@ -154,16 +154,6 @@ const isPlainData = (v: unknown): v is Record<string, unknown> =>
 
 const malformedClass = (name: string): TypeError =>
   new TypeError(`spindle: Malformed data for class "${name}"`);
-
-const defineData = (target: object, key: string, value: unknown): void => {
-  // Define, so that a "__proto__" key stays a key (devalue refuses it)
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
-};
 
 /**
  * A reducer extracts string keys, so devalue never sees the symbol keys of
