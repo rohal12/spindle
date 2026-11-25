@@ -119,6 +119,7 @@ defineMacro({
         <span
           ref={innerRef}
           class="macro-type-inner"
+          data-type-revealed={done ? undefined : visibleChars}
           style={{
             display: 'inline',
             visibility: measured === null ? 'hidden' : 'visible',
