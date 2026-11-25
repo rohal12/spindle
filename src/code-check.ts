@@ -55,7 +55,7 @@ import {
   type PassageTarget,
 } from './components/macros/macro-args';
 import { subMacroParameters } from './components/macros/option-utils';
-import { splitArgSpans } from './components/macros/arg-utils';
+import { readPassageBody, splitArgSpans } from './components/macros/arg-utils';
 import { effectiveNamedDefinitions, NameMap } from './utils/macro-names';
 import { hasOwn } from './utils/namespace';
 import { isBuiltinBlockMacro, isRawMacro } from './markup/ast';
@@ -532,7 +532,7 @@ export function* codeAndText(
           const written = text.trim();
           yield {
             kind: 'passage',
-            name: written.replace(/^["']|["']$/g, ''),
+            name: readPassageBody(written),
             offset: token.end + text.indexOf(written),
             length: written.length,
             macro: name,

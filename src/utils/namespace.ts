@@ -52,18 +52,27 @@ export const ownValue = (
   key: string,
 ): unknown => (ns && hasOwn(ns, key) ? (ns as Namespace)[key] : undefined);
 
+/** Define an own data field without invoking an inherited accessor. */
+export function defineData(
+  target: object,
+  key: PropertyKey,
+  value: unknown,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
 /**
  * Set an own enumerable property. A "__proto__" key is defined as an own
  * property (as JSON.parse does) instead of replacing the prototype.
  */
 export function setOwn(target: object, key: string, value: unknown): void {
   if (key === '__proto__') {
-    Object.defineProperty(target, key, {
-      value,
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
+    defineData(target, key, value);
   } else {
     (target as Record<string, unknown>)[key] = value;
   }

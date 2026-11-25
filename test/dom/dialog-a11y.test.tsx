@@ -42,9 +42,13 @@ function press(key: string, shiftKey = false): KeyboardEvent {
 describe('dialog accessibility', () => {
   let container: HTMLElement;
   let opener: HTMLButtonElement;
+  let style: HTMLStyleElement;
 
   beforeEach(() => {
     resetTriggers();
+    style = document.createElement('style');
+    style.textContent = '.shown{display:block}';
+    document.head.appendChild(style);
     useStoryStore
       .getState()
       .init(
@@ -116,6 +120,7 @@ describe('dialog accessibility', () => {
     });
     container.remove();
     opener.remove();
+    style.remove();
   });
 
   const panels = () => container.querySelectorAll<HTMLElement>('.dialog-panel');
@@ -232,6 +237,38 @@ describe('dialog accessibility', () => {
     press('Tab', true);
     expect(document.activeElement).toBe(byId('tabbable'));
   });
+
+  it.each(['style="display:block"', 'class="shown"'])(
+    'tabs through CSS-revealed hidden controls and honors autofocus (%s, #775)',
+    (override) => {
+      useStoryStore
+        .getState()
+        .init(
+          makeStoryData([
+            makePassage(
+              1,
+              'Revealed',
+              `<button id="first" hidden ${override}>First</button>` +
+                `<div hidden ${override}><button id="revealed" autofocus>Revealed</button></div>` +
+                '<div hidden><button id="hidden">Hidden</button></div>' +
+                '<div hidden="until-found" style="display:block"><button id="unfound">Unfound</button></div>' +
+                '<div inert style="display:block"><button id="inert">Inert</button></div>' +
+                '<button id="last">Last</button>',
+            ),
+          ]),
+        );
+      act(() => window.Story.openDialog('Revealed', noClose));
+      expect(document.activeElement).toBe(byId('revealed'));
+      press('Tab');
+      expect(document.activeElement).toBe(byId('last'));
+      press('Tab');
+      expect(document.activeElement).toBe(byId('first'));
+      press('Tab', true);
+      expect(document.activeElement).toBe(byId('last'));
+      press('Tab', true);
+      expect(document.activeElement).toBe(byId('revealed'));
+    },
+  );
 
   it('skips unavailable autofocus elements (#426)', () => {
     act(() => window.Story.openDialog('HiddenAuto'));

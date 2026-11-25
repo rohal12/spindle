@@ -106,6 +106,33 @@ describe('Story.recordMoment()', () => {
     useStoryStore.setState({ maxHistory: 40 });
   });
 
+  it.each(['single', 'batch'])(
+    'isolates retained mutable setter inputs from live and recorded state (%s, #774)',
+    (form) => {
+      store().init(makeStoryData(), { clock: null, bag: null });
+      const clock = new Date(1000);
+      const bag = new Pack();
+      bag.add('key');
+      if (form === 'single') {
+        Story.set('clock', clock);
+        Story.set('bag', bag);
+      } else {
+        Story.set({ clock, bag });
+      }
+      Story.recordMoment();
+      clock.setTime(9000);
+      bag.add('external');
+      expect((Story.get('clock') as Date).getTime()).toBe(1000);
+      expect((Story.get('bag') as Pack).items).toEqual(['key']);
+      expect((Story.history.variables(0).clock as Date).getTime()).toBe(1000);
+      expect((Story.history.variables(0).bag as Pack).items).toEqual(['key']);
+      Story.goto('B');
+      Story.back();
+      expect((Story.get('clock') as Date).getTime()).toBe(1000);
+      expect((Story.get('bag') as Pack).items).toEqual(['key']);
+    },
+  );
+
   it('a refresh restores the change (and loses it when not recorded)', () => {
     store().init(makeStoryData(), { worn: 'none', gold: 0 });
     Story.goto('B');
@@ -629,7 +656,9 @@ describe('Story.recordMoment()', () => {
         return 1;
       },
     });
-    Story.set('odd', odd);
+    // Inject the failing getter through the low-level store: Story.set
+    // now takes its own data copy rather than retaining caller accessors.
+    store().setVariable('odd', odd);
     armed = true;
     expect(() => Story.recordMoment()).toThrow('getter failed');
     armed = false;

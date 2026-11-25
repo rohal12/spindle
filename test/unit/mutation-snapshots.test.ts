@@ -204,8 +204,8 @@ describe('state snapshots taken by running mutation code', () => {
     emitterOn('afternavigate', (to: unknown) => {
       if (to !== 'Room') return;
       const shared = { n: 3 };
-      Story.set('x', shared);
-      Story.set('y', shared);
+      // One setter call adopts the shared input as one graph.
+      Story.set({ x: shared, y: shared });
     });
     run('Story.goto("Room"); $hp = 1');
     expect(state().variables.x).toBe(state().variables.y);

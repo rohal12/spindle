@@ -1,6 +1,7 @@
 import { renderActionButton, useControlAction } from '../../hooks/use-action';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
+import { readPassageBody } from './arg-utils';
 
 defineMacro({
   name: 'dialog',
@@ -15,10 +16,7 @@ defineMacro({
 
     const { noclose } = ctx.args;
     const label = ctx.resolve!(ctx.args.label ?? '') ?? '';
-    const passageName = ctx
-      .collectText(children)
-      .trim()
-      .replace(/^["']|["']$/g, '');
+    const passageName = readPassageBody(ctx.collectText(children));
     const openDialog = () => setOpen(true);
 
     // Its own type: the menubar's Saves and Settings are `dialog` (#540)

@@ -28,21 +28,10 @@ const FOCUSABLE = [
  */
 function isAvailable(el: HTMLElement): boolean {
   if (!isRendered(el)) return false;
-  // Visibility and inertness of a host apply to its whole shadow tree too.
+  // Rendered visibility includes CSS overrides of hidden, until-found
+  // contents, closed details and shadow trees. Inertness is independent.
   for (let at: Element | null = el; at; at = composedParent(at)) {
-    if (at.hasAttribute('hidden') || at.hasAttribute('inert')) return false;
-    if (at.ownerDocument.defaultView?.getComputedStyle(at).display === 'none')
-      return false;
-    const parent = composedParent(at);
-    if (
-      parent?.localName === 'details' &&
-      !parent.hasAttribute('open') &&
-      at !==
-        Array.from(parent.children).find(
-          (child) => child.localName === 'summary',
-        )
-    )
-      return false;
+    if (at.hasAttribute('inert')) return false;
   }
   // Also covers controls disabled by a <fieldset disabled> ancestor
   return !el.matches(':disabled');

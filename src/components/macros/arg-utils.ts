@@ -74,6 +74,12 @@ export function readWholeQuoted(src: string): string | null {
   return quoted && quoted.end === src.length ? quoted.value : null;
 }
 
+/** A dialog body's passage name, optionally enclosed in matching quotes. */
+export function readPassageBody(src: string): string {
+  const name = src.trim();
+  return readWholeQuoted(name) ?? name;
+}
+
 /**
  * Strip an optional quote from each end of an unquoted-or-loosely-quoted
  * argument (`"Red`, `Red'`), leaving at least one character. This is the

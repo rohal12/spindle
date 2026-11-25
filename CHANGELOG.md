@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Copied class fields shadow inherited accessors without invoking them, including registered built-in subclasses and structural sharing (#773).
+- Root-level `Story.set()` copies mutable inputs into state, preserving aliases while protecting live state and recorded history from later caller mutations (#774).
+- Modal keyboard traversal and autofocus include controls revealed by CSS overrides of `hidden`, while continuing to skip hidden and inert controls (#775).
+- Dialog passage bodies preserve unpaired quotes and apostrophes; runtime and validation share the reader for optionally quoted names (#776).
+
 - Reader observations exclude text, actions and errors inside `content-visibility: hidden` subtrees where layout containment applies, including dialogs, shadow trees and `StoryContext`, while retaining visible inline and `display: contents` content (#767).
 - Reader observations honor author CSS that shows elements with the `hidden` attribute, while preserving unrevealed `hidden="until-found"` contents (#768).
 - Typewriter observations expose only the revealed text and errors, offering choices after their labels are revealed, consistently in browsers and headless sessions (#769).

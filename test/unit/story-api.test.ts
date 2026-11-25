@@ -12,6 +12,7 @@ import {
   resetIdCounters,
 } from '../../src/action-registry';
 import { getMacro } from '../../src/registry';
+import { executeMutation } from '../../src/execute-mutation';
 import { _resetObservedActions } from '../../src/observe/observe';
 
 function makePassage(pid: number, name: string, content: string): Passage {
@@ -78,6 +79,109 @@ describe('StoryAPI', () => {
         }
       },
     );
+
+    it('adopts a root batch as one graph across namespaces (#774)', () => {
+      const date = new Date(1000);
+      const buffer = new Uint8Array([7]);
+      const value = {
+        date,
+        buffer,
+        url: new URL('https://example.com/original'),
+        map: new Map([['date', date]]),
+        set: new Set([date]),
+      };
+      Story.set({ a: value, b: value, '%c': value });
+      date.setTime(9000);
+      buffer[0] = 9;
+      value.url.pathname = '/external';
+      value.map.clear();
+      value.set.clear();
+      const state = useStoryStore.getState();
+      const a = state.variables.a as typeof value;
+      expect(a).not.toBe(value);
+      expect(state.variables.b).toBe(a);
+      expect(state.transient.c).toBe(a);
+      expect(a.date.getTime()).toBe(1000);
+      expect(a.buffer[0]).toBe(7);
+      expect(a.url.pathname).toBe('/original');
+      expect(a.map.get('date')).toBe(a.date);
+      expect([...a.set]).toEqual([a.date]);
+    });
+
+    it('keeps self-cycles intact through later setters in mutation code (#774)', () => {
+      executeMutation(
+        'const c = {n: 1}; c.self = c; Story.set("cycle", c); Story.set("other", 2);',
+        {},
+        () => {},
+      );
+      const cycle = useStoryStore.getState().variables.cycle as {
+        self: unknown;
+      };
+      expect(cycle.self).toBe(cycle);
+    });
+
+    it('takes a new snapshot of an external input on each separate call (#774)', () => {
+      const clock = new Date(1000);
+      Story.set('a', clock);
+      clock.setTime(2000);
+      Story.set('b', clock);
+      expect((Story.get('a') as Date).getTime()).toBe(1000);
+      expect((Story.get('b') as Date).getTime()).toBe(2000);
+    });
+
+    it('keeps references to values already owned by the store (#774)', () => {
+      Story.set('a', { n: 1 });
+      const owned = useStoryStore.getState().variables.a;
+      Story.set({ b: owned, '%c': { nested: owned } });
+      const state = useStoryStore.getState();
+      expect(state.variables.b).toBe(state.variables.a);
+      expect((state.transient.c as { nested: unknown }).nested).toBe(
+        state.variables.a,
+      );
+    });
+
+    it.each(['b', 'holder.slot'])(
+      'adopts existing inputs before replacing their source roots (%s, #774)',
+      (target) => {
+        Story.set({ a: { n: 1 }, b: { n: 2 }, holder: { slot: null } });
+        const { a, b } = useStoryStore.getState().variables;
+        Story.set({ a: b, [target]: a });
+        const state = useStoryStore.getState();
+        expect(state.variables.a).toEqual({ n: 2 });
+        expect(Story.get(target)).toEqual({ n: 1 });
+        expect(Story.get(target)).not.toBe(state.variables.a);
+      },
+    );
+
+    it('keeps references to store-owned inputs supplied inside mutation code (#774)', () => {
+      Story.set('a', { n: 1 });
+      const globals = globalThis as Record<string, unknown>;
+      globals.ownedForSetter = useStoryStore.getState().variables.a;
+      try {
+        executeMutation(
+          'Story.set("b", globalThis.ownedForSetter); $a.n = 2;',
+          {},
+          () => {},
+        );
+        const state = useStoryStore.getState();
+        expect(state.variables.b).toBe(state.variables.a);
+        expect(state.variables.b).toEqual({ n: 2 });
+      } finally {
+        delete globals.ownedForSetter;
+      }
+    });
+
+    it('keeps aliases to pending mutation values through root setters (#774)', () => {
+      executeMutation(
+        '$a = {n: 1}; Story.set({b: $a, "%c": $a}); $a.n = 2;',
+        {},
+        () => {},
+      );
+      const state = useStoryStore.getState();
+      expect(state.variables.a).toEqual({ n: 2 });
+      expect(state.variables.b).toBe(state.variables.a);
+      expect(state.transient.c).toBe(state.variables.a);
+    });
 
     it('gets and sets variables via the store', () => {
       useStoryStore.getState().setVariable('gold', 100);

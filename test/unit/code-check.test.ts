@@ -263,6 +263,23 @@ describe('the story-start check of passage names', () => {
   });
 
   it.each([
+    "James'",
+    "'Tis the Season",
+    'James"',
+    '"Tis the Season',
+    "'",
+    '"',
+    '\'Mixed"',
+  ])(
+    'preserves unpaired quotes in dialog body references: %s (#776)',
+    (name) => {
+      expect(
+        storyErrors({ Start: `{dialog "Open"}${name}{/dialog}`, [name]: '' }),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
     [
       '{link "Go" Kitchen}x{/link}',
       'column 12: Unquoted passage name in {link "Go" Kitchen}: write "Kitchen" (a passage name is a quoted string or an expression)',
