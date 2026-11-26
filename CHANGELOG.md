@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Input-triggered watchers that replace loop rows now initialize the replacement rows' locals and mount-only macros, while ordinary input edits preserve focus (#778).
+- Static macro discovery indexes identifier occurrences and lexical scopes across distinct configuration names, and bounds mutating-callee checks instead of rescanning script prefixes (#779).
+- Modal Tab traversal and autofocus skip `display: contents` candidates while keeping their focusable descendants reachable in both directions (#780).
+
 - Copied class fields shadow inherited accessors without invoking them, including registered built-in subclasses and structural sharing (#773).
 - Root-level `Story.set()` copies mutable inputs into state, preserving aliases while protecting live state and recorded history from later caller mutations (#774).
 - Modal keyboard traversal and autofocus include controls revealed by CSS overrides of `hidden`, while continuing to skip hidden and inert controls (#775).

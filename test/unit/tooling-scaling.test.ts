@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { Bindings } from '../../src/js-bindings';
 import {
   discoverMacros,
   tokenizeMarkupTolerant,
@@ -140,6 +141,31 @@ it('resolves a reused macro config without repeatedly scanning its uses (#622)',
   expect(bindingScans).toBeLessThanOrEqual(1);
 });
 
+it('indexes distinct config identifiers without one full scan per name (#779)', () => {
+  const count = 1000;
+  const source = Array.from(
+    { length: count },
+    (_, i) =>
+      `const c${i}={name:"macro${i}",render(){return null}};Story.defineMacro(c${i});`,
+  ).join('\n');
+  const matchAll = String.prototype.matchAll;
+  let fullScans = 0;
+  String.prototype.matchAll = function (this: string, pattern: RegExp) {
+    if (this.length === source.length) fullScans++;
+    return matchAll.call(this, pattern);
+  };
+  let found;
+  try {
+    found = discoverMacros(source);
+  } finally {
+    String.prototype.matchAll = matchAll;
+  }
+  expect(found?.map(({ name }) => name)).toEqual(
+    Array.from({ length: count }, (_, i) => `macro${i}`),
+  );
+  expect(fullScans).toBeLessThan(10);
+});
+
 it.each([
   ['arrays', '['.repeat(3000) + '0' + ']'.repeat(3000)],
   ['objects', '{extra:'.repeat(3000) + '0' + '}'.repeat(3000)],
@@ -240,3 +266,57 @@ it.each([false, true])(
     expect(scans).toBeLessThan(2000);
   },
 );
+
+it('bounds scope-group lookups across many distinct macro configs (#779)', () => {
+  const count = 1000;
+  const uses: { name: string; at: number; object: number }[] = [];
+  let source = '';
+  for (let i = 0; i < count; i++) {
+    const name = `c${i}`;
+    const line = `const ${name}={};use(${name});\n`;
+    uses.push({
+      name,
+      at: source.length + line.lastIndexOf(name),
+      object: source.length + line.indexOf('{'),
+    });
+    source += line;
+  }
+  const bindings = new Bindings(source);
+  // Count interval inspections, independent of machine speed and JIT warmup.
+  const groups = Reflect.get(bindings, 'groups') as { open: number }[];
+  let reads = 0;
+  for (const group of groups) {
+    const open = group.open;
+    Object.defineProperty(group, 'open', {
+      get() {
+        reads++;
+        return open;
+      },
+    });
+  }
+  const properties = new Set<string>();
+  for (const use of uses) {
+    expect(bindings.objectOf(use.name, use.at, properties)).toBe(use.object);
+  }
+  expect(reads).toBeLessThan(count * 100);
+});
+
+it('checks mutating callees without scanning every preceding statement (#779)', () => {
+  const count = 1000;
+  const source = Array.from(
+    { length: count },
+    (_, i) => `const c${i}={name:"macro${i}"};Story.defineMacro(c${i});`,
+  ).join('\n');
+  const test = RegExp.prototype.test;
+  let characters = 0;
+  RegExp.prototype.test = function (text: string) {
+    if (this.source.startsWith('(?:Object|Reflect)')) characters += text.length;
+    return test.call(this, text);
+  };
+  try {
+    expect(discoverMacros(source)).toHaveLength(count);
+  } finally {
+    RegExp.prototype.test = test;
+  }
+  expect(characters).toBeLessThan(source.length * 2);
+});
