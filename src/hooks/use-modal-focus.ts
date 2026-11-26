@@ -28,6 +28,10 @@ const FOCUSABLE = [
  */
 function isAvailable(el: HTMLElement): boolean {
   if (!isRendered(el)) return false;
+  // Boxless containers can render focusable children, but cannot take focus
+  // themselves. Keep traversing their descendants in focusables().
+  const view = el.ownerDocument.defaultView ?? window;
+  if (view.getComputedStyle(el).display === 'contents') return false;
   // Rendered visibility includes CSS overrides of hidden, until-found
   // contents, closed details and shadow trees. Inertness is independent.
   for (let at: Element | null = el; at; at = composedParent(at)) {

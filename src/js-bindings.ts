@@ -9,7 +9,6 @@
  * cannot place, it counts as a declaration of unknown value: a parameter, a
  * pattern, an assignment. Better no answer than another declaration's.
  */
-import { escapeRegExp } from './components/macros/arg-utils';
 
 type Kind = '{' | '(' | '[';
 
@@ -19,6 +18,44 @@ interface Group {
   /** The closing bracket, or the end of the text if there is none. */
   close: number;
   parent: Group | undefined;
+}
+
+/** Search arbitrary (also recovered, overlapping) bracket intervals. */
+class GroupIndex {
+  private readonly size: number;
+  private readonly ends: number[];
+
+  constructor(private readonly groups: readonly Group[]) {
+    let size = 1;
+    while (size < groups.length) size *= 2;
+    this.size = size;
+    this.ends = new Array<number>(size * 2).fill(-1);
+    for (let i = 0; i < groups.length; i++)
+      this.ends[size + i] = groups[i]!.close;
+    for (let i = size - 1; i > 0; i--) {
+      this.ends[i] = Math.max(this.ends[i * 2]!, this.ends[i * 2 + 1]!);
+    }
+  }
+
+  /** Latest opener before `at` whose closer follows it, in logarithmic time. */
+  containing(at: number): Group | undefined {
+    const find = (
+      node: number,
+      start: number,
+      end: number,
+    ): Group | undefined => {
+      if (
+        start >= this.groups.length ||
+        this.groups[start]!.open >= at ||
+        this.ends[node]! <= at
+      )
+        return undefined;
+      if (end - start === 1) return this.groups[start];
+      const mid = (start + end) >>> 1;
+      return find(node * 2 + 1, mid, end) ?? find(node * 2, start, mid);
+    };
+    return find(1, 0, this.size);
+  }
 }
 
 /** The text a name is visible in: `[start, end)`. */
@@ -75,7 +112,9 @@ const isWordChar = (c: string | undefined) => !!c && /[\w$]/.test(c);
 
 /** Resolve the declaration of variables in `code` (see blankedCode in macro-discovery). */
 export class Bindings {
+  private readonly identifiers = new Map<string, number[]>();
   private readonly groups: Group[] = [];
+  private readonly groupIndexes = new Map<Kind | undefined, GroupIndex>();
   private readonly byOpen = new Map<number, Group>();
   private readonly byClose = new Map<number, Group>();
   private readonly functions = new Map<Group, boolean>();
@@ -88,6 +127,23 @@ export class Bindings {
 
   constructor(private readonly code: string) {
     this.readGroups();
+    for (const kind of [undefined, '{', '(', '['] as const) {
+      this.groupIndexes.set(
+        kind,
+        new GroupIndex(
+          kind === undefined
+            ? this.groups
+            : this.groups.filter((g) => g.kind === kind),
+        ),
+      );
+    }
+    // One source scan serves every config name, including distinct names.
+    // Keep the same word boundaries as the binding reader (also for `$`).
+    for (const match of code.matchAll(/[\w$]+/g)) {
+      const positions = this.identifiers.get(match[0]) ?? [];
+      positions.push(match.index);
+      this.identifiers.set(match[0], positions);
+    }
   }
 
   /**
@@ -119,13 +175,9 @@ export class Bindings {
     name: string,
     properties: ReadonlySet<string>,
   ): Binding[] {
-    const { code } = this;
-    const escaped = escapeRegExp(name);
     const bindings: Binding[] = [];
-    for (const m of code.matchAll(
-      new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`, 'g'),
-    )) {
-      const binding = this.bindingAt(m.index, name.length, properties);
+    for (const at of this.identifiers.get(name) ?? []) {
+      const binding = this.bindingAt(at, name.length, properties);
       if (binding) bindings.push(binding);
     }
     // A write is to the declaration it sees: in the scope of that one
@@ -194,14 +246,7 @@ export class Bindings {
 
   /** The innermost group that has `index` inside it, of this kind if given. */
   private innermost(index: number, kind?: Kind): Group | undefined {
-    const { groups } = this;
-    for (let k = groups.length - 1; k >= 0; k--) {
-      const g = groups[k]!;
-      if (g.open < index && index < g.close && (!kind || g.kind === kind)) {
-        return g;
-      }
-    }
-    return undefined;
+    return this.groupIndexes.get(kind)!.containing(index);
   }
 
   /**
@@ -618,10 +663,13 @@ export class Bindings {
   /** `Object.assign(x, …)` and the like: the name is the first argument. */
   private isMutatedArgument(before: number, end: number): boolean {
     const group = this.byOpen.get(before);
-    return (
-      group?.kind === '(' &&
-      ',)'.includes(this.code.charAt(end)) &&
-      MUTATING_CALL_RE.test(this.code.slice(0, group.open))
-    );
+    if (group?.kind !== '(' || !',)'.includes(this.code.charAt(end)))
+      return false;
+    // The regexp only needs the callee, not every preceding statement.
+    const method = this.wordBefore(this.backFrom(group.open) + 1);
+    const dot = this.backFrom(method.start);
+    if (this.code.charAt(dot) !== '.') return false;
+    const owner = this.wordBefore(this.backFrom(dot) + 1);
+    return MUTATING_CALL_RE.test(this.code.slice(owner.start, group.open));
   }
 }

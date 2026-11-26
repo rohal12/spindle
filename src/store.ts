@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { StateCreator } from 'zustand/vanilla';
 import {
   current,
+  produce,
   enableMapSet,
   enablePatches,
   isDraft,
@@ -66,6 +67,7 @@ import {
   type PathChange,
 } from './structural';
 import { getByPath, setByPath } from './utils/object-path';
+import { notifyItemEdits } from './utils/control-edits';
 import { isIndexKey } from './utils/value-kinds';
 import {
   noPassageError,
@@ -1297,10 +1299,12 @@ function storyStateGuard(
               Object.assign(draft, updater);
             };
       const routed = routeStoreUpdate(recipe);
-      set((draft) => {
+      const before = get();
+      const next = produce(before, (draft) => {
         (routed ?? recipe)(draft);
         keepNamespacesBare(draft);
       });
+      notifyItemEdits(before, next, () => set(next));
     }) as typeof set;
     api.setState = guarded;
     const state = creator(guarded, get, api);
