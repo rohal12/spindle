@@ -1,5 +1,11 @@
 import { useEffect, useId, useState } from 'preact/hooks';
-import { settings, subscribeSettings, type SettingDef } from '../../settings';
+import { useSyncExternalStore } from 'preact/compat';
+import {
+  settings,
+  subscribeSettings,
+  getSettingsRevision,
+  type SettingDef,
+} from '../../settings';
 import { defineMacro } from '../../define-macro';
 
 function SettingRow({
@@ -117,6 +123,7 @@ function SettingsControlsContent({
   className?: string;
   id?: string;
 }) {
+  useSyncExternalStore(subscribeSettings, getSettingsRevision);
   const defs = settings.getDefinitions();
 
   return (

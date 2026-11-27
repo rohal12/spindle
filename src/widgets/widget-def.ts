@@ -131,7 +131,7 @@ function nameSpan(rawArgs: string): [number, number] {
  */
 export function widgetDefinitions(
   passages: Iterable<WidgetPassage>,
-  parametersOf: ParametersOf = registeredParameters,
+  parametersOf: ParametersOf = registeredParameters(),
 ): WidgetDefinition[] {
   const list = [...passages];
   const scan = (replacesDo: boolean): WidgetDefinition[] => {
@@ -244,7 +244,7 @@ export function effectiveWidgetDefinitions(
  */
 export function effectiveWidgets(
   passages: Iterable<WidgetPassage>,
-  parametersOf: ParametersOf = registeredParameters,
+  parametersOf: ParametersOf = registeredParameters(),
 ): WidgetDefinition[] {
   return effectiveWidgetDefinitions(widgetDefinitions(passages, parametersOf));
 }
@@ -252,7 +252,7 @@ export function effectiveWidgets(
 /** The names of the block widgets among the effectiveWidgets. */
 export function blockWidgetNames(
   passages: Iterable<WidgetPassage>,
-  parametersOf: ParametersOf = registeredParameters,
+  parametersOf: ParametersOf = registeredParameters(),
 ): string[] {
   return effectiveWidgets(passages, parametersOf)
     .filter((def) => def.block)

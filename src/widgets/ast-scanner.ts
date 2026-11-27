@@ -2,13 +2,12 @@ import type { ASTNode } from '../markup/ast';
 import type { Token } from '../markup/tokens';
 import { codeAndText, parameterLookup, type ParametersOf } from '../code-check';
 import { parseMarkup, type MarkupHooks } from '../markup/parse';
-import { getMacroRegistry, getMacroParameters } from '../registry';
+import { getMacroRegistry } from '../registry';
 import { MarkupExpansionBudget } from '../markup/expansion-budget';
 
-/** The declared parameters of the macros registered so far. */
-export const registeredParameters: ParametersOf = (name) =>
-  parameterLookup(getMacroRegistry())(name);
-registeredParameters.source = getMacroParameters.source;
+/** Snapshot effective macro metadata once per scan. */
+export const registeredParameters = (): ParametersOf =>
+  parameterLookup(getMacroRegistry());
 
 /**
  * Whether the text of an attribute value or macro label renders a
@@ -43,7 +42,7 @@ function textContainsChildren(
  */
 export function tokenTextContainsChildren(
   token: Token,
-  parametersOf: ParametersOf = registeredParameters,
+  parametersOf: ParametersOf = registeredParameters(),
   src = '',
   hooks?: Partial<MarkupHooks>,
   budget?: MarkupExpansionBudget,
@@ -68,7 +67,7 @@ export function tokenTextContainsChildren(
  */
 export function astContainsChildren(
   nodes: ASTNode[],
-  parametersOf: ParametersOf = registeredParameters,
+  parametersOf: ParametersOf = registeredParameters(),
   hooks?: Partial<MarkupHooks>,
   budget?: MarkupExpansionBudget,
 ): boolean {
