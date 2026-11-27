@@ -115,6 +115,8 @@ The `{settings}` macro renders a button that opens the settings dialog. It only 
 
 The settings dialog is automatically included in the default menubar. If you use a custom `StoryInterface`, add `{settings}` where you want it.
 
+Settings can also be registered during deferred startup or later in the story. The button appears when the first setting is registered, and any mounted `{settings-controls}` refreshes when a setting is added or redefined. Redefining a setting updates its label, description and control configuration while preserving its current value. Registration does not emit `settingchanged`.
+
 ## Reading Settings
 
 Read a setting's current value from JavaScript:

@@ -90,4 +90,35 @@ describe('settingchanged from the settings controls', () => {
     act(() => settings.set('music', false));
     expect(cb).toHaveBeenCalledExactlyOnceWith('music', false);
   });
+
+  it('refreshes mounted definitions without emitting settingchanged (#782)', () => {
+    const el = renderControls();
+    const cb = vi.fn();
+    on('settingchanged', cb);
+    act(() => {
+      settings.set('music', false);
+    });
+    cb.mockClear();
+    act(() => {
+      settings.addToggle('music', {
+        label: 'Background music',
+        description: 'Play during passages',
+        default: true,
+      });
+      settings.addRange('effects', {
+        label: 'Effects',
+        min: 0,
+        max: 10,
+        step: 1,
+        default: 5,
+      });
+    });
+    expect(el.textContent).toContain('Background music');
+    expect(el.textContent).toContain('Play during passages');
+    expect(el.querySelector('input[type="range"]')).not.toBeNull();
+    expect(
+      el.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked,
+    ).toBe(false);
+    expect(cb).not.toHaveBeenCalled();
+  });
 });

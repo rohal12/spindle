@@ -15,6 +15,7 @@ import { Passage, renderPassageContent, type PassageProps } from '../Passage';
 import { defineMacro } from '../../define-macro';
 import { resolveTransition, type ResolvedTransition } from '../../transition';
 import { skipString } from './arg-utils';
+import { InterfaceContext } from '../../markup/render';
 
 /** Input types whose `value` is not what the user sees or edits. */
 const VALUELESS_INPUTS = new Set([
@@ -1107,7 +1108,9 @@ defineMacro({
             key={`ready-${navigationId}`}
             hidden
           >
-            {renderPassageContent(readyPassage)}
+            <InterfaceContext.Provider value={false}>
+              {renderPassageContent(readyPassage)}
+            </InterfaceContext.Provider>
           </div>
         )}
         <div

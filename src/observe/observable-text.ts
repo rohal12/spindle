@@ -116,10 +116,14 @@ export function observableText(
     const href =
       use.getAttribute('href') ??
       use.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-    if (!href?.startsWith('#') || href.length === 1) return;
+    if (!href) return;
     let id: string;
     try {
-      id = decodeURIComponent(href.slice(1));
+      const url = new URL(href, use.baseURI);
+      const current = new URL(use.ownerDocument.URL);
+      if (url.href.split('#')[0] !== current.href.split('#')[0]) return;
+      if (url.hash.length <= 1) return;
+      id = decodeURIComponent(url.hash.slice(1));
     } catch {
       return;
     }

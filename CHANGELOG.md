@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `PassageReady` watchers no longer become persistent interface watchers when loading an earlier checkpoint (#547).
+- Reader observations resolve absolute and relative same-document SVG `<use>` URLs while excluding external documents (#764).
+- Registering or redefining settings refreshes the Settings button and mounted controls, including during deferred startup, without emitting `settingchanged` (#782).
+- Widget registration and discovery reuse one effective macro parameter lookup per scan instead of rebuilding it for every body call (#783).
+
 - Input-triggered watchers that replace loop rows now initialize the replacement rows' locals and mount-only macros, while ordinary input edits preserve focus (#778).
 - Static macro discovery indexes identifier occurrences and lexical scopes across distinct configuration names, and bounds mutating-callee checks instead of rescanning script prefixes (#779).
 - Modal Tab traversal and autofocus skip `display: contents` candidates while keeping their focusable descendants reachable in both directions (#780).

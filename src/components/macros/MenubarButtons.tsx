@@ -1,8 +1,9 @@
 import { actionAttributes, useControlAction } from '../../hooks/use-action';
 import { useState } from 'preact/hooks';
+import { useSyncExternalStore } from 'preact/compat';
 import { useStoryStore } from '../../store';
 import { useStoryFields } from '../../hooks/use-story-fields';
-import { settings } from '../../settings';
+import { settings, subscribeSettings } from '../../settings';
 import { quickLoad, quickSave } from '../../quick-actions';
 import { defineMacro } from '../../define-macro';
 import { PassageDialog } from '../PassageDialog';
@@ -15,7 +16,7 @@ interface MenubarActionConfig {
   actionType: ActionType;
   title?: string;
   confirm?: string;
-  hidden?: () => boolean;
+  useHidden?: () => boolean;
   setup?: () => {
     perform: () => void | Promise<void>;
     disabled?: boolean;
@@ -34,62 +35,69 @@ function hotkeyTitle(label: string, key: string | null): string {
 }
 
 export function defineMenubarAction(config: MenubarActionConfig) {
+  // Visibility can change after mount. Keep the button's hooks and action
+  // registration in a child whose lifetime follows that visibility.
+  function Button({ className, id }: { className?: string; id?: string }) {
+    const [dialogOpen, setDialogOpen] = useState(false);
+
+    const setup = config.setup?.() ?? { perform: () => {} };
+    const { disabled, title = config.title } = setup;
+
+    const cls = className ? `menubar-button ${className}` : 'menubar-button';
+
+    const perform = config.dialog
+      ? () => setDialogOpen(true)
+      : config.confirm
+        ? () => {
+            if (confirm(config.confirm!)) setup.perform();
+          }
+        : setup.perform;
+
+    const action = useControlAction({
+      type: config.actionType,
+      key: config.name,
+      authorId: id,
+      label: typeof config.label === 'string' ? config.label : config.name,
+      disabled,
+      perform: config.dialog ? () => setDialogOpen(true) : setup.perform,
+    });
+
+    return (
+      <>
+        <button
+          type="button"
+          {...actionAttributes(action, { id, cls })}
+          onClick={perform}
+          disabled={disabled}
+          title={title}
+        >
+          {config.label}
+        </button>
+        {config.dialog && dialogOpen && (
+          <PassageDialog
+            passageName={config.dialog.passageName}
+            fallbackMarkup={config.dialog.fallbackMarkup}
+            panelClass={config.dialog.panelClass}
+            label={
+              typeof config.label === 'string' ? config.label : config.name
+            }
+            onClose={() => setDialogOpen(false)}
+            showCloseButton={config.dialog.showCloseButton}
+          />
+        )}
+      </>
+    );
+  }
+
   defineMacro({
     name: config.name,
     interpolate: true,
     render(_, ctx) {
-      if (config.hidden?.()) return null;
-
-      const [dialogOpen, setDialogOpen] = useState(false);
-
-      const setup = config.setup?.() ?? { perform: () => {} };
-      const { disabled, title = config.title } = setup;
-
-      const cls = ctx.className
-        ? `menubar-button ${ctx.className}`
-        : 'menubar-button';
-
-      const perform = config.dialog
-        ? () => setDialogOpen(true)
-        : config.confirm
-          ? () => {
-              if (confirm(config.confirm!)) setup.perform();
-            }
-          : setup.perform;
-
-      const action = useControlAction({
-        type: config.actionType,
-        key: config.name,
-        authorId: ctx.id,
-        label: typeof config.label === 'string' ? config.label : config.name,
-        disabled,
-        perform: config.dialog ? () => setDialogOpen(true) : setup.perform,
-      });
-
-      return (
-        <>
-          <button
-            type="button"
-            {...actionAttributes(action, { id: ctx.id, cls })}
-            onClick={perform}
-            disabled={disabled}
-            title={title}
-          >
-            {config.label}
-          </button>
-          {config.dialog && dialogOpen && (
-            <PassageDialog
-              passageName={config.dialog.passageName}
-              fallbackMarkup={config.dialog.fallbackMarkup}
-              panelClass={config.dialog.panelClass}
-              label={
-                typeof config.label === 'string' ? config.label : config.name
-              }
-              onClose={() => setDialogOpen(false)}
-              showCloseButton={config.dialog.showCloseButton}
-            />
-          )}
-        </>
+      return config.useHidden?.() ? null : (
+        <Button
+          className={ctx.className}
+          id={ctx.id}
+        />
       );
     },
   });
@@ -173,7 +181,7 @@ defineMenubarAction({
   name: 'settings',
   label: 'Settings',
   actionType: 'dialog',
-  hidden: () => !settings.hasAny(),
+  useHidden: () => !useSyncExternalStore(subscribeSettings, settings.hasAny),
   dialog: {
     passageName: 'Settings',
     fallbackMarkup: '{settings-controls}',

@@ -74,6 +74,21 @@ describe('observableText', () => {
   });
 
   describe('hidden content', () => {
+    it('resolves same-document SVG URLs against the element base URL (#764)', () => {
+      const doc = document.implementation.createHTMLDocument('SVG');
+      // A base may point away from this document: even a bare fragment then
+      // references an external document and must not expose local definitions.
+      const base = doc.createElement('base');
+      base.href = 'https://example.test/elsewhere.svg';
+      doc.head.append(base);
+      doc.body.innerHTML =
+        '<svg><defs><text id="label">Local</text><text id="external">External</text></defs>' +
+        '<use href="#external"/><use href="' +
+        doc.URL +
+        '#label"/></svg>';
+      expect(observableText(doc.body)).toBe('Local');
+    });
+
     it('inherits SVG use visibility without running cloned custom elements', () => {
       let constructions = 0;
       customElements.define(

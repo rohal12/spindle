@@ -38,8 +38,16 @@ let storageLoaded = false;
 let unsubscribeStoryData: (() => void) | null = null;
 
 const listeners = new Set<() => void>();
+let revision = 0;
 
-/** Call `listener` after a setting changes; returns the unsubscribe. */
+export const getSettingsRevision = (): number => revision;
+
+function notify(): void {
+  revision++;
+  for (const listener of [...listeners]) listener();
+}
+
+/** Call `listener` after a definition or value changes; returns the unsubscribe. */
 export function subscribeSettings(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -98,6 +106,7 @@ function define(name: string, def: SettingDef): void {
   definitions.set(name, def);
   if (!hasOwn(values, name)) values[name] = def.config.default;
   loadFromStorage();
+  notify();
 }
 
 /** The value of setting `name` if it has the type of `fallback`, else that. */
@@ -148,7 +157,7 @@ export const settings = {
     values[name] = value;
     persist();
     if (unchanged) return;
-    for (const listener of [...listeners]) listener();
+    notify();
     emit('settingchanged', name, value);
   },
 
