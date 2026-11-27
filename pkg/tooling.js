@@ -27,6 +27,7 @@ export {
   parseBoundVariable,
   effectiveWidgetDefinitions,
   findCodeEnd,
+  indexStrictCodeEnds,
   lexJs,
   lexTemplate,
   scanStringLiteral,

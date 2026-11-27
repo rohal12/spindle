@@ -316,6 +316,18 @@ export declare function findCodeEnd(
 ): number;
 
 /**
+ * Reusable strict expression-boundary queries for one immutable source.
+ * The returned function matches `findCodeEnd(src, start)` (default options),
+ * with UTF-16 offsets into `src`. Query just after each `{` to prune
+ * unmatched plain-code prefixes without rescanning their suffixes. Results
+ * are cached per start; a failed outer query does not hide an inner span.
+ * There is no lenient markup recovery or custom `goal`/`stop` option.
+ */
+export declare function indexStrictCodeEnds(
+  src: string,
+): (start: number) => number;
+
+/**
  * Scan the `"…"` or `'…'` string literal opening at `start`: `end` is just
  * past its closing quote, or `src.length` when unterminated (`closed` false).
  */

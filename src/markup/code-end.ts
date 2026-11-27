@@ -206,13 +206,15 @@ export const defaultCodeEnd: CodeEnd = jsCodeEnd();
 
 /**
  * Index possible brace ends for repeated recovery attempts in one template.
- * Within plain code, nested braces must close first. At a quote, slash or
- * escape we stop making lexical assumptions, but the remaining raw `}`s
- * still bound how many pending braces could close. Indexing visits each
- * opener once, so unmatched plain-code openers can skip suffix scans.
+ * Within plain code, nested braces must close first. At a quote, slash,
+ * escape or HTML-style comment we stop making lexical assumptions, but the
+ * remaining raw `}`s still bound how many pending braces could close.
+ * Indexing visits each opener once, so unmatched plain-code openers can
+ * skip suffix scans.
  */
 export function indexCodeEnds(
   input: string,
+  closeBrace: CodeEnd['closeBrace'] = defaultCodeEnd.closeBrace,
 ): (start: number, codeStart?: number, limit?: number) => number {
   const possible = new Set<number>();
   const pending: number[] = [];
@@ -241,7 +243,16 @@ export function indexCodeEnds(
       remaining--;
       const open = pending.pop();
       if (open !== undefined) possible.add(open);
-    } else if (/['"`/\\]/.test(c)) uncertain();
+    } else if (
+      /['"`/\\]/.test(c) ||
+      input.startsWith('<!--', i) ||
+      input.startsWith('-->', i)
+    ) {
+      // Acorn accepts HTML-style line comments in script code. Their
+      // braces are as uncertain as those after a slash; do not parse the
+      // comment here, or assume --> needs to be a comment at this start.
+      uncertain();
+    }
   }
   return (start, codeStart = start, limit = input.length) => {
     if (start > lastBrace || codeStart >= limit) return -1;
@@ -256,7 +267,7 @@ export function indexCodeEnds(
       possible.has(start - 1) ||
       input.slice(start, codeStart).includes('{')
     ) {
-      return defaultCodeEnd.closeBrace(source, codeStart, start);
+      return closeBrace(source, codeStart, start);
     }
     // Acorn locates its starting line and syntax errors by scanning the
     // prefix. Recovery must not hand it the whole passage for every opener.
@@ -268,5 +279,30 @@ export function indexCodeEnds(
       'expression',
     );
     return end < 0 ? -1 : base + end;
+  };
+}
+
+/**
+ * Reusable strict expression-boundary queries over one immutable source.
+ * Results match `findCodeEnd(input, start)`, without markup's lenient
+ * fallback. The shared brace index prunes unmatched plain-code prefixes;
+ * each queried start is cached independently, including failed queries.
+ */
+export function indexStrictCodeEnds(input: string): (start: number) => number {
+  const read = indexCodeEnds(input, (source, start) => {
+    // Acorn computes error locations by reading the prefix. Keep just one
+    // preceding character so a leading #! does not become a hashbang.
+    const base = Math.max(0, start - 1);
+    const end = findCodeEnd(source.slice(base), start - base);
+    return end < 0 ? -1 : base + end;
+  });
+  const ends = new Map<number, number>();
+  return (start) => {
+    let end = ends.get(start);
+    if (end === undefined) {
+      end = read(start);
+      ends.set(start, end);
+    }
+    return end;
   };
 }
