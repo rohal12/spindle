@@ -8,6 +8,72 @@ import {
 import type { StoryData } from '../../src/parser';
 
 describe('parseMacroArgs', () => {
+  it.each([
+    ['a', 'b', 'c'],
+    ['a', 'c', 'b'],
+    ['b', 'a', 'c'],
+    ['b', 'c', 'a'],
+    ['c', 'a', 'b'],
+    ['c', 'b', 'a'],
+  ])('consumes boundary flag runs in order %s %s %s (#789)', (...flags) => {
+    const declared = ['a', 'b', 'c'].map((name) => ({
+      name,
+      type: 'flag' as const,
+    }));
+    expect(parseMacroArgs(flags.join(' '), declared)).toEqual({
+      a: true,
+      b: true,
+      c: true,
+    });
+    const params = [
+      ...declared,
+      { name: 'label', type: 'text', required: true },
+    ] as const;
+    for (let split = 0; split <= flags.length; split++) {
+      const source = [
+        ...flags.slice(0, split),
+        '"Hello"',
+        ...flags.slice(split),
+      ].join(' ');
+      const toolingSpans = new Map();
+      expect(parseMacroArgs(source, params, undefined, toolingSpans)).toEqual({
+        a: true,
+        b: true,
+        c: true,
+        label: 'Hello',
+      });
+      for (const param of params) {
+        const [start, end] = toolingSpans.get(param);
+        expect(source.slice(start, end)).toBe(
+          param.name === 'label' ? '"Hello"' : param.name,
+        );
+      }
+    }
+  });
+
+  it('keeps operands and the lone required argument beside multiple flags (#789)', () => {
+    const params = [
+      { name: 'compact', type: 'flag' },
+      { name: 'muted', type: 'flag' },
+      { name: 'value', type: 'expression', required: true },
+    ] as const;
+    expect(parseMacroArgs('compact muted', params)).toEqual({
+      compact: false,
+      muted: true,
+      value: 'compact',
+    });
+    expect(parseMacroArgs('compact + muted', params)).toEqual({
+      compact: false,
+      muted: false,
+      value: 'compact + muted',
+    });
+    expect(parseMacroArgs('compact "a" + muted', params)).toEqual({
+      compact: true,
+      muted: false,
+      value: '"a" + muted',
+    });
+  });
+
   it('keeps a leading-dot number after a flag distinct from member access (#594)', () => {
     const params = [
       { name: 'inline', type: 'flag' },

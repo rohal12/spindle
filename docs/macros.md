@@ -332,6 +332,8 @@ On restart, `StoryVariables` defaults are restored and `StoryInit` is re-execute
 
 All form inputs bind to a story variable and update it in real time.
 
+Inside an HTML `<form>`, a reset button or `form.reset()` restores each input's initial displayed value and updates its bound variable after the native reset completes. Cancelling the form's `reset` event leaves the values unchanged.
+
 Quoted placeholders, labels and values accept `\"` (or `\'`) for a literal quote and `\\` for a literal backslash.
 
 ### `{textbox}`

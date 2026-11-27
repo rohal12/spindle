@@ -972,7 +972,7 @@ function HtmlNodeRenderer({ node }: { node: HtmlNode }) {
     );
   }
   const element = authorElement(
-    namespace === 'svg' ? svgTagName(node.tag) : node.tag,
+    namespace === 'svg' ? svgTagName(node.tag) : tag,
     props,
     children,
     namespace === 'math',

@@ -7,6 +7,23 @@ const fmt = (body: string, options: Parameters<typeof formatPassage>[1] = {}) =>
   formatPassage(body, { prettier, ...options });
 
 describe('formatPassage', () => {
+  it('bounds long interior whitespace while preserving hard breaks (#790)', async () => {
+    const line = 'a' + ' '.repeat(80_000) + 'z';
+    const source = line + '  \nnext\t \n \t\n\t';
+    const start = performance.now();
+    expect(await formatPassage(source)).toBe(line + '  \nnext\n');
+    expect(performance.now() - start).toBeLessThan(1500);
+  });
+
+  it.each(['a  \n \t\n  ', 'a\t\n\t', 'a\u00a0\n \n', ' \t\n\t\n'])(
+    'normalizes trailing blank lines in %j (#790)',
+    async (source) => {
+      const output = await formatPassage(source);
+      expect(await formatPassage(output)).toBe(output);
+      expect(output).toBe(source.trimEnd() + '\n');
+    },
+  );
+
   it.each([false, true])(
     'preserves SVG text whitespace (Prettier: %s) (#569)',
     async (usePrettier) => {

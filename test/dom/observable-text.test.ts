@@ -39,6 +39,14 @@ describe('observableText', () => {
   afterEach(() => clearActions());
 
   describe('layout', () => {
+    it('bounds trimming of interior preformatted whitespace (#792)', () => {
+      const line = '  a' + ' '.repeat(120_000) + 'z';
+      const root = fixture('<pre>\n' + line + '\t \n\n</pre>');
+      const start = performance.now();
+      expect(observableText(root)).toBe(line);
+      expect(performance.now() - start).toBeLessThan(1000);
+    });
+
     it('puts blocks on separate lines', () => {
       expect(text('<p>A</p><p>B</p>')).toBe('A\nB');
     });

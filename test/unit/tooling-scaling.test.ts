@@ -13,6 +13,28 @@ import { splitSigilTemplate } from '../../src/markup/code-attributes';
 import { defaultCodeEnd } from '../../src/markup/code-end';
 import { vi } from 'vitest';
 
+it('bounds raw closer searches across unclosed do openers (#791)', () => {
+  const source = '{do}\n'.repeat(800);
+  const closer = new RegExp('\\{/do\\s*\\}').source;
+  const exec = RegExp.prototype.exec;
+  let searched = 0;
+  const spy = vi.spyOn(RegExp.prototype, 'exec').mockImplementation(function (
+    this: RegExp,
+    text: string,
+  ) {
+    if (this.global && this.source === closer)
+      searched += text.length - this.lastIndex;
+    return exec.call(this, text);
+  });
+  try {
+    expect(tokenizeMarkupTolerant(source).tokens).toHaveLength(1600);
+  } finally {
+    spy.mockRestore();
+  }
+  expect(searched).toBeGreaterThan(0);
+  expect(searched).toBeLessThanOrEqual(source.length * 2);
+});
+
 it('tolerates many writes to one macro config without argument spreading (#724)', () => {
   const source =
     'let config = {name: "example"};\n' +

@@ -189,6 +189,17 @@ function joinSpans(
   return out + text.slice(last);
 }
 
+/** Collapse the trailing blank lines without probing every whitespace suffix. */
+function trimBlankLines(text: string): string {
+  let end = text.length;
+  let newline = false;
+  while (end > 0 && /[ \t\n]/.test(text[end - 1]!)) {
+    newline ||= text[end - 1] === '\n';
+    end--;
+  }
+  return newline ? text.slice(0, end) + '\n' : text;
+}
+
 async function formatLf(
   text: string,
   options: PassageFormatOptions,
@@ -201,7 +212,7 @@ async function formatLf(
     const format = options.kind === 'script' ? formatJS : formatCSS;
     const code = body.trim();
     const formatted = await format(code, prettier, prettierOptions);
-    return (formatted ?? code).trim().replace(/\n*$/, '\n');
+    return (formatted ?? code).trim() + '\n';
   }
 
   const isBlock = options.isBlock ?? defaultIsBlock(body, options.blockMacros);
@@ -217,17 +228,18 @@ async function formatLf(
   const literalMarkers = new Set<string>();
   const fenced = markdownLines(body, isBlock, new Set(['codeFenced']));
   const literalHtml = whitespaceSensitiveLines(body, isBlock);
-  body = body
-    .split('\n')
-    .map((line, index) => {
-      if (!fenced.has(index) && !literalHtml.has(index)) return line;
-      const marker = `${literalSentinel}L${literalLines.size}${literalSentinel}`;
-      literalLines.set(marker, line);
-      literalMarkers.add(marker);
-      return (line.match(/^[ \t]*/)?.[0] ?? '') + marker;
-    })
-    .join('\n')
-    .replace(/(?:[ \t]*\n)+[ \t]*$/, '\n');
+  body = trimBlankLines(
+    body
+      .split('\n')
+      .map((line, index) => {
+        if (!fenced.has(index) && !literalHtml.has(index)) return line;
+        const marker = `${literalSentinel}L${literalLines.size}${literalSentinel}`;
+        literalLines.set(marker, line);
+        literalMarkers.add(marker);
+        return (line.match(/^[ \t]*/)?.[0] ?? '') + marker;
+      })
+      .join('\n'),
+  );
   const lines: string[] = [];
   /** Indices in lines whose trailing two spaces are a hard line break. */
   const hardBreakLines = new Set<number>();
@@ -359,12 +371,12 @@ async function formatLf(
   // normalized by indentMacros) and ensure single trailing newline
   let output = lines
     .map((l, i) =>
-      hardBreakLines.has(i) || preservedLines.has(i)
-        ? l
-        : l.replace(/\s+$/, ''),
+      hardBreakLines.has(i) || preservedLines.has(i) ? l : l.trimEnd(),
     )
     .join('\n');
-  output = output.replace(/\n*$/, '\n');
+  let end = output.length;
+  while (end > 0 && output[end - 1] === '\n') end--;
+  output = output.slice(0, end) + '\n';
 
   return replaceAll(
     output
@@ -613,7 +625,7 @@ function indentMacros(
           (body.keepRelative ? line.col - (isRoot ? 0 : body.minCol) : 0);
     }
     outCol.push(col);
-    const hardBreak = / {2,}$/.test(lines[i]!) && info[i + 1] ? '  ' : '';
+    const hardBreak = lines[i]!.endsWith('  ') && info[i + 1] ? '  ' : '';
     result.push(' '.repeat(col) + line.text + hardBreak);
   }
 
