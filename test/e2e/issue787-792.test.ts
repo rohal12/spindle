@@ -96,7 +96,7 @@ const edited = {
 
 async function bootForm() {
   await boot({
-    StoryVariables: Object.entries(defaults)
+    StoryVariables: Object.entries({ ...defaults, unrelated: 0 })
       .map(([name, value]) => `$${name} = ${JSON.stringify(value)}`)
       .join('\n'),
     Start:
@@ -128,19 +128,30 @@ async function values() {
   );
 }
 
-it.each(['button', 'programmatic'])(
+it.each([
+  'button',
+  'programmatic',
+  'button with store update',
+  'programmatic with store update',
+])(
   'synchronizes all macro bindings after a %s form reset (#788)',
   async (method) => {
     await bootForm();
     await editForm();
     expect(await values()).toEqual(edited);
-    if (method === 'button') await page.locator('#reset-button').click();
+    if (method.includes('store update'))
+      await page.evaluate(() =>
+        document
+          .querySelector('#controls')!
+          .addEventListener('reset', () => Story.set('unrelated', 1)),
+      );
+    if (method.startsWith('button'))
+      await page.locator('#reset-button').click();
     else
       await page.evaluate(() =>
         (document.querySelector('#controls') as HTMLFormElement).reset(),
       );
     await page.evaluate(() => Story.waitForActions());
-    await page.waitForFunction(() => Story.get('name') === 'Alice');
     expect(await values()).toEqual(defaults);
     expect(await page.locator('#text').inputValue()).toBe('Alice');
     expect(await page.locator('#number').inputValue()).toBe('12');
@@ -161,6 +172,34 @@ it.each(['button', 'programmatic'])(
     expect(
       observed.actions.find((action) => action.variable === 'choice')?.value,
     ).toBe('Blue');
+  },
+);
+
+it.each(['button', 'programmatic'])(
+  'keeps a single control subscribed through a %s reset handler update (#788)',
+  async (method) => {
+    await boot({
+      StoryVariables: '$name = "Alice"\n$unrelated = 0',
+      Start:
+        '<form id="controls">{#text textbox $name}<button type="reset" id="reset-button">Reset</button></form>',
+    });
+    await page.locator('#text').fill('Bob');
+    await page.evaluate(() =>
+      document
+        .querySelector('#controls')!
+        .addEventListener('reset', () => Story.set('unrelated', 1)),
+    );
+    if (method === 'button') await page.locator('#reset-button').click();
+    else
+      await page.evaluate(() =>
+        (document.querySelector('#controls') as HTMLFormElement).reset(),
+      );
+    await page.evaluate(() => Story.waitForActions());
+    expect(await page.evaluate(() => Story.get('name'))).toBe('Alice');
+    expect(await page.locator('#text').inputValue()).toBe('Alice');
+    expect((await page.evaluate(() => Story.observe())).text).toContain(
+      '[textbox $name: "Alice"]',
+    );
   },
 );
 

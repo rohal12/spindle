@@ -17,7 +17,10 @@ export const VARIABLE_PARAMETER = {
 
 type FormControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-type ResetReader = () => () => void;
+interface ResetReader {
+  element: FormControl;
+  read: (snapshot: FormControl) => () => void;
+}
 const formResets = new WeakMap<
   HTMLFormElement,
   {
@@ -39,7 +42,21 @@ function subscribeFormReset(
       // A task sees the native values and the final cancellation state.
       setTimeout(() => {
         if (event.defaultPrevented) return;
-        const commits = Array.from(readers, (read) => read());
+        // An unrelated store write can already have rerendered the live
+        // controls. Let a detached form recover their native defaults,
+        // including number sanitization, select fallback and radio groups.
+        const snapshot = form.ownerDocument.createElement('form');
+        const restoreDefaults = snapshot.reset.bind(snapshot);
+        const controls = Array.from(readers, (reader) => {
+          const element = reader.element.cloneNode(true) as FormControl;
+          element.removeAttribute('form');
+          snapshot.appendChild(element);
+          return { reader, element };
+        });
+        restoreDefaults();
+        const commits = controls.map(({ reader, element }) =>
+          reader.read(element),
+        );
         for (const commit of commits) commit();
       }, 0);
     };
@@ -98,6 +115,11 @@ export function useVariableAction(
   });
   const control = useRef<FormControl | null>(null);
   const initialized = useRef<FormControl | null>(null);
+  const subscription = useRef<{
+    element: FormControl;
+    form: HTMLFormElement;
+    off: () => void;
+  } | null>(null);
   const resetValue = useRef({ read: onReset, set: ctx.setValue });
   resetValue.current = { read: onReset, set: ctx.setValue };
   const ref = useCallback(
@@ -110,21 +132,36 @@ export function useVariableAction(
   // Reattach after commits in case the control's form owner changed.
   useLayoutEffect(() => {
     const element = control.current;
+    const form = element?.form;
+    if (
+      subscription.current?.element === element &&
+      subscription.current?.form === form
+    )
+      return;
+    subscription.current?.off();
+    subscription.current = null;
     if (!element || !onReset) return;
     if (initialized.current !== element) {
       setResetDefault(element);
       initialized.current = element;
     }
-    const form = element.form;
     if (!form) return;
-    return subscribeFormReset(form, () => {
-      const value = resetValue.current.read!(element);
-      return () => {
-        if (control.current === element && element.form === form)
-          resetValue.current.set!(value);
-      };
-    });
+    subscription.current = {
+      element,
+      form,
+      off: subscribeFormReset(form, {
+        element,
+        read: (snapshot) => {
+          const value = resetValue.current.read!(snapshot);
+          return () => {
+            if (control.current === element && element.form === form)
+              resetValue.current.set!(value);
+          };
+        },
+      }),
+    };
   });
+  useLayoutEffect(() => () => subscription.current?.off(), []);
   return { ...registered, ref };
 }
 
