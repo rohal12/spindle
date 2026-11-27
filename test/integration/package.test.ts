@@ -67,6 +67,18 @@ describe('@rohal12/spindle/tooling', async () => {
       .href
   );
 
+  it('exports strict boundary queries that preserve completed inner spans (#785)', () => {
+    const source = '{$x + "unterminated} {$y}';
+    const endAt = tooling.indexStrictCodeEnds(source);
+    expect(endAt(1)).toBe(-1);
+    expect(endAt(source.indexOf('{$y}') + 1)).toBe(source.length - 1);
+    const unmatched = '{$x'.repeat(4000);
+    const unmatchedEndAt = tooling.indexStrictCodeEnds(unmatched);
+    for (let start = 1; start < unmatched.length; start += 3) {
+      expect(unmatchedEndAt(start)).toBe(-1);
+    }
+  });
+
   it('distinguishes builtin do bodies from replacement macros (#644)', () => {
     const source = '{do}Story.defineMacro({name:"textbox",render(){}});{/do}';
     const macros = [
@@ -135,6 +147,7 @@ describe('@rohal12/spindle/tooling', async () => {
       'effectiveWidgetDefinitions',
       'completionContext',
       'findCodeEnd',
+      'indexStrictCodeEnds',
       'scanStringLiteral',
       'parseSelectors',
       'tokenizeMarkup',

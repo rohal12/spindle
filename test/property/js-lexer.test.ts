@@ -12,6 +12,7 @@ import {
   type JsGoal,
 } from '../../src/js-lexer';
 import { fcOptions } from './config';
+import { indexStrictCodeEnds } from '../../src/tooling';
 import { compiles, jsArbitraries, render } from './arbitraries/js';
 import { expectAboutLinear, LINEAR_TIMEOUT } from '../support/linear-time';
 
@@ -178,6 +179,22 @@ describe('lexTemplate', () => {
 });
 
 describe('findCodeEnd', () => {
+  test.prop(
+    [fc.array(fc.constantFrom(...LEXICAL, '<!--', '-->'), { maxLength: 40 })],
+    fcOptions,
+  )(
+    'strict indexing matches independent queries over arbitrary lexical input',
+    (parts) => {
+      const src = parts.join('');
+      const endAt = indexStrictCodeEnds(src);
+      for (let start = src.length; start >= 0; start--) {
+        expect(endAt(start), `start ${start} in ${JSON.stringify(src)}`).toBe(
+          findCodeEnd(src, start),
+        );
+      }
+    },
+  );
+
   const DO_CLOSER = '{/do}';
   const atCloser = (src: string) => (i: number) => src.startsWith(DO_CLOSER, i);
 

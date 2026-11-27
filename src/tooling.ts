@@ -95,6 +95,7 @@ export {
   parseCode,
   scanStringLiteral,
 } from './js-lexer';
+export { indexStrictCodeEnds } from './markup/code-end';
 export type {
   ParsedCode,
   VariableRef,

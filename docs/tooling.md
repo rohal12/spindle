@@ -17,9 +17,33 @@ The leaf rules take complete input and don't recover from half-typed text on the
 | `lexJs(src, handlers, goal?)`           | Walks `src` as JavaScript, calling `code`, `literal` and `variable` handlers in source order, every character once. Lenient: an unterminated literal runs on. |
 | `lexTemplate(src, start, handlers?, n)` | `lexJs` for the template literal opening at `start`; returns the index past its closing backtick.                                                             |
 | `findCodeEnd(src, start, options?)`     | Where the code starting at `start` ends: the `}` that closes the code (or, with `stop`, the first `{` for which it holds); `-1` if there is none.             |
+| `indexStrictCodeEnds(src)`              | Returns a reusable `(start) => end` with the same results as default `findCodeEnd`, caching queries and pruning unmatched plain-code prefixes.                |
 | `scanStringLiteral(src, start)`         | The end of the `"…"` or `'…'` literal at `start`, and whether it is closed.                                                                                   |
 
 `goal` is `'expression'` (the default, a macro argument) or `'statements'` (a `{do}` body); it decides whether `/` starts a regex or divides. A `Sigil` is `$`, `_`, `@` or `%`; `variable` handlers get the sigil and name of each reference such as `$gold` (not a property name, nor text in a literal).
+
+For repeated strict queries over one literal link target, create one index and
+query immediately after each candidate `{`. All offsets are UTF-16 offsets into
+the original source. Failed queries are independent: in `{$x{$y}`, querying
+`1` returns `-1`, and querying `4` still returns `6`.
+
+```js
+import { indexStrictCodeEnds } from '@rohal12/spindle/tooling';
+
+const endAt = indexStrictCodeEnds(target);
+const end = endAt(openBrace + 1); // closing `}` offset, or -1
+```
+
+The index takes linear space and construction time. Repeated unmatched
+plain-code prefixes such as `'{$x'.repeat(4000)` skip suffix token scans;
+parser fallback uses local source offsets, avoiding repeated prefix scans for
+error locations. Each distinct start is cached, and potentially closing starts
+still use the runtime lexer/parser. This is not a guarantee of linear time for
+arbitrary overlapping queries with literals or complex JavaScript. The index
+uses the default expression goal, with no `stop` callback or lenient markup
+recovery: `{$x + "unterminated} {$y}` fails at the first start but finds the
+later `{$y}`. Create a new index when the source changes, and release it when
+finished with that source.
 
 ## Markup tokens and selectors
 

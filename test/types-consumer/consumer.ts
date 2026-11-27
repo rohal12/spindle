@@ -41,6 +41,7 @@ export const checks: [
   Resolved<typeof Tooling.isSpecialPassage>,
   Resolved<ReturnType<typeof Tooling.macroCalls>>,
   Resolved<Tooling.MacroCall>,
+  Resolved<ReturnType<typeof Tooling.indexStrictCodeEnds>>,
 ] = [] as never;
 
 export const widgetMacro: Tooling.ToolingMacro = {
