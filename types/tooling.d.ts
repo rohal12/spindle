@@ -866,13 +866,14 @@ export interface PieceBase {
    * For the code or text of a quoted string with escapes (a `\"`), whose
    * characters are not where `offset` plus their index says: the offset of
    * each character in the source, and of the end of the text, so that
-   * `sourceOffsets[i]` is where character `i` of `code` or `text` is. Absent
+   * `sourceOffsets[i]` is where character `i` of `code`, `text` or a passage
+   * `name` is. The final entry maps the end boundary. Absent
    * when `offset + i` is (see {@link pieceOffset}).
    */
   sourceOffsets?: readonly number[];
 }
 
-/** Where character `index` of the code or text of `piece` is in the source. */
+/** Where boundary `index` of a piece's code, text or name is in the source. */
 export declare function pieceOffset(piece: PieceBase, index: number): number;
 
 /**
@@ -901,6 +902,12 @@ export interface CodePiece extends PieceBase {
 export interface PassagePiece extends PieceBase {
   kind: 'passage';
   name: string;
+  /**
+   * Decoded name boundaries in the original source, including the end before
+   * closing quotes. Quotes/escapes do not change the whole-argument offset
+   * and length. Both UTF-16 units of a code-point escape map to its start.
+   */
+  sourceOffsets?: readonly number[];
   /** A known navigation target, rather than included/dialog content. */
   navigation?: true;
   /** The markup it is in, for an error: `[[Go->Hall]]`. */

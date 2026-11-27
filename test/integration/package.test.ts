@@ -103,6 +103,26 @@ describe('@rohal12/spindle/tooling', async () => {
     ).toBe(true);
   });
 
+  it('maps decoded passage-name blocks through the public tooling entry point (#793)', () => {
+    const source = String.raw`{link "Go" "T{\u0024n + \"}\"}"}{/link}`;
+    const piece = tooling
+      .passagePieces(source, tooling.builtinMacros)
+      .find((p: { kind: string }) => p.kind === 'passage');
+    expect(piece.name).toBe('T{$n + "}"}');
+    const start = piece.name.indexOf('{');
+    const end = tooling.indexStrictCodeEnds(piece.name)(start + 1) + 1;
+    expect(end).toBe(piece.name.length);
+    expect(
+      source.slice(
+        tooling.pieceOffset(piece, start),
+        tooling.pieceOffset(piece, end),
+      ),
+    ).toBe(String.raw`{\u0024n + \"}\"}`);
+    expect(source.slice(piece.offset, piece.offset + piece.length)).toBe(
+      String.raw`"T{\u0024n + \"}\"}"`,
+    );
+  });
+
   it('defineMacro throws for a parameter without a type, as Story.defineMacro does', () => {
     expect(() =>
       tooling.defineMacro({
