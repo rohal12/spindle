@@ -1,6 +1,8 @@
 import { h } from 'preact';
-import { useCallback, useLayoutEffect, useRef } from 'preact/hooks';
+import { useCallback, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { defineMacro, type MacroContext } from '../../define-macro';
+import { useStoryStore } from '../../store';
+import { subscribeVariableWrites } from '../../utils/variable-writes';
 import {
   actionAttributes,
   useControlAction,
@@ -19,7 +21,10 @@ type FormControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 interface ResetReader {
   element: FormControl;
-  read: (snapshot: FormControl) => () => void;
+  prepare: () => {
+    read: (snapshot: FormControl) => () => void;
+    off: () => void;
+  };
 }
 const formResets = new WeakMap<
   HTMLFormElement,
@@ -38,25 +43,28 @@ function subscribeFormReset(
   if (!subscription) {
     const readers = new Set<ResetReader>();
     const reset = (event: Event) => {
+      const pending = Array.from(readers, (reader) => ({
+        reader,
+        ...reader.prepare(),
+      }));
       // Trusted reset events can run microtasks before their default action.
       // A task sees the native values and the final cancellation state.
       setTimeout(() => {
+        for (const { off } of pending) off();
         if (event.defaultPrevented) return;
         // An unrelated store write can already have rerendered the live
         // controls. Let a detached form recover their native defaults,
         // including number sanitization, select fallback and radio groups.
         const snapshot = form.ownerDocument.createElement('form');
         const restoreDefaults = snapshot.reset.bind(snapshot);
-        const controls = Array.from(readers, (reader) => {
+        const controls = pending.map(({ reader, read }) => {
           const element = reader.element.cloneNode(true) as FormControl;
           element.removeAttribute('form');
           snapshot.appendChild(element);
-          return { reader, element };
+          return { read, element };
         });
         restoreDefaults();
-        const commits = controls.map(({ reader, element }) =>
-          reader.read(element),
-        );
+        const commits = controls.map(({ read, element }) => read(element));
         for (const commit of commits) commit();
       }, 0);
     };
@@ -100,7 +108,7 @@ function setResetDefault(control: FormControl): void {
  * gives another.
  */
 export function useVariableAction(
-  ctx: Pick<MacroContext, 'id' | 'varName' | 'value' | 'setValue'>,
+  ctx: Pick<MacroContext, 'id' | 'varName' | 'value' | 'setValue' | 'getValue'>,
   action: Omit<UseActionOptions, 'key' | 'authorId' | 'variable'> & {
     key?: string;
   },
@@ -114,14 +122,25 @@ export function useVariableAction(
     ...action,
   });
   const control = useRef<FormControl | null>(null);
+  const [, refresh] = useState(0);
   const initialized = useRef<FormControl | null>(null);
   const subscription = useRef<{
     element: FormControl;
     form: HTMLFormElement;
     off: () => void;
   } | null>(null);
-  const resetValue = useRef({ read: onReset, set: ctx.setValue });
-  resetValue.current = { read: onReset, set: ctx.setValue };
+  const resetValue = useRef({
+    read: onReset,
+    set: ctx.setValue,
+    get: ctx.getValue,
+    name: ctx.varName,
+  });
+  resetValue.current = {
+    read: onReset,
+    set: ctx.setValue,
+    get: ctx.getValue,
+    name: ctx.varName,
+  };
   const ref = useCallback(
     (element: Element | null) => {
       control.current = element as FormControl | null;
@@ -151,11 +170,35 @@ export function useVariableAction(
       form,
       off: subscribeFormReset(form, {
         element,
-        read: (snapshot) => {
-          const value = resetValue.current.read!(snapshot);
-          return () => {
-            if (control.current === element && element.form === form)
-              resetValue.current.set!(value);
+        prepare: () => {
+          const before = resetValue.current.get!();
+          let changed = false;
+          const offWrite = subscribeVariableWrites(
+            resetValue.current.name!.split('.'),
+            () => (changed = true),
+          );
+          const offStore = useStoryStore.subscribe(() => {
+            changed ||= !Object.is(resetValue.current.get!(), before);
+          });
+          return {
+            off: () => {
+              offWrite();
+              offStore();
+            },
+            read: (snapshot) => {
+              // Decide before any reset commits, including other controls of
+              // this binding. No-op writes and changes away and back count too.
+              const value = changed
+                ? undefined
+                : resetValue.current.read!(snapshot);
+              return () => {
+                if (control.current !== element || element.form !== form)
+                  return;
+                // A trusted reset may have undone a handler's earlier render.
+                if (changed) refresh((version) => version + 1);
+                else resetValue.current.set!(value);
+              };
+            },
           };
         },
       }),

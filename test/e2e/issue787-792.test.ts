@@ -223,6 +223,51 @@ it('honors cancelled resets without changing bindings or DOM values (#788)', asy
   expect(await page.locator('#native').inputValue()).toBe('Changed');
 });
 
+it.each([
+  ['store write', 'Carol'],
+  ['input event', 'Carol'],
+  ['reset handler', 'Carol'],
+  ['same-value store write', 'Bob'],
+  ['same-value input event', 'Bob'],
+  ['write then restore', 'Bob'],
+])(
+  'preserves a newer binding update from a %s while reset is pending (#788)',
+  async (method, name) => {
+    await bootForm();
+    await editForm();
+    if (method === 'reset handler') {
+      await page.evaluate(() =>
+        document
+          .querySelector('#controls')!
+          .addEventListener('reset', () => Story.set('name', 'Carol')),
+      );
+      await page.locator('#reset-button').click();
+    } else {
+      await page.evaluate(
+        ({ method, name }) => {
+          (document.querySelector('#controls') as HTMLFormElement).reset();
+          if (method.includes('store write')) Story.set('name', name);
+          else if (method === 'write then restore') {
+            Story.set('name', 'Carol');
+            Story.set('name', name);
+          } else {
+            const input = document.querySelector('#text') as HTMLInputElement;
+            input.value = name;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        },
+        { method, name },
+      );
+    }
+    await page.evaluate(() => Story.waitForActions());
+    expect(await values()).toEqual({ ...defaults, name });
+    expect(await page.locator('#text').inputValue()).toBe(name);
+    expect((await page.evaluate(() => Story.observe())).text).toContain(
+      `[textbox $name: "${name}"]`,
+    );
+  },
+);
+
 it('observes long interior preformatted whitespace without a quadratic stall (#792)', async () => {
   const line = '  a' + ' '.repeat(120_000) + 'z';
   await boot({ Start: '<pre>' + line + '</pre>' });

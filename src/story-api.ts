@@ -1,4 +1,5 @@
 import { useStoryStore, trackRuntimeUnsub, recordHookWrite } from './store';
+import { notifyVariableWrite } from './utils/variable-writes';
 import type { StoryState, VariableNamespaces } from './store';
 import { freeze } from 'immer';
 import {
@@ -350,7 +351,11 @@ function createStoryAPI(): StoryAPI {
       for (const [name] of entries) {
         const { isTransient, key } = parseName(name);
         warnIfUndeclared(isTransient, key);
-        if (!isTransient) recordHookWrite(key.split('.'));
+        if (!isTransient) {
+          const path = key.split('.');
+          recordHookWrite(path);
+          notifyVariableWrite(path);
+        }
       }
       // One store update for all keys, in program order with any running
       // mutation. Nested writes use the mutation merge to preserve aliases.

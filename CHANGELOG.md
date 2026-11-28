@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - HTML and MathML element names are normalized before rendering, so uppercase and mixed-case markup creates native controls and mathematical elements (#787).
-- Native form resets restore macro input defaults and synchronize their story bindings and observations, including checkbox, radio and listbox controls (#788).
+- Native form resets restore macro input defaults and synchronize their story bindings and observations, including checkbox, radio and listbox controls, while preserving newer binding writes made before reset synchronization completes (#788).
 - Adjacent macro flags are consumed independently of their declaration order, preserving positional arguments and tooling spans (#789).
 - Passage formatting bounds whitespace suffix checks while preserving Markdown hard breaks and literal whitespace (#790).
 - Raw JavaScript body parsing indexes potential closers, including absent ones, instead of rescanning every unclosed opener's suffix (#791).
