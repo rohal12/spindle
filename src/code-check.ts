@@ -55,7 +55,11 @@ import {
   type PassageTarget,
 } from './components/macros/macro-args';
 import { subMacroParameters } from './components/macros/option-utils';
-import { readPassageBody, splitArgSpans } from './components/macros/arg-utils';
+import {
+  readPassageBody,
+  readWholeQuoted,
+  splitArgSpans,
+} from './components/macros/arg-utils';
 import { effectiveNamedDefinitions, NameMap } from './utils/macro-names';
 import { hasOwn } from './utils/namespace';
 import { isBuiltinBlockMacro, isRawMacro } from './markup/ast';
@@ -111,13 +115,14 @@ export interface PieceBase {
    * For the code or text of a quoted string with escapes (a `\"`), whose
    * characters are not where `offset` plus their index says: the offset of
    * each character in the source, and of the end of the text, so that
-   * `sourceOffsets[i]` is where character `i` of `code` or `text` is. Absent
+   * `sourceOffsets[i]` is where character `i` of `code`, `text` or a passage
+   * `name` is. The final entry maps the end boundary. Absent
    * when `offset + i` is (see {@link pieceOffset}).
    */
   sourceOffsets?: readonly number[];
 }
 
-/** Where character `index` of the code or text of `piece` is in the source. */
+/** Where boundary `index` of a piece's code, text or name is in the source. */
 export function pieceOffset(piece: PieceBase, index: number): number {
   return piece.sourceOffsets?.[index] ?? piece.offset + index;
 }
@@ -128,7 +133,9 @@ function extentOf(piece: Piece): number {
     ? piece.code.length
     : piece.kind === 'text'
       ? piece.text.length
-      : piece.length;
+      : piece.kind === 'passage'
+        ? piece.name.length
+        : piece.length;
 }
 
 /** A piece found in a markup that is written out, for an error to point at. */
@@ -167,6 +174,12 @@ interface MacroPiece extends LabeledPiece {
 export interface PassagePiece extends MacroPiece {
   kind: 'passage';
   name: string;
+  /**
+   * Decoded name boundaries in the original source, including the end before
+   * closing quotes. Quotes/escapes do not change the whole-argument offset
+   * and length. Both UTF-16 units of a code-point escape map to its start.
+   */
+  sourceOffsets?: readonly number[];
   /** A known navigation target, rather than included/dialog content. */
   navigation?: true;
 }
@@ -530,13 +543,26 @@ export function* codeAndText(
         if (close > t + 1) {
           const text = src.slice(token.end, tokens[close]!.start);
           const written = text.trim();
+          const at = token.end + text.indexOf(written);
+          const nameValue = readPassageBody(written);
+          const sourceOffsets =
+            readWholeQuoted(written) !== null
+              ? escapeOffsets(
+                  written.slice(1, -1),
+                  at + 1,
+                  nameValue,
+                  'quotes',
+                  true,
+                )
+              : undefined;
           yield {
             kind: 'passage',
-            name: readPassageBody(written),
-            offset: token.end + text.indexOf(written),
+            name: nameValue,
+            offset: at,
             length: written.length,
             macro: name,
             label: src.slice(token.start, token.end),
+            ...(sourceOffsets && { sourceOffsets }),
           };
         }
       }
@@ -702,7 +728,7 @@ function nestedPiece(
 ): Piece {
   const offset = toRoot(piece.offset);
   const nested = { offset, nested: true as const, where };
-  if (piece.kind === 'passage' || piece.kind === 'argument-error') {
+  if (piece.kind === 'argument-error') {
     const length = toRoot(piece.offset + piece.length) - offset;
     return { ...piece, ...nested, length };
   }
@@ -712,9 +738,15 @@ function nestedPiece(
     : toRoot(piece.offset + extent) - offset !== extent
       ? Array.from({ length: extent + 1 }, (_, i) => toRoot(piece.offset + i))
       : undefined;
-  return sourceOffsets
+  const mapped = sourceOffsets
     ? { ...piece, ...nested, sourceOffsets }
     : { ...piece, ...nested };
+  return mapped.kind === 'passage'
+    ? {
+        ...mapped,
+        length: toRoot(piece.offset + mapped.length) - offset,
+      }
+    : mapped;
 }
 
 /** How the string of an argument is unescaped, which its escapes depend on. */
@@ -754,13 +786,15 @@ function escapeAt(
  * written as `raw` from `at` on (its escapes are those of `escapes`), is in
  * the source, and where the text ends. A character that an escape stands for
  * is where the escape begins. None when the text is where its length says, or
- * is not that string.
+ * is not that string. With `includeLinear`, return the map even without
+ * escapes (a passage piece's offset includes the opening quote).
  */
 export function escapeOffsets(
   raw: string,
   at: number,
   value: string,
   escapes: Escapes,
+  includeLinear = false,
 ): number[] | undefined {
   const offsets: number[] = [];
   let escaped = false;
@@ -778,8 +812,16 @@ export function escapeOffsets(
     escaped = true;
     i += escape.length;
   }
+  // A trailing line continuation emits no character but still moves the
+  // decoded string's end boundary to the closing quote.
+  while (raw[i] === '\\') {
+    const escape = escapeAt(raw, i, escapes);
+    if (!escape || escape.text.length !== 0) break;
+    escaped = true;
+    i += escape.length;
+  }
   offsets.push(at + i);
-  return escaped ? offsets : undefined;
+  return escaped || includeLinear ? offsets : undefined;
 }
 
 /** The code and text in the arguments `args` (at `offset`) of `macro`. */
@@ -894,13 +936,24 @@ function* valuePieces(
       const [start, end] = span;
       const written = args.slice(start, end);
       /** The name as written (quotes included), at the argument. */
-      const passage = (passageName: string): PassagePiece => ({
+      const passage = (
+        passageName: string,
+        at: number,
+        mode: Escapes = escapes,
+      ): PassagePiece => ({
         kind: 'passage',
         name: passageName,
         offset: offset + start,
         length: end - start,
         macro: name,
         label,
+        sourceOffsets: escapeOffsets(
+          args.slice(at - offset),
+          at,
+          passageName,
+          mode,
+          true,
+        ),
         ...(navigation.includes(param.name) && { navigation: true as const }),
       });
       const goal = codeGoal(param);
@@ -908,7 +961,7 @@ function* valuePieces(
         // A name written out, else an expression naming one
         const target = passageTarget(value);
         if (target.kind === 'name') {
-          yield passage(target.name);
+          yield passage(target.name, offset + start + 1, 'javascript');
           continue;
         }
       }
@@ -949,7 +1002,7 @@ function* valuePieces(
         if (sourceOffsets) piece.sourceOffsets = sourceOffsets;
         yield piece;
       } else if (holds === 'passage') {
-        yield passage(value);
+        yield passage(value, at);
       } else if (holds === 'markup') {
         const piece = textPiece(
           value,

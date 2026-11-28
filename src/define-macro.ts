@@ -47,6 +47,7 @@ import {
   displayOnlyError,
 } from './display-only';
 import { NameSet } from './utils/macro-names';
+import { notifyVariableWrite } from './utils/variable-writes';
 import {
   checkParameterTypes,
   registerMacro,
@@ -254,6 +255,7 @@ export function defineMacro<const P extends readonly ParameterDef[] = []>(
       ctx.setValue = displayOnly
         ? refuse
         : (value: unknown) => {
+            notifyVariableWrite(segments);
             // The commit mutation code uses, which keeps the references among
             // variables: a write to a draft copies only the path written, and
             // other variables sharing the object would keep the old one.

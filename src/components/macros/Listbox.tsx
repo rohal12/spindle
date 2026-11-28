@@ -13,14 +13,18 @@ defineMacro({
   render({ children = [] }, ctx) {
     const options = ctx.extractOptions(children);
 
-    const action = useVariableAction(ctx, {
-      type: 'listbox',
-      label: ctx.varName!,
-      options,
-      perform: (v) => {
-        if (v !== undefined) ctx.setValue!(String(v));
+    const action = useVariableAction(
+      ctx,
+      {
+        type: 'listbox',
+        label: ctx.varName!,
+        options,
+        perform: (v) => {
+          if (v !== undefined) ctx.setValue!(String(v));
+        },
       },
-    });
+      (control) => control.value,
+    );
 
     return (
       <select

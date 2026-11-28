@@ -278,17 +278,36 @@ function readGroup(
   let [text, at] = trimmed(src ?? '', srcAt);
   // A lone word is the passage of {include inline}, not its flag
   const alone = !params.some((p) => p.type !== 'flag' && p.required);
-  for (const flag of params.filter((p) => p.type === 'flag')) {
-    const rest = src === null ? null : takeFlag(text, flag.name, alone);
-    args[flag.name] = rest !== null;
-    if (rest) {
-      const flagSpan: Span =
-        rest[0] > 0
-          ? [0, text.indexOf(flag.name) + flag.name.length]
-          : [text.lastIndexOf(flag.name), text.length];
-      toolingSpans?.set(flag, [at + flagSpan[0], at + flagSpan[1]]);
-      [text, at] = trimmed(slice(text, rest), at + rest[0]);
+  const flags = params.filter((p) => p.type === 'flag');
+  for (const flag of flags) args[flag.name] = false;
+  const byName = new Map(flags.map((flag) => [flag.name, flag]));
+  // Consume from the boundaries in source order, independently of declaration
+  // order. Prefer the trailing flag when a required lone argument must remain.
+  while (text && byName.size) {
+    const parts = terms(text);
+    if (parts.length === 0) break;
+    let changed = false;
+    for (const name of [
+      slice(text, parts[parts.length - 1]!),
+      slice(text, parts[0]!),
+    ]) {
+      const flag = byName.get(name);
+      if (!flag || args[flag.name]) continue;
+      const rest = src === null ? null : takeFlag(text, flag.name, alone);
+      if (rest) {
+        args[flag.name] = true;
+        byName.delete(flag.name);
+        changed = true;
+        const flagSpan: Span =
+          rest[0] > 0
+            ? [0, text.indexOf(flag.name) + flag.name.length]
+            : [text.lastIndexOf(flag.name), text.length];
+        toolingSpans?.set(flag, [at + flagSpan[0], at + flagSpan[1]]);
+        [text, at] = trimmed(slice(text, rest), at + rest[0]);
+        break;
+      }
     }
+    if (!changed) break;
   }
   const positional = params.filter((p) => p.type !== 'flag');
   if (positional.length === 0) return;

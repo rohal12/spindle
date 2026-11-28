@@ -17,13 +17,32 @@ defineMacro({
     const label = ctx.args.label ?? '';
     // One group per variable in each view (see ViewScopeContext)
     const view = ctx.hooks.useContext(ViewScopeContext);
+    const initialValue = ctx.hooks.useRef(ctx.value);
 
-    const action = useVariableAction(ctx, {
-      type: 'radiobutton',
-      key: `$${ctx.varName}:${radioValue}`,
-      label: label || radioValue,
-      perform: () => ctx.setValue!(radioValue),
-    });
+    const action = useVariableAction(
+      ctx,
+      {
+        type: 'radiobutton',
+        key: `$${ctx.varName}:${radioValue}`,
+        label: label || radioValue,
+        perform: () => ctx.setValue!(radioValue),
+      },
+      (control) => {
+        const radio = control as HTMLInputElement;
+        const group = radio.form?.elements.namedItem(radio.name) as
+          RadioNodeList | HTMLInputElement | null;
+        const selected =
+          group &&
+          ('length' in group
+            ? (Array.from(group).find(
+                (node) => (node as HTMLInputElement).checked,
+              ) as HTMLInputElement | undefined)
+            : group.checked
+              ? group
+              : undefined);
+        return selected ? selected.value : initialValue.current;
+      },
+    );
 
     return (
       <label

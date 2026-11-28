@@ -13,12 +13,16 @@ defineMacro({
   render(_props, ctx) {
     const label = ctx.args.label ?? '';
 
-    const action = useVariableAction(ctx, {
-      type: 'checkbox',
-      label: label || ctx.varName || '',
-      value: !!ctx.value,
-      perform: (v) => ctx.setValue!(v !== undefined ? !!v : !ctx.getValue!()),
-    });
+    const action = useVariableAction(
+      ctx,
+      {
+        type: 'checkbox',
+        label: label || ctx.varName || '',
+        value: !!ctx.value,
+        perform: (v) => ctx.setValue!(v !== undefined ? !!v : !ctx.getValue!()),
+      },
+      (control) => (control as HTMLInputElement).checked,
+    );
 
     return (
       <label

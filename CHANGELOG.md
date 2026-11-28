@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Passage pieces expose decoded name boundaries through `sourceOffsets` and `pieceOffset`, including JavaScript escapes, UTF-16 surrogate pairs and line continuations. Maps compose through nested labels and attributes while whole-argument navigation/rename spans retain their existing meaning (#793).
 - Tooling exports `indexStrictCodeEnds(source)` for cached strict expression-boundary queries, pruning repeated unmatched plain-code prefixes while preserving completed inner interpolations (#785).
 - `Story.on('settingchanged', (name, value) => …)` fires after a setting's value changed and was stored, whether through the settings controls or `Story.settings.set()`, so story code can apply a setting (a theme, a text size) without polling. It does not fire when settings are registered, when persisted values are applied at startup (read those with `Story.settings.get()` from `storyinit` on), or when a value is set to what it already is.
 - `Story.settings.addToggle`, `addList` and `addRange` accept an optional plain-text `description`. `{settings-controls}` shows it under the setting in a `.settings-description` element that the control references with `aria-describedby`; settings without one render as before.
 
 ### Fixed
+
+- HTML and MathML element names are normalized before rendering, so uppercase and mixed-case markup creates native controls and mathematical elements (#787).
+- Native form resets restore macro input defaults and synchronize their story bindings and observations, including checkbox, radio and listbox controls, while preserving newer binding writes made before reset synchronization completes (#788).
+- Adjacent macro flags are consumed independently of their declaration order, preserving positional arguments and tooling spans (#789).
+- Passage formatting bounds whitespace suffix checks while preserving Markdown hard breaks and literal whitespace (#790).
+- Raw JavaScript body parsing indexes potential closers, including absent ones, instead of rescanning every unclosed opener's suffix (#791).
+- Reader observations trim trailing whitespace in linear time while retaining preformatted indentation and interior whitespace (#792).
 
 - `PassageReady` watchers no longer become persistent interface watchers when loading an earlier checkpoint (#547).
 - Reader observations resolve absolute and relative same-document SVG `<use>` URLs while excluding external documents (#764).

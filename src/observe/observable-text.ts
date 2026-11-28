@@ -232,7 +232,8 @@ export function observableText(
       .map((line) => line.trimEnd())
       .join('\n')
       .replace(/\n{3,}/g, '\n\n')
-      .replace(/^\n+|\s+$/g, '')
+      .replace(/^\n+/, '')
+      .trimEnd()
   );
 }
 

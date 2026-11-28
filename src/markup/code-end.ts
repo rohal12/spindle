@@ -1,4 +1,6 @@
 import { findCodeEnd, parsedCodeEnd } from '../js-lexer';
+import { escapeRegExp } from '../components/macros/arg-utils';
+import { upperBound } from '../utils/sorted';
 
 /**
  * Where the JavaScript inside markup ends. The grammar (spindle.peggy) leaves
@@ -161,6 +163,10 @@ export type OnOpenCodeEnd = (input: string, codeStart: number) => void;
  * input (see `OnOpenCodeEnd`); the ends it finds are the same.
  */
 export function jsCodeEnd(onOpenEnd?: OnOpenCodeEnd): CodeEnd {
+  // Keep only the latest immutable source. Missing closers are indexed too,
+  // so every unclosed raw opener does not search the same suffix again.
+  let indexedInput = '';
+  const rawClosers = new Map<string, number[]>();
   return {
     closeBrace(input, codeStart, lenientStart) {
       let ranOut = false;
@@ -172,10 +178,21 @@ export function jsCodeEnd(onOpenEnd?: OnOpenCodeEnd): CodeEnd {
       return end;
     },
     rawBodyEnd(input, bodyStart, name) {
-      const closer = `\\{/${name}\\s*\\}`;
-      const first = new RegExp(closer, 'gi');
-      first.lastIndex = bodyStart;
-      const firstAt = first.exec(input)?.index ?? -1;
+      if (indexedInput !== input) {
+        indexedInput = input;
+        rawClosers.clear();
+      }
+      name = name.toLowerCase();
+      const closer = `\\{/${escapeRegExp(name)}\\s*\\}`;
+      let candidates = rawClosers.get(name);
+      if (!candidates) {
+        candidates = Array.from(
+          input.matchAll(new RegExp(closer, 'gi')),
+          (m) => m.index,
+        );
+        rawClosers.set(name, candidates);
+      }
+      const firstAt = candidates[upperBound(candidates, bodyStart - 1)] ?? -1;
       if (firstAt === -1) return -1;
       const at = new RegExp(closer, 'iy');
       let ranOut = false;
@@ -192,7 +209,8 @@ export function jsCodeEnd(onOpenEnd?: OnOpenCodeEnd): CodeEnd {
       // with its `}` follows
       if (
         onOpenEnd &&
-        (ranOut || new RegExp(`\\{/${name}\\s*$`, 'i').test(input))
+        (ranOut ||
+          new RegExp(`\\{/${escapeRegExp(name)}\\s*$`, 'i').test(input))
       ) {
         onOpenEnd(input, bodyStart);
       }
